@@ -1,0 +1,180 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  ClipboardList,
+  LayoutDashboard,
+  LogOut,
+  Map,
+  Menu,
+  Plus,
+  Settings,
+  X,
+} from "lucide-react";
+import { Logo } from "@/components/logo";
+import type { UserRole } from "@/generated/prisma/enums";
+import { COORDINATOR_ROLES, USER_ROLE_LABELS } from "@/lib/constants";
+
+const NAV_ITEMS = [
+  { href: "/map", label: "Map", icon: Map },
+  { href: "/incidents", label: "Incidents", icon: ClipboardList },
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    coordinatorOnly: true,
+  },
+  { href: "/settings", label: "Settings", icon: Settings },
+] as const;
+
+export type AppShellUser = {
+  name: string;
+  email: string;
+  role: UserRole | null;
+  villageName: string | null;
+};
+
+export function AppShell({
+  user,
+  children,
+}: {
+  user: AppShellUser;
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const isCoordinator =
+    user.role !== null &&
+    (COORDINATOR_ROLES as readonly UserRole[]).includes(user.role);
+
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => !("coordinatorOnly" in item && item.coordinatorOnly) || isCoordinator,
+  );
+
+  function isActive(href: string) {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
+  const sidebar = (
+    <div className="flex h-full flex-col gap-6 p-4">
+      <div className="flex items-center justify-between">
+        <Link
+          href="/map"
+          className="text-white"
+          onClick={() => setMobileOpen(false)}
+        >
+          <Logo />
+        </Link>
+        <button
+          type="button"
+          onClick={() => setMobileOpen(false)}
+          className="rounded-lg p-2 text-brand-200 transition hover:bg-white/10 hover:text-white lg:hidden"
+          aria-label="Close navigation"
+        >
+          <X className="size-5" aria-hidden />
+        </button>
+      </div>
+
+      <Link
+        href="/incidents/new"
+        onClick={() => setMobileOpen(false)}
+        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-safe-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-safe-400"
+      >
+        <Plus className="size-4" aria-hidden />
+        Report an incident
+      </Link>
+
+      <nav aria-label="Sections" className="flex-1">
+        <ul className="space-y-1">
+          {visibleItems.map((item) => (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                aria-current={isActive(item.href) ? "page" : undefined}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                  isActive(item.href)
+                    ? "bg-white/15 text-white"
+                    : "text-brand-100 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <item.icon className="size-5 shrink-0" aria-hidden />
+                {item.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="border-t border-white/10 pt-4">
+        {user.villageName && (
+          <p className="px-3 text-xs font-medium uppercase tracking-wider text-brand-300">
+            {user.villageName}
+          </p>
+        )}
+        <div className="mt-2 px-3">
+          <p className="truncate text-sm font-medium text-white">{user.name}</p>
+          <p className="truncate text-xs text-brand-200">
+            {user.role ? USER_ROLE_LABELS[user.role] : user.email}
+          </p>
+        </div>
+
+        <form action="/api/auth/logout" method="post" className="mt-3">
+          <button
+            type="submit"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-100 transition hover:bg-white/10 hover:text-white"
+          >
+            <LogOut className="size-5 shrink-0" aria-hidden />
+            Sign out
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex min-h-full flex-1 bg-slate-50">
+      {/* Desktop sidebar */}
+      <aside className="hidden w-64 shrink-0 bg-brand-950 lg:block">
+        <div className="sticky top-0 h-screen">{sidebar}</div>
+      </aside>
+
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => setMobileOpen(false)}
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+          />
+          <aside className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-brand-950 shadow-xl">
+            {sidebar}
+          </aside>
+        </div>
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Mobile top bar */}
+        <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100"
+            aria-label="Open navigation"
+          >
+            <Menu className="size-5" aria-hidden />
+          </button>
+          <Link href="/map" className="text-slate-900">
+            <Logo />
+          </Link>
+        </header>
+
+        <main className="flex-1">{children}</main>
+      </div>
+    </div>
+  );
+}

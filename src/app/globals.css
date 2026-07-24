@@ -1,26 +1,100 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * VillageWatch design tokens.
+ *
+ * `brand` (blue) carries trust and navigation; `safe` (green) carries
+ * reassurance and all-clear states. Incident severity colours are NOT here —
+ * they live in `src/lib/constants.ts` because Leaflet needs them as hex at
+ * runtime, and the two must agree.
+ *
+ * The app is light-only for now. Add a dark palette deliberately rather than
+ * letting `prefers-color-scheme` half-apply to the map and severity badges.
+ */
+@theme {
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #0f2557;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-safe-50: #ecfdf5;
+  --color-safe-100: #d1fae5;
+  --color-safe-200: #a7f3d0;
+  --color-safe-300: #6ee7b7;
+  --color-safe-400: #34d399;
+  --color-safe-500: #10b981;
+  --color-safe-600: #059669;
+  --color-safe-700: #047857;
+  --color-safe-800: #065f46;
+  --color-safe-900: #064e3b;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --animate-pin-pulse: pin-pulse 3s cubic-bezier(0, 0, 0.2, 1) infinite;
+  --animate-rise: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes pin-pulse {
+    0% {
+      transform: scale(0.6);
+      opacity: 0.7;
+    }
+    70%,
+    100% {
+      transform: scale(2.6);
+      opacity: 0;
+    }
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Abstract street grid behind the landing hero. Purely decorative — no map
+ * tiles, no network requests, no layout cost.
+ */
+.hero-streets {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.07) 1px, transparent 1px),
+    linear-gradient(to right, rgb(255 255 255 / 0.12) 2px, transparent 2px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.12) 2px, transparent 2px);
+  background-size:
+    36px 36px,
+    36px 36px,
+    180px 180px,
+    180px 180px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
