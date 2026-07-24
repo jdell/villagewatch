@@ -156,6 +156,18 @@ export const INCIDENT_TYPE_LABELS = Object.fromEntries(
   INCIDENT_TYPES.map((t) => [t.value, t.label]),
 ) as Record<IncidentType, string>;
 
+/** Whole metadata row by enum value, for components rendering one incident. */
+export const INCIDENT_TYPE_META = Object.fromEntries(
+  INCIDENT_TYPES.map((t) => [t.value, t]),
+) as Record<IncidentType, IncidentTypeMeta>;
+
+/**
+ * Union of every lucide icon name used above. `IncidentTypeMeta.icon` is a
+ * plain `string`, so this is what lets `incident-type-icon.tsx` prove its
+ * lookup table covers every type.
+ */
+export type IncidentIconName = (typeof INCIDENT_TYPES)[number]["icon"];
+
 // ---------------------------------------------------------------------------
 // Severity
 // ---------------------------------------------------------------------------
@@ -172,20 +184,29 @@ export type SeverityMeta = {
   weight: number;
 };
 
+/**
+ * Green → amber → red → purple, as specified in the Phase 2 architecture. The
+ * jump to purple at CRITICAL is deliberate: escalating red to a darker red
+ * reads as "more of the same" at a glance on a map, whereas a hue change reads
+ * as a different kind of thing entirely.
+ *
+ * The schema calls the second level MEDIUM (the architecture doc says
+ * MODERATE); MEDIUM is what `Severity` in `schema.prisma` actually is.
+ */
 export const SEVERITIES = [
   {
     value: "LOW",
     label: "Low",
     description: "Worth logging, no immediate risk",
-    pin: "#0d9488",
-    badgeClass: "bg-teal-50 text-teal-700 ring-teal-600/20",
+    pin: "#16a34a",
+    badgeClass: "bg-green-50 text-green-700 ring-green-600/20",
     weight: 1,
   },
   {
     value: "MEDIUM",
     label: "Medium",
     description: "Neighbours should keep an eye out",
-    pin: "#ca8a04",
+    pin: "#d97706",
     badgeClass: "bg-amber-50 text-amber-800 ring-amber-600/20",
     weight: 2,
   },
@@ -193,16 +214,16 @@ export const SEVERITIES = [
     value: "HIGH",
     label: "High",
     description: "Act now — secure property, stay alert",
-    pin: "#ea580c",
-    badgeClass: "bg-orange-50 text-orange-800 ring-orange-600/20",
+    pin: "#dc2626",
+    badgeClass: "bg-red-50 text-red-700 ring-red-600/20",
     weight: 3,
   },
   {
     value: "CRITICAL",
     label: "Critical",
     description: "Danger to life or property, call 999 first",
-    pin: "#dc2626",
-    badgeClass: "bg-red-50 text-red-700 ring-red-600/20",
+    pin: "#7c3aed",
+    badgeClass: "bg-purple-50 text-purple-700 ring-purple-600/20",
     weight: 4,
   },
 ] as const satisfies readonly SeverityMeta[];
@@ -220,6 +241,11 @@ export const SEVERITY_PIN_COLORS = Object.fromEntries(
 export const SEVERITY_LABELS = Object.fromEntries(
   SEVERITIES.map((s) => [s.value, s.label]),
 ) as Record<Severity, string>;
+
+/** Whole metadata row by enum value, for badges and pin rendering. */
+export const SEVERITY_META = Object.fromEntries(
+  SEVERITIES.map((s) => [s.value, s]),
+) as Record<Severity, SeverityMeta>;
 
 // ---------------------------------------------------------------------------
 // Status and roles

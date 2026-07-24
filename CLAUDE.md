@@ -93,12 +93,25 @@ src/
     (app)/                    Authenticated shell (sidebar); force-dynamic
       layout.tsx              requireSession() — the real auth boundary
       map/, incidents/, dashboard/, settings/
+      incidents/new/          Report wizard host (village lookup, server-side)
     api/auth/                 login, logout, register route handlers
+    api/incidents/            POST create report
+    api/incidents/media/      POST blurred upload, DELETE abandoned attachment
   components/                 Shared UI (logo, app-shell, placeholder, auth forms)
+    incident-form.tsx         5-step wizard, react-hook-form + Zod
+    media-uploader.tsx        Blur-then-upload; never touches the original
+    location-picker.tsx       Leaflet pin picker — dynamic import, ssr: false
+    ai-preview.tsx            Review / publish screens
+    incident-card.tsx         One incident, used by preview, list and detail
+    severity-badge.tsx        green / amber / red / purple pill
+    incident-type-icon.tsx    Enum icon name → lucide component
   lib/
     prisma.ts                 Singleton + pg driver adapter
     auth.ts                   getSession / requireSession / requireRole
-    supabase/                 server.ts, client.ts, env.ts
+    geo.ts                    fuzzCoordinates — server only, uses node:crypto
+    format.ts                 Time-ago, dates, sizes — en-GB
+    media/face-blur.ts        MediaPipe WASM face detection + canvas blur
+    supabase/                 server.ts, client.ts, admin.ts, env.ts
     constants.ts              Enum display metadata, severity colours, map config
     validations.ts            Zod 4 schemas
   generated/prisma/           Generated client — gitignored, never edit
@@ -120,9 +133,13 @@ These are not style preferences. Breaking them leaks residents' personal data.
 2. **Coordinates are fuzzed before they are stored.** Jitter by
    `LOCATION_FUZZ_METERS` on the way in. The exact reported point is never
    persisted, so it cannot leak later.
-3. **Media is redacted and EXIF-stripped before it is served.** Serve
-   `redactedPath` once `redactedAt` is set; never serve the original upload to
-   residents. Photo GPS EXIF has re-identified people before.
+3. **Media is redacted and EXIF-stripped before it is *uploaded*.** Faces are
+   detected and blurred on-device by `src/lib/media/face-blur.ts`, and only the
+   re-encoded canvas output is sent — which also drops the EXIF block, GPS tag
+   included. `POST /api/incidents/media` has no server-side blur fallback on
+   purpose: a fallback would mean accepting an unblurred original. Serve
+   `redactedPath` once `redactedAt` is set. Photo GPS EXIF has re-identified
+   people before.
 4. **The village is the tenant boundary.** Every incident query must be scoped
    by `villageId`. Use `getCurrentVillageId()` — never trust a village id that
    arrived in a request body.
@@ -192,9 +209,16 @@ Day 1 delivered the scaffold, schema and landing page. Still open:
   real resident data exists.
 - The AI anonymisation pass, pattern detection and Web Push delivery are all
   unimplemented — `anonymized`, `aiSummary` and `pushSubscription` are columns
-  waiting for code.
-- `/map`, `/incidents`, `/incidents/new`, `/dashboard` and `/settings` are
-  placeholders.
+  waiting for code. Because of that, reports filed by the wizard land in
+  `PENDING_REVIEW` with `description` still holding the reporter's own wording:
+  it is never served, since only `PUBLIC_INCIDENT_STATUSES` reach residents.
+  Day 3 overwrites `description` with the anonymised rewrite.
+- **Storage policies are not configured.** `POST /api/incidents/media` uses the
+  service-role client (`src/lib/supabase/admin.ts`) and does its own session,
+  village and path-prefix checks. Once the `incident-media` bucket has
+  village-scoped policies, move it back to the request-scoped client.
+- `/map`, `/incidents`, `/dashboard` and `/settings` are placeholders.
+  `/incidents/new` is built.
 - `/forgot-password` is linked from the login form but does not exist yet.
 - No tests, no CI, no staging environment, no auto-versioning.
 - Light theme only. Add a dark palette deliberately — `prefers-color-scheme`

@@ -1,22 +1,72 @@
 import type { Metadata } from "next";
-import { MessageSquarePlus } from "lucide-react";
-import { Placeholder } from "@/components/placeholder";
+import Link from "next/link";
+import { MapPinOff } from "lucide-react";
+import { IncidentForm } from "@/components/incident-form";
+import { requireSession } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { MAP_DEFAULTS } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Report an incident" };
 
-export default function NewIncidentPage() {
+/**
+ * Host for the report wizard.
+ *
+ * The village is looked up here, on the server, so the map centre and the
+ * tenant the report will be filed against both come from the session rather
+ * than from anything the browser could set. The wizard itself is a Client
+ * Component — it owns Leaflet, the camera and the on-device blur.
+ */
+export default async function NewIncidentPage() {
+  const session = await requireSession("/incidents/new");
+
+  const village =
+    session.profile?.villageId && process.env.DATABASE_URL
+      ? await prisma.village.findUnique({
+          where: { id: session.profile.villageId },
+          select: {
+            id: true,
+            name: true,
+            centerLat: true,
+            centerLng: true,
+            defaultZoom: true,
+          },
+        })
+      : null;
+
+  if (!village) {
+    return (
+      <div className="mx-auto w-full max-w-2xl px-4 py-14 sm:px-6">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-8">
+          <span className="mx-auto grid size-12 place-items-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-100">
+            <MapPinOff className="size-6" aria-hidden />
+          </span>
+          <h1 className="mt-4 text-xl font-semibold text-slate-900">
+            You are not in a village yet
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            Reports belong to a village, so there is nowhere to file this one
+            until you have joined. Your coordinator can give you a join code.
+          </p>
+          <Link
+            href="/settings"
+            className="mt-5 inline-flex h-11 items-center rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white transition hover:bg-brand-700"
+          >
+            Go to settings
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Placeholder
-      icon={MessageSquarePlus}
-      title="Report an incident"
-      description="The one screen that has to be fast. Target is under a minute, one-handed, outdoors."
-      upcoming={[
-        "Multi-step wizard: what happened → where → when → photos → review",
-        "Validated by incidentReportSchema in src/lib/validations.ts",
-        "Map pin picker with 'use my location', jittered by LOCATION_FUZZ_METERS before saving",
-        "Direct-to-Supabase-Storage uploads, with EXIF stripped before the file is stored",
-        "Submitted reports land in PENDING_REVIEW; the AI pass fills description, aiSummary and tags",
-      ]}
+    <IncidentForm
+      village={{
+        id: village.id,
+        name: village.name,
+        centerLat: village.centerLat,
+        centerLng: village.centerLng,
+        defaultZoom: village.defaultZoom || MAP_DEFAULTS.zoom,
+      }}
     />
   );
 }
