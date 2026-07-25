@@ -91,7 +91,11 @@ src/
   app/
     layout.tsx                Root layout: fonts, metadata, Toaster
     page.tsx                  Public landing page
+    not-found.tsx             Friendly 404 — also where a withdrawn report lands
+    error.tsx                 Root error boundary; client, uses unstable_retry
     login/, register/         Public auth pages
+    privacy/                  UK GDPR privacy notice
+    terms/                    Terms of use + community guidelines
     (app)/                    Authenticated shell (sidebar); force-dynamic
       layout.tsx              requireSession() — the real auth boundary
       map/                    Full-screen Leaflet map, severity pins
@@ -102,6 +106,7 @@ src/
       incidents/new/          Report wizard host (village lookup, server-side)
       dashboard/              Stats, breakdowns, hotspots, moderation queue
       dashboard/actions.ts    Moderate + audited raw-text reveal
+      dashboard/audit/        Audit trail viewer — coordinator only, filterable
       settings/               Profile and notification preferences
       settings/actions.ts     saveSettingsAction — never touches role/village
     api/auth/                 login, logout, register route handlers
@@ -112,6 +117,9 @@ src/
     api/dashboard/export/     GET village incidents as CSV (public columns only)
     api/digest/               Weekly cron — Claude summary, PatternAlert, push
   components/                 Shared UI (logo, app-shell, placeholder, auth forms)
+    site-footer.tsx           Public footer, incl. the legal links — shared
+    legal-page.tsx            Shell + typography for /privacy and /terms
+    status-screen.tsx         Shell behind not-found.tsx and error.tsx
     incident-form.tsx         5-step wizard, react-hook-form + Zod
     media-uploader.tsx        Blur-then-upload; never touches the original
     location-picker.tsx       Leaflet pin picker — dynamic import, ssr: false
@@ -137,6 +145,7 @@ src/
     notifications.ts          OneSignal dispatch, audience rules — server only
     ai/weekly-digest.ts       Claude weekly summary, structured, typed failures
     geo.ts                    fuzzCoordinates — server only, uses node:crypto
+    rate-limit.ts             In-memory fixed-window limiter — server only
     format.ts                 Time-ago, dates, sizes — en-GB
     incidents.ts              PUBLIC_INCIDENT_SELECT (no rawDescription), mappers
     ai/client.ts              Anthropic client + isAiConfigured — server only
@@ -151,6 +160,7 @@ src/
 prisma/
   schema.prisma
   sql/postgis.sql             Extension, triggers, GiST indexes
+  sql/rls_policies.sql        Row-level security — apply after postgis.sql
 ```
 
 ---
@@ -194,13 +204,81 @@ These are not style preferences. Breaking them leaks residents' personal data.
   boundary.
 - `src/app/(app)/layout.tsx` calls `requireSession()`. That is the real gate.
 - Coordinator routes additionally call `requireCoordinator()`.
-- RLS on every table is the last line of defence and is **not yet configured**
-  — see Not built yet, below.
+- RLS on every table is the last line of defence. The policies are written —
+  `prisma/sql/rls_policies.sql` — but no database exists to apply them to yet.
 - `getSession()` uses `supabase.auth.getUser()`, which revalidates the JWT
   against Supabase. Never swap it for `getSession()` on the Supabase client,
   which trusts the cookie as-is.
 
 ---
+
+## Row-level security
+
+`prisma/sql/rls_policies.sql`, applied once after the first migration and after
+`postgis.sql`. Re-runnable — every policy is dropped before it is created.
+
+- **It does not gate the application's own reads.** Prisma connects as the table
+  owner, and an owner bypasses RLS. Everything above — `requireSession()`, the
+  `villageId` scoping, `PUBLIC_INCIDENT_SELECT` — is still the enforcement.
+  What RLS closes is the `authenticated` / `anon` path: the Supabase JS client,
+  PostgREST, Realtime, and anything reached with a leaked anon key.
+- `FORCE ROW LEVEL SECURITY` is deliberately **not** set. It would apply the
+  policies to the Prisma connection, where `auth.uid()` is NULL, and the app
+  would lose access to its own tables.
+- Policy predicates go through four `SECURITY DEFINER` helpers
+  (`vw_current_village_id`, `vw_current_role`, `vw_is_coordinator`,
+  `vw_is_admin`). Definer, because a policy on `users` that reads `users`
+  recurses; `search_path` pinned empty, because a definer function that
+  resolves names through the caller's path is an escalation primitive.
+- Two triggers do what a policy cannot. `users_guard_privilege_columns` rejects
+  a client changing its own `role`, `village_id` or `verified_at` (domain rule
+  5 — a policy filters rows, not columns). `audit_logs_append_only` rejects
+  every UPDATE and DELETE on the trail **including from the owner**, which is
+  the only way domain rule 7 survives a careless `deleteMany`.
+- The file documents its two departures from the Day 5 brief: incident SELECT
+  covers `RESOLVED` as well as `PUBLISHED` (matching
+  `PUBLIC_INCIDENT_STATUSES`), and notification SELECT is own-rows-only rather
+  than village-wide.
+
+## Rate limiting
+
+`src/lib/rate-limit.ts`. Fixed windows, in memory, keyed by Supabase auth user
+id — never by IP, because a village shares a broadband line often enough that
+an IP limit would silence a household.
+
+| Route                      | Limit          |
+| -------------------------- | -------------- |
+| `POST /api/incidents/process` | 5 per hour  |
+| `POST /api/incidents`      | 10 per day     |
+
+- **Counted after the body validates**, not at the top of the handler. A
+  malformed request costs a Zod parse; burning a slot on one would let a
+  client-side bug spend a reporter's quota without a single call reaching
+  Claude or a single row reaching the queue.
+- The counters live in the process, so on Vercel they are **per lambda
+  instance** and reset on a cold start. That stops a retry loop or one resident
+  hammering "Reprocess"; it does not stop a distributed attacker. When shared
+  state arrives, replace the `Map` and leave every call site alone.
+- A 429 carries `Retry-After` and an `error` string. The wizard already treats
+  any non-200 from the AI route as "no rewrite this time" and falls back to the
+  reporter's own wording — **being rate limited must never block filing**.
+- `POST /api/notifications` is coordinator-only and already audited, so it has
+  no user-facing limit.
+
+## The legal pages
+
+`/privacy` and `/terms`, public, sharing `src/components/legal-page.tsx` and
+linked from `SiteFooter` and the registration form.
+
+- `DATA_CONTROLLER` in `src/lib/constants.ts` is **placeholders**. A privacy
+  notice that does not name a controller does not satisfy Article 13 — fill it
+  in before a single real resident registers.
+- The privacy notice makes three claims that are statements about how the code
+  behaves: on-device blur with no server-side fallback (domain rule 3),
+  coordinate jitter (domain rule 2), and report text going to Anthropic. If any
+  of those changes, `/privacy` changes in the same commit.
+- `RETENTION` describes the schedule the policy states. **Nothing enforces it**
+  — there is no retention job. See Not built yet.
 
 ## Deployment guardrails
 
@@ -214,6 +292,8 @@ These are not style preferences. Breaking them leaks residents' personal data.
   migration history.
 - After any migration that adds a geography column, re-run
   `prisma/sql/postgis.sql`.
+- After any migration that adds a table, re-run `prisma/sql/rls_policies.sql`.
+  A new table arrives with RLS **off** and every row readable by the anon key.
 - Never commit `.env.local`, real connection strings, or
   `SUPABASE_SERVICE_ROLE_KEY`. Only `.env.example` is committed.
 - The git committer email must match a GitHub account Vercel recognises, or the
@@ -231,7 +311,8 @@ npx eslint .             # Lint
 npx prisma generate      # Regenerate client after schema changes
 npx prisma migrate dev   # Create + apply a migration locally
 npx prisma studio        # Browse data
-psql "$DIRECT_URL" -f prisma/sql/postgis.sql   # Apply PostGIS triggers
+psql "$DIRECT_URL" -f prisma/sql/postgis.sql        # PostGIS triggers + indexes
+psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql  # Row-level security
 ```
 
 ---
@@ -319,16 +400,29 @@ carries the anonymised column only.
 
 ## Not built yet
 
-Days 1–4 delivered the scaffold, schema, landing page, the on-device blur and
+Days 1–5 delivered the scaffold, schema, landing page, the on-device blur and
 upload, the report wizard, the Claude structuring pass, the map, the incident
 list and detail pages, push notifications, the coordinator dashboard and
-moderation queue, CSV export, the weekly digest cron, and settings. Still open:
+moderation queue, CSV export, the weekly digest cron, settings, the RLS
+policies, rate limiting, the legal pages, home-location capture, the audit
+viewer, security headers and the error pages. Still open:
 
 - No Supabase project, no database, no migrations have been run. **The Day 4
   schema change (`User.notifyRadiusMeters`) has been generated but never
   migrated** — it lands with the first `prisma migrate dev`.
-- **Row-level security is not configured on any table.** Do this before any
-  real resident data exists.
+- **The RLS policies have never been applied**, because there is no database to
+  apply them to. `prisma/sql/rls_policies.sql` is written and re-runnable, and
+  has not been executed once. Run it — and test it with the anon key from two
+  villages — before any real resident data exists.
+- **`DATA_CONTROLLER` in `src/lib/constants.ts` is placeholders.** The privacy
+  policy and terms both name it. Fill it in, register with the ICO, and have
+  the council review both documents before launch.
+- **Nothing enforces the retention schedule** the privacy policy states.
+  `RETENTION` holds the numbers; no job archives incidents at 12 months,
+  deletes media at 6, or closes dormant accounts. A stated retention period
+  that does not happen is a compliance problem, not a missing feature.
+- The community guidelines in `/terms` §5 are the common village-watch set,
+  not any particular parish's. Swap in the group's own wording if it has any.
 - No OneSignal app exists. `NEXT_PUBLIC_ONESIGNAL_APP_ID`, `ONESIGNAL_APP_ID`
   and `ONESIGNAL_REST_API_KEY` are unset, so every dispatch logs and reports
   `skipped: "not_configured"` — which is a supported state, not a bug.
@@ -336,13 +430,15 @@ moderation queue, CSV export, the weekly digest cron, and settings. Still open:
   `peopleCount`, `recurring` and `patternNote`.
 - `PatternAlert` rows are created by the digest but nothing renders them —
   acknowledge and dismiss have no UI, and the dashboard does not list them.
+  (The RLS UPDATE policy for them is already in place, waiting on the screen.)
 - Email and SMS notifications are unimplemented. `notifyEmail` and `notifySms`
   are settable in the schema but not on the settings screen and not honoured by
   any dispatch.
-- Residents have no `homeLat`/`homeLng` capture anywhere, so the notification
-  radius has nothing to measure from and every resident currently gets the
-  village-wide audience. Wire this into registration or coordinator
-  verification before the radius means anything.
+- Home location is captured at registration only, and it is optional. Anyone
+  who registered before Day 5, or who skipped the map, still has no
+  `homeLat`/`homeLng` and falls into the village-wide audience — which is the
+  intended degradation, not a bug. There is no way to set or change it
+  afterwards; `/settings` does not offer it yet.
 - **Storage policies are not configured.** `POST /api/incidents/media` and
   `src/lib/media/storage.ts` both use the service-role client
   (`src/lib/supabase/admin.ts`) and do their own session, village and
@@ -351,8 +447,10 @@ moderation queue, CSV export, the weekly digest cron, and settings. Still open:
 - The incident list shows the most recent `INCIDENT_PAGE_SIZE` and does not
   paginate; the map draws up to `MAX_MAP_INCIDENTS` pins with no clustering;
   the moderation queue shows `MODERATION_QUEUE_SIZE` with no paging or filter.
-- No rate limiting on `POST /api/incidents/process` or `POST /api/notifications`.
-  Both cost money per call and neither is metered.
+- Rate limiting is per-process and resets on a cold start — see the section
+  above. Shared state is the fix, and it is not here.
+- No Content-Security-Policy. It needs a per-request nonce from `src/proxy.ts`;
+  the other security headers are in `next.config.ts`.
 - Resident verification has no UI — no way to approve a join request or promote
   someone to `VERIFIED_RESIDENT`.
 - `/forgot-password` is linked from the login form but does not exist yet.

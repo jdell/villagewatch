@@ -10,6 +10,7 @@ import {
 } from "@/lib/ai/detect-patterns";
 import { structureIncident } from "@/lib/ai/structure-incident";
 import { inlineImageFromStorage } from "@/lib/media/storage";
+import { RATE_LIMITS, rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { fieldErrors, incidentProcessSchema } from "@/lib/validations";
 
 /**
@@ -32,8 +33,13 @@ import { fieldErrors, incidentProcessSchema } from "@/lib/validations";
  *    incidents through the pattern note (domain rule 4).
  * 3. **A failed AI call is a 200, not a 500.** The response says what went
  *    wrong and the wizard falls back to the reporter's own wording, which is
- *    exactly what Day 2 did. Only an unauthenticated or malformed request is an
- *    error status.
+ *    exactly what Day 2 did. Only an unauthenticated, malformed or rate-limited
+ *    request is an error status.
+ *
+ * The one exception to point 3 is the 429, and it is not really one: the wizard
+ * treats any non-200 here the same way it treats `ok: false`, so being rate
+ * limited lands the reporter on the preview screen with their own wording and a
+ * message saying why. Filing is never blocked (see `RATE_LIMITS.aiProcess`).
  */
 
 /** Node, not Edge: the Anthropic SDK and the Supabase download both want it. */
@@ -71,6 +77,18 @@ export async function POST(request: NextRequest) {
         fieldErrors: fieldErrors(parsed.error),
       },
       { status: 422 },
+    );
+  }
+
+  // Counted after the body validates, not before: a malformed request costs
+  // nothing to reject, and burning a slot on one would let a client-side bug
+  // spend a reporter's hourly quota without a single call reaching Claude.
+  const quota = rateLimit(RATE_LIMITS.aiProcess, session.user.id);
+
+  if (!quota.ok) {
+    return tooManyRequests(
+      quota,
+      "You have used this hour's automatic rewrites. You can still file the report in your own words.",
     );
   }
 

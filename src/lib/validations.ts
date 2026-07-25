@@ -434,6 +434,17 @@ export const registerSchema = z
       .trim()
       .max(24, "Keep the phone number under 24 characters")
       .optional(),
+    /**
+     * The approximate area the resident pinned on the map at registration.
+     *
+     * Optional, and the notification radius degrades to village-wide without it
+     * — a radius is a way to hear less, and someone who declines to say where
+     * they live should hear more, not nothing. Jittered by
+     * `HOME_LOCATION_FUZZ_METERS` on the server before it is stored, so what
+     * lands in `User.homeLat`/`homeLng` is never the point they tapped.
+     */
+    homeLat: latitude.optional(),
+    homeLng: longitude.optional(),
     acceptTerms: z.literal(true, {
       error: "You must accept the terms to create an account",
     }),
@@ -441,6 +452,15 @@ export const registerSchema = z
   .refine((v) => v.password === v.confirmPassword, {
     error: "Passwords do not match",
     path: ["confirmPassword"],
+  })
+  /**
+   * One coordinate without the other is a bug on the way in, not a half-known
+   * location — a stored `homeLat` with a null `homeLng` would fail the distance
+   * test silently on every alert.
+   */
+  .refine((v) => (v.homeLat === undefined) === (v.homeLng === undefined), {
+    error: "Drop a pin on the map, or leave it blank",
+    path: ["homeLat"],
   });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

@@ -1,15 +1,34 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, UserPlus } from "lucide-react";
+import { Loader2, MapPinHouse, UserPlus } from "lucide-react";
+import type { LocationValue } from "@/components/location-picker";
 import { fieldErrors as toFieldErrors, registerSchema } from "@/lib/validations";
+
+// Leaflet dereferences `window` on import, so the picker can never be part of
+// the server render. `ssr: false` is only legal from a Client Component.
+const LocationPicker = dynamic(
+  () => import("@/components/location-picker").then((m) => m.LocationPicker),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-72 w-full animate-pulse rounded-2xl bg-slate-100 sm:h-96" />
+    ),
+  },
+);
 
 export type VillageOption = {
   id: string;
   name: string;
   region: string | null;
+  /** Where the home-location map opens once this village is chosen. */
+  centerLat: number;
+  centerLng: number;
+  defaultZoom: number;
 };
 
 type RegisterFormProps = {
@@ -58,7 +77,13 @@ export function RegisterForm({ villages }: RegisterFormProps) {
   const [pending, setPending] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Controlled so the home-location map knows which village to open on. The
+  // `<select>` still carries the value into FormData like every other field.
+  const [villageId, setVillageId] = useState("");
+  const [home, setHome] = useState<LocationValue | null>(null);
+
   const noVillages = villages.length === 0;
+  const village = villages.find((option) => option.id === villageId) ?? null;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -74,6 +99,10 @@ export function RegisterForm({ villages }: RegisterFormProps) {
       joinCode: formData.get("joinCode") || undefined,
       addressLine: formData.get("addressLine") || undefined,
       phone: formData.get("phone") || undefined,
+      // Not a form field — the picker holds it in state. Sent as the exact
+      // point tapped; the server jitters it before it is stored.
+      homeLat: home?.lat,
+      homeLng: home?.lng,
       acceptTerms: formData.get("acceptTerms") === "on",
     });
 
@@ -156,7 +185,12 @@ export function RegisterForm({ villages }: RegisterFormProps) {
           name="villageId"
           required
           disabled={noVillages}
-          defaultValue=""
+          value={villageId}
+          onChange={(event) => {
+            setVillageId(event.target.value);
+            // A pin dropped on one village's map means nothing on another's.
+            setHome(null);
+          }}
           aria-invalid={Boolean(errors.villageId)}
           className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400`}
         >
@@ -241,6 +275,59 @@ export function RegisterForm({ villages }: RegisterFormProps) {
         />
       </Field>
 
+      {/*
+        Optional, and worth the space it takes: without a home location every
+        resident falls into the village-wide audience, so the notification
+        radius Day 4 built has nothing to measure from.
+      */}
+      <div>
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700 ring-1 ring-brand-100">
+            <MapPinHouse className="size-5" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-700">
+              Pin your approximate area{" "}
+              <span className="font-normal text-slate-400">— optional</span>
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+              Used to work out which incidents are near enough to be worth
+              alerting you about. Drop it on your street rather than your
+              doorstep — we shift it again before saving, and it is never shown
+              to anyone.
+            </p>
+          </div>
+        </div>
+
+        {village ? (
+          <div className="mt-3">
+            <LocationPicker
+              value={home}
+              onChange={setHome}
+              center={{ lat: village.centerLat, lng: village.centerLng }}
+              zoom={village.defaultZoom}
+            />
+            {home && (
+              <button
+                type="button"
+                onClick={() => setHome(null)}
+                className="mt-2 text-sm font-medium text-slate-500 underline underline-offset-2 transition hover:text-slate-700"
+              >
+                Remove pin
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="mt-3 rounded-lg bg-slate-50 px-3.5 py-3 text-sm text-slate-500 ring-1 ring-slate-200">
+            Choose your village above and a map will appear here.
+          </p>
+        )}
+
+        {errors.homeLat && (
+          <p className="mt-1.5 text-sm text-red-600">{errors.homeLat}</p>
+        )}
+      </div>
+
       <div>
         <label className="flex items-start gap-3">
           <input
@@ -250,8 +337,24 @@ export function RegisterForm({ villages }: RegisterFormProps) {
             className="mt-0.5 size-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
           />
           <span className="text-sm text-slate-600">
-            I agree to the terms of use and understand that my reports are
-            shared with my village and its coordinators.
+            I agree to the{" "}
+            <Link
+              href="/terms"
+              target="_blank"
+              className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700"
+            >
+              terms of use
+            </Link>{" "}
+            and the{" "}
+            <Link
+              href="/privacy"
+              target="_blank"
+              className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700"
+            >
+              privacy policy
+            </Link>
+            , and understand that my reports are shared with my village and its
+            coordinators.
           </span>
         </label>
         {errors.acceptTerms && (

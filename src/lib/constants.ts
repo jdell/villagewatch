@@ -333,6 +333,22 @@ export const MAP_DEFAULTS = {
  */
 export const LOCATION_FUZZ_METERS = 100;
 
+/**
+ * Metres of jitter applied to the home location a resident pins at
+ * registration, before it is stored on `User.homeLat`/`homeLng`.
+ *
+ * Smaller than `LOCATION_FUZZ_METERS` because this point is never rendered —
+ * its only job is to decide whether an incident is inside the resident's
+ * notification radius, and every radius on offer starts at 100m. Jittering it
+ * as hard as an incident pin would start dropping alerts about the street the
+ * resident actually lives on.
+ *
+ * It is jittered at all because a home location is the most re-identifying
+ * coordinate in the system: an exact one is an address. The screen asks for an
+ * approximate area for the same reason.
+ */
+export const HOME_LOCATION_FUZZ_METERS = 75;
+
 /** Incident types never shown on the public map, however they are reported. */
 export const MAP_HIDDEN_TYPES = [] as const satisfies readonly IncidentType[];
 
@@ -407,6 +423,102 @@ export const MAX_PUSH_RECIPIENTS = 2_000;
 /** Reports waiting on a coordinator, newest first. Beyond this, filter. */
 export const MODERATION_QUEUE_SIZE = 25;
 
+// ---------------------------------------------------------------------------
+// Audit trail
+// ---------------------------------------------------------------------------
+
+export type AuditActionMeta = {
+  /** The literal written to `AuditLog.action`. */
+  value: string;
+  label: string;
+  description: string;
+  /**
+   * Draws the eye down the column. `sensitive` is reserved for the two actions
+   * that move personal data — reading a report's original wording, and taking
+   * a village's reports out of the app as a spreadsheet.
+   */
+  tone: "neutral" | "positive" | "negative" | "sensitive";
+};
+
+/**
+ * Every action the application writes to `AuditLog`, in the order a
+ * coordinator scanning the filter would look for them.
+ *
+ * This is the display list, not the source of truth — `action` is a plain
+ * string column and the trail is append-only, so a row written by an older
+ * build with an action that has since been renamed must still render. The
+ * viewer falls back to the raw string rather than dropping the row.
+ */
+export const AUDIT_ACTIONS = [
+  {
+    value: "incident.create",
+    label: "Report filed",
+    description: "A resident submitted a report",
+    tone: "neutral",
+  },
+  {
+    value: "incident.publish",
+    label: "Published",
+    description: "Approved and put on the village map",
+    tone: "positive",
+  },
+  {
+    value: "incident.reject",
+    label: "Rejected",
+    description: "Turned down at review",
+    tone: "negative",
+  },
+  {
+    value: "incident.resolve",
+    label: "Resolved",
+    description: "Marked as dealt with",
+    tone: "positive",
+  },
+  {
+    value: "incident.archive",
+    label: "Archived",
+    description: "Taken off the map",
+    tone: "neutral",
+  },
+  {
+    value: "incident.edit",
+    label: "Edited",
+    description: "The reporter changed their own report",
+    tone: "neutral",
+  },
+  {
+    value: "incident.delete",
+    label: "Withdrawn",
+    description: "The reporter deleted their own report",
+    tone: "negative",
+  },
+  {
+    value: "incident.raw_viewed",
+    label: "Original wording read",
+    description: "A coordinator opened the reporter's verbatim text",
+    tone: "sensitive",
+  },
+  {
+    value: "incident.notify",
+    label: "Alert re-sent",
+    description: "A village-wide push was sent again",
+    tone: "neutral",
+  },
+  {
+    value: "incident.export",
+    label: "CSV exported",
+    description: "The village's reports were downloaded",
+    tone: "sensitive",
+  },
+] as const satisfies readonly AuditActionMeta[];
+
+export const AUDIT_ACTION_META = Object.fromEntries(
+  AUDIT_ACTIONS.map((a) => [a.value, a]),
+) as Record<string, AuditActionMeta | undefined>;
+
+/** Rows per page in the audit viewer. */
+export const AUDIT_LOG_PAGE_SIZE = 50;
+
 /** How many locations the dashboard calls out as hotspots. */
 export const HOTSPOT_COUNT = 3;
 
@@ -436,3 +548,56 @@ export const PROTECTED_ROUTES = [
   "/dashboard",
   "/settings",
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Legal and data protection
+// ---------------------------------------------------------------------------
+
+/**
+ * Shown on the privacy policy and terms pages. Bump it whenever either
+ * document's substance changes — a policy with a stale date is worse than one
+ * with no date, because it claims a review that did not happen.
+ */
+export const LEGAL_LAST_UPDATED = "2026-07-25";
+
+/**
+ * The data controller under UK GDPR.
+ *
+ * **Placeholders.** Each deployment serves one parish, and the council running
+ * it is the controller — VillageWatch processes on their behalf. Fill these in
+ * before a single real resident registers: a privacy notice that does not name
+ * a controller or give a working contact address does not satisfy Article 13.
+ */
+export const DATA_CONTROLLER = {
+  name: "[Parish Council name]",
+  addressLines: [
+    "[Parish Council address line 1]",
+    "[Town]",
+    "[Postcode]",
+  ],
+  email: "[clerk@parish-council.example.uk]",
+  phone: "[01234 567890]",
+  /** Registration number from the ICO's public register. */
+  icoRegistration: "[ICO registration number]",
+} as const;
+
+/**
+ * How long things are kept.
+ *
+ * These are the schedule the privacy policy states, not a job that runs — there
+ * is no retention worker yet (see "Not built yet" in CLAUDE.md). Wire one up
+ * before launch, and read the numbers from here rather than restating them.
+ */
+export const RETENTION = {
+  /** Published incidents move to ARCHIVED and drop off the map at this age. */
+  incidentArchiveMonths: 12,
+  /** Photos and video are deleted from storage at this age, blurred or not. */
+  mediaDeleteMonths: 6,
+  /** `AuditLog` rows, kept longer because they are the accountability record. */
+  auditLogMonths: 24,
+  /** An account with no sign-in for this long is closed and anonymised. */
+  inactiveAccountMonths: 24,
+} as const;
+
+/** Minimum age to hold an account. Reports about under-16s are still welcome. */
+export const MINIMUM_AGE = 16;

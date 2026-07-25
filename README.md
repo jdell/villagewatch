@@ -64,7 +64,15 @@ manage geography columns itself:
 psql "$DIRECT_URL" -f prisma/sql/postgis.sql
 ```
 
-Alternatively, paste the contents of that file into the Supabase SQL Editor.
+Then apply row-level security, which is what keeps the anon key from reading
+every village's reports:
+
+```bash
+psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql
+```
+
+Alternatively, paste the contents of those files into the Supabase SQL Editor.
+Re-run both after any migration that adds a table or a geography column.
 
 ### 4. Run
 
@@ -151,17 +159,27 @@ Enums: `IncidentType`, `Severity`, `IncidentStatus`, `ReportSource`, `UserRole`,
 
 ## Project status
 
-Day 1 of the build: project scaffold, full database schema, auth plumbing and
-the public landing page.
+Day 5 of the build. Everything below works against a configured Supabase
+project; nothing has been run against a real database yet.
 
-**Working:** landing page, login and register pages and their API routes, auth
-guard in `src/proxy.ts`, session helpers, the authenticated shell with sidebar.
+**Working:** landing page, auth, the five-step report wizard with on-device
+face blur, the Claude anonymisation pass, the live map, incident list and
+detail pages, push notifications, the coordinator dashboard and moderation
+queue, CSV export, the weekly digest cron, settings, the audit trail viewer,
+the privacy policy and terms, home-location capture at registration, rate
+limiting, security headers and the error pages.
 
-**Placeholders:** `/map`, `/incidents`, `/incidents/new`, `/dashboard`,
-`/settings`.
+**Written but never applied:** `prisma/sql/rls_policies.sql`. There is no
+database to run it against. Apply it — and test it with the anon key from two
+different villages — before any real resident data exists.
 
-**Not started:** row-level security policies, AI anonymisation, pattern
-detection, Web Push delivery, tests, CI, staging environment.
+**Not started:** the retention job the privacy policy describes, email and SMS
+notifications, resident verification UI, pattern alert screens, a
+Content-Security-Policy, tests, CI, staging environment.
+
+Before launch, `DATA_CONTROLLER` in `src/lib/constants.ts` must be filled in —
+the privacy policy and terms both name it, and it currently reads
+`[Parish Council name]`.
 
 ---
 

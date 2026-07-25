@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { SiteFooter } from "@/components/site-footer";
 import { APP_NAME, SEVERITIES } from "@/lib/constants";
 
 const STEPS = [
@@ -74,8 +75,6 @@ const HERO_PINS = [
 const PIN_COLOR = Object.fromEntries(SEVERITIES.map((s) => [s.value, s.pin]));
 
 export default function LandingPage() {
-  const year = new Date().getFullYear();
-
   return (
     <>
       {/* ------------------------------------------------------------------ */}
@@ -458,70 +457,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Footer                                                              */}
-      {/* ------------------------------------------------------------------ */}
-      <footer className="bg-brand-950 text-brand-200">
-        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6">
-          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="lg:col-span-2">
-              <span className="text-white">
-                <Logo />
-              </span>
-              <p className="mt-4 max-w-sm text-sm leading-relaxed">
-                Community safety reporting for villages and neighbourhoods.
-                Report in seconds, anonymised by default, mapped for everyone.
-              </p>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-semibold text-white">Product</h3>
-              <ul className="mt-4 space-y-3 text-sm">
-                <li>
-                  <a href="#how-it-works" className="transition hover:text-white">
-                    How it works
-                  </a>
-                </li>
-                <li>
-                  <a href="#features" className="transition hover:text-white">
-                    Features
-                  </a>
-                </li>
-                <li>
-                  <a href="#coordinators" className="transition hover:text-white">
-                    For coordinators
-                  </a>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-semibold text-white">Account</h3>
-              <ul className="mt-4 space-y-3 text-sm">
-                <li>
-                  <Link href="/login" className="transition hover:text-white">
-                    Sign in
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/register" className="transition hover:text-white">
-                    Create an account
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-12 flex flex-col gap-4 border-t border-white/10 pt-8 text-sm sm:flex-row sm:items-center sm:justify-between">
-            <p>
-              © {year} {APP_NAME}. All rights reserved.
-            </p>
-            <p className="text-brand-300">
-              In an emergency, always call the emergency services first.
-            </p>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter showProductLinks />
     </>
   );
 }

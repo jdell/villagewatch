@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Download, Inbox, MapPin, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { Download, Inbox, MapPin, ScrollText, ShieldCheck } from "lucide-react";
 import type {
   IncidentStatus,
   IncidentType,
@@ -196,14 +197,24 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <a
-          href="/api/dashboard/export"
-          download
-          className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-        >
-          <Download className="size-4" aria-hidden />
-          Export CSV
-        </a>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/dashboard/audit"
+            className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+          >
+            <ScrollText className="size-4" aria-hidden />
+            Audit trail
+          </Link>
+
+          <a
+            href="/api/dashboard/export"
+            download
+            className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+          >
+            <Download className="size-4" aria-hidden />
+            Export CSV
+          </a>
+        </div>
       </div>
 
       <section className="mt-6 grid gap-3 sm:grid-cols-2">

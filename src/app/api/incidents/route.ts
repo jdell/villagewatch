@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { fuzzCoordinates } from "@/lib/geo";
 import { isAiConfigured } from "@/lib/ai/client";
 import { LOCATION_FUZZ_METERS } from "@/lib/constants";
+import { RATE_LIMITS, rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { fieldErrors, incidentReportSchema } from "@/lib/validations";
 
 /**
@@ -106,6 +107,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "That attachment does not belong to this report" },
       { status: 403 },
+    );
+  }
+
+  // Counted here rather than at the top of the handler so that only requests
+  // that would actually have written a row consume a slot — a rejected payload
+  // costs a Zod parse, and the thing worth limiting is what lands in the
+  // coordinator's queue.
+  const quota = rateLimit(RATE_LIMITS.incidentCreate, session.user.id);
+
+  if (!quota.ok) {
+    return tooManyRequests(
+      quota,
+      `You have filed ${quota.limit} reports today, which is the daily limit. If this is an emergency, call 999.`,
     );
   }
 

@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { fieldErrors, registerSchema } from "@/lib/validations";
+import { fuzzCoordinates } from "@/lib/geo";
+import { HOME_LOCATION_FUZZ_METERS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -13,6 +15,12 @@ import { prisma } from "@/lib/prisma";
  * The village and role come from the server, never from the client payload
  * beyond the chosen village id: a resident cannot register themselves as a
  * coordinator by posting `role: "ADMIN"`.
+ *
+ * The home location arrives as the exact point the resident tapped and is
+ * jittered here, on the server, before it is written — same reasoning as
+ * domain rule 2 and the same function. Doing it in the browser would show them
+ * a pin that jumps away from where they put it, and a modified client could
+ * skip it.
  */
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -55,7 +63,15 @@ export async function POST(request: NextRequest) {
     joinCode,
     addressLine,
     phone,
+    homeLat,
+    homeLng,
   } = parsed.data;
+
+  // Both or neither — the schema already refuses one without the other.
+  const home =
+    homeLat !== undefined && homeLng !== undefined
+      ? fuzzCoordinates(homeLat, homeLng, HOME_LOCATION_FUZZ_METERS)
+      : null;
 
   const village = await prisma.village.findFirst({
     where: { id: villageId, status: "ACTIVE" },
@@ -122,6 +138,8 @@ export async function POST(request: NextRequest) {
         fullName,
         phone,
         addressLine,
+        homeLat: home?.lat,
+        homeLng: home?.lng,
         villageId: village.id,
         role: codeMatches ? "VERIFIED_RESIDENT" : "RESIDENT",
         verifiedAt: codeMatches ? new Date() : null,

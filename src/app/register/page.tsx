@@ -25,9 +25,19 @@ async function getVillages(): Promise<VillageOption[]> {
   // Day 1: the database may not be configured yet. Render the form regardless.
   if (!process.env.DATABASE_URL) return [];
 
+  // The map centre comes down with each village so the home-location picker
+  // can open on the right place the moment one is chosen, without a second
+  // round trip.
   return prisma.village.findMany({
     where: { status: "ACTIVE" },
-    select: { id: true, name: true, region: true },
+    select: {
+      id: true,
+      name: true,
+      region: true,
+      centerLat: true,
+      centerLng: true,
+      defaultZoom: true,
+    },
     orderBy: { name: "asc" },
   });
 }
