@@ -10,12 +10,13 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { IncidentActions } from "@/components/incident-actions";
 import { IncidentCard } from "@/components/incident-card";
 import { IncidentLocationMap } from "@/components/incident-location-map";
 import { NoVillage } from "@/components/no-village";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PUBLIC_INCIDENT_STATUSES } from "@/lib/constants";
+import { PUBLIC_INCIDENT_STATUSES, isCoordinatorRole } from "@/lib/constants";
 import { PUBLIC_INCIDENT_SELECT, toMapIncident } from "@/lib/incidents";
 import { signedMediaUrls } from "@/lib/media/storage";
 import { formatDateTime } from "@/lib/format";
@@ -45,15 +46,20 @@ export async function generateMetadata({
 
   if (!villageId || !process.env.DATABASE_URL) return { title: "Incident" };
 
+  const isCoordinator = isCoordinatorRole(session.profile?.role);
+
   const incident = await prisma.incident.findFirst({
     // Scoped, because a title is still information — an unscoped lookup would
-    // confirm the existence of another village's report.
+    // confirm the existence of another village's report. Kept in step with the
+    // page's own predicate so a coordinator does not get a page they can read
+    // under a browser tab labelled "Incident".
     where: {
       id,
       villageId,
       OR: [
         { status: { in: [...PUBLIC_INCIDENT_STATUSES] } },
         { reporterId: session.user.id },
+        ...(isCoordinator ? [{}] : []),
       ],
     },
     select: { title: true, reference: true },
@@ -68,10 +74,13 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await requireSession(`/incidents/${id}`);
   const villageId = session.profile?.villageId;
+  const role = session.profile?.role;
 
   if (!villageId || !process.env.DATABASE_URL) {
     return <NoVillage />;
   }
+
+  const isCoordinator = isCoordinatorRole(role);
 
   const incident = await prisma.incident.findFirst({
     where: {
@@ -86,10 +95,17 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         // — it is their own words, and being unable to check on it is the most
         // common reason someone files the same thing twice.
         { reporterId: session.user.id },
+        // A coordinator sees every status in their own village: the queue links
+        // here, and reviewing a report from the dashboard card alone means
+        // deciding without the map pin or the media. Widening the *read* is
+        // safe because this page still selects the public columns only — the
+        // verbatim text stays behind the audited reveal in the queue.
+        ...(isCoordinator ? [{}] : []),
       ],
     },
     select: {
       ...PUBLIC_INCIDENT_SELECT,
+      reporterId: true,
       isAnonymous: true,
       reportedToPolice: true,
       policeReference: true,
@@ -120,6 +136,9 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const isPublic = (PUBLIC_INCIDENT_STATUSES as readonly string[]).includes(
     incident.status,
   );
+  const isReporter = incident.reporterId === session.user.id;
+  const inQueue =
+    incident.status === "DRAFT" || incident.status === "PENDING_REVIEW";
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
@@ -135,10 +154,13 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         <div className="mt-4 flex gap-3 rounded-xl bg-amber-50 p-3.5 ring-1 ring-amber-200">
           <ShieldCheck className="size-5 shrink-0 text-amber-600" aria-hidden />
           <div className="text-sm leading-relaxed text-amber-900">
-            <p className="font-medium">Only you can see this</p>
+            <p className="font-medium">
+              {isReporter ? "Only you can see this" : "Not published"}
+            </p>
             <p className="mt-1 text-amber-800">
-              Your report is with your village coordinator. It appears on the map
-              once they have reviewed it.
+              {isReporter
+                ? "Your report is with your village coordinator. It appears on the map once they have reviewed it."
+                : "This report is not on the village map. You are seeing it because you moderate this village."}
             </p>
           </div>
         </div>
@@ -278,6 +300,13 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             : "This description is the reporter's own wording, reviewed by a coordinator."}
         </p>
       </section>
+
+      <IncidentActions
+        incidentId={incident.id}
+        status={incident.status}
+        canEdit={isReporter && inQueue}
+        canModerate={isCoordinator}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   INCIDENT_TYPE_VALUES,
+  NOTIFICATION_RADIUS_VALUES,
   SEVERITY_VALUES,
   PUBLIC_INCIDENT_STATUSES,
 } from "@/lib/constants";
@@ -453,6 +454,14 @@ export const notificationPreferencesSchema = z.object({
   notifyEmail: z.boolean(),
   notifySms: z.boolean(),
   notifyMinSeverity: z.enum(SEVERITY_VALUES),
+  /**
+   * Null means village-wide. Constrained to the offered radii rather than any
+   * integer: the number ends up in a distance filter, and an arbitrary value
+   * would be a preference no screen can show back to the resident.
+   */
+  notifyRadiusMeters: z
+    .union([z.null(), z.literal(NOTIFICATION_RADIUS_VALUES)])
+    .default(null),
 });
 
 export const profileSchema = z.object({
@@ -462,6 +471,98 @@ export const profileSchema = z.object({
   homeLat: latitude.optional(),
   homeLng: longitude.optional(),
 });
+
+/**
+ * The settings form, which posts strings from a `<form>` rather than JSON.
+ *
+ * Kept separate from the two schemas above so those stay the shape the rest of
+ * the app thinks in. Here `notifyRadiusMeters` arrives as `""` for village-wide
+ * and a checkbox is either `"on"` or absent entirely — neither of which a
+ * boolean or a nullable integer will accept without help.
+ */
+export const settingsFormSchema = z.object({
+  fullName: z
+    .string()
+    .trim()
+    .min(2, "Enter your name")
+    .max(80, "Keep your name under 80 characters"),
+  addressLine: z
+    .string()
+    .trim()
+    .max(160, "Keep the street or area under 160 characters")
+    .optional(),
+  notifyPush: z
+    .union([z.literal("on"), z.literal("")])
+    .optional()
+    .transform((value) => value === "on"),
+  notifyMinSeverity: z.enum(SEVERITY_VALUES),
+  notifyRadiusMeters: z
+    .string()
+    .transform((value) => (value === "" ? null : Number(value)))
+    .refine(
+      (value) =>
+        value === null ||
+        (NOTIFICATION_RADIUS_VALUES as readonly number[]).includes(value),
+      { error: "Choose one of the offered distances" },
+    ),
+});
+
+export type SettingsFormInput = z.output<typeof settingsFormSchema>;
+
+// ---------------------------------------------------------------------------
+// Moderation and editing
+// ---------------------------------------------------------------------------
+
+/**
+ * The reporter's own edit of a report that has not been published.
+ *
+ * Deliberately narrower than `incidentReportSchema`: media, tags, coordinates
+ * and the AI provenance block are all left alone. Re-running the anonymisation
+ * pass over an edited description is a wizard job, so this edits the public
+ * `description` directly and leaves `rawDescription` — the reporter's original
+ * words — exactly as filed.
+ */
+export const incidentEditSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(5, "Give the report a short title")
+    .max(120, "Keep the title under 120 characters"),
+  description: z
+    .string()
+    .trim()
+    .min(20, "Describe what happened in at least 20 characters")
+    .max(4000, "Keep the description under 4000 characters"),
+  type: z.enum(INCIDENT_TYPE_VALUES, { error: "Choose what happened" }),
+  severity: z.enum(SEVERITY_VALUES, { error: "Choose how serious this is" }),
+  locationText: z
+    .string()
+    .trim()
+    .max(200, "Keep the landmark under 200 characters")
+    .optional(),
+});
+
+/** Structured weekly summary returned by `generateWeeklyDigest`. */
+export const weeklyDigestSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  summary: z.string().trim().min(1).max(1500),
+  /** One line per notable location. Empty when nothing clustered. */
+  hotspots: z
+    .array(
+      z.object({
+        location: z.string().trim().min(1).max(200),
+        note: z.string().trim().min(1).max(300),
+      }),
+    )
+    .max(5)
+    .default([]),
+  /** Plain, practical, and addressed to residents. Never alarmist. */
+  advice: z.array(z.string().trim().min(1).max(200)).max(3).default([]),
+  severity: z.enum(SEVERITY_VALUES),
+  confidence: z.number().min(0).max(1),
+});
+
+export type WeeklyDigest = z.output<typeof weeklyDigestSchema>;
 
 /**
  * Formats a ZodError into `{ field: message }` for rendering next to inputs.

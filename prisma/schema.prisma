@@ -176,6 +176,10 @@ model User {
   notifyEmail       Boolean  @default(true) @map("notify_email")
   notifySms         Boolean  @default(false) @map("notify_sms")
   notifyMinSeverity Severity @default(LOW) @map("notify_min_severity")
+  /// Only alert about incidents within this many metres of `homeLat`/`homeLng`.
+  /// Null means village-wide, which is also what applies when a resident has
+  /// not told us where they live — there is nothing to measure from.
+  notifyRadiusMeters Int?    @map("notify_radius_meters")
   /// Web Push subscription payload (endpoint + keys).
   pushSubscription  Json?    @map("push_subscription")
 

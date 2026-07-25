@@ -36,10 +36,15 @@ export default async function AppLayout({
   return (
     <AppShell
       user={{
+        id: session.user.id,
         name: profile?.fullName ?? session.user.email ?? "Resident",
         email: session.user.email ?? "",
         role: profile?.role ?? null,
         villageName: village?.name ?? null,
+        // Defaults to true for an auth user whose profile row does not exist
+        // yet, matching the schema default — the prompt is the thing that asks,
+        // and it still cannot fire without a browser permission.
+        notifyPush: profile?.notifyPush ?? true,
       }}
     >
       {children}

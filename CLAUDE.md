@@ -23,8 +23,9 @@ flags clusters before anyone joins the dots by hand.
 | Icons      | lucide-react                                                 |
 | Maps       | Leaflet + react-leaflet, OpenStreetMap tiles                 |
 | AI         | `@anthropic-ai/sdk`, `claude-sonnet-5` (`ANTHROPIC_MODEL`)   |
+| Push       | OneSignal — `@onesignal/node-onesignal` server, v16 web SDK   |
 | Toasts     | sonner                                                       |
-| Hosting    | Vercel                                                       |
+| Hosting    | Vercel (weekly cron in `vercel.json`)                        |
 
 ---
 
@@ -96,12 +97,20 @@ src/
       map/                    Full-screen Leaflet map, severity pins
       incidents/              List with type + severity filters (GET form)
       incidents/[id]/         Detail — media, tags, map pin; params is a Promise
+      incidents/[id]/edit/    Reporter's own edit, queue statuses only
+      incidents/[id]/actions.ts  Moderate / edit / withdraw server actions
       incidents/new/          Report wizard host (village lookup, server-side)
-      dashboard/, settings/   Placeholders
+      dashboard/              Stats, breakdowns, hotspots, moderation queue
+      dashboard/actions.ts    Moderate + audited raw-text reveal
+      settings/               Profile and notification preferences
+      settings/actions.ts     saveSettingsAction — never touches role/village
     api/auth/                 login, logout, register route handlers
     api/incidents/            POST create report (writes AI fields + tags)
     api/incidents/process/    POST run a draft through Claude; writes nothing
     api/incidents/media/      POST blurred upload, DELETE abandoned attachment
+    api/notifications/        POST re-send a published incident's alert
+    api/dashboard/export/     GET village incidents as CSV (public columns only)
+    api/digest/               Weekly cron — Claude summary, PatternAlert, push
   components/                 Shared UI (logo, app-shell, placeholder, auth forms)
     incident-form.tsx         5-step wizard, react-hook-form + Zod
     media-uploader.tsx        Blur-then-upload; never touches the original
@@ -111,12 +120,22 @@ src/
     map-view.tsx              Client wrapper: dynamic import + date-range toggle
     incident-location-map.tsx Client wrapper for the detail page's single pin
     incident-card.tsx         One incident, used by preview, list and detail
+    incident-actions.tsx      Detail-page actions — reporter and coordinator
+    incident-edit-form.tsx    Five-field edit, no wizard, no re-anonymisation
+    settings-form.tsx         Profile + notification preferences, one action
+    push-registration.tsx     OneSignal init, login(userId), consent banner
+    dashboard/stat-card.tsx   One figure with its trend against last period
+    dashboard/breakdown-bar.tsx  CSS bars — no charting dependency
+    dashboard/moderation-card.tsx  Queue row; audited raw-text reveal
     severity-badge.tsx        green / amber / red / purple pill
     incident-type-icon.tsx    Enum icon name → lucide component
     no-village.tsx            Shown wherever a resident has no village yet
   lib/
     prisma.ts                 Singleton + pg driver adapter
     auth.ts                   getSession / requireSession / requireRole
+    moderation.ts             applyModeration + audited readRawDescription
+    notifications.ts          OneSignal dispatch, audience rules — server only
+    ai/weekly-digest.ts       Claude weekly summary, structured, typed failures
     geo.ts                    fuzzCoordinates — server only, uses node:crypto
     format.ts                 Time-ago, dates, sizes — en-GB
     incidents.ts              PUBLIC_INCIDENT_SELECT (no rawDescription), mappers
@@ -242,30 +261,100 @@ reporter reads and edits the result, and `POST /api/incidents` saves it.
   in would let a pattern note describe something the queue has not cleared
   (domain rule 6).
 
+## Push notifications
+
+`src/lib/notifications.ts` is the only place that sends anything. Everything
+else calls into it.
+
+- **Alerts fire on publish, never on file.** `applyModeration` sends the village
+  broadcast the moment a coordinator approves a report. A report sitting in the
+  queue has not cleared moderation (domain rule 6), so nothing about it reaches
+  a resident's phone.
+- **Residents are targeted by OneSignal external id**, set to the Supabase auth
+  user id by `OneSignal.login()` in `push-registration.tsx`. No segments — the
+  audience is resolved here, against the database, where the village boundary
+  and each resident's preferences actually live. `User.pushSubscription` is the
+  VAPID-era column and stays unused.
+- **The audience is village → preference → distance.** Distance is computed in
+  JavaScript with `LOCATION_FUZZ_METERS` added to the resident's radius, because
+  the stored point was jittered on the way in (domain rule 2). Anyone the test
+  cannot be run against — no home location, or an incident with no coordinates —
+  is **included**: a radius is a way to hear less, not a reason to silently drop
+  an alert.
+- **Nothing throws.** With no `ONESIGNAL_*` keys the payload is logged, the
+  `Notification` rows are still written, and the caller gets
+  `skipped: "not_configured"`. Publishing a report must never fail because a
+  push did.
+- Only public columns reach a payload. A lock screen is the least private
+  surface there is.
+
+## The weekly digest
+
+`GET|POST /api/digest`, wired to Sunday 09:00 UTC in `vercel.json`. This is what
+finally creates `PatternAlert` rows.
+
+- **`CRON_SECRET` is required and compared in constant time.** With none set the
+  route refuses everything — it spends Anthropic credit and pushes to
+  coordinators, so it fails closed.
+- Published incidents only, one Claude call per active village, and one village
+  failing does not stop the sweep.
+- **It survives Claude being unavailable**: no key or a rate limit produces a
+  counted summary (`detector: "weekly-count"`, `confidence: 0`) instead of
+  nothing. Inventing prose to fill the gap would make an outage look like a
+  working digest.
+- The digest pushes to coordinators only, ignoring `notifyPush` and radius — it
+  is a working document for moderators, not a broadcast.
+
+## Reading `rawDescription`
+
+There is exactly one path: `readRawDescription()` in `src/lib/moderation.ts`,
+which writes the `incident.raw_viewed` audit row **before** returning the text
+(domain rule 1). It is reached from the "Show the reporter's original wording"
+button in the moderation queue.
+
+The CSV export deliberately does **not** use it. A coordinator may read one
+report's verbatim words with a trail behind each read; a spreadsheet gets
+emailed and forwarded, and a name in it is not recallable. `/api/dashboard/export`
+carries the anonymised column only.
+
 ## Not built yet
 
-Days 1–3 delivered the scaffold, schema, landing page, the on-device blur and
+Days 1–4 delivered the scaffold, schema, landing page, the on-device blur and
 upload, the report wizard, the Claude structuring pass, the map, the incident
-list and the detail page. Still open:
+list and detail pages, push notifications, the coordinator dashboard and
+moderation queue, CSV export, the weekly digest cron, and settings. Still open:
 
-- No Supabase project, no database, no migrations have been run.
+- No Supabase project, no database, no migrations have been run. **The Day 4
+  schema change (`User.notifyRadiusMeters`) has been generated but never
+  migrated** — it lands with the first `prisma migrate dev`.
 - **Row-level security is not configured on any table.** Do this before any
   real resident data exists.
-- Web Push delivery is unimplemented — `pushSubscription` and the `Notification`
-  table are waiting for code. `aiSummary` is also still unused; the AI pass
-  fills `aiModel`, `aiConfidence`, `peopleCount`, `recurring` and `patternNote`.
-- `PatternAlert` rows are never created. Cross-referencing happens per report,
-  at report time; the weekly digest that would write these is Day 5.
+- No OneSignal app exists. `NEXT_PUBLIC_ONESIGNAL_APP_ID`, `ONESIGNAL_APP_ID`
+  and `ONESIGNAL_REST_API_KEY` are unset, so every dispatch logs and reports
+  `skipped: "not_configured"` — which is a supported state, not a bug.
+- `aiSummary` is still unused; the AI pass fills `aiModel`, `aiConfidence`,
+  `peopleCount`, `recurring` and `patternNote`.
+- `PatternAlert` rows are created by the digest but nothing renders them —
+  acknowledge and dismiss have no UI, and the dashboard does not list them.
+- Email and SMS notifications are unimplemented. `notifyEmail` and `notifySms`
+  are settable in the schema but not on the settings screen and not honoured by
+  any dispatch.
+- Residents have no `homeLat`/`homeLng` capture anywhere, so the notification
+  radius has nothing to measure from and every resident currently gets the
+  village-wide audience. Wire this into registration or coordinator
+  verification before the radius means anything.
 - **Storage policies are not configured.** `POST /api/incidents/media` and
   `src/lib/media/storage.ts` both use the service-role client
   (`src/lib/supabase/admin.ts`) and do their own session, village and
   path-prefix checks. Once the `incident-media` bucket has village-scoped
   policies, move both back to the request-scoped client.
-- `/dashboard` and `/settings` are still placeholders.
 - The incident list shows the most recent `INCIDENT_PAGE_SIZE` and does not
-  paginate; the map draws up to `MAX_MAP_INCIDENTS` pins with no clustering.
-- No rate limiting on `POST /api/incidents/process`. It costs money per call
-  and the "Reprocess" button is unmetered.
+  paginate; the map draws up to `MAX_MAP_INCIDENTS` pins with no clustering;
+  the moderation queue shows `MODERATION_QUEUE_SIZE` with no paging or filter.
+- No rate limiting on `POST /api/incidents/process` or `POST /api/notifications`.
+  Both cost money per call and neither is metered.
+- Resident verification has no UI — no way to approve a join request or promote
+  someone to `VERIFIED_RESIDENT`.
 - `/forgot-password` is linked from the login form but does not exist yet.
 - No tests, no CI, no staging environment, no auto-versioning.
 - Light theme only. Add a dark palette deliberately — `prefers-color-scheme`

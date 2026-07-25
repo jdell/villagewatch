@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { PushRegistration } from "@/components/push-registration";
 import type { UserRole } from "@/generated/prisma/enums";
 import { COORDINATOR_ROLES, USER_ROLE_LABELS } from "@/lib/constants";
 
@@ -34,6 +35,10 @@ export type AppShellUser = {
   email: string;
   role: UserRole | null;
   villageName: string | null;
+  /** Supabase auth user id — the OneSignal external id. */
+  id: string;
+  /** The resident's `notifyPush` preference. */
+  notifyPush: boolean;
 };
 
 export function AppShell({
@@ -175,6 +180,14 @@ export function AppShell({
 
         <main className="flex-1">{children}</main>
       </div>
+
+      {/*
+        Renders nothing until the SDK is configured and the resident has not
+        already answered — see PushRegistration. It lives in the shell rather
+        than on one page so the prompt can appear after the first sign-in,
+        whichever route that lands on.
+      */}
+      <PushRegistration userId={user.id} enabled={user.notifyPush} />
     </div>
   );
 }

@@ -180,6 +180,13 @@ export type SeverityMeta = {
   pin: string;
   /** Tailwind classes for badges in the incident list and detail views. */
   badgeClass: string;
+  /**
+   * Leading glyph for a push notification title. A phone's lock screen has no
+   * room for the badge component and strips colour from the text, so this is
+   * the only place severity survives the trip — it carries the same green /
+   * amber / red / purple reading as `pin`.
+   */
+  emoji: string;
   /** Sort weight: higher wins when ranking a cluster of incidents. */
   weight: number;
 };
@@ -200,6 +207,7 @@ export const SEVERITIES = [
     description: "Worth logging, no immediate risk",
     pin: "#16a34a",
     badgeClass: "bg-green-50 text-green-700 ring-green-600/20",
+    emoji: "🟢",
     weight: 1,
   },
   {
@@ -208,6 +216,7 @@ export const SEVERITIES = [
     description: "Neighbours should keep an eye out",
     pin: "#d97706",
     badgeClass: "bg-amber-50 text-amber-800 ring-amber-600/20",
+    emoji: "🟠",
     weight: 2,
   },
   {
@@ -216,6 +225,7 @@ export const SEVERITIES = [
     description: "Act now — secure property, stay alert",
     pin: "#dc2626",
     badgeClass: "bg-red-50 text-red-700 ring-red-600/20",
+    emoji: "🔴",
     weight: 3,
   },
   {
@@ -224,6 +234,7 @@ export const SEVERITIES = [
     description: "Danger to life or property, call 999 first",
     pin: "#7c3aed",
     badgeClass: "bg-purple-50 text-purple-700 ring-purple-600/20",
+    emoji: "🟣",
     weight: 4,
   },
 ] as const satisfies readonly SeverityMeta[];
@@ -281,6 +292,20 @@ export const COORDINATOR_ROLES = [
   "ADMIN",
 ] as const satisfies readonly UserRole[];
 
+/**
+ * Whether a role may moderate.
+ *
+ * A function rather than `COORDINATOR_ROLES.includes(role)` at each call site,
+ * because the tuple's literal type narrows `includes` to its own three members
+ * and rejects a plain `UserRole` — so every caller would otherwise widen it
+ * with a cast, and a cast is the wrong shape for a permission check.
+ */
+export function isCoordinatorRole(role: UserRole | null | undefined): boolean {
+  return role !== null && role !== undefined
+    ? (COORDINATOR_ROLES as readonly UserRole[]).includes(role)
+    : false;
+}
+
 export const VILLAGE_STATUS_LABELS = {
   PENDING: "Pending approval",
   ACTIVE: "Active",
@@ -310,6 +335,90 @@ export const LOCATION_FUZZ_METERS = 100;
 
 /** Incident types never shown on the public map, however they are reported. */
 export const MAP_HIDDEN_TYPES = [] as const satisfies readonly IncidentType[];
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+export type NotificationRadiusOption = {
+  /** Metres, or null for "anywhere in the village". */
+  value: number | null;
+  label: string;
+  description: string;
+};
+
+/**
+ * How close an incident has to be before a resident hears about it.
+ *
+ * `null` is first and is the default: a village is a few hundred metres across,
+ * so a resident who has not thought about this wants all of it. The narrower
+ * options exist for people on a busy road who would otherwise mute the app
+ * entirely — a smaller radius is better than no alerts at all.
+ */
+export const NOTIFICATION_RADII = [
+  {
+    value: null,
+    label: "The whole village",
+    description: "Everything reported anywhere in your village",
+  },
+  {
+    value: 100,
+    label: "Within 100m",
+    description: "Your street and the ones either side",
+  },
+  {
+    value: 200,
+    label: "Within 200m",
+    description: "Your immediate neighbourhood",
+  },
+  {
+    value: 500,
+    label: "Within 500m",
+    description: "A few minutes' walk in any direction",
+  },
+  {
+    value: 1000,
+    label: "Within 1km",
+    description: "Most of a small village",
+  },
+] as const satisfies readonly NotificationRadiusOption[];
+
+/**
+ * The finite radii a client may send, for validating a settings form. Typed as
+ * a non-empty tuple so Zod can build a literal union out of it.
+ */
+export const NOTIFICATION_RADIUS_VALUES = NOTIFICATION_RADII.flatMap(
+  (option) => option.value ?? [],
+) as [number, ...number[]];
+
+/**
+ * Ceiling on how many residents one incident notifies.
+ *
+ * OneSignal takes a few thousand aliases per request and a village should never
+ * come close. If one somehow does, sending to a truncated audience beats a
+ * rejected request that reaches nobody — the shortfall is logged.
+ */
+export const MAX_PUSH_RECIPIENTS = 2_000;
+
+// ---------------------------------------------------------------------------
+// Dashboard and digest
+// ---------------------------------------------------------------------------
+
+/** Reports waiting on a coordinator, newest first. Beyond this, filter. */
+export const MODERATION_QUEUE_SIZE = 25;
+
+/** How many locations the dashboard calls out as hotspots. */
+export const HOTSPOT_COUNT = 3;
+
+/** The window the weekly digest covers, and the comparison window before it. */
+export const DIGEST_WINDOW_DAYS = 7;
+
+/**
+ * Enough incidents for the digest to describe a week without blowing out the
+ * prompt. A village producing more than this in a week has a bigger problem
+ * than a truncated summary.
+ */
+export const DIGEST_MAX_INCIDENTS = 60;
 
 // ---------------------------------------------------------------------------
 // Product
