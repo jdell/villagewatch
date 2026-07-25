@@ -2,26 +2,34 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { fuzzCoordinates } from "@/lib/geo";
+import { isAiConfigured } from "@/lib/ai/client";
 import { LOCATION_FUZZ_METERS } from "@/lib/constants";
 import { fieldErrors, incidentReportSchema } from "@/lib/validations";
 
 /**
  * POST /api/incidents — file a report from the wizard.
  *
- * Two things here look like shortcuts and are not:
+ * Three things here look like shortcuts and are not:
  *
- * 1. **The report lands in `PENDING_REVIEW`, never `PUBLISHED`.** The
- *    anonymisation pass does not exist yet (Day 3), so `description` still
- *    holds the reporter's own wording. Only `PUBLIC_INCIDENT_STATUSES`
- *    (`PUBLISHED`, `RESOLVED`) reach residents, so nothing un-anonymised is
- *    served to anyone — it sits in the coordinator's queue until a human or the
- *    AI pass has been over it. Publishing straight from here would breach
- *    domain rule 1 the first time someone typed a neighbour's name.
+ * 1. **The report lands in `PENDING_REVIEW`, never `PUBLISHED`.** Claude's
+ *    rewrite is good, and it is not a moderation queue. Only
+ *    `PUBLIC_INCIDENT_STATUSES` (`PUBLISHED`, `RESOLVED`) reach residents, so
+ *    a coordinator sees every report before any neighbour does. Publishing
+ *    straight from here would breach domain rule 1 the first time the model
+ *    left a name in.
  *
- * 2. **`rawDescription` and `description` are written with the same text.**
- *    `rawDescription` is the permanent verbatim record; `description` is the
- *    column Day 3 overwrites with the anonymised rewrite. They diverge as soon
- *    as that pass runs, and nothing serves `description` before then.
+ * 2. **`rawDescription` and `description` are different columns and now hold
+ *    different text.** `rawDescription` is the reporter's verbatim words, kept
+ *    for the reporter, coordinators and moderators; `description` is the
+ *    anonymised rewrite the map and list render. When a report is filed without
+ *    the AI pass — no API key, a timeout, the reporter declining it — the
+ *    wizard omits `rawDescription` and both columns get the reporter's own
+ *    wording, which is safe precisely because of point 1.
+ *
+ * 3. **The `ai` block is provenance, not authorisation.** It arrives from the
+ *    browser and a crafted request could claim a report was anonymised when it
+ *    was not. That is survivable because it decides nothing: it tells the
+ *    coordinator what to expect in the queue, and the queue is the gate.
  *
  * The village, the reporter and the status all come from the session. Nothing
  * in the request body can influence them.
@@ -106,6 +114,11 @@ export async function POST(request: NextRequest) {
 
   const year = new Date().getUTCFullYear();
 
+  // Present only when the wizard actually got a record back from
+  // `POST /api/incidents/process`. `isAiConfigured` is the server's own say-so:
+  // a deployment with no key cannot have produced one, whatever the body claims.
+  const ai = isAiConfigured ? report.ai : undefined;
+
   for (let attempt = 0; attempt < REFERENCE_ATTEMPTS; attempt += 1) {
     try {
       const incident = await prisma.incident.create({
@@ -120,9 +133,17 @@ export async function POST(request: NextRequest) {
           status: "PENDING_REVIEW",
           source: "WEB",
           title: report.title,
-          rawDescription: report.description,
+          // The reporter's own words when the AI pass ran, a duplicate of the
+          // public text when it did not. Never served publicly either way.
+          rawDescription: report.rawDescription ?? report.description,
           description: report.description,
-          anonymized: false,
+          anonymized: Boolean(ai),
+          aiModel: ai?.model,
+          aiProcessedAt: ai ? new Date() : undefined,
+          aiConfidence: ai?.confidence,
+          peopleCount: ai?.peopleCount,
+          recurring: ai?.recurring ?? false,
+          patternNote: ai?.patternNote,
           isAnonymous: report.isAnonymous,
           occurredAt: report.occurredAt,
           locationText: report.locationText,
@@ -148,6 +169,17 @@ export async function POST(request: NextRequest) {
               position,
             })),
           },
+          tags: {
+            // `IncidentTag` is unique on (incidentId, label) and the tags were
+            // deduplicated by the AI pass, but a reporter editing them by hand
+            // could reintroduce a duplicate and take the whole create down with
+            // a P2002 that would be read here as a reference clash.
+            create: [...new Set(report.tags)].map((label) => ({
+              label,
+              source: ai ? "ai" : "user",
+              confidence: ai?.confidence,
+            })),
+          },
         },
         select: { id: true, reference: true, status: true },
       });
@@ -167,6 +199,9 @@ export async function POST(request: NextRequest) {
             severity: report.severity,
             status: incident.status,
             mediaCount: report.media.length,
+            anonymized: Boolean(ai),
+            aiModel: ai?.model ?? null,
+            recurring: ai?.recurring ?? false,
           },
           ipAddress: request.headers.get("x-forwarded-for"),
           userAgent: request.headers.get("user-agent"),

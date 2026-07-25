@@ -22,6 +22,7 @@ flags clusters before anyone joins the dots by hand.
 | Validation | Zod 4                                                        |
 | Icons      | lucide-react                                                 |
 | Maps       | Leaflet + react-leaflet, OpenStreetMap tiles                 |
+| AI         | `@anthropic-ai/sdk`, `claude-sonnet-5` (`ANTHROPIC_MODEL`)   |
 | Toasts     | sonner                                                       |
 | Hosting    | Vercel                                                       |
 
@@ -92,25 +93,38 @@ src/
     login/, register/         Public auth pages
     (app)/                    Authenticated shell (sidebar); force-dynamic
       layout.tsx              requireSession() — the real auth boundary
-      map/, incidents/, dashboard/, settings/
+      map/                    Full-screen Leaflet map, severity pins
+      incidents/              List with type + severity filters (GET form)
+      incidents/[id]/         Detail — media, tags, map pin; params is a Promise
       incidents/new/          Report wizard host (village lookup, server-side)
+      dashboard/, settings/   Placeholders
     api/auth/                 login, logout, register route handlers
-    api/incidents/            POST create report
+    api/incidents/            POST create report (writes AI fields + tags)
+    api/incidents/process/    POST run a draft through Claude; writes nothing
     api/incidents/media/      POST blurred upload, DELETE abandoned attachment
   components/                 Shared UI (logo, app-shell, placeholder, auth forms)
     incident-form.tsx         5-step wizard, react-hook-form + Zod
     media-uploader.tsx        Blur-then-upload; never touches the original
     location-picker.tsx       Leaflet pin picker — dynamic import, ssr: false
-    ai-preview.tsx            Review / publish screens
+    ai-preview.tsx            Review / publish screens, reprocess + edit
+    incident-map.tsx          Leaflet pin layer — never import without ssr:false
+    map-view.tsx              Client wrapper: dynamic import + date-range toggle
+    incident-location-map.tsx Client wrapper for the detail page's single pin
     incident-card.tsx         One incident, used by preview, list and detail
     severity-badge.tsx        green / amber / red / purple pill
     incident-type-icon.tsx    Enum icon name → lucide component
+    no-village.tsx            Shown wherever a resident has no village yet
   lib/
     prisma.ts                 Singleton + pg driver adapter
     auth.ts                   getSession / requireSession / requireRole
     geo.ts                    fuzzCoordinates — server only, uses node:crypto
     format.ts                 Time-ago, dates, sizes — en-GB
+    incidents.ts              PUBLIC_INCIDENT_SELECT (no rawDescription), mappers
+    ai/client.ts              Anthropic client + isAiConfigured — server only
+    ai/structure-incident.ts  Claude call, structured output, typed failures
+    ai/detect-patterns.ts     200m/30d lookup + deterministic pattern heuristic
     media/face-blur.ts        MediaPipe WASM face detection + canvas blur
+    media/storage.ts          Signed URLs + base64 stills — service-role, server only
     supabase/                 server.ts, client.ts, admin.ts, env.ts
     constants.ts              Enum display metadata, severity colours, map config
     validations.ts            Zod 4 schemas
@@ -129,7 +143,10 @@ These are not style preferences. Breaking them leaks residents' personal data.
 1. **`Incident.rawDescription` is never public.** It holds the reporter's
    verbatim words — names, plates, addresses. Only the reporter, coordinators
    and moderators may read it, and every read writes an `AuditLog` row. The
-   public surface is `Incident.description`, the anonymised rewrite.
+   public surface is `Incident.description`, the anonymised rewrite. Read
+   incidents through `PUBLIC_INCIDENT_SELECT` in `src/lib/incidents.ts`, which
+   omits the column entirely — no page or list should be able to reach it by
+   accident.
 2. **Coordinates are fuzzed before they are stored.** Jitter by
    `LOCATION_FUZZ_METERS` on the way in. The exact reported point is never
    persisted, so it cannot leak later.
@@ -200,25 +217,55 @@ psql "$DIRECT_URL" -f prisma/sql/postgis.sql   # Apply PostGIS triggers
 
 ---
 
+## The AI pass
+
+`POST /api/incidents/process` runs a draft through Claude and returns a
+structured record; it writes nothing, so the "Reprocess" button costs an API
+call and no more. The wizard calls it on the way into the preview step, the
+reporter reads and edits the result, and `POST /api/incidents` saves it.
+
+- The model is constrained by `output_config.format` and the result is
+  re-validated by `structuredIncidentSchema`. There is no prose to strip.
+- **Every failure is a 200 with `ok: false`.** A missing key, a rate limit, a
+  timeout and a refusal are all ordinary states; the wizard falls back to the
+  reporter's own wording and says on screen that it did. Never make this path
+  block filing a report.
+- **Reports still land in `PENDING_REVIEW`.** The rewrite is good; it is not a
+  moderation queue.
+- `rawDescription` and `description` now hold different text — the reporter's
+  words and the published rewrite. When no rewrite happened, both hold the
+  reporter's words, which is safe because of the point above.
+- The `ai` block on the publish payload is **provenance, not authorisation**.
+  It comes from the browser and could be forged; it decides nothing, because
+  the moderation queue is the gate.
+- Pattern detection reads **published incidents only**. Feeding pending reports
+  in would let a pattern note describe something the queue has not cleared
+  (domain rule 6).
+
 ## Not built yet
 
-Day 1 delivered the scaffold, schema and landing page. Still open:
+Days 1–3 delivered the scaffold, schema, landing page, the on-device blur and
+upload, the report wizard, the Claude structuring pass, the map, the incident
+list and the detail page. Still open:
 
 - No Supabase project, no database, no migrations have been run.
 - **Row-level security is not configured on any table.** Do this before any
   real resident data exists.
-- The AI anonymisation pass, pattern detection and Web Push delivery are all
-  unimplemented — `anonymized`, `aiSummary` and `pushSubscription` are columns
-  waiting for code. Because of that, reports filed by the wizard land in
-  `PENDING_REVIEW` with `description` still holding the reporter's own wording:
-  it is never served, since only `PUBLIC_INCIDENT_STATUSES` reach residents.
-  Day 3 overwrites `description` with the anonymised rewrite.
-- **Storage policies are not configured.** `POST /api/incidents/media` uses the
-  service-role client (`src/lib/supabase/admin.ts`) and does its own session,
-  village and path-prefix checks. Once the `incident-media` bucket has
-  village-scoped policies, move it back to the request-scoped client.
-- `/map`, `/incidents`, `/dashboard` and `/settings` are placeholders.
-  `/incidents/new` is built.
+- Web Push delivery is unimplemented — `pushSubscription` and the `Notification`
+  table are waiting for code. `aiSummary` is also still unused; the AI pass
+  fills `aiModel`, `aiConfidence`, `peopleCount`, `recurring` and `patternNote`.
+- `PatternAlert` rows are never created. Cross-referencing happens per report,
+  at report time; the weekly digest that would write these is Day 5.
+- **Storage policies are not configured.** `POST /api/incidents/media` and
+  `src/lib/media/storage.ts` both use the service-role client
+  (`src/lib/supabase/admin.ts`) and do their own session, village and
+  path-prefix checks. Once the `incident-media` bucket has village-scoped
+  policies, move both back to the request-scoped client.
+- `/dashboard` and `/settings` are still placeholders.
+- The incident list shows the most recent `INCIDENT_PAGE_SIZE` and does not
+  paginate; the map draws up to `MAX_MAP_INCIDENTS` pins with no clustering.
+- No rate limiting on `POST /api/incidents/process`. It costs money per call
+  and the "Reprocess" button is unmetered.
 - `/forgot-password` is linked from the login form but does not exist yet.
 - No tests, no CI, no staging environment, no auto-versioning.
 - Light theme only. Add a dark palette deliberately — `prefers-color-scheme`

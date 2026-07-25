@@ -58,12 +58,114 @@ export const incidentMediaSchema = z.object({
 
 export type IncidentMediaInput = z.output<typeof incidentMediaSchema>;
 
+// ---------------------------------------------------------------------------
+// AI structuring
+// ---------------------------------------------------------------------------
+
+/** One AI-extracted keyword. Lowercase so the tag cloud does not fragment. */
+export const incidentTagSchema = z
+  .string()
+  .trim()
+  .min(2, "Tags need at least two characters")
+  .max(32, "Keep tags under 32 characters")
+  .transform((value) => value.toLowerCase());
+
+/**
+ * What Claude returns from `structureIncident`, in the wire shape the model is
+ * constrained to by `output_config.format`.
+ *
+ * The keys are snake_case because that is what the JSON schema declares and
+ * what the model emits. Renaming them on the way in would mean two names for
+ * the same field either side of one function call.
+ *
+ * Structured outputs already guarantee the shape, so this is a second pair of
+ * eyes rather than the only one — but it is what catches a value that is
+ * well-formed and still wrong, like a 4001-character description or a date the
+ * model invented in the future.
+ */
+export const structuredIncidentSchema = z.object({
+  type: z.enum(INCIDENT_TYPE_VALUES),
+  severity: z.enum(SEVERITY_VALUES),
+  title: z.string().trim().min(1).max(120),
+  description: z.string().trim().min(1).max(4000),
+  /** Count only. The prompt forbids anything that identifies a person. */
+  people_count: z.number().int().min(0).max(500).nullable(),
+  tags: z.array(incidentTagSchema).max(5).default([]),
+  /** ISO 8601, or null when the report gave nothing to go on. */
+  occurred_at: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)), "Not a usable timestamp")
+    .nullable(),
+  location_name: z.string().trim().max(200),
+  recurring: z.boolean(),
+  pattern_note: z.string().trim().max(300).nullable(),
+  /** 0–1. Stored as `Incident.aiConfidence`; shown to coordinators, not residents. */
+  confidence: z.number().min(0).max(1),
+});
+
+export type StructuredIncident = z.output<typeof structuredIncidentSchema>;
+
+/**
+ * Body of `POST /api/incidents/process`.
+ *
+ * `lat`/`lng` are the reporter's exact pin, because the 200m pattern lookup has
+ * to run against the real point to be worth anything. They are used for that
+ * query and nothing else — the route never writes them, and the publish route
+ * fuzzes independently (domain rule 2).
+ */
+export const incidentProcessSchema = z.object({
+  description: z
+    .string()
+    .trim()
+    .min(20, "Describe what happened in at least 20 characters")
+    .max(4000, "Keep the description under 4000 characters"),
+  type: z.enum(INCIDENT_TYPE_VALUES).optional(),
+  severity: z.enum(SEVERITY_VALUES).optional(),
+  occurredAt: z.coerce.date().optional(),
+  lat: latitude,
+  lng: longitude,
+  locationText: z.string().trim().max(200).optional(),
+  /**
+   * Storage path of one already-blurred still to send alongside the text. It is
+   * checked against the caller's own `{villageId}/{userId}/` prefix before it is
+   * fetched — a path is not proof of ownership.
+   */
+  mediaPath: z.string().trim().max(400).optional(),
+});
+
+export type IncidentProcessInput = z.input<typeof incidentProcessSchema>;
+
+/**
+ * Provenance for a report that went through the AI pass, sent back by the
+ * wizard at publish time.
+ *
+ * It is reporter-supplied and therefore **advisory, not an access decision**.
+ * A crafted request could claim a report was anonymised when it was not; what
+ * stops that mattering is that every report lands in `PENDING_REVIEW` and only
+ * a coordinator can publish it. This tells the coordinator what to expect, it
+ * does not decide who sees what.
+ */
+export const incidentAiMetaSchema = z.object({
+  model: z.string().trim().min(1).max(80),
+  confidence: z.number().min(0).max(1).optional(),
+  peopleCount: z.number().int().min(0).max(500).optional(),
+  recurring: z.boolean().default(false),
+  patternNote: z.string().trim().max(300).optional(),
+});
+
 /**
  * Payload submitted by the report wizard.
  *
- * `description` is the reporter's own words — it is stored as
- * `Incident.rawDescription` and only reaches the public `description` column
- * after the anonymisation pass. Never echo this straight back to the map.
+ * Two description fields, and the distinction is domain rule 1:
+ *   - `rawDescription` is the reporter's verbatim words. Stored as
+ *     `Incident.rawDescription`, restricted to the reporter, coordinators and
+ *     moderators, never served publicly.
+ *   - `description` is what the map and list will show — Claude's anonymised
+ *     rewrite, after the reporter has read and possibly edited it.
+ *
+ * `rawDescription` is optional so a report filed without the AI pass still
+ * works: the reporter's own words then fill both columns, and the report sits
+ * in `PENDING_REVIEW` where nothing serves it.
  */
 export const incidentReportSchema = z
   .object({
@@ -80,11 +182,23 @@ export const incidentReportSchema = z
       .min(5, "Give the report a short title")
       .max(120, "Keep the title under 120 characters"),
 
+    /**
+     * The public text. Only has to be non-empty: when it is Claude's rewrite a
+     * terse two-liner is a good outcome, and the substance rule below is
+     * enforced against the reporter's own words instead.
+     */
     description: z
       .string()
       .trim()
-      .min(20, "Describe what happened in at least 20 characters")
+      .min(1, "The report needs a description")
       .max(4000, "Keep the description under 4000 characters"),
+
+    rawDescription: z
+      .string()
+      .trim()
+      .min(1)
+      .max(4000, "Keep the description under 4000 characters")
+      .optional(),
 
     occurredAt: z.coerce
       .date({ error: "When did this happen?" })
@@ -122,10 +236,26 @@ export const incidentReportSchema = z
       .array(incidentMediaSchema)
       .max(6, "You can attach up to 6 files")
       .default([]),
+
+    /** AI-extracted keywords, reviewed by the reporter. Written to `IncidentTag`. */
+    tags: z.array(incidentTagSchema).max(5).default([]),
+
+    /** Present only when the report went through `POST /api/incidents/process`. */
+    ai: incidentAiMetaSchema.optional(),
   })
   .refine((v) => !v.reportedToPolice || Boolean(v.policeReference?.length), {
     error: "Add the reference the police gave you",
     path: ["policeReference"],
+  })
+  /**
+   * "Say something useful" belongs on whichever field holds the reporter's own
+   * words — `rawDescription` when there was a rewrite, `description` when there
+   * was not. Putting it on `description` alone would either reject a good short
+   * rewrite or, once relaxed, let a five-character report through.
+   */
+  .refine((v) => (v.rawDescription ?? v.description).length >= 20, {
+    error: "Describe what happened in at least 20 characters",
+    path: ["description"],
   });
 
 export type IncidentReportInput = z.input<typeof incidentReportSchema>;
@@ -159,6 +289,23 @@ export const incidentFormSchema = z
       .trim()
       .min(20, "Describe what happened in at least 20 characters")
       .max(4000, "Keep the description under 4000 characters"),
+
+    /**
+     * The text that will actually be published, held separately from the
+     * reporter's own words above.
+     *
+     * Empty until the AI pass returns (or until it fails, at which point the
+     * wizard copies `description` across). Keeping them apart is what lets the
+     * reporter step back to "What happened" and still see what *they* wrote,
+     * rather than the rewrite of it.
+     */
+    publicDescription: z
+      .string()
+      .trim()
+      .max(4000, "Keep the description under 4000 characters"),
+
+    /** AI-extracted keywords the reporter can prune before publishing. */
+    tags: z.array(incidentTagSchema).max(5),
 
     occurredAt: z
       .string()

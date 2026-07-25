@@ -18,7 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
-import { AiPreview } from "@/components/ai-preview";
+import { AiPreview, type AiPreviewFields } from "@/components/ai-preview";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { MediaUploader, type AttachedMedia } from "@/components/media-uploader";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -27,6 +27,7 @@ import { toDateTimeLocalValue } from "@/lib/format";
 import {
   incidentFormSchema,
   type IncidentFormValues,
+  type StructuredIncident,
 } from "@/lib/validations";
 
 /**
@@ -43,6 +44,20 @@ import {
  * that abandoning the wizard can leave an orphaned object in storage; removing
  * an attachment deletes it, and a sweep for the rest belongs with the retention
  * job.
+ *
+ * The AI pass runs on the way into the preview step, not at publish, for the
+ * same reason: it is the one moment the reporter is already waiting to read
+ * something, and the result is the thing they are about to read. It also means
+ * a failure is recoverable in place — the wizard falls back to their own
+ * wording, says so, and offers the button again.
+ *
+ * `description` and `publicDescription` are separate fields throughout.
+ * `description` stays the reporter's own words from step 2 and is never
+ * overwritten, so stepping back shows what they wrote rather than the rewrite
+ * of it; `publicDescription` is what gets published. Everything else Claude
+ * returns — category, severity, title, landmark, tags — does write back over
+ * the reporter's answer, because categorising is the job it was given and the
+ * preview screen is where that gets checked.
  */
 
 // Leaflet dereferences `window` on import, so the picker can never be part of
@@ -87,6 +102,33 @@ const STEP_FIELDS: readonly (readonly (keyof IncidentFormValues)[])[] = [
   [],
 ];
 
+/** Index of the step that shows — and therefore triggers — the AI rewrite. */
+const PREVIEW_STEP = 3;
+
+/** Cross-referencing result from `POST /api/incidents/process`. */
+type PatternResponse = {
+  radiusMeters: number;
+  windowDays: number;
+  nearbyCount: number;
+  recurring: boolean;
+  patternNote: string | null;
+};
+
+/**
+ * Response from `POST /api/incidents/process`.
+ *
+ * `ok: false` is a normal 200 — the AI being unavailable is not an error in the
+ * request, and the pattern findings still come back with it.
+ */
+type ProcessResponse = {
+  ok?: boolean;
+  code?: string;
+  error?: string;
+  model?: string;
+  incident?: StructuredIncident;
+  pattern?: PatternResponse;
+};
+
 const inputClass =
   "mt-1.5 block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 aria-invalid:border-red-400";
 
@@ -120,12 +162,45 @@ function StepIndicator({ current }: { current: number }) {
   );
 }
 
+/**
+ * What the AI pass produced, held outside the form because none of it is
+ * something the reporter types. The editable parts were written into the form
+ * when the record came back; this is the provenance that rides along at publish.
+ */
+type AiState = {
+  status: "idle" | "processing" | "done" | "failed";
+  model: string | null;
+  confidence: number | null;
+  peopleCount: number | null;
+  recurring: boolean;
+  patternNote: string | null;
+  error: string | null;
+  /**
+   * The inputs the current record was produced from. Editing any of them on an
+   * earlier step means the record on screen is stale, so the pass runs again on
+   * the way back in rather than showing a rewrite of something else.
+   */
+  signature: string | null;
+};
+
+const IDLE_AI: AiState = {
+  status: "idle",
+  model: null,
+  confidence: null,
+  peopleCount: null,
+  recurring: false,
+  patternNote: null,
+  error: null,
+  signature: null,
+};
+
 export function IncidentForm({ village }: IncidentFormProps) {
   const router = useRouter();
 
   const [step, setStep] = useState(0);
   const [textOnly, setTextOnly] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [ai, setAi] = useState<AiState>(IDLE_AI);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const form = useForm<IncidentFormValues>({
@@ -136,6 +211,8 @@ export function IncidentForm({ village }: IncidentFormProps) {
       severity: "LOW",
       title: "",
       description: "",
+      publicDescription: "",
+      tags: [],
       occurredAt: toDateTimeLocalValue(new Date()),
       // The pin starts at the village centre, as specified — the reporter drags
       // it or taps "use my location" on step 3.
@@ -167,6 +244,8 @@ export function IncidentForm({ village }: IncidentFormProps) {
   const selectedSeverity = useWatch({ control, name: "severity" });
   const title = useWatch({ control, name: "title" });
   const description = useWatch({ control, name: "description" });
+  const publicDescription = useWatch({ control, name: "publicDescription" });
+  const tags = useWatch({ control, name: "tags" });
   const locationText = useWatch({ control, name: "locationText" });
   const occurredAt = useWatch({ control, name: "occurredAt" });
 
@@ -213,6 +292,125 @@ export function IncidentForm({ village }: IncidentFormProps) {
     requestAnimationFrame(() => headingRef.current?.focus());
   }
 
+  /**
+   * What the current record was produced from.
+   *
+   * Only fields Claude does not write back are in here. Category, severity,
+   * title, landmark and tags all get overwritten by a successful pass, so
+   * including them would make every record instantly look stale and the wizard
+   * would reprocess forever on the way in and out of the preview step.
+   */
+  function aiSignature(values: IncidentFormValues): string {
+    return [
+      values.description,
+      values.lat.toFixed(6),
+      values.lng.toFixed(6),
+      values.occurredAt,
+      values.media[0]?.storagePath ?? "",
+    ].join("|");
+  }
+
+  /**
+   * Send the report to Claude and write the result back into the form.
+   *
+   * Never throws and never blocks publishing. Every failure — no API key, a
+   * timeout, a rate limit, a refusal — ends with the reporter's own wording in
+   * `publicDescription` and a plain explanation on screen, which is exactly
+   * where the wizard stood before this existed.
+   */
+  async function runAiPass(force = false) {
+    const values = getValues();
+    const signature = aiSignature(values);
+
+    if (ai.status === "processing") return;
+    if (!force && ai.status !== "idle" && ai.signature === signature) return;
+
+    setAi({ ...IDLE_AI, status: "processing", signature });
+
+    // Whatever is sent has to be a still. For a photo that is the blurred
+    // upload itself, which has more for the model to read than its own
+    // thumbnail; for a clip it is the blurred JPEG the browser made from the
+    // first frame, because an MP4 is not something the model can look at.
+    const first = values.media[0];
+    const mediaPath = first?.mimeType.startsWith("image/")
+      ? first.storagePath
+      : first?.thumbnailPath;
+
+    const failWith = (message: string, pattern?: PatternResponse) => {
+      setAi({
+        ...IDLE_AI,
+        status: "failed",
+        error: message,
+        signature,
+        recurring: pattern?.recurring ?? false,
+        patternNote: pattern?.patternNote ?? null,
+      });
+      // Something has to be publishable. The preview says, in as many words,
+      // that this is the reporter's own text and has not been anonymised.
+      setValue("publicDescription", values.description, {
+        shouldValidate: true,
+      });
+    };
+
+    try {
+      const response = await fetch("/api/incidents/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: values.description,
+          type: values.type,
+          severity: values.severity,
+          occurredAt: new Date(values.occurredAt).toISOString(),
+          lat: values.lat,
+          lng: values.lng,
+          locationText: values.locationText || undefined,
+          mediaPath,
+        }),
+      });
+
+      const result = (await response.json().catch(() => ({}))) as ProcessResponse;
+
+      if (!response.ok || !result.ok || !result.incident) {
+        failWith(
+          result.error ?? "The rewrite could not be produced.",
+          result.pattern,
+        );
+        return;
+      }
+
+      const incident = result.incident;
+
+      setValue("type", incident.type, { shouldValidate: true });
+      setValue("severity", incident.severity, { shouldValidate: true });
+      setValue("title", incident.title, { shouldValidate: true });
+      setValue("publicDescription", incident.description, {
+        shouldValidate: true,
+      });
+      setValue("tags", incident.tags, { shouldValidate: true });
+      if (incident.location_name) {
+        setValue("locationText", incident.location_name, {
+          shouldValidate: true,
+        });
+      }
+
+      setAi({
+        status: "done",
+        model: result.model ?? null,
+        confidence: incident.confidence,
+        peopleCount: incident.people_count,
+        // The model's judgement first, the count as a backstop: Claude can see
+        // "same white van" where counting cannot, and counting still catches a
+        // cluster Claude decided was a coincidence.
+        recurring: incident.recurring || (result.pattern?.recurring ?? false),
+        patternNote: incident.pattern_note ?? result.pattern?.patternNote ?? null,
+        error: null,
+        signature,
+      });
+    } catch {
+      failWith("Could not reach the rewriting service.");
+    }
+  }
+
   async function goNext() {
     const fields = STEP_FIELDS[step];
     if (fields.length > 0) {
@@ -220,7 +418,22 @@ export function IncidentForm({ village }: IncidentFormProps) {
       if (!valid) return;
     }
 
-    goTo(Math.min(step + 1, STEPS.length - 1));
+    const next = Math.min(step + 1, STEPS.length - 1);
+    goTo(next);
+
+    // The preview is the first screen that shows the rewrite, so this is where
+    // it gets made. Not awaited on purpose: the step change should be instant,
+    // and the preview renders its own progress state.
+    if (next === PREVIEW_STEP) void runAiPass();
+  }
+
+  function applyPreviewFields(next: AiPreviewFields) {
+    setValue("type", next.type, { shouldValidate: true });
+    setValue("severity", next.severity, { shouldValidate: true });
+    setValue("title", next.title, { shouldValidate: true });
+    setValue("publicDescription", next.description, { shouldValidate: true });
+    setValue("locationText", next.locationText, { shouldValidate: true });
+    setValue("tags", next.tags, { shouldValidate: true });
   }
 
   async function publish() {
@@ -233,6 +446,7 @@ export function IncidentForm({ village }: IncidentFormProps) {
     setPublishing(true);
 
     const values = getValues();
+    const rewritten = values.publicDescription.trim().length > 0;
 
     try {
       const response = await fetch("/api/incidents", {
@@ -240,11 +454,27 @@ export function IncidentForm({ village }: IncidentFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...values,
+          // The two description columns. `description` is what the map will
+          // show; `rawDescription` is the reporter's verbatim words, sent only
+          // when they are genuinely different text — with no rewrite there is
+          // one description and the server writes it to both.
+          description: rewritten ? values.publicDescription : values.description,
+          rawDescription: rewritten ? values.description : undefined,
           // The server schema coerces, but sending an ISO string keeps the
           // reporter's own timezone out of the wire format.
           occurredAt: new Date(values.occurredAt).toISOString(),
           locationText: values.locationText || undefined,
           policeReference: values.policeReference || undefined,
+          ai:
+            ai.status === "done" && ai.model
+              ? {
+                  model: ai.model,
+                  confidence: ai.confidence ?? undefined,
+                  peopleCount: ai.peopleCount ?? undefined,
+                  recurring: ai.recurring,
+                  patternNote: ai.patternNote ?? undefined,
+                }
+              : undefined,
         }),
       });
 
@@ -565,33 +795,29 @@ export function IncidentForm({ village }: IncidentFormProps) {
           </div>
         )}
 
-        {(step === 3 || step === 4) && (
+        {(step === PREVIEW_STEP || step === PREVIEW_STEP + 1) && (
           <AiPreview
-            mode={step === 3 ? "review" : "publish"}
+            mode={step === PREVIEW_STEP ? "review" : "publish"}
             fields={{
               type: selectedType,
               severity: selectedSeverity,
               title,
-              description,
+              // Falls back to the reporter's own words for the moment between
+              // arriving at this step and the rewrite coming back.
+              description: publicDescription || description,
               locationText,
+              tags,
             }}
-            onFieldsChange={(next) => {
-              setValue("type", next.type, { shouldValidate: true });
-              setValue("severity", next.severity, { shouldValidate: true });
-              setValue("title", next.title, { shouldValidate: true });
-              setValue("description", next.description, {
-                shouldValidate: true,
-              });
-              setValue("locationText", next.locationText, {
-                shouldValidate: true,
-              });
-            }}
+            onFieldsChange={applyPreviewFields}
             occurredAt={new Date(occurredAt)}
             media={previewMedia}
             onPublish={publish}
             publishing={publishing}
-            // Flips to true on Day 3, once the Claude pass actually runs.
-            aiProcessed={false}
+            aiProcessed={ai.status === "done"}
+            processing={ai.status === "processing"}
+            aiError={ai.status === "failed" ? ai.error : null}
+            patternNote={ai.patternNote}
+            onReprocess={() => void runAiPass(true)}
           />
         )}
 

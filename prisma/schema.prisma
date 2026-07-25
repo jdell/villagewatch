@@ -232,6 +232,15 @@ model Incident {
   aiConfidence  Float?    @map("ai_confidence")
   anonymized    Boolean   @default(false)
 
+  /// People involved, as a count only — never identities.
+  peopleCount Int? @map("people_count")
+
+  /// Set when this report matches others nearby in the last 30 days.
+  recurring Boolean @default(false)
+  /// The match in one line, e.g. "4th report of vehicle crime within 200m
+  /// in the last 30 days". Public — it is derived from published incidents only.
+  patternNote String? @map("pattern_note")
+
   /// Hide the reporter's identity from other residents.
   isAnonymous Boolean @default(false) @map("is_anonymous")
 

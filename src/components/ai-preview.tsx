@@ -7,6 +7,7 @@ import {
   Pencil,
   Send,
   Sparkles,
+  TrendingUp,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -20,12 +21,13 @@ import { INCIDENT_TYPES, SEVERITIES } from "@/lib/constants";
 /**
  * The report as everyone else will see it.
  *
- * From Day 3 the card shows Claude's structured, anonymised rewrite. Today it
- * shows the reporter's own words in exactly the same card — deliberately, not
- * as a stopgap. The layout, the edit affordances and the publish action are
- * what need settling before an AI pass is dropped in behind them, and the card
- * is the very same `IncidentCard` the map and list render, so what the reporter
- * approves is literally what their neighbours get.
+ * The card is the very same `IncidentCard` the map and list render, so what the
+ * reporter approves here is literally what their neighbours get. From the AI
+ * pass onwards it shows Claude's structured, anonymised rewrite; when that pass
+ * is unavailable it shows the reporter's own words instead, under a warning
+ * that says so. The reporter is never led to believe their wording has been
+ * anonymised when it has not — that is what `aiProcessed` is for, and it is
+ * why it defaults to false.
  *
  * Two modes, used by consecutive steps of the wizard:
  *   `review`  — read it, edit it, reprocess it.
@@ -38,6 +40,7 @@ export type AiPreviewFields = {
   title: string;
   description: string;
   locationText: string;
+  tags: string[];
 };
 
 type AiPreviewProps = {
@@ -46,22 +49,40 @@ type AiPreviewProps = {
   onFieldsChange: (fields: AiPreviewFields) => void;
   occurredAt: Date;
   media?: IncidentCardMedia | null;
-  tags?: readonly string[];
   /** Required in `publish` mode. */
   onPublish?: () => void;
   publishing?: boolean;
   /**
-   * False until the Claude pass exists. Drives the notice above the card — a
-   * reporter must never be led to believe their words have been anonymised
+   * True once Claude has returned a record. Drives the notice above the card —
+   * a reporter must never be led to believe their words have been anonymised
    * when they have not.
    */
   aiProcessed?: boolean;
+  /** Re-runs the AI pass. Omit to render the control disabled. */
+  onReprocess?: () => void;
+  processing?: boolean;
+  /** Why the last AI pass did not produce a record, in words a resident reads. */
+  aiError?: string | null;
+  /** Cross-referencing result, when there is one worth showing. */
+  patternNote?: string | null;
   /** Wizard navigation, rendered below everything else. */
   footer?: React.ReactNode;
 };
 
 const inputClass =
   "mt-1.5 block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+
+/** Comma-separated text → clean tag list. Shared by the input and the save. */
+function parseTags(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((tag) => tag.trim().toLowerCase())
+        .filter((tag) => tag.length >= 2 && tag.length <= 32),
+    ),
+  ].slice(0, 5);
+}
 
 function Disclaimer() {
   return (
@@ -78,24 +99,87 @@ function Disclaimer() {
   );
 }
 
+function StatusNotice({
+  processing,
+  aiProcessed,
+  aiError,
+}: {
+  processing: boolean;
+  aiProcessed: boolean;
+  aiError?: string | null;
+}) {
+  if (processing) {
+    return (
+      <div className="flex gap-3 rounded-xl bg-brand-50 p-3.5 ring-1 ring-brand-100">
+        <Loader2
+          className="size-5 shrink-0 animate-spin text-brand-600"
+          aria-hidden
+        />
+        <p className="text-sm leading-relaxed text-brand-900" role="status">
+          Rewriting your report without the personal details…
+        </p>
+      </div>
+    );
+  }
+
+  if (aiProcessed) {
+    return (
+      <div className="flex gap-3 rounded-xl bg-brand-50 p-3.5 ring-1 ring-brand-100">
+        <Sparkles className="size-5 shrink-0 text-brand-600" aria-hidden />
+        <div className="text-sm leading-relaxed text-brand-900">
+          <p className="font-medium">This is the anonymised version</p>
+          <p className="mt-1 text-brand-800">
+            Your own wording is kept for your coordinator. Check this reads
+            correctly — you can edit it or rewrite it again before publishing.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-3 rounded-xl bg-amber-50 p-3.5 ring-1 ring-amber-200">
+      <TriangleAlert className="size-5 shrink-0 text-amber-600" aria-hidden />
+      <div className="text-sm leading-relaxed text-amber-900">
+        <p className="font-medium">Not anonymised</p>
+        <p className="mt-1 text-amber-800">
+          {aiError
+            ? `${aiError} This is your own wording.`
+            : "Automatic anonymisation did not run, so this is your own wording."}{" "}
+          Your report goes to your coordinator for review before anyone else can
+          see it — read it through now and take out anything that identifies a
+          person.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function AiPreview({
   mode,
   fields,
   onFieldsChange,
   occurredAt,
   media,
-  tags,
   onPublish,
   publishing = false,
   aiProcessed = false,
+  onReprocess,
+  processing = false,
+  aiError,
+  patternNote,
   footer,
 }: AiPreviewProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(fields);
+  // Held as raw text rather than parsed on every keystroke, so typing the comma
+  // in "white van, evening" does not delete the space you just typed after it.
+  const [tagsText, setTagsText] = useState(fields.tags.join(", "));
   const [acknowledged, setAcknowledged] = useState(false);
 
   function startEditing() {
     setDraft(fields);
+    setTagsText(fields.tags.join(", "));
     setEditing(true);
   }
 
@@ -105,31 +189,25 @@ export function AiPreview({
       title: draft.title.trim(),
       description: draft.description.trim(),
       locationText: draft.locationText.trim(),
+      tags: parseTags(tagsText),
     });
     setEditing(false);
   }
 
   return (
     <div className="space-y-4">
-      {aiProcessed ? (
-        <div className="flex gap-3 rounded-xl bg-brand-50 p-3.5 ring-1 ring-brand-100">
-          <Sparkles className="size-5 shrink-0 text-brand-600" aria-hidden />
-          <p className="text-sm leading-relaxed text-brand-900">
-            This is the anonymised version of your report. Check it reads
-            correctly, then publish.
-          </p>
-        </div>
-      ) : (
+      <StatusNotice
+        processing={processing}
+        aiProcessed={aiProcessed}
+        aiError={aiError}
+      />
+
+      {patternNote && (
         <div className="flex gap-3 rounded-xl bg-amber-50 p-3.5 ring-1 ring-amber-200">
-          <TriangleAlert className="size-5 shrink-0 text-amber-600" aria-hidden />
+          <TrendingUp className="size-5 shrink-0 text-amber-600" aria-hidden />
           <div className="text-sm leading-relaxed text-amber-900">
-            <p className="font-medium">Not yet anonymised</p>
-            <p className="mt-1 text-amber-800">
-              Automatic anonymisation is not switched on yet, so this is your own
-              wording. Your report goes to your coordinator for review before
-              anyone else can see it — read it through now and take out anything
-              that identifies a person.
-            </p>
+            <p className="font-medium">This looks like part of a pattern</p>
+            <p className="mt-1 text-amber-800">{patternNote}</p>
           </div>
         </div>
       )}
@@ -143,7 +221,7 @@ export function AiPreview({
           occurredAt,
           locationText: fields.locationText || null,
           media,
-          tags,
+          tags: fields.tags,
         }}
       />
 
@@ -245,6 +323,9 @@ export function AiPreview({
                   }
                   className={`${inputClass} resize-y`}
                 />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  This is the text your neighbours will read.
+                </p>
               </div>
 
               <div>
@@ -267,6 +348,27 @@ export function AiPreview({
                 />
                 <p className="mt-1.5 text-xs text-slate-500">
                   Describe the area, not an address. No house numbers.
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="preview-tags"
+                  className="block text-sm font-medium text-slate-700"
+                >
+                  Tags
+                </label>
+                <input
+                  id="preview-tags"
+                  type="text"
+                  value={tagsText}
+                  onChange={(event) => setTagsText(event.target.value)}
+                  placeholder="white van, evening, back gardens"
+                  className={inputClass}
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Up to five, separated by commas. These are what link your
+                  report to similar ones nearby.
                 </p>
               </div>
             </div>
@@ -295,7 +397,8 @@ export function AiPreview({
             <button
               type="button"
               onClick={startEditing}
-              className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              disabled={processing}
+              className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Pencil className="size-4" aria-hidden />
               Edit
@@ -303,15 +406,21 @@ export function AiPreview({
 
             <button
               type="button"
-              // Wired up on Day 3, when there is a Claude call to re-run. Left
-              // visible and disabled rather than hidden, so the reporter can
-              // see where the control will be.
-              disabled
-              title="Rewriting with AI arrives with the anonymisation pass"
-              className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-400"
+              onClick={onReprocess}
+              disabled={!onReprocess || processing}
+              title={
+                onReprocess
+                  ? "Send your original wording to be rewritten again"
+                  : "Automatic anonymisation is not switched on for this village"
+              }
+              className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
             >
-              <Sparkles className="size-4" aria-hidden />
-              Reprocess
+              {processing ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Sparkles className="size-4" aria-hidden />
+              )}
+              {processing ? "Rewriting…" : "Reprocess"}
             </button>
           </div>
         ))}
