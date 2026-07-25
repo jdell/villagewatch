@@ -3,9 +3,13 @@
 import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { ExternalLink, Loader2, MessageCircle } from "lucide-react";
 import type { Severity } from "@/generated/prisma/enums";
-import { NOTIFICATION_RADII, SEVERITIES } from "@/lib/constants";
+import {
+  NOTIFICATION_RADII,
+  SEVERITIES,
+  WHATSAPP_CHANNELS_HELP_URL,
+} from "@/lib/constants";
 import { saveSettingsAction, type SettingsState } from "@/app/(app)/settings/actions";
 
 /**
@@ -26,6 +30,19 @@ export type SettingsFormValues = {
   notifyPush: boolean;
   notifyMinSeverity: Severity;
   notifyRadiusMeters: number | null;
+};
+
+/**
+ * The village's WhatsApp Channel, if it runs one.
+ *
+ * Not a form value — there is nothing to save. Following a channel happens in
+ * WhatsApp, not here, so this is a link and a warning and no state at all.
+ */
+export type SettingsChannel = {
+  /** Public invite link. Already checked to be `https:` server-side. */
+  url: string | null;
+  /** Whether to show the "set one up" prompt — coordinators only. */
+  canSetUp: boolean;
 };
 
 const IDLE: SettingsState = { ok: true, message: "" };
@@ -53,7 +70,75 @@ function FieldError({ message }: { message?: string }) {
   return <p className="mt-1.5 text-sm text-red-600">{message}</p>;
 }
 
-export function SettingsForm({ values }: { values: SettingsFormValues }) {
+/**
+ * The village's WhatsApp Channel, and what it costs to follow one.
+ *
+ * The warning is not boilerplate. Everything else on this screen governs a
+ * surface only signed-in residents of one village can see; a channel is public
+ * to anyone with the link, and a resident deciding whether to follow it should
+ * know that before they tap, not after they have forwarded it to a group chat.
+ */
+function ChannelSection({ channel }: { channel: SettingsChannel }) {
+  if (!channel.url && !channel.canSetUp) return null;
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+      <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+        <MessageCircle className="size-4 text-brand-600" aria-hidden />
+        WhatsApp Channel
+      </h2>
+
+      {channel.url ? (
+        <>
+          <p className="mt-1 text-sm text-slate-500">
+            Your village posts its more serious alerts to a WhatsApp Channel, so
+            you can follow along without opening the app. It is a one-way feed —
+            following it does not share your phone number with anyone, and you
+            cannot post to it.
+          </p>
+
+          <a
+            href={channel.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            Follow on WhatsApp
+            <ExternalLink className="size-4" aria-hidden />
+          </a>
+
+          <p className="mt-3 text-xs text-slate-500">
+            The channel is public: anyone with the link can read it, including
+            people outside the village. Posts carry a headline, an area and a
+            link — never your name, your wording, or the exact spot.
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-slate-500">
+          Your village does not run one yet. A channel gives residents who are
+          not in the app a way to see the serious alerts.{" "}
+          <a
+            href={WHATSAPP_CHANNELS_HELP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+          >
+            How channels work
+          </a>
+          .
+        </p>
+      )}
+    </section>
+  );
+}
+
+export function SettingsForm({
+  values,
+  channel,
+}: {
+  values: SettingsFormValues;
+  channel: SettingsChannel;
+}) {
   const [state, save] = useActionState(saveSettingsAction, IDLE);
 
   useEffect(() => {
@@ -195,6 +280,8 @@ export function SettingsForm({ values }: { values: SettingsFormValues }) {
           </div>
         </div>
       </section>
+
+      <ChannelSection channel={channel} />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-base font-semibold text-slate-900">Account</h2>

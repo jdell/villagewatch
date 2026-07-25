@@ -147,6 +147,7 @@ src/
     auth.ts                   getSession / requireSession / requireRole
     moderation.ts             applyModeration + audited readRawDescription
     notifications.ts          OneSignal dispatch, audience rules — server only
+    whatsapp-channel.ts       Public channel posting — server only, opt-in, no official API
     cron.ts                   Constant-time CRON_SECRET check, shared by both jobs
     email/                    Templates only — no transport. layout, welcome,
                               weekly-digest, incident-notification
@@ -254,6 +255,13 @@ These are not style preferences. Breaking them leaks residents' personal data.
   5 — a policy filters rows, not columns). `audit_logs_append_only` rejects
   every UPDATE and DELETE on the trail **including from the owner**, which is
   the only way domain rule 7 survives a careless `deleteMany`.
+- **`villages` grants SELECT per column, not table-wide.** `join_code` and
+  `whatsapp_channel_id` are credentials, and a row policy cannot withhold a
+  column — a table-wide grant hands both to anyone with the anon key regardless
+  of what the application selects. Safe columns are listed rather than unsafe
+  ones revoked, so a column added later is withheld until someone thinks about
+  it. Add a `Village` column and it needs a line there before a browser can read
+  it.
 - The file documents its two departures from the Day 5 brief: incident SELECT
   covers `RESOLVED` as well as `PUBLISHED` (matching
   `PUBLIC_INCIDENT_STATUSES`), and notification SELECT is own-rows-only rather
@@ -492,6 +500,46 @@ else calls into it.
 - Only public columns reach a payload. A lock screen is the least private
   surface there is.
 
+## The WhatsApp Channel
+
+`src/lib/whatsapp-channel.ts`. Optional, off by default, and the only surface in
+the app that discloses outside the village.
+
+- **There is no official API for this.** Meta's Cloud API sends messages to
+  phone numbers; it has no endpoint that posts to a Channel. Third-party relays
+  (Whapi and similar) do it by driving the WhatsApp Web protocol, which can
+  breach WhatsApp's terms and get the number banned. So the module is a
+  provider-agnostic `POST {channelId, text}` to `WHATSAPP_CHANNEL_API_URL` and
+  takes no view on who answers. Change providers in `post()`; every call site
+  stays the same.
+- **The follow link needs none of that.** Set `Village.whatsappChannelUrl` and
+  `/settings` renders "Follow on WhatsApp". That half is officially supported,
+  needs no credentials, and is what most villages will actually use.
+- **A channel is public**, so the rules are stricter than anywhere else:
+  `whatsappEnabled` defaults false, `whatsappMinSeverity` defaults **HIGH** (push
+  defaults to LOW), and `ChannelIncident` has no field that could carry
+  `rawDescription`, `lat` or `lng` — the same structural guard
+  `IncidentEmailInput` uses. `locationText` is the one field whose audience
+  widens; it is the anonymised landmark, and an alert with no place is not an
+  alert.
+- The post carries a headline, an area, a time and a **link** — not the
+  `description`. Anyone entitled to the full report can open the link and sign
+  in.
+- **Nothing throws**, same contract as `notifications.ts`. Unconfigured relay,
+  timeout and a 500 all log and return `posted: false` with a reason. The relay
+  call sits inside a coordinator's Approve click, so it has an 8s timeout
+  (`WHATSAPP_RELAY_TIMEOUT_MS`) and runs *after* the push rather than racing it.
+- **No `Notification` rows** — that table is one row per user per delivery and a
+  channel has no known recipients. **No `AuditLog` row** either: the post is a
+  deterministic consequence of `incident.publish` plus the village's own
+  configuration, both already in the trail.
+- `getVillageChannel()` refuses to return a `url` that is not `https:`. Nothing
+  validates that column on the way in, and a `javascript:` URL rendered into
+  `/settings` would be stored XSS against the whole village.
+- **`/privacy` §6 names this disclosure and the landing-page FAQ carves it out.**
+  Both are statements about how the code behaves — change what a post contains
+  and they change in the same commit.
+
 ## The weekly digest
 
 `GET|POST /api/digest`, wired to Sunday 09:00 UTC in `vercel.json`. This is what
@@ -533,8 +581,9 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates and the onboarding tour. Still open:
 
 - No Supabase project, no database, no migrations have been run. **The Day 4
-  schema change (`User.notifyRadiusMeters`) has been generated but never
-  migrated** — it lands with the first `prisma migrate dev`.
+  schema change (`User.notifyRadiusMeters`) and the four `Village.whatsapp*`
+  columns have been generated but never migrated** — they land with the first
+  `prisma migrate dev`.
 - **The retention job has never run against data.** It deletes files and takes
   reports off the map, and every line of it is untested against a real bucket.
   Watch the first run and read the counts in the response before trusting the
@@ -565,6 +614,15 @@ templates and the onboarding tour. Still open:
   villages" figure. Set it when somebody can point at the list, and not before:
   a made-up number there is a false statement to a parish clerk deciding whether
   to hand over their residents' reports.
+- **The WhatsApp Channel has no UI and no relay.** The four `Village` columns
+  are set by hand in the database — there is no coordinator village-settings
+  screen to set the invite link, flip `whatsappEnabled` or choose
+  `whatsappMinSeverity`, and no validation schema for them because nothing
+  submits them. `WHATSAPP_CHANNEL_API_URL` is unset, so every post logs and
+  reports `skipped: "not_configured"` — a supported state, like OneSignal.
+  Nothing has ever been posted to a real channel. **Before turning one on for a
+  live village, post to a test channel first and read what actually lands** —
+  this is the one feature whose output an unauthenticated stranger can read.
 - **No CI beyond the version bump.** `.github/workflows/version.yml` is the only
   workflow; nothing runs `npm run build`, `tsc` or `eslint` on a pull request.
 - The README's screenshots are placeholder text. Capture them after the first

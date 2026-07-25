@@ -153,10 +153,43 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
 -- Readable by any signed-in user rather than by members only: the registration
 -- screen lists active villages to someone who does not belong to one yet, and
 -- `Village` carries no personal data — a name, a map centre and a contact
--- address. `join_code` is the one column that matters, and it is checked
--- server-side in `POST /api/auth/register`, never sent to a browser.
+-- address.
+--
+-- The SELECT grant is per COLUMN, not table-wide. Two columns on this table are
+-- credentials rather than data, and a row policy cannot withhold a column:
+--
+--   join_code            joins a resident to a village. Checked server-side in
+--                        `POST /api/auth/register` and never sent to a browser
+--                        by our code — but a table-wide grant means the anon key
+--                        can read it straight out of PostgREST regardless of
+--                        what our code does.
+--   whatsapp_channel_id  the address a relay posts to. Anyone holding it can
+--                        write to a village's public channel.
+--
+-- Everything else stays readable. Listing the safe columns rather than revoking
+-- the unsafe ones is deliberate: a column added later is withheld by default and
+-- someone has to think about it, which is the failure mode we want. It also
+-- means a `SELECT *` from PostgREST errors rather than quietly returning less —
+-- a loud failure over a silent one.
+--
+-- Nothing in the app is affected. Prisma connects as the table owner and
+-- bypasses all of this, and no code path reads a table through the Supabase JS
+-- client — only Storage.
 
-GRANT SELECT ON public.villages TO authenticated;
+-- Clears any table-wide SELECT left by an earlier version of this file. A
+-- column grant does not narrow a table grant — they add — so without this the
+-- second run of a database that once had the broad grant keeps it.
+REVOKE SELECT ON public.villages FROM authenticated;
+
+GRANT SELECT (
+  id, name, slug, description, status,
+  center_lat, center_lng, default_zoom, radius_meters, boundary,
+  region, postcode, country, timezone, population,
+  alert_threshold, contact_email, contact_phone,
+  whatsapp_channel_url, whatsapp_enabled, whatsapp_min_severity,
+  created_at, updated_at
+) ON public.villages TO authenticated;
+
 GRANT INSERT, UPDATE ON public.villages TO authenticated;
 
 DROP POLICY IF EXISTS villages_select_authenticated ON public.villages;

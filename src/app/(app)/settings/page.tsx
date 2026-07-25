@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { SettingsForm } from "@/components/settings-form";
 import { requireSession } from "@/lib/auth";
-import { USER_ROLE_LABELS } from "@/lib/constants";
+import { getVillageChannel } from "@/lib/whatsapp-channel";
+import { isCoordinatorRole, USER_ROLE_LABELS } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -18,6 +19,13 @@ export const metadata: Metadata = { title: "Settings" };
 export default async function SettingsPage() {
   const session = await requireSession("/settings");
   const profile = session.profile;
+
+  // A resident with no village has no channel to follow — `getVillageChannel`
+  // is scoped by the village id off the session profile and never by anything
+  // that arrived in a request (domain rule 4).
+  const channel = profile?.villageId
+    ? await getVillageChannel(profile.villageId)
+    : null;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-10">
@@ -43,6 +51,12 @@ export default async function SettingsPage() {
           notifyPush: profile?.notifyPush ?? true,
           notifyMinSeverity: profile?.notifyMinSeverity ?? "LOW",
           notifyRadiusMeters: profile?.notifyRadiusMeters ?? null,
+        }}
+        channel={{
+          url: channel?.url ?? null,
+          // Residents with no channel to follow see nothing; a coordinator sees
+          // the prompt, because they are the one who can go and create one.
+          canSetUp: isCoordinatorRole(profile?.role),
         }}
       />
 
