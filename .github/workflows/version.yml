@@ -1,0 +1,102 @@
+name: Version
+
+# Bumps the version, writes CHANGELOG.md and tags the commit whenever something
+# releasable lands on main.
+#
+# Two loops have to be broken for this to be safe, because the workflow's own
+# output is a push to the branch that triggers it:
+#
+#   1. The release commit carries `[skip ci]`, which GitHub Actions and Vercel
+#      both honour — so the bump neither re-triggers this workflow nor spends a
+#      production deploy on a commit that changed a version number.
+#   2. The `if` below refuses to run on a `chore(release):` commit regardless.
+#      Belt and braces: a skip keyword is a convention, and the cost of it
+#      silently changing is an infinite loop that tags a hundred versions.
+#
+# It also refuses to release nothing. standard-version bumps a patch even when
+# every commit since the last tag was a `chore`, so the first step works out
+# whether anything user-visible actually landed and stops if it did not.
+
+on:
+  push:
+    branches: [main]
+
+# One release at a time. Two concurrent runs would both push a tag and one
+# would lose the race with a non-fast-forward error halfway through.
+concurrency:
+  group: version-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    if: >-
+      !startsWith(github.event.head_commit.message, 'chore(release):') &&
+      !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # standard-version reads every commit back to the previous tag, so a
+          # shallow clone would produce an empty changelog.
+          fetch-depth: 0
+          # Keeps the checkout token available to `git push` at the end.
+          persist-credentials: true
+
+      - name: Is there anything to release?
+        id: check
+        run: |
+          set -euo pipefail
+
+          last_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+
+          if [ -z "$last_tag" ]; then
+            echo "No tags yet — this will be the first release."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The commit types standard-version puts in a changelog, plus the
+          # breaking-change trailer. `chore`, `docs`, `style` and `test` alone
+          # are not worth a version.
+          releasable="$(
+            git log "$last_tag..HEAD" --pretty=format:'%s%n%b' \
+              | grep -cE '^(feat|fix|perf|refactor|revert)(\(.+\))?!?:|^BREAKING[ -]CHANGE' \
+              || true
+          )"
+
+          echo "Found $releasable releasable commit(s) since $last_tag."
+          if [ "$releasable" -gt 0 ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v5
+        if: steps.check.outputs.release == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        if: steps.check.outputs.release == 'true'
+        # `--ignore-scripts` skips the `prisma generate` postinstall. Releasing
+        # needs the changelog tooling and nothing else; generating a database
+        # client here would only make the job slower.
+        run: npm ci --ignore-scripts
+
+      - name: Release
+        if: steps.check.outputs.release == 'true'
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          npx standard-version \
+            --releaseCommitMessageFormat "chore(release): {{currentTag}} [skip ci]"
+
+          git push --follow-tags origin HEAD:${{ github.ref_name }}

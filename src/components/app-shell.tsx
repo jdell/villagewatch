@@ -14,12 +14,18 @@ import {
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { OnboardingTour } from "@/components/onboarding-tour";
 import { PushRegistration } from "@/components/push-registration";
 import type { UserRole } from "@/generated/prisma/enums";
 import { COORDINATOR_ROLES, USER_ROLE_LABELS } from "@/lib/constants";
 
+/**
+ * `tour` marks an item the onboarding tour points at. The highlight itself is a
+ * CSS attribute selector in `globals.css` keyed off `body[data-tour-step]` —
+ * see `src/components/onboarding-tour.tsx` for why it works that way.
+ */
 const NAV_ITEMS = [
-  { href: "/map", label: "Map", icon: Map },
+  { href: "/map", label: "Map", icon: Map, tour: "map" },
   { href: "/incidents", label: "Incidents", icon: ClipboardList },
   {
     href: "/dashboard",
@@ -27,7 +33,7 @@ const NAV_ITEMS = [
     icon: LayoutDashboard,
     coordinatorOnly: true,
   },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },
 ] as const;
 
 export type AppShellUser = {
@@ -85,6 +91,7 @@ export function AppShell({
 
       <Link
         href="/incidents/new"
+        data-tour="report"
         onClick={() => setMobileOpen(false)}
         className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-safe-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-safe-400"
       >
@@ -98,6 +105,7 @@ export function AppShell({
             <li key={item.href}>
               <Link
                 href={item.href}
+                data-tour={"tour" in item ? item.tour : undefined}
                 onClick={() => setMobileOpen(false)}
                 aria-current={isActive(item.href) ? "page" : undefined}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
@@ -182,10 +190,19 @@ export function AppShell({
       </div>
 
       {/*
+        Four steps on first arrival, then never again on this device. Renders
+        nothing once localStorage says it has been seen.
+      */}
+      <OnboardingTour />
+
+      {/*
         Renders nothing until the SDK is configured and the resident has not
         already answered — see PushRegistration. It lives in the shell rather
         than on one page so the prompt can appear after the first sign-in,
         whichever route that lands on.
+
+        Both this and the tour occupy the bottom of the screen; the tour hides
+        this one while it runs, through `body[data-tour-active]` in globals.css.
       */}
       <PushRegistration userId={user.id} enabled={user.notifyPush} />
     </div>

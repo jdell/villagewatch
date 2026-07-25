@@ -1,0 +1,57 @@
+{
+  "name": "VillageWatch — Keep your village safe",
+  "short_name": "VillageWatch",
+  "description": "Report what you see in seconds. Personal details are stripped out, it goes on the village map, and your neighbours are alerted.",
+  "id": "/",
+  "start_url": "/map",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0f2557",
+  "lang": "en-GB",
+  "dir": "ltr",
+  "categories": ["utilities", "social", "news"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Report an incident",
+      "short_name": "Report",
+      "description": "File a new report for your village",
+      "url": "/incidents/new",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Village map",
+      "short_name": "Map",
+      "description": "See what has been reported near you",
+      "url": "/map",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

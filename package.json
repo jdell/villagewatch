@@ -10,8 +10,29 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:seed": "npx tsx prisma/seed.ts",
     "db:studio": "prisma studio",
+    "release": "standard-version",
+    "release:patch": "standard-version --release-as patch",
+    "release:minor": "standard-version --release-as minor",
+    "release:major": "standard-version --release-as major",
     "postinstall": "prisma generate"
+  },
+  "standard-version": {
+    "header": "# Changelog\n\nEvery release of VillageWatch. Generated from Conventional Commits by\n`standard-version` — see CONTRIBUTING in the README for the commit format.\n",
+    "types": [
+      { "type": "feat", "section": "Features" },
+      { "type": "fix", "section": "Fixes" },
+      { "type": "perf", "section": "Performance" },
+      { "type": "refactor", "section": "Refactoring" },
+      { "type": "docs", "section": "Documentation" },
+      { "type": "build", "section": "Build and dependencies" },
+      { "type": "ci", "section": "CI" },
+      { "type": "revert", "section": "Reverts" },
+      { "type": "chore", "hidden": true },
+      { "type": "style", "hidden": true },
+      { "type": "test", "hidden": true }
+    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -42,7 +63,9 @@
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
+    "standard-version": "^9.5.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }

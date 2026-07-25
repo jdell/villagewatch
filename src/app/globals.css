@@ -89,6 +89,55 @@ body {
     180px 180px;
 }
 
+/*
+ * Onboarding tour highlight.
+ *
+ * The tour writes `data-tour-step` onto <body> and each highlightable element
+ * carries a matching `data-tour` (see `app-shell.tsx`). No measuring, no
+ * portal, no positioning library — the ring cannot drift out of alignment
+ * because it is drawn by the element itself.
+ *
+ * `outline` rather than `box-shadow` or `ring`, because the sidebar items sit
+ * in a scroll container and an outline is not clipped by it. The offset keeps
+ * it clear of the item's own hover background.
+ */
+body[data-tour-step] [data-tour] {
+  position: relative;
+  z-index: 1;
+}
+
+body[data-tour-step="map"] [data-tour="map"],
+body[data-tour-step="report"] [data-tour="report"],
+body[data-tour-step="settings"] [data-tour="settings"] {
+  outline: 2px solid #ffffff;
+  outline-offset: 3px;
+  border-radius: 0.75rem;
+  animation: tour-glow 2s ease-in-out infinite;
+}
+
+@keyframes tour-glow {
+  0%,
+  100% {
+    outline-color: rgb(255 255 255 / 0.35);
+  }
+  50% {
+    outline-color: rgb(255 255 255 / 0.95);
+  }
+}
+
+/*
+ * The tour and the push prompt both live in the bottom-right corner. While the
+ * tour is running it wins — being asked for notification permission over the
+ * top of "here is your map" is how a resident denies it permanently, and a
+ * denied permission cannot be asked for again from the same origin.
+ *
+ * `display: none` rather than opacity, so the hidden banner's buttons leave the
+ * tab order too.
+ */
+body[data-tour-active] [data-push-prompt] {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

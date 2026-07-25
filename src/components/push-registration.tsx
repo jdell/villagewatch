@@ -26,12 +26,34 @@ import { Bell, X } from "lucide-react";
  * 3. **Nothing here blocks the app.** With no `NEXT_PUBLIC_ONESIGNAL_APP_ID`
  *    the component renders nothing at all, and a failed init is logged rather
  *    than surfaced. Push is the extra; the map is the product.
+ *
+ * 4. **OneSignal's worker lives at `/onesignal/`, not at the root.** Day 7 added
+ *    an offline service worker at `/sw.js`, and a scope can have exactly one
+ *    controlling registration — left at the default both workers would claim
+ *    `/` and whichever registered second would silently evict the other. A push
+ *    worker does not need to control the page to receive a push event, so this
+ *    is the one that moved. See `SERVICE_WORKER` below.
  */
 
 const APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID ?? "";
 
 /** Remembers a dismissal so the banner is not the first thing seen every visit. */
 const DISMISSED_KEY = "villagewatch:push-prompt-dismissed";
+
+/**
+ * Where OneSignal's worker is served from, and the scope it registers under.
+ *
+ * The path is relative to the origin root, which is how the v16 SDK expects it.
+ * A worker may only claim a scope at or below its own directory without the
+ * `Service-Worker-Allowed` header, so the file has to sit inside `/onesignal/`
+ * for this to be legal — it does, at `public/onesignal/OneSignalSDKWorker.js`.
+ * Move one and the other must move with it, or push init fails on a 404 that
+ * reports itself as a healthy init.
+ */
+const SERVICE_WORKER = {
+  path: "onesignal/OneSignalSDKWorker.js",
+  scope: "/onesignal/",
+} as const;
 
 type OneSignalApi = {
   init(options: Record<string, unknown>): Promise<void>;
@@ -79,6 +101,10 @@ export function PushRegistration({
           // Re-subscribes a device whose push subscription the browser rotated,
           // which otherwise looks like a resident silently going quiet.
           autoResubscribe: true,
+          // Keeps OneSignal off the root scope, which belongs to our own
+          // offline worker. See SERVICE_WORKER above.
+          serviceWorkerPath: SERVICE_WORKER.path,
+          serviceWorkerParam: { scope: SERVICE_WORKER.scope },
           // No `promptOptions` on purpose: with none configured the v16 SDK
           // shows nothing of its own, which is what leaves the asking to our
           // banner and its click handler. If auto-prompting is ever switched
@@ -146,7 +172,14 @@ export function PushRegistration({
       />
 
       {showPrompt && (
-        <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-lg sm:inset-x-auto sm:right-4">
+        // `data-push-prompt` is how the onboarding tour hides this while it is
+        // running — see the rule in globals.css. Both want the same corner, and
+        // asking for notification permission over the top of an introduction is
+        // how a resident denies it permanently.
+        <div
+          data-push-prompt
+          className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-lg sm:inset-x-auto sm:right-4"
+        >
           <div className="flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700">
               <Bell className="size-5" aria-hidden />

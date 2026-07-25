@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Offline · VillageWatch</title>
+    <!--
+      Deliberately one file with no dependencies: no fonts, no stylesheets, no
+      scripts, no images beyond the inline SVG. This page is served by the
+      service worker when the network has already failed, so anything it had to
+      fetch would fail with it.
+
+      Rural broadband and a phone in a lane with one bar are the normal case
+      here, not an edge case — which is also why the message points at 999
+      rather than suggesting someone waits for a signal to file a report.
+    -->
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 1.5rem;
+        background: #0f2557;
+        color: #dbeafe;
+        font-family:
+          ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      main {
+        max-width: 26rem;
+        text-align: center;
+      }
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 3.5rem;
+        height: 3.5rem;
+        margin: 0 auto 1.75rem;
+        border-radius: 1rem;
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      }
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: 1.5rem;
+        line-height: 1.25;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: #ffffff;
+      }
+      p {
+        margin: 0 0 1rem;
+        font-size: 0.9375rem;
+        line-height: 1.6;
+      }
+      .actions {
+        margin-top: 1.75rem;
+      }
+      button {
+        font: inherit;
+        font-weight: 600;
+        color: #0f2557;
+        background: #ffffff;
+        border: 0;
+        border-radius: 0.75rem;
+        padding: 0.75rem 1.5rem;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #eff6ff;
+      }
+      .emergency {
+        margin-top: 2.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
+        font-size: 0.875rem;
+        color: #93c5fd;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="mark" aria-hidden="true">
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#ffffff"
+          stroke-width="1.6"
+          stroke-linejoin="round"
+        >
+          <path d="M12 2.5 4.5 5.6v6.2c0 4.6 3.1 8.8 7.5 10 4.4-1.2 7.5-5.4 7.5-10V5.6L12 2.5Z" />
+          <path d="M8.4 12.4 12 9.3l3.6 3.1v3.9H8.4v-3.9Z" fill="#ffffff" stroke="none" />
+        </svg>
+      </span>
+
+      <h1>You are offline</h1>
+
+      <p>
+        VillageWatch could not reach the network. The map, your village's
+        reports and the report form all need a connection.
+      </p>
+      <p>
+        Nothing you had open has been lost — try again once you have a signal.
+      </p>
+
+      <div class="actions">
+        <button type="button" onclick="location.reload()">Try again</button>
+      </div>
+
+      <p class="emergency">
+        If something is happening now and someone is in danger, call 999. Do not
+        wait for a signal to file a report.
+      </p>
+    </main>
+  </body>
+</html>

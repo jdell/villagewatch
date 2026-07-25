@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/logo";
-import { APP_NAME } from "@/lib/constants";
+import { APP_NAME, GITHUB_URL } from "@/lib/constants";
 
 /**
  * The public footer, shared by the landing page and the legal pages.
@@ -53,6 +53,16 @@ export function SiteFooter({
                     For coordinators
                   </a>
                 </li>
+                <li>
+                  <a href="#parish-councils" className="transition hover:text-white">
+                    Pricing
+                  </a>
+                </li>
+                <li>
+                  <a href="#faq" className="transition hover:text-white">
+                    Questions
+                  </a>
+                </li>
               </ul>
             </div>
           )}
@@ -85,6 +95,23 @@ export function SiteFooter({
                 <Link href="/terms" className="transition hover:text-white">
                   Terms of use
                 </Link>
+              </li>
+              <li>
+                {/*
+                  Leaves the site, so it is an <a> rather than a <Link>.
+                  `noopener` is belt and braces — `Cross-Origin-Opener-Policy`
+                  in next.config.ts already severs `window.opener` — and
+                  `noreferrer` keeps the path of whichever page it was clicked
+                  from out of GitHub's referrer log.
+                */}
+                <a
+                  href={GITHUB_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="transition hover:text-white"
+                >
+                  Source on GitHub
+                </a>
               </li>
             </ul>
           </div>

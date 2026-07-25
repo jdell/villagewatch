@@ -1,6 +1,6 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { cronUnauthorised, isCronAuthorised } from "@/lib/cron";
 import {
   generateWeeklyDigest,
   peakSeverity,
@@ -59,30 +59,11 @@ type VillageOutcome = {
   notified?: number;
 };
 
-function isAuthorised(request: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET ?? "";
-
-  // No secret configured means no scheduled route. Failing closed is the only
-  // safe default: this endpoint spends money and pushes to people's phones.
-  if (secret.length === 0) return false;
-
-  const header = request.headers.get("authorization") ?? "";
-  const provided = header.startsWith("Bearer ") ? header.slice(7) : header;
-
-  const a = Buffer.from(provided);
-  const b = Buffer.from(secret);
-
-  // `timingSafeEqual` throws on a length mismatch, which would itself leak the
-  // secret's length — compare lengths first and always run the comparison.
-  if (a.length !== b.length) return false;
-
-  return timingSafeEqual(a, b);
-}
-
 async function runDigest(request: NextRequest) {
-  if (!isAuthorised(request)) {
-    return NextResponse.json({ error: "Not authorised" }, { status: 401 });
-  }
+  // Shared with `/api/cron/retention` — see `src/lib/cron.ts`. No secret
+  // configured means no scheduled route at all: this endpoint spends money and
+  // pushes to people's phones, so failing closed is the only safe default.
+  if (!isCronAuthorised(request)) return cronUnauthorised();
 
   if (!process.env.DATABASE_URL) {
     return NextResponse.json(

@@ -2,8 +2,10 @@ import Link from "next/link";
 import {
   ArrowRight,
   BellRing,
+  Check,
   ChevronRight,
   EyeOff,
+  Landmark,
   Map,
   MessageSquarePlus,
   Radar,
@@ -13,7 +15,13 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { SiteFooter } from "@/components/site-footer";
-import { APP_NAME, SEVERITIES } from "@/lib/constants";
+import {
+  APP_NAME,
+  PRICING,
+  RETENTION,
+  SEVERITIES,
+  VILLAGES_LIVE,
+} from "@/lib/constants";
 
 const STEPS = [
   {
@@ -74,6 +82,36 @@ const HERO_PINS = [
 
 const PIN_COLOR = Object.fromEntries(SEVERITIES.map((s) => [s.value, s.pin]));
 
+/**
+ * The four questions a parish clerk actually asks, in the order they ask them.
+ *
+ * Every answer here is a statement about how the code behaves, not a
+ * reassurance — which means each one is a claim that has to stay true. If
+ * on-device blurring, coordinate jitter or the Anthropic round trip ever
+ * changes, this list changes in the same commit, alongside `/privacy`.
+ */
+const FAQS = [
+  {
+    question: "Is my data safe?",
+    answer: `Reports are held in a UK-region database and the app is served from London. Your exact location is never stored — coordinates are moved by about a hundred metres before they are written down, so the pin lands on the right street and not on your door. Photographs are blurred on your own phone before they are uploaded, which also strips the GPS tag cameras write into every picture. Reports are archived after ${RETENTION.incidentArchiveMonths} months and photographs are deleted after ${RETENTION.mediaDeleteMonths}.`,
+  },
+  {
+    question: "Who can see what I report?",
+    answer:
+      "Your neighbours see a rewritten version with names, registrations and house numbers taken out. Your village coordinator can see your original wording, and every time they do it is written to an audit trail with their name against it. Nobody outside your village sees any of it — not another village, not the public, not us.",
+  },
+  {
+    question: "How does the AI work?",
+    answer:
+      "When you submit a report, the text goes to Claude, which rewrites it without the identifying details, sorts it into a category and suggests how serious it is. You see the result and can edit it before anything is saved. If the AI is unavailable your report still files in your own words — it simply waits for your coordinator, exactly as it would otherwise.",
+  },
+  {
+    question: "Is it free?",
+    answer:
+      "Free for one village, for residents and coordinators alike, with no card and no trial period. A paid tier for groups of parishes is planned and does not exist yet — nothing on this site can charge anybody anything today.",
+  },
+] as const;
+
 export default function LandingPage() {
   return (
     <>
@@ -107,6 +145,12 @@ export default function LandingPage() {
               className="text-sm font-medium text-brand-100 transition hover:text-white"
             >
               For coordinators
+            </a>
+            <a
+              href="#parish-councils"
+              className="text-sm font-medium text-brand-100 transition hover:text-white"
+            >
+              Pricing
             </a>
           </div>
 
@@ -216,6 +260,38 @@ export default function LandingPage() {
                 </div>
               ))}
             </dl>
+          </div>
+        </section>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Trust strip                                                       */}
+        {/* ---------------------------------------------------------------- */}
+        {/*
+          The "trusted by N villages" line, which renders a number only when
+          `VILLAGES_LIVE` is one. It is null, so what shows is the honest
+          version — see the constant for why a placeholder figure is not an
+          acceptable stand-in on a page a parish clerk reads before handing over
+          their residents' incident reports.
+        */}
+        <section className="border-b border-slate-200 bg-white">
+          <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
+            <p className="text-center text-sm text-slate-500">
+              {VILLAGES_LIVE !== null ? (
+                <>
+                  <span className="font-semibold text-slate-900">
+                    Trusted by {VILLAGES_LIVE.toLocaleString("en-GB")} villages
+                  </span>{" "}
+                  across England · Open source · UK data, London region ·
+                  Built for parish councils
+                </>
+              ) : (
+                <>
+                  Built for parish councils and neighbourhood watch schemes in
+                  England · Open source · UK data, hosted in London · Free for
+                  one village
+                </>
+              )}
+            </p>
           </div>
         </section>
 
@@ -418,6 +494,167 @@ export default function LandingPage() {
               <p className="mt-4 text-xs text-slate-500">
                 Illustrative preview. Sign in to see your village&apos;s queue.
               </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* For parish councils — pricing preview                             */}
+        {/* ---------------------------------------------------------------- */}
+        <section
+          id="parish-councils"
+          className="scroll-mt-16 bg-slate-50 py-20 sm:py-28"
+        >
+          <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+            <div className="max-w-2xl">
+              <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-sm font-medium text-brand-700 ring-1 ring-brand-100">
+                <Landmark className="size-4" aria-hidden />
+                For parish councils
+              </span>
+              <h2 className="mt-5 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+                Free for your village. Properly free.
+              </h2>
+              <p className="mt-4 text-lg leading-relaxed text-slate-600">
+                One parish, every resident, every feature — no card, no trial
+                window, no resident cap. {APP_NAME} is open source, so a council
+                that would rather run it themselves can.
+              </p>
+            </div>
+
+            <div className="mt-14 grid gap-6 lg:grid-cols-2">
+              {PRICING.map((tier) => (
+                <div
+                  key={tier.name}
+                  className={`flex flex-col rounded-2xl border p-7 sm:p-8 ${
+                    tier.featured
+                      ? "border-brand-200 bg-white shadow-lg shadow-brand-900/5 ring-1 ring-brand-100"
+                      : "border-slate-200 bg-white/60"
+                  }`}
+                >
+                  <div className="flex items-baseline justify-between gap-4">
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      {tier.name}
+                    </h3>
+                    {tier.featured ? (
+                      <span className="rounded-full bg-safe-50 px-2.5 py-0.5 text-xs font-semibold text-safe-700 ring-1 ring-safe-200">
+                        Available now
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                        Planned
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="mt-5 flex items-baseline gap-2">
+                    <span className="text-4xl font-semibold tracking-tight text-slate-900">
+                      {tier.price}
+                    </span>
+                    <span className="text-sm text-slate-500">
+                      {tier.cadence}
+                    </span>
+                  </p>
+
+                  <p className="mt-4 text-base leading-relaxed text-slate-600">
+                    {tier.lede}
+                  </p>
+
+                  <ul className="mt-7 flex-1 space-y-3">
+                    {tier.features.map((feature) => (
+                      <li key={feature} className="flex items-start gap-3">
+                        <Check
+                          className={`mt-0.5 size-5 shrink-0 ${
+                            tier.featured ? "text-safe-600" : "text-slate-400"
+                          }`}
+                          aria-hidden
+                        />
+                        <span className="text-sm leading-relaxed text-slate-700">
+                          {feature}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <Link
+                    href={tier.cta.href}
+                    className={`mt-8 inline-flex h-12 items-center justify-center gap-2 rounded-xl px-6 text-base font-semibold transition ${
+                      tier.featured
+                        ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
+                        : "border border-slate-300 text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    {tier.cta.label}
+                    {tier.featured && (
+                      <ArrowRight className="size-4" aria-hidden />
+                    )}
+                  </Link>
+                </div>
+              ))}
+            </div>
+
+            {/*
+              Said plainly rather than in a footnote. There is no billing
+              integration anywhere in this codebase — see PRICING in
+              src/lib/constants.ts. A price list that reads as live on a site
+              that cannot take payment is what a council builds a budget line
+              against.
+            */}
+            <p className="mt-8 text-sm leading-relaxed text-slate-500">
+              Pro is a preview of what is planned, not something you can buy
+              today — nothing on this site takes payment. If it would suit your
+              group of parishes, create a free village and say so; that is how
+              the order gets decided.
+            </p>
+          </div>
+        </section>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* FAQ                                                               */}
+        {/* ---------------------------------------------------------------- */}
+        <section
+          id="faq"
+          className="scroll-mt-16 border-y border-slate-200 bg-white py-20 sm:py-24"
+        >
+          <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 sm:px-6 lg:grid-cols-[minmax(0,20rem)_1fr] lg:gap-16">
+            <div>
+              <span className="text-sm font-semibold uppercase tracking-wider text-brand-600">
+                Questions
+              </span>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+                The four everyone asks
+              </h2>
+              <p className="mt-4 text-base leading-relaxed text-slate-600">
+                If yours is not here, the{" "}
+                <Link
+                  href="/privacy"
+                  className="font-medium text-brand-700 underline underline-offset-4 hover:text-brand-800"
+                >
+                  privacy notice
+                </Link>{" "}
+                goes into considerably more detail.
+              </p>
+            </div>
+
+            {/*
+              <details> rather than a JS accordion: it is keyboard accessible
+              and findable with the browser's own in-page search for free, and
+              this is a marketing page that should not need a client component.
+            */}
+            <div className="divide-y divide-slate-200 border-t border-slate-200">
+              {FAQS.map((faq) => (
+                <details key={faq.question} className="group py-5">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left text-lg font-medium text-slate-900 marker:content-none">
+                    {faq.question}
+                    <ChevronRight
+                      className="size-5 shrink-0 text-slate-400 transition group-open:rotate-90"
+                      aria-hidden
+                    />
+                  </summary>
+                  <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-600">
+                    {faq.answer}
+                  </p>
+                </details>
+              ))}
             </div>
           </div>
         </section>

@@ -510,6 +510,13 @@ export const AUDIT_ACTIONS = [
     description: "The village's reports were downloaded",
     tone: "sensitive",
   },
+  {
+    value: "retention.sweep",
+    label: "Retention sweep",
+    description:
+      "The scheduled job archived old reports and deleted old media",
+    tone: "neutral",
+  },
 ] as const satisfies readonly AuditActionMeta[];
 
 export const AUDIT_ACTION_META = Object.fromEntries(
@@ -549,6 +556,90 @@ export const PROTECTED_ROUTES = [
   "/settings",
 ] as const;
 
+/** The source. Linked from the landing page footer and the README. */
+export const GITHUB_URL = "https://github.com/jdell/villagewatch";
+
+/**
+ * How many villages are live on this deployment.
+ *
+ * **Null until somebody can point at the list.** The landing page renders a
+ * "trusted by N villages" line only when this is a number, and says something
+ * true and unquantified when it is not.
+ *
+ * That is deliberate and worth keeping. A made-up figure on a public page is a
+ * false statement to the exact audience least able to check it — a parish clerk
+ * deciding whether to put their residents' incident reports into it. Set this
+ * when it is real, and not before.
+ */
+export const VILLAGES_LIVE: number | null = null;
+
+// ---------------------------------------------------------------------------
+// Pricing
+// ---------------------------------------------------------------------------
+
+export type PricingTier = {
+  name: string;
+  /** Rendered as-is. Includes the currency and the period. */
+  price: string;
+  cadence: string;
+  lede: string;
+  features: readonly string[];
+  cta: { label: string; href: string };
+  featured?: boolean;
+};
+
+/**
+ * The planned pricing, shown on the landing page as a preview.
+ *
+ * **Nothing charges anything today.** There is no billing integration, no
+ * payment provider and no plan enforcement anywhere in the codebase — a Pro
+ * village and a free one are the same rows in the same tables. The section that
+ * renders this says so on the page, in as many words, because a price list that
+ * looks live on a page that cannot take payment is the kind of thing a parish
+ * council makes a budget decision against.
+ *
+ * Before any of this becomes real it needs: a payment provider, a plan column,
+ * enforcement at the point each limit bites, and terms that describe what is
+ * being sold. None of those exist.
+ */
+export const PRICING = [
+  {
+    name: "Village",
+    price: "Free",
+    cadence: "for one village, always",
+    lede: "Everything a parish needs to run a watch scheme. No card, no trial, no resident limit.",
+    features: [
+      "One village, unlimited residents",
+      "AI anonymisation on every report",
+      "Live map, incident list and push alerts",
+      "Coordinator dashboard and moderation queue",
+      "Weekly digest and pattern detection",
+      "Full audit trail and CSV export",
+    ],
+    cta: { label: "Start your village", href: "/register" },
+    featured: true,
+  },
+  {
+    name: "Pro",
+    price: "£15",
+    cadence: "per month, per village",
+    lede: "For clusters of parishes and anyone answering to a council. Planned — not yet available.",
+    features: [
+      "Everything in Village",
+      "Multiple villages under one coordinator team",
+      "Cross-village pattern detection",
+      "Email and SMS alongside push",
+      "Longer retention and scheduled exports",
+      "Priority support",
+    ],
+    // Written out rather than omitted: `as const` narrows each entry to its own
+    // literal type, so an absent optional key is absent from the union member
+    // and `tier.featured` stops type-checking at the call site.
+    cta: { label: "Register interest", href: "/register" },
+    featured: false,
+  },
+] as const satisfies readonly PricingTier[];
+
 // ---------------------------------------------------------------------------
 // Legal and data protection
 // ---------------------------------------------------------------------------
@@ -584,9 +675,13 @@ export const DATA_CONTROLLER = {
 /**
  * How long things are kept.
  *
- * These are the schedule the privacy policy states, not a job that runs — there
- * is no retention worker yet (see "Not built yet" in CLAUDE.md). Wire one up
- * before launch, and read the numbers from here rather than restating them.
+ * The privacy policy states these numbers and `GET /api/cron/retention` enforces
+ * the first two nightly. Read them from here rather than restating them — a
+ * policy and a job that disagree is worse than either alone.
+ *
+ * The last two are still schedule-only. See the route's own comments for why
+ * `auditLogMonths` cannot be enforced from application code at all, and
+ * "Not built yet" in CLAUDE.md for `inactiveAccountMonths`.
  */
 export const RETENTION = {
   /** Published incidents move to ARCHIVED and drop off the map at this age. */
@@ -598,6 +693,20 @@ export const RETENTION = {
   /** An account with no sign-in for this long is closed and anonymised. */
   inactiveAccountMonths: 24,
 } as const;
+
+/**
+ * Media rows one retention run will clear.
+ *
+ * Each one is a round trip to Supabase Storage, and the route has 60 seconds.
+ * The job runs nightly, so a backlog larger than this drains over a few days
+ * instead of timing out halfway through and leaving the deletes half-applied —
+ * which, because rows are only dropped after their objects are gone, is a state
+ * the next run picks up cleanly.
+ */
+export const RETENTION_MEDIA_BATCH = 500;
+
+/** Paths per `storage.remove()` call. The API takes an array; this bounds it. */
+export const RETENTION_STORAGE_CHUNK = 100;
 
 /** Minimum age to hold an account. Reports about under-16s are still welcome. */
 export const MINIMUM_AGE = 16;

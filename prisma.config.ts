@@ -23,6 +23,14 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    /**
+     * What `prisma db seed` runs, and what `prisma migrate reset` runs after it
+     * rebuilds the database. `npm run db:seed` is the same command by hand.
+     *
+     * The seed is idempotent, so running it twice is not a mistake — see the
+     * header of `prisma/seed.ts` for what it will and will not overwrite.
+     */
+    seed: "tsx prisma/seed.ts",
   },
   datasource: {
     url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
