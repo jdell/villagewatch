@@ -314,6 +314,34 @@ export const VILLAGE_STATUS_LABELS = {
 } satisfies Record<VillageStatus, string>;
 
 // ---------------------------------------------------------------------------
+// The village directory
+// ---------------------------------------------------------------------------
+
+/**
+ * Attribution for the seeded village directory.
+ *
+ * `prisma/seed-villages.ts` builds the directory from the ONS Index of Place
+ * Names, which is published under the Open Government Licence v3.0. The licence
+ * permits commercial use and sublicensing; the one thing it requires is this
+ * acknowledgement, and it requires it *wherever the data is shown* — so it
+ * belongs next to any list, search or picker of seeded villages, not only in a
+ * credits page nobody opens.
+ *
+ * Nothing renders it yet, because nothing renders the directory yet — there is
+ * no village picker (see "Not built yet" in CLAUDE.md). When one is built, this
+ * goes under it. Do not seed a public directory without it.
+ */
+export const ONS_ATTRIBUTION = [
+  "Contains OS data © Crown copyright and database right 2024.",
+  "Contains Royal Mail data © Royal Mail copyright and database right 2024.",
+  "Source: Office for National Statistics licensed under the Open Government Licence v.3.0.",
+].join(" ");
+
+/** Where that licence is set out, for a link next to the acknowledgement. */
+export const ONS_LICENCE_URL =
+  "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/";
+
+// ---------------------------------------------------------------------------
 // Map
 // ---------------------------------------------------------------------------
 

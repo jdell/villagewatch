@@ -1,12 +1,12 @@
 # Setting up VillageWatch
 
-From an empty machine to a deployed village, in twelve steps.
+From an empty machine to a deployed village, in thirteen steps.
 
 Nothing in this repository has ever been run against a real database. These are
 the steps that do it for the first time, in the order they have to happen —
 several of them will fail if the one before was skipped, and the failures are
-not always obvious. Steps 1–7 are the database and its policies; 8–12 are the
-services and the deploy.
+not always obvious. Steps 1–7 are the database and its policies; 8–11 are the
+services and the deploy; 12 and 13 are optional seed data.
 
 Budget an hour. Most of it is waiting for Supabase to provision.
 
@@ -307,6 +307,66 @@ you rejected.
 
 ---
 
+## 13. Seed the village directory (optional)
+
+Step 12 builds one village with sample incidents in it. This builds the empty
+directory a real resident picks their village out of, from the ONS **Index of
+Place Names**. The two do not overlap and either can run without the other.
+
+```bash
+npm run download:ons          # writes data/ons-places.csv — 47MB, gitignored
+npm run db:seed:villages      # Cambridgeshire — 270 parishes
+npm run db:seed:villages:all  # every parish in England — 10,670
+```
+
+`download:ons` finds the newest release on the Open Geography Portal by itself,
+so it keeps working when ONS publishes the next annual vintage. Check what you
+are about to write before you write it:
+
+```bash
+npx tsx prisma/seed-villages.ts --county Norfolk --dry-run
+```
+
+Other flags: `--country Wales|Scotland` (England is the default),
+`--include-localities` to add hamlets and farmsteads to the parish layer, and
+`--limit n`. `npx tsx prisma/seed-villages.ts --help` lists them all.
+
+**Villages land as `PENDING` with no join code.** That status renders as
+"Pending approval" and it is what keeps a seeded village dormant — a directory
+entry becomes a real village when a coordinator claims it, which is a status
+change and a join code, and the seed does neither. Re-running is safe: new
+slugs are inserted, villages still at `PENDING` have their ONS fields refreshed
+if the next release moved or renamed them, and **anything no longer `PENDING`
+is left completely alone**, including a map centre a coordinator has adjusted.
+
+### If the portal is unreachable
+
+Some networks block `arcgis.com`, and the portal occasionally rate limits.
+Either download it by hand — the instructions are in the header of
+`scripts/download-ons-places.ts`, and the seed only reads the file — or seed
+from the committed snapshot, which needs no network at all:
+
+```bash
+npx tsx prisma/seed-villages.ts --file data/cambridgeshire-villages.json
+```
+
+That file is 270 Cambridgeshire parishes cut from the real IPN by this same
+pipeline. Regenerate it with `--json data/cambridgeshire-villages.json`.
+
+(270 rather than 298 because a parish on a county boundary belongs to whichever
+county its centre falls in, not to both. Seeding a county and then all of
+England therefore never lists the same parish twice.)
+
+### Attribution is a licence condition
+
+The IPN is Open Government Licence v3.0 — free to use commercially, and the one
+thing it asks for is an acknowledgement **wherever the data is shown**. The
+wording is `ONS_ATTRIBUTION` in `src/lib/constants.ts`. Nothing renders it yet
+because nothing renders the directory yet; when a village picker is built, that
+goes under it.
+
+---
+
 ## Before real residents
 
 None of these are optional, and none of them are code.
@@ -330,6 +390,9 @@ None of these are optional, and none of them are code.
       directive if anything on a subdomain may ever need plain HTTP.
 - [ ] **Change the seeded join code** if you ran step 12, and delete the sample
       incidents.
+- [ ] **Show the ONS attribution** if you ran step 13 and anything renders the
+      village directory. `ONS_ATTRIBUTION` in `src/lib/constants.ts` is a
+      condition of the Open Government Licence, not a courtesy.
 
 ---
 

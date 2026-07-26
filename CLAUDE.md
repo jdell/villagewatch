@@ -168,8 +168,12 @@ src/
 prisma/
   schema.prisma
   seed.ts                     One village, 5 incidents, 1 pattern alert; idempotent
+  seed-villages.ts            The ONS village directory — parish layer, PENDING
   sql/postgis.sql             Extension, triggers, GiST indexes
   sql/rls_policies.sql        Row-level security — apply after postgis.sql
+data/
+  cambridgeshire-villages.json  Committed snapshot — the offline seed fallback
+  ons-places.csv              The IPN download. Gitignored, 47MB, fetched on demand
 public/
   manifest.json               PWA manifest — start_url /map, two shortcuts
   sw.js                       Offline worker. Caches the shell only, never HTML
@@ -178,9 +182,11 @@ public/
   onesignal/                  OneSignal's worker, scoped away from root
 scripts/
   generate-icons.mjs          Authoring tool — renders the icons, run by hand
+  download-ons-places.ts      Finds + fetches the newest IPN release, unzips it
+  convert-grid-refs.ts        OSGB36 → WGS84 via geodesy; library + CLI
 .github/workflows/
   version.yml                 standard-version bump on a releasable push to main
-SETUP.md                      Twelve-step first-run guide + troubleshooting
+SETUP.md                      Thirteen-step first-run guide + troubleshooting
 ```
 
 ---
@@ -436,6 +442,9 @@ npx eslint .             # Lint
 npx prisma generate      # Regenerate client after schema changes
 npx prisma migrate dev   # Create + apply a migration locally
 npm run db:seed          # Seed one village — set SEED_ADMIN_USER_ID first
+npm run download:ons     # Fetch the ONS Index of Place Names to data/ (47MB)
+npm run db:seed:villages # Seed the Cambridgeshire directory — 270 parishes
+npm run db:seed:villages:all      # Every parish in England — 10,670
 npx prisma studio        # Browse data
 npm run release:patch    # Bump version + changelog by hand (CI usually does it)
 node scripts/generate-icons.mjs   # Re-render the PWA icons from the brand mark
@@ -540,6 +549,66 @@ the app that discloses outside the village.
   Both are statements about how the code behaves — change what a post contains
   and they change in the same commit.
 
+## The village directory
+
+`prisma/seed-villages.ts`, fed by `scripts/download-ons-places.ts`. Builds the
+empty directory a resident picks their village out of, from the ONS Index of
+Place Names. Distinct from `prisma/seed.ts`, which builds one village with
+sample incidents in it; neither needs the other.
+
+- **The IPN's `descnm` is a code, not a word.** There is no "Village" or
+  "Hamlet" value to filter on and has not been since the 2021 release. The
+  layers are `PAR` (civil parish), `COM` (Welsh community) and `LOC` (locality),
+  plus a dozen administrative geographies — wards, districts, unitary
+  authorities, built-up areas — which are never seeded.
+- **The default is the parish layer**, `PAR` + `COM`: 10,670 in England, 878 in
+  Wales. That is the unit a watch scheme organises around — a parish council, a
+  clerk, a boundary everyone agrees on. `LOC` is 61,000 rows and mostly
+  farmsteads and field names; `--include-localities` opts into it.
+- **Dedupe on the ONS code, never the name.** A place straddling a boundary
+  appears once per geography (`splitind = 1`), so the 298 parishes tagged
+  Cambridgeshire arrive as 358 rows. The key is `par23cd` for a parish and
+  `placeid` for a locality — and it has to be layer-dependent, because a
+  locality row also carries the `par23cd` of the parish it sits in, which would
+  collapse every hamlet in a parish into one village.
+- Split members collapse to their **medoid**, not their mean. The widest split
+  in the file spans 82km and its mean is in neither half.
+- **`--county` filters after the collapse, not before**, and the ordering is
+  load-bearing. 747 English parishes have rows in more than one lieutenancy
+  county; filtering rows first would give each one a different county — and so a
+  different slug — depending on what you asked for, and seeding Cambridgeshire
+  and then England would list Barnack twice, once per county. Collapsing first
+  lets the medoid decide, so a parish has one county however it is selected.
+  Cambridgeshire ends up with 270 of its 298 for that reason.
+- **Slugs are `name-county`**, with the district added for the 44 English
+  name/county pairs that collide (`aislaby-whitby-north-yorkshire`) and a
+  counter behind that. Uniqueness is enforced against a set as they are built,
+  so the column's `@unique` is never what discovers a clash.
+- **Everything lands `PENDING` with no join code.** `PENDING` already renders as
+  "Pending approval" in `VILLAGE_STATUS_LABELS` and already means "exists, not
+  yet live" — there is deliberately no second `PENDING_APPROVAL` value, which
+  would leave two dormant statuses with nothing to tell them apart.
+- **Re-running refreshes but never clobbers.** New slugs are inserted; a village
+  still at `PENDING` has its ONS-derived fields updated if the next release
+  moved or renamed it; anything past `PENDING` is skipped entirely, so a
+  coordinator's adjusted map centre survives the annual refresh. `createMany` +
+  a targeted update rather than a blind upsert, for that reason and because
+  10,670 upserts is 10,670 round trips.
+- `Village.country` is `Char(2)`, so every IPN country is `GB`. Which one a
+  village is actually in survives in `description` and `region`.
+- **The encoding is sniffed, not assumed.** ONS ships the CSV as Windows-1252
+  and `download:ons` transcodes it, so both are in circulation — and a
+  hand-unzipped copy is the untranscoded one. Guessing wrong turns
+  `A' Chrìon Làraich` into mojibake and the village becomes unfindable by the
+  people who live in it.
+- **Attribution is a licence condition.** The IPN is OGL v3.0, which asks for an
+  acknowledgement wherever the data is shown. `ONS_ATTRIBUTION` in
+  `src/lib/constants.ts` holds it. Nothing renders it because nothing renders
+  the directory yet — that is a debt, not a decision.
+- `data/ons-places.csv` is gitignored; `data/cambridgeshire-villages.json` is
+  not. The snapshot is the same pipeline's output, committed, so the directory
+  can be seeded with no network at all.
+
 ## The weekly digest
 
 `GET|POST /api/digest`, wired to Sunday 09:00 UTC in `vercel.json`. This is what
@@ -578,12 +647,29 @@ moderation queue, CSV export, the weekly digest cron, settings, the RLS
 policies, rate limiting, the legal pages, home-location capture, the audit
 viewer, security headers, the error pages, the retention cron, the seed script,
 `SETUP.md`, auto-versioning, PWA install and offline support, the email
-templates and the onboarding tour. Still open:
+templates, the onboarding tour and the ONS village directory pipeline. Still
+open:
 
 - No Supabase project, no database, no migrations have been run. **The Day 4
   schema change (`User.notifyRadiusMeters`) and the four `Village.whatsapp*`
   columns have been generated but never migrated** — they land with the first
   `prisma migrate dev`.
+- **The village directory has never been seeded against the real database**,
+  because there is not one yet. The whole pipeline has been run end to end
+  against the real July 2024 release and a throwaway local Postgres: 10,670
+  England parishes in 2.9s, re-runs idempotent, a village moved to `ACTIVE` by
+  hand left untouched while a drifted `PENDING` one was refreshed. What that
+  scratch database did **not** have is PostGIS, RLS, or the rest of the schema —
+  so `Village.boundary` and the policies in `rls_policies.sql` are still
+  unexercised against a seeded directory.
+- **Nothing renders the directory.** There is no village picker, no county
+  search and no way for a resident to choose a seeded village — registration
+  still takes a join code. Seeding 10,670 villages today puts 10,670 dormant
+  rows in a table nothing reads. When a picker is built it must carry
+  `ONS_ATTRIBUTION`.
+- **No way to claim a directory entry.** A seeded village is `PENDING` forever:
+  there is no flow that promotes it to `ACTIVE`, assigns a coordinator or mints
+  a join code. That flow is what makes the directory worth seeding.
 - **The retention job has never run against data.** It deletes files and takes
   reports off the map, and every line of it is untested against a real bucket.
   Watch the first run and read the counts in the response before trusting the
