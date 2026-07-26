@@ -11,14 +11,21 @@
 // Always treat `lat`/`lng` as the writable source of truth.
 
 generator client {
-  provider        = "prisma-client"
-  output          = "../src/generated/prisma"
-  previewFeatures = ["postgresqlExtensions"]
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
+// No `extensions` list, and no `postgresqlExtensions` preview feature, on
+// purpose. Supabase ships every project with pg_stat_statements, pgcrypto,
+// uuid-ossp and supabase_vault already installed. With extension tracking on,
+// the migrate engine diffs those four against our migration history, reports
+// them as drift, and demands a full reset of the `public` schema on every
+// `migrate dev` — which is a data-loss trap once real reports exist.
+//
+// PostGIS is enabled by `prisma/sql/postgis.sql` instead, which has to run
+// after the first migration anyway for the triggers and GiST indexes.
 datasource db {
-  provider   = "postgresql"
-  extensions = [postgis]
+  provider = "postgresql"
 }
 
 // ---------------------------------------------------------------------------
