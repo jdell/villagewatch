@@ -156,6 +156,57 @@ AS $$
   SELECT public.vw_current_role() = 'ADMIN'::public.user_role;
 $$;
 
+/**
+ * GRANT SELECT to `authenticated` on every column of a table except the ones
+ * named. Two columns need this — `incidents.raw_description` and
+ * `villages.join_code` — and both are the column the surrounding table exists
+ * to protect.
+ *
+ * Enumerated at run time rather than written out, because a hand-listed set of
+ * columns is a list that goes stale: the migration that adds a column would
+ * leave it ungranted and invisible, and the fix would look like a Prisma bug.
+ * Re-running this file after a migration picks new columns up, which SETUP.md
+ * already requires for the policies themselves.
+ *
+ * Note the trade-off this imposes on any future PostgREST caller: with
+ * column-level SELECT, `select=*` fails outright rather than returning the
+ * permitted columns. That is the safe direction — an error, not a silent
+ * disclosure — but it means such a caller must name its columns, exactly as
+ * `PUBLIC_INCIDENT_SELECT` already does on the Prisma side.
+ */
+CREATE OR REPLACE FUNCTION public.vw_grant_select_except(
+  target_table text,
+  excluded_columns text[]
+)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+  column_list text;
+BEGIN
+  SELECT string_agg(quote_ident(c.column_name), ', ' ORDER BY c.ordinal_position)
+    INTO column_list
+    FROM information_schema.columns c
+   WHERE c.table_schema = 'public'
+     AND c.table_name = target_table
+     AND NOT (c.column_name = ANY (excluded_columns));
+
+  IF column_list IS NULL THEN
+    RAISE EXCEPTION 'no grantable columns found on public.%', target_table;
+  END IF;
+
+  -- Revoke first: a table-wide SELECT left over from an earlier run of this
+  -- file, or from the Supabase default ACL, would make the column list moot.
+  EXECUTE format('REVOKE SELECT ON public.%I FROM authenticated', target_table);
+  EXECUTE format(
+    'GRANT SELECT (%s) ON public.%I TO authenticated', column_list, target_table
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.vw_grant_select_except(text, text[]) FROM public, anon, authenticated;
+
 REVOKE EXECUTE ON FUNCTION public.vw_current_village_id() FROM public, anon;
 REVOKE EXECUTE ON FUNCTION public.vw_current_role() FROM public, anon;
 REVOKE EXECUTE ON FUNCTION public.vw_is_coordinator() FROM public, anon;
@@ -206,9 +257,15 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM authenticated;
 -- `Village` carries no personal data — a name, a map centre and a contact
 -- address. `join_code` is the one column that matters, and it is checked
 -- server-side in `POST /api/auth/register`, never sent to a browser.
+--
+-- Never sent by *this* application, which is not the same as unreachable. A
+-- village-wide SELECT grant includes `join_code`, and a join code is what grants
+-- membership — any account could have read every village's code through
+-- PostgREST. So SELECT is granted column by column instead, which is the one
+-- mechanism that distinguishes columns; a policy cannot.
 
-GRANT SELECT ON public.villages TO authenticated;
 GRANT INSERT, UPDATE ON public.villages TO authenticated;
+SELECT public.vw_grant_select_except('villages', ARRAY['join_code']);
 
 DROP POLICY IF EXISTS villages_select_authenticated ON public.villages;
 CREATE POLICY villages_select_authenticated
@@ -323,12 +380,23 @@ CREATE TRIGGER users_guard_privilege_columns
 --
 -- Note what these policies cannot do: `raw_description` is a column on this
 -- table, so any policy that grants SELECT on a row grants SELECT on the
--- reporter's verbatim words. Domain rule 1 is kept by `PUBLIC_INCIDENT_SELECT`
--- omitting the column and `readRawDescription()` auditing every read — RLS
--- narrows *which rows* leak, not which columns. Anyone moving reads onto the
--- request-scoped client must add a column grant or a view here.
+-- reporter's verbatim words. RLS narrows *which rows* leak, not which columns,
+-- and domain rule 1 is otherwise kept only in application code —
+-- `PUBLIC_INCIDENT_SELECT` omitting the column and `readRawDescription()`
+-- auditing every read.
+--
+-- So the column grant that comment used to ask for is here. `authenticated`
+-- gets SELECT on every column of `incidents` except `raw_description`, and a
+-- resident reading their neighbour's verbatim words through PostgREST — names,
+-- plates, addresses, the whole reason the anonymisation pass exists — stops
+-- being a thing the database permits.
+--
+-- INSERT and UPDATE stay table-wide: a reporter has to be able to write their
+-- own words in, and rewriting the raw text of their own queued report is not a
+-- disclosure. It is reading somebody else's that matters.
 
-GRANT SELECT, INSERT, UPDATE ON public.incidents TO authenticated;
+GRANT INSERT, UPDATE ON public.incidents TO authenticated;
+SELECT public.vw_grant_select_except('incidents', ARRAY['raw_description']);
 
 /** Published and resolved reports, anywhere in the reader's own village. */
 DROP POLICY IF EXISTS incidents_select_public ON public.incidents;
