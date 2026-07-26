@@ -266,8 +266,16 @@ These are not style preferences. Breaking them leaks residents' personal data.
 - Two triggers do what a policy cannot. `users_guard_privilege_columns` rejects
   a client changing its own `role`, `village_id` or `verified_at` (domain rule
   5 — a policy filters rows, not columns). `audit_logs_append_only` rejects
-  every UPDATE and DELETE on the trail **including from the owner**, which is
-  the only way domain rule 7 survives a careless `deleteMany`.
+  every DELETE on the trail **including from the owner**, which is the only way
+  domain rule 7 survives a careless `deleteMany`, and every UPDATE bar one:
+  severing `actor_id` to NULL while every other column stays byte-identical.
+  That single exception is what lets an account be deleted at all — the FK is
+  `ON DELETE SET NULL`, so the cascade is an UPDATE — and it costs the trail
+  nothing, because `actorEmail` and `actorRole` are denormalised for exactly
+  that. `village_id` is the other `SET NULL` foreign key and is deliberately
+  not carved out with it: there is no denormalised village column, so nulling
+  it would destroy the only record of which village an entry belongs to.
+  `DELETE FROM villages` therefore still fails, and should.
 - The file documents its two departures from the Day 5 brief: incident SELECT
   covers `RESOLVED` as well as `PUBLISHED` (matching
   `PUBLIC_INCIDENT_STATUSES`), and notification SELECT is own-rows-only rather

@@ -739,12 +739,17 @@ CREATE POLICY audit_logs_insert_self
  * from application code" would be a convention one careless `deleteMany` could
  * break. This trigger makes it a constraint.
  *
- * A legitimate retention purge or a GDPR erasure that has to reach this table
- * is a deliberate, one-off, superuser act:
+ * Deleting an account no longer needs that hatch — see the actor_id carve-out
+ * below. Removing trail *rows*, which is what `RETENTION.auditLogMonths` would
+ * mean, still does, and remains a deliberate one-off act:
  *
  *   ALTER TABLE public.audit_logs DISABLE TRIGGER audit_logs_append_only;
  *   -- ... the purge ...
  *   ALTER TABLE public.audit_logs ENABLE TRIGGER audit_logs_append_only;
+ *
+ * Note that DISABLE TRIGGER takes an ACCESS EXCLUSIVE lock and is not
+ * transactional in the way it looks: if the purge fails halfway, the trigger is
+ * still off until the ENABLE runs. Wrap both in the same transaction.
  */
 CREATE OR REPLACE FUNCTION public.vw_audit_logs_append_only()
 RETURNS TRIGGER
@@ -752,6 +757,42 @@ LANGUAGE plpgsql
 SET search_path = ''
 AS $$
 BEGIN
+  -- One UPDATE is permitted, and only one: severing `actor_id` when the account
+  -- it points at is deleted.
+  --
+  -- `AuditLog.actorId` is ON DELETE SET NULL and `actor_email` / `actor_role`
+  -- are denormalised "so the trail survives account deletion" — the schema was
+  -- always designed for the actor row to go while the trail stays. A blanket
+  -- refusal broke that: the cascade is an UPDATE, so deleting any account that
+  -- had ever acted became impossible, and with it every UK GDPR erasure request
+  -- and the dormant-account closure the privacy notice promises. The failure
+  -- surfaced as `audit_logs is append-only: UPDATE is not permitted` raised from
+  -- a DELETE on `users`, which reads as a bug in the wrong table entirely.
+  --
+  -- The test is deliberately not "actor_id changed". Every other column must be
+  -- byte-identical, compared wholesale rather than listed, so a column added by
+  -- a later migration is covered without anyone remembering to add it here. The
+  -- content of the trail stays immutable; only the pointer to a person may be
+  -- cut, and only ever to NULL. `actor_email` still names who acted.
+  --
+  -- `village_id` is the other ON DELETE SET NULL foreign key on this table and
+  -- is deliberately NOT carved out with it. The two look symmetrical and are
+  -- not: `actor_email` and `actor_role` mean severing `actor_id` costs the trail
+  -- nothing, whereas there is no denormalised village column, so nulling
+  -- `village_id` destroys the only record of which village an entry belongs to
+  -- — the mutation of trail content this trigger exists to refuse. So
+  -- `DELETE FROM villages` still fails here, and should: erasure is a right of a
+  -- person, not of a tenant, and closing a village down is a deliberate act that
+  -- belongs with the retention purge above rather than happening as a side
+  -- effect of a cascade.
+  IF TG_OP = 'UPDATE'
+     AND OLD.actor_id IS NOT NULL
+     AND NEW.actor_id IS NULL
+     AND pg_catalog.to_jsonb(NEW) - 'actor_id' = pg_catalog.to_jsonb(OLD) - 'actor_id'
+  THEN
+    RETURN NEW;
+  END IF;
+
   RAISE EXCEPTION 'audit_logs is append-only: % is not permitted', TG_OP;
 END;
 $$;
