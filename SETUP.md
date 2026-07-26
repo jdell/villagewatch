@@ -184,6 +184,59 @@ policies, move both back to the request-scoped client.
 
 ---
 
+## 7b. Google sign-in (optional)
+
+Skip this and registration works exactly as before, with an email and a
+password. `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED` defaults to `false` and the button
+is simply not rendered.
+
+Worth turning on: Supabase requires email confirmation by default, so a
+password sign-up cannot get into the app until the resident finds the email.
+Google skips that entirely and hands back an address it has already verified.
+
+**Google Cloud console** → APIs & Services → Credentials → **OAuth client ID**,
+type *Web application*.
+
+- Authorised redirect URI: `https://<project-ref>.supabase.co/auth/v1/callback`
+  — Supabase's callback, **not** this app's. Google talks to Supabase; Supabase
+  then sends the resident to `/api/auth/callback` here. Putting our URL in
+  Google's box is the usual first mistake and fails with `redirect_uri_mismatch`.
+- The consent screen needs a support email and a privacy policy URL. `/privacy`
+  is already written, and Google will not verify an app without it.
+
+**Supabase dashboard** → Authentication → Providers → Google: paste the client
+id and secret, enable it.
+
+**Supabase dashboard** → Authentication → URL Configuration → Redirect URLs: add
+`http://localhost:3000/api/auth/callback` and the production equivalent. A URL
+that is not on this list is rejected after the resident has already consented,
+which is the most confusing possible place to fail.
+
+Then, locally and in Vercel:
+
+```bash
+NEXT_PUBLIC_GOOGLE_AUTH_ENABLED="true"
+```
+
+Check the provider is really on before trusting the button — this asks Supabase
+directly, and answers without involving a browser:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/authorize?provider=google&redirect_to=http://localhost:3000/api/auth/callback"
+```
+
+`302` means enabled. `400` with `"Unsupported provider: provider is not enabled"`
+means the dashboard step above has not been done.
+
+A Google account arrives with an identity and nothing else — no village, no join
+code, no acceptance of the terms — so `/api/auth/callback` sends a first-time
+resident to `/welcome` to supply them, and only then is the profile row written.
+`role` and `verifiedAt` are still derived on the server from a join code checked
+against the database (domain rule 5); nothing in the browser can ask for them.
+
+---
+
 ## 8. OneSignal (optional)
 
 Skip this and everything still works: the audience is still resolved, the
@@ -427,3 +480,23 @@ design.
 
 **The deploy is blocked on a git author**
 The committer email must match a GitHub account Vercel recognises.
+
+**"Continue with Google" is not on the sign-in page**
+`NEXT_PUBLIC_GOOGLE_AUTH_ENABLED` is not `"true"` in that environment. It is a
+`NEXT_PUBLIC_` variable, so it is inlined at build time — setting it in Vercel
+needs a redeploy, and setting it locally needs the dev server restarted.
+
+**Google sign-in returns `redirect_uri_mismatch`**
+The redirect URI registered in the Google console must be Supabase's
+`https://<project-ref>.supabase.co/auth/v1/callback`, not this app's
+`/api/auth/callback`. See step 7b.
+
+**Google sign-in lands back on /login saying it did not complete**
+Either the provider is off in the Supabase dashboard — check with the `curl` in
+step 7b — or `/api/auth/callback` is missing from Authentication → URL
+Configuration → Redirect URLs for that environment.
+
+**A resident is stuck on /welcome**
+`/welcome` writes the profile row, and it needs an `ACTIVE` village to put them
+in. With no villages the select is empty and the form cannot be completed — seed
+one, or set an existing village's status to `ACTIVE`.

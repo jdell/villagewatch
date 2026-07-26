@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -23,6 +24,18 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await requireSession();
+
+  // An authenticated user with no profile row has not finished registering.
+  // Until Google sign-in that was only reachable by a registration whose auth
+  // user was created and whose profile write then failed; now it is the normal
+  // first visit for anyone arriving through a provider. Either way the app
+  // proper has nothing to show them — every query is scoped by `villageId` and
+  // they do not have one — so finish the job instead of rendering an empty
+  // shell. `/welcome` sits outside this group, so this cannot loop.
+  if (process.env.DATABASE_URL && !session.profile) {
+    redirect("/welcome");
+  }
+
   const profile = session.profile;
 
   const village =

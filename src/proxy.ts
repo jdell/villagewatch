@@ -24,6 +24,15 @@ import { PROTECTED_ROUTES } from "@/lib/constants";
 
 const AUTH_ROUTES = ["/login", "/register"];
 
+/**
+ * Signed in, but possibly without a profile row — so it cannot be bounced to
+ * /map like the auth routes above, and it cannot live in `PROTECTED_ROUTES`
+ * either, because the app layout redirects an incomplete account *to* here and
+ * a proxy rule sending it back would loop. Signed-out visitors are turned away
+ * by `requireSession()` on the page itself.
+ */
+const ONBOARDING_ROUTE = "/welcome";
+
 function isProtected(pathname: string) {
   return PROTECTED_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
@@ -67,7 +76,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && isProtected(pathname)) {
+  if (!user && (isProtected(pathname) || pathname === ONBOARDING_ROUTE)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";

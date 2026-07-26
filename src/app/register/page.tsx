@@ -6,7 +6,8 @@ import {
   RegisterForm,
   type VillageOption,
 } from "@/components/auth/register-form";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { AuthDivider, GoogleButton } from "@/components/auth/google-button";
+import { isGoogleAuthEnabled, isSupabaseConfigured } from "@/lib/supabase/env";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
@@ -75,6 +76,19 @@ export default async function RegisterPage() {
               <code className="font-mono text-xs">.env.example</code> before
               creating accounts.
             </p>
+          )}
+
+          {/*
+            Google first, and the same button as the sign-in screen: the
+            provider cannot tell a new resident from a returning one, and nor
+            should this screen pretend to. Whichever it turns out to be is
+            decided in /api/auth/callback, against our own database.
+          */}
+          {isGoogleAuthEnabled && (
+            <div className="mt-6 space-y-5">
+              <GoogleButton label="Continue with Google" />
+              <AuthDivider />
+            </div>
           )}
 
           <div className="mt-6">

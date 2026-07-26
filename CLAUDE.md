@@ -109,6 +109,8 @@ src/
     not-found.tsx             Friendly 404 — also where a withdrawn report lands
     error.tsx                 Root error boundary; client, uses unstable_retry
     login/, register/         Public auth pages
+    welcome/                  Village, join code and terms for a provider
+                              sign-up — outside (app), or it would loop
     privacy/                  UK GDPR privacy notice
     terms/                    Terms of use + community guidelines
     (app)/                    Authenticated shell (sidebar); force-dynamic
@@ -125,6 +127,9 @@ src/
       settings/               Profile and notification preferences
       settings/actions.ts     saveSettingsAction — never touches role/village
     api/auth/                 login, logout, register route handlers
+    api/auth/callback/        OAuth return leg — exchanges the code, routes on
+                              whether a profile row exists
+    api/auth/complete-profile/  Writes the profile for a provider sign-up
     api/incidents/            POST create report (writes AI fields + tags)
     api/incidents/process/    POST run a draft through Claude; writes nothing
     api/incidents/media/      POST blurred upload, DELETE abandoned attachment
@@ -133,6 +138,8 @@ src/
     api/digest/               Weekly cron — Claude summary, PatternAlert, push
     api/cron/retention/       Nightly cron — archives reports, deletes old media
   components/                 Shared UI (logo, app-shell, placeholder, auth forms)
+    auth/google-button.tsx    "Continue with Google" + the or-divider, shared
+    auth/welcome-form.tsx     The provider sign-up's second half
     site-footer.tsx           Public footer, incl. the legal links — shared
     legal-page.tsx            Shell + typography for /privacy and /terms
     status-screen.tsx         Shell behind not-found.tsx and error.tsx
@@ -237,11 +244,43 @@ These are not style preferences. Breaking them leaks residents' personal data.
   boundary.
 - `src/app/(app)/layout.tsx` calls `requireSession()`. That is the real gate.
 - Coordinator routes additionally call `requireCoordinator()`.
-- RLS on every table is the last line of defence. The policies are written —
-  `prisma/sql/rls_policies.sql` — but no database exists to apply them to yet.
+- RLS on every table is applied and tested — `prisma/sql/rls_policies.sql`.
 - `getSession()` uses `supabase.auth.getUser()`, which revalidates the JWT
   against Supabase. Never swap it for `getSession()` on the Supabase client,
   which trusts the cookie as-is.
+
+### Two ways in, one profile row
+
+`Session.profile` is nullable, and with Google sign-in that state is now routine
+rather than an anomaly. An auth user is an identity; a `User` row is a resident
+of a village. The two are created together by `POST /api/auth/register` and
+separately by everything else.
+
+- **Password.** `/api/auth/register` collects the village, join code and terms
+  alongside the credentials and writes the profile before it returns. Supabase
+  requires email confirmation, so the account cannot sign in until the link is
+  clicked.
+- **Google.** `signInWithOAuth` from the browser client (it starts PKCE, and the
+  verifier has to live where the callback can read it), Google returns to
+  Supabase, Supabase to `/api/auth/callback`. That route exchanges the code —
+  server-side, because only a Route Handler has a writable cookie store — and
+  then routes on one question: does a profile row exist? Yes, straight to the
+  app; no, to `/welcome`.
+- **`/welcome` is the second half of registration**, not a settings screen.
+  `POST /api/auth/complete-profile` takes the id and email from the session and
+  never from the body, derives `role` and `verifiedAt` from a join code checked
+  against the database (domain rule 5), and refuses to overwrite a profile that
+  already exists — an unguarded upsert there would be a way to change your own
+  village.
+- **`(app)/layout.tsx` redirects a profile-less session to `/welcome`.** Before
+  Google that state was only reachable by a registration whose auth user was
+  created and whose profile write then failed; the app has nothing to show
+  someone with no `villageId`, since that is the tenant boundary every query is
+  scoped by. `/welcome` sits outside the `(app)` group precisely so this cannot
+  loop.
+- **`next` is hostile input.** It survives a round trip through Google, so the
+  callback re-validates it: relative paths only, and never protocol-relative —
+  `//evil.test` is off-origin and starts with the `/` a naive check accepts.
 
 ---
 
@@ -554,17 +593,24 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 `SETUP.md`, auto-versioning, PWA install and offline support, the email
 templates and the onboarding tour. Still open:
 
-- No Supabase project, no database, no migrations have been run. **The Day 4
-  schema change (`User.notifyRadiusMeters`) has been generated but never
-  migrated** — it lands with the first `prisma migrate dev`.
+- The Supabase project exists (eu-west-2), the first migration is applied, and
+  `postgis.sql` and `rls_policies.sql` have both been run against it. The
+  `incident-media` bucket exists, private. What has **not** happened: no
+  production deployment, no Vercel environment variables, no cron has ever
+  fired.
 - **The retention job has never run against data.** It deletes files and takes
   reports off the map, and every line of it is untested against a real bucket.
   Watch the first run and read the counts in the response before trusting the
   schedule.
-- **The RLS policies have never been applied**, because there is no database to
-  apply them to. `prisma/sql/rls_policies.sql` is written and re-runnable, and
-  has not been executed once. Run it — and test it with the anon key from two
-  villages — before any real resident data exists.
+- The RLS policies are applied and have been tested with the anon key from two
+  villages — 43 assertions covering cross-village reads, `raw_description`, the
+  privilege-column trigger, the reporter edit window, moderation scope and
+  `audit_logs` append-only. Two holes were found and closed in the process: the
+  `public` schema had lost its role grants to a `prisma migrate` reset, which
+  left every policy dormant; and `raw_description` and `join_code` were readable
+  through PostgREST until they were put behind column grants. **Re-run the file
+  after any migration that adds a table or a column** — a new table arrives with
+  RLS off, and the column grants are enumerated at run time.
 - **`DATA_CONTROLLER` in `src/lib/constants.ts` is placeholders.** The privacy
   policy and terms both name it. Fill it in, register with the ICO, and have
   the council review both documents before launch.
