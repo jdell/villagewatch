@@ -57,10 +57,24 @@ unrelated.
 ## Prisma 7 conventions
 
 - **The connection URL lives in `prisma.config.ts`, not `schema.prisma`.** The
-  `datasource db` block only declares `provider` and `extensions`.
+  `datasource db` block declares `provider` and nothing else.
+- **No `extensions` list and no `postgresqlExtensions` preview feature.**
+  Supabase pre-installs `pg_stat_statements`, `pgcrypto`, `uuid-ossp` and
+  `supabase_vault` in every project. With extension tracking on, the migrate
+  engine diffs those against the migration history, calls them drift, and
+  demands a reset of the whole `public` schema on *every* `migrate dev` — a
+  data-loss trap once real reports exist. PostGIS is enabled by
+  `prisma/sql/postgis.sql`, which has to run after the first migration anyway.
 - `prisma.config.ts` uses `DIRECT_URL` (port 5432) — migrations cannot run
   through pgBouncer. The application runtime uses `DATABASE_URL` (pooled, port
   6543) through the driver adapter in `src/lib/prisma.ts`.
+- **`DIRECT_URL` must be the Session pooler, not the direct connection.**
+  `db.<ref>.supabase.co` has no A record — it is IPv6-only unless the project
+  buys the IPv4 add-on, so on an IPv4-only network every CLI command dies with
+  `P1001: Can't reach database server`. Use
+  `postgres.<ref>@aws-N-<region>.pooler.supabase.com:5432`: session mode, so
+  migrations work, and IPv4. Note the username differs — `postgres.<ref>` for
+  either pooler, bare `postgres` only for the direct host.
 - The generated client lands in `src/generated/prisma/` and is **gitignored**.
   Import from `@/generated/prisma/client`; import enums as *types* from
   `@/generated/prisma/enums` so client bundles stay clean.

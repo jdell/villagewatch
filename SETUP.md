@@ -82,8 +82,8 @@ From **Dashboard → Project Settings**:
 
 | Variable | Where |
 | -------- | ----- |
-| `DATABASE_URL` | Database → Connection pooling → Transaction mode (**port 6543**) |
-| `DIRECT_URL` | Database → Connection string → URI (**port 5432**) |
+| `DATABASE_URL` | Database → Connect → Transaction pooler (**port 6543**) |
+| `DIRECT_URL` | Database → Connect → **Session pooler** (**port 5432**) |
 | `NEXT_PUBLIC_SUPABASE_URL` | API → Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | API → `anon` `public` |
 | `SUPABASE_SERVICE_ROLE_KEY` | API → `service_role` — **server only, never expose** |
@@ -91,6 +91,14 @@ From **Dashboard → Project Settings**:
 Both connection strings need `[YOUR-PASSWORD]` replaced with the password from
 step 1. The two ports are not interchangeable: migrations cannot run through
 pgBouncer, and the app should not hold a direct connection per lambda.
+
+Take **both** from a pooler, not from the "Direct connection" tab. The direct
+host `db.<ref>.supabase.co` publishes an AAAA record and no A record — it is
+IPv6-only unless the project pays for the IPv4 add-on — so on an IPv4-only
+network every Prisma CLI command fails with `P1001: Can't reach database
+server`. The session pooler is on port 5432 and speaks session mode, so
+migrations run through it fine. Its username is `postgres.<project-ref>`,
+not the bare `postgres` the direct string uses.
 
 Also set:
 
@@ -336,9 +344,24 @@ None of these are optional, and none of them are code.
 ## Troubleshooting
 
 **`Error: P1001: Can't reach database server`**
-The connection string still has `[YOUR-PASSWORD]` in it, or the project is
-paused. Free Supabase projects pause after a week of inactivity — open the
-dashboard to wake it.
+Most often the host is `db.<ref>.supabase.co`. That name is IPv6-only — it has
+an AAAA record and no A record — so it is unreachable from an IPv4-only network
+however healthy the project is. Check with `nslookup db.<ref>.supabase.co`; if
+the only answer is a `2a05:`/`2600:` address and `ipconfig` shows you no global
+IPv6 address of your own, that is the whole fault. Use the **session pooler**
+host for `DIRECT_URL` — `aws-N-<region>.pooler.supabase.com:5432`, username
+`postgres.<ref>` — which is IPv4 and still session mode, so migrations run.
+
+Failing that: the connection string still has `[YOUR-PASSWORD]` in it, or the
+project is paused. Free Supabase projects pause after a week of inactivity —
+open the dashboard to wake it.
+
+**`Drift detected` naming only extensions, on a database you never touched**
+`pg_stat_statements`, `pgcrypto`, `uuid-ossp` and `supabase_vault` come
+pre-installed in every Supabase project. They only register as drift if
+`postgresqlExtensions` is enabled in `schema.prisma` — it is deliberately not,
+and must stay off. Do **not** accept the offered reset; it drops the `public`
+schema and every report in it. See the Prisma 7 conventions in `CLAUDE.md`.
 
 **`prisma migrate dev` hangs or errors about a shadow database**
 Hosted Supabase often cannot create one on the fly. Point `SHADOW_DATABASE_URL`
