@@ -57,6 +57,48 @@
 --    `notifications_select_own` — it is the only line that needs it.
 
 -- ---------------------------------------------------------------------------
+-- Schema grants
+-- ---------------------------------------------------------------------------
+--
+-- Everything below this line grants table privileges to `authenticated`, and a
+-- table privilege is worthless without USAGE on the schema that holds it. On a
+-- stock Supabase project the `public` schema is owned by `pg_database_owner`
+-- and already grants USAGE to anon, authenticated and service_role, so the rest
+-- of this file used to assume it.
+--
+-- It cannot. `prisma migrate` offers to reset on drift, and accepting runs
+-- `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` — the schema comes back
+-- owned by `postgres` with `{postgres=UC/postgres}` and nothing else. Nothing
+-- in the application breaks, because Prisma connects as the owner and Auth and
+-- Storage live in their own schemas; what breaks silently is every policy in
+-- this file, because PostgREST never gets far enough to be filtered by one.
+-- The symptom is `42501 permission denied for schema public` and the failure
+-- mode is worse than an error: the policies look applied and enforce nothing.
+--
+-- `anon` is deliberately NOT granted USAGE. It is the role a signed-out browser
+-- gets and no VillageWatch table has a row it should see, so it is kept out one
+-- layer earlier than RLS rather than being filtered by it.
+
+GRANT USAGE ON SCHEMA public TO authenticated, service_role;
+REVOKE USAGE ON SCHEMA public FROM anon;
+
+-- New tables inherit `pg_default_acl`, which on Supabase grants anon and
+-- authenticated *every* privilege on anything `postgres` creates — so the next
+-- Prisma migration would add a table that anon can read, write and delete, with
+-- RLS off, before anyone re-runs this file. Revoking the defaults makes a new
+-- table arrive closed, and every grant below deliberate.
+--
+-- service_role keeps its defaults: it is the admin key, it holds BYPASSRLS, and
+-- the server code that uses it does its own session and village checks.
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL ON TABLES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL ON SEQUENCES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL ON FUNCTIONS FROM anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Helper functions
 -- ---------------------------------------------------------------------------
 --
@@ -145,6 +187,15 @@ ALTER TABLE public."_PatternAlertIncidents" ENABLE ROW LEVEL SECURITY;
 -- Nothing in this schema is public. `anon` is the role a signed-out browser
 -- gets, and no VillageWatch table has a row it should see.
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
+
+-- And start `authenticated` from nothing too, so that every privilege it holds
+-- is one of the explicit GRANTs below. Tables created before the default-ACL
+-- revoke above already carry the Supabase default of *every* privilege to
+-- `authenticated` — including DELETE on `incidents`, which no policy in this
+-- file allows. RLS denies it anyway, but a table privilege nobody meant to
+-- issue is one `FORCE ROW LEVEL SECURITY` or one careless policy away from
+-- mattering.
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM authenticated;
 
 -- ---------------------------------------------------------------------------
 -- villages
