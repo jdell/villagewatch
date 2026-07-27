@@ -3,6 +3,14 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.10](https://github.com/jdell/villagewatch/compare/v0.1.9...v0.1.10) (2026-07-27)
+
+
+### Fixes
+
+* **ci:** read DIRECT_URL from the Production environment ([5b76757](https://github.com/jdell/villagewatch/commit/5b7675776cd3e92ab30280250d396725ce679d01))
+* **reports:** survive a database without parish_council ([522270a](https://github.com/jdell/villagewatch/commit/522270ae0213fdc4449b70c59f6b729b225a3c88))
+
 ### [0.1.9](https://github.com/jdell/villagewatch/compare/v0.1.8...v0.1.9) (2026-07-27)
 
 
