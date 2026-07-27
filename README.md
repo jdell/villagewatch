@@ -96,6 +96,44 @@ render fine and say what is missing — but nothing behind auth will work.
 account to a deployed village, plus a troubleshooting section. The order matters
 and several steps fail unhelpfully if the one before was skipped.
 
+### The sample coordinator account
+
+`npm run db:seed` writes a village, five incidents and one **coordinator**
+profile — `coordinator@example.uk`, which is the account to sign in as to see
+the dashboard, the moderation queue, the audit viewer and the "show the
+reporter's original wording" button.
+
+**Its password is in `.env.local`, under `# --- Sample coordinator sign-in ---`,
+and deliberately not here.** That file is gitignored; this one is on GitHub, and
+a password committed to a public repo stays in the history after it is deleted.
+Coordinator is also the role that can read `rawDescription` and export the CSV,
+so it is not a throwaway login even when the data behind it is invented.
+
+The seed **does not create the Supabase Auth account** — it cannot, since only
+Supabase Auth can mint an identity. It writes the profile row, and `User.id`
+mirrors `auth.users.id`, so the two only line up if `SEED_ADMIN_USER_ID` is set
+to a real auth UID before seeding. Left unset, the seed invents a uuid, warns
+you, and the profile belongs to nobody and cannot sign in.
+
+To create or re-create the account from scratch:
+
+```bash
+# 1. Mint the auth identity, pre-confirmed, with a password you choose.
+#    Anything with the service-role key can do this; the dashboard is easiest:
+#    Supabase → Authentication → Users → Add user → Auto Confirm User.
+#
+# 2. Copy the new row's UID into .env.local:
+#      SEED_ADMIN_USER_ID="<the-uid>"
+#      SEED_ADMIN_EMAIL="coordinator@example.uk"
+#
+# 3. Seed. The profile is created against that UID, so it can sign in.
+npm run db:seed
+```
+
+To reset the password later: Supabase → Authentication → Users → ⋯ → **Reset
+password**. Update the note in `.env.local` when you do, or it goes stale
+silently.
+
 ---
 
 ## Commands
