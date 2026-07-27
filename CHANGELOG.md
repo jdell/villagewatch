@@ -3,6 +3,26 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.13](https://github.com/jdell/villagewatch/compare/v0.1.12...v0.1.13) (2026-07-27)
+
+
+### Features
+
+* **scripts:** add a dry-run cleanup for the seed village's sample data ([e726f14](https://github.com/jdell/villagewatch/commit/e726f1419a07b9ca5ead9b3516502e190d3b925c))
+
+
+### Fixes
+
+* **push:** resolve the OneSignal app id from either variable, and read the send response ([320bc95](https://github.com/jdell/villagewatch/commit/320bc95a130cf8218bce04e55da287941b12a107))
+
+
+### Documentation
+
+* **backlog:** close the July work and record what is left ([1175b50](https://github.com/jdell/villagewatch/commit/1175b50f6b761cac122cd8390e8356b524d39b7a)), closes [#3](https://github.com/jdell/villagewatch/issues/3)
+* **dpia:** assess the processing before a real resident registers ([a1de6e2](https://github.com/jdell/villagewatch/commit/a1de6e2d958dcd6ee69460a0e81bdfed726f5d48))
+* **setup:** document the migration order and what is still unapplied ([4f3968b](https://github.com/jdell/villagewatch/commit/4f3968b192d4a07231184bd18f6405edb71cc7dc))
+* the OneSignal checklist, the seed cleanup, and a walk through the ten core flows ([c204c18](https://github.com/jdell/villagewatch/commit/c204c18a75c495762e76cdaa71233087ca60a1b0))
+
 ### [0.1.12](https://github.com/jdell/villagewatch/compare/v0.1.11...v0.1.12) (2026-07-27)
 
 
