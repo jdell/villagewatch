@@ -318,7 +318,8 @@ turns it on.
 1. In WhatsApp: **Updates → + → New channel**. Name it after the village.
 2. **Copy link** on the channel gives a public invite link.
 3. Sign in as that village's coordinator → **/dashboard** → **WhatsApp
-   Channel** → paste it into **Invite link** → save.
+   Channel** → paste it into the one field → save. The channel code the posting
+   half needs is read out of the link; there is nothing else to enter.
 
 Every resident of that village now sees a **Follow on WhatsApp** button on
 their `/settings` page. Villages that have not set one up see *"WhatsApp
@@ -349,19 +350,20 @@ The app POSTs `{ channelId, text }` with `Authorization: Bearer <token>`. If
 your provider wants a different envelope, adapt `post()` in
 `src/lib/whatsapp-channel.ts` — every call site stays the same.
 
-Then, per village, the coordinator fills in the other two fields on the same
-dashboard form:
+**There is nothing more to paste in.** The channel code the relay posts to is
+the last segment of the invite link, so the app reads it out of what the
+coordinator already entered and shows it back under the field ("Channel code:
+`0029Va…` extracted"). There is no second box to fill in and no credential for a
+coordinator to go and find. Only two switches remain on the same dashboard form:
 
-- **Channel id** — the identifier the relay posts to. Never shown to residents;
-  treat it as a credential.
 - **Post published alerts to the channel** — off by default. This is the switch
   that widens the audience for every alert published afterwards from "signed-in
   residents of this village" to anyone holding the link.
 - **Post anything at or above** — defaults to **High**, deliberately stricter
   than the push default of Low. A missing cat does not belong on a public feed.
 
-Enabling posting with no channel id is rejected by the form: it would read as
-on and post nothing.
+A link with no channel code in it is rejected by the form, and so is switching
+posting on without one: it would read as on and post nothing.
 
 Leave `WHATSAPP_CHANNEL_API_URL` blank and posts are written to the server
 console instead of sent — `skipped: "not_configured"`, a supported state, same

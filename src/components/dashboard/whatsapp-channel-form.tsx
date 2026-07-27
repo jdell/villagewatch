@@ -3,9 +3,10 @@
 import { useActionState, useEffect, useId, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
-import { ExternalLink, Loader2, MessageCircle } from "lucide-react";
+import { Check, ExternalLink, Loader2, MessageCircle } from "lucide-react";
 import type { Severity } from "@/generated/prisma/enums";
 import { SEVERITIES, WHATSAPP_CHANNELS_HELP_URL } from "@/lib/constants";
+import { extractChannelCode } from "@/lib/validations";
 import {
   saveChannelSettingsAction,
   type ChannelSettingsState,
@@ -14,10 +15,17 @@ import {
 /**
  * Where a coordinator points their village's WhatsApp Channel.
  *
- * These four values are per-village columns on `Village`, not environment
- * variables — one deployment serves many villages and each runs its own
- * channel. The only platform-level part is the relay account the server posts
- * through, which is not on this screen and never will be.
+ * **One field does the work of two.** The channel code a relay posts to is the
+ * last segment of the invite link, so this screen asks only for the link and
+ * derives the code from it — see `extractChannelCode`. The old separate "Channel
+ * id" box asked a coordinator to find the same string twice, described it as a
+ * credential, and let the two disagree: alerts could go to one channel while
+ * residents followed another, with nothing on screen to show it.
+ *
+ * These values are per-village columns on `Village`, not environment variables —
+ * one deployment serves many villages and each runs its own channel. The only
+ * platform-level part is the relay account the server posts through, which is
+ * not on this screen and never will be.
  *
  * On the dashboard rather than in `/settings` because it is a village setting,
  * not a personal one: `/settings` is where a resident decides what *they* hear,
@@ -36,7 +44,11 @@ export type ChannelSettingsValues = {
    * the follow link on `/settings` goes through `safeChannelUrl` first.
    */
   url: string | null;
-  id: string | null;
+  /**
+   * No `id`. The stored `whatsappChannelId` is not a field on this form and not
+   * a prop: it is read out of the link above by `extractChannelCode`, shown back
+   * as a preview, and written by the server on save.
+   */
   enabled: boolean;
   minSeverity: Severity;
 };
@@ -80,8 +92,8 @@ export function WhatsAppChannelForm({
 }) {
   const [state, save] = useActionState(saveChannelSettingsAction, IDLE);
   const [enabled, setEnabled] = useState(values.enabled);
+  const [url, setUrl] = useState(values.url ?? "");
   const urlId = useId();
-  const channelId = useId();
 
   useEffect(() => {
     if (!state.message) return;
@@ -90,6 +102,10 @@ export function WhatsAppChannelForm({
   }, [state]);
 
   const errors = state.fieldErrors ?? {};
+  // The same function the server derives the stored column with, so the preview
+  // cannot promise a code the save would not produce.
+  const trimmedUrl = url.trim();
+  const code = trimmedUrl === "" ? null : extractChannelCode(trimmedUrl);
 
   return (
     <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
@@ -117,7 +133,7 @@ export function WhatsAppChannelForm({
             htmlFor={urlId}
             className="block text-sm font-medium text-slate-700"
           >
-            Invite link
+            Paste your WhatsApp Channel invite link
           </label>
           <input
             id={urlId}
@@ -125,43 +141,48 @@ export function WhatsAppChannelForm({
             type="url"
             inputMode="url"
             maxLength={500}
-            defaultValue={values.url ?? ""}
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
             placeholder="https://whatsapp.com/channel/0029Va…"
-            className={FIELD_CLASS}
-          />
-          <p className="mt-1.5 text-xs text-slate-500">
-            The public link WhatsApp gives you under &ldquo;Copy link&rdquo;.
-            Every resident sees a &ldquo;Follow on WhatsApp&rdquo; button on
-            their settings page once this is set. It must start{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5">https://</code>.
-          </p>
-          <FieldError message={errors.whatsappChannelUrl} />
-        </div>
-
-        <div>
-          <label
-            htmlFor={channelId}
-            className="block text-sm font-medium text-slate-700"
-          >
-            Channel id
-          </label>
-          <input
-            id={channelId}
-            name="whatsappChannelId"
-            type="text"
-            maxLength={200}
-            defaultValue={values.id ?? ""}
-            placeholder="0029Va…"
             autoComplete="off"
             spellCheck={false}
             className={FIELD_CLASS}
           />
+
+          {/*
+            The one piece of feedback this screen owes a coordinator. The code
+            inside the link is what a relay posts to, and it is now derived
+            rather than typed — so it has to be visible, or enabling posting is
+            a switch with nothing legible behind it.
+          */}
+          {code && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-emerald-700">
+              <Check className="size-3.5 shrink-0" aria-hidden />
+              <span>
+                Channel code:{" "}
+                <code className="rounded bg-emerald-50 px-1 py-0.5 font-medium">
+                  {code}
+                </code>{" "}
+                extracted
+              </span>
+            </p>
+          )}
+          {trimmedUrl !== "" && !code && (
+            <p className="mt-2 text-xs text-amber-700">
+              No channel code in that link — it should look like{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5">
+                https://whatsapp.com/channel/0029Va…
+              </code>
+            </p>
+          )}
+
           <p className="mt-1.5 text-xs text-slate-500">
-            Only needed to post automatically. It is never shown to residents —
-            it is the address alerts are written to, so treat it like a
-            credential.
+            The public link WhatsApp gives you under &ldquo;Copy link&rdquo;.
+            Every resident sees a &ldquo;Follow on WhatsApp&rdquo; button on
+            their settings page once this is set, and the channel code alerts are
+            posted to is read out of the link — there is nothing else to fill in.
           </p>
-          <FieldError message={errors.whatsappChannelId} />
+          <FieldError message={errors.whatsappChannelUrl} />
         </div>
 
         <div className="rounded-xl bg-amber-50 p-3.5 ring-1 ring-inset ring-amber-600/20">

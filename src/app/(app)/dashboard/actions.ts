@@ -146,9 +146,11 @@ export async function saveChannelSettingsAction(
     return { ok: false, message: "You are not attached to a village." };
   }
 
+  // No `whatsappChannelId` here on purpose — the schema derives it from the
+  // invite link. A posted one would be a way to send the village's public
+  // alerts somewhere other than the channel residents are following.
   const parsed = villageChannelFormSchema.safeParse({
     whatsappChannelUrl: formData.get("whatsappChannelUrl") ?? "",
-    whatsappChannelId: formData.get("whatsappChannelId") ?? "",
     // An unchecked checkbox is absent from the payload entirely.
     whatsappEnabled: formData.get("whatsappEnabled") ?? "",
     whatsappMinSeverity: formData.get("whatsappMinSeverity"),

@@ -1,6 +1,7 @@
 import type { Severity } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { formatTimeAgo } from "@/lib/format";
+import { extractChannelCode } from "@/lib/validations";
 import {
   SEVERITY_META,
   WHATSAPP_POST_MAX_CHARS,
@@ -35,10 +36,12 @@ import {
  *
  * ## The channel is the village's, the relay account is the platform's
  *
- * Both halves of a channel's identity — the public invite link and the id a
- * relay posts to — live on the `Village` row and are set by its own coordinator
- * from the dashboard. Nothing about *which* channel is an environment variable,
- * because a deployment serves many villages and each one runs its own.
+ * Both halves of a channel's identity — the public invite link and the code a
+ * relay posts to — live on the `Village` row, and a coordinator now supplies
+ * only the first: the code is the last segment of the link, so the dashboard
+ * asks for the link alone and `extractChannelCode` derives the rest. Nothing
+ * about *which* channel is an environment variable, because a deployment serves
+ * many villages and each one runs its own.
  *
  * What is platform-level is the relay itself: `WHATSAPP_CHANNEL_API_URL` and
  * `WHATSAPP_CHANNEL_API_TOKEN` are one account with one endpoint, shared by
@@ -106,8 +109,11 @@ export type ChannelPostResult = {
 /**
  * A village's channel configuration.
  *
- * `url` is public and safe to render. `id` is not — it is the address a relay
- * writes to, and it never leaves the server.
+ * `url` is public and safe to render. `id` is the code a relay writes to. It is
+ * the last segment of `url` and no longer a secret in any meaningful sense —
+ * anyone holding the invite link holds it too — but it stays server-side out of
+ * habit rather than need: no screen has a reason to show it except the dashboard
+ * form, which derives its own preview from the link.
  */
 export type VillageChannel = {
   url: string | null;
@@ -115,6 +121,22 @@ export type VillageChannel = {
   enabled: boolean;
   minSeverity: Severity;
 };
+
+/**
+ * The code to post to, given what is actually stored on the row.
+ *
+ * A saved-through-the-dashboard village has `whatsappChannelId` equal to the
+ * code in its link — the form derives one from the other. The fallback is for
+ * every other way a row got here: these columns predate the screen and were set
+ * by hand in psql for as long as they have existed, and a village with a link
+ * and an empty id would otherwise be a channel that is configured, enabled, and
+ * silently skipped with `no_channel`. The stored id still wins when there is
+ * one, so a hand-set code nobody has re-saved keeps working.
+ */
+function channelCode(id: string | null, url: string | null): string | null {
+  if (id) return id;
+  return url ? extractChannelCode(url) : null;
+}
 
 /**
  * Reads one village's channel settings.
@@ -153,22 +175,25 @@ export async function getVillageChannel(
 
   return {
     url: safeChannelUrl(village.whatsappChannelUrl),
-    id: village.whatsappChannelId,
+    id: channelCode(village.whatsappChannelId, village.whatsappChannelUrl),
     enabled: village.whatsappEnabled,
     minSeverity: village.whatsappMinSeverity,
   };
 }
 
 /**
- * The raw column values, for the screen that edits them.
+ * The raw column values, for the screen that edits them and the audit row that
+ * records the change.
  *
- * Distinct from `getVillageChannel` in one way that matters: `url` is **not**
- * put through `safeChannelUrl`. A coordinator whose village has a bad link in
+ * Distinct from `getVillageChannel` in two ways that matter. `url` is **not**
+ * put through `safeChannelUrl`: a coordinator whose village has a bad link in
  * that column needs to see the bad link in the field in order to correct it —
  * blanking it would tell them the setting is empty and lose what is stored on
  * the next save. Rendering it into a text input is safe; rendering it into an
  * `href` is what `safeChannelUrl` guards, and that path still goes through
- * `getVillageChannel`.
+ * `getVillageChannel`. And `id` is **not** put through `channelCode`: this is
+ * the `before` half of the audit trail, which has to say what was in the column
+ * rather than what the posting path would have made of it.
  */
 export async function getVillageChannelSettings(
   villageId: string,
@@ -207,10 +232,14 @@ export async function getVillageChannelSettings(
 /**
  * Writes one village's channel settings.
  *
- * The only place these four columns are set from the application. It takes a
- * `villageId` and never reads one — the caller resolves it from the session
- * profile (domain rule 4), because a village id in a form post is a way to
- * configure somebody else's channel.
+ * The only place these four columns are set from the application. `id` is not a
+ * value a coordinator types — `villageChannelFormSchema` derives it from `url`
+ * before this is called — so the two cannot drift apart into a village whose
+ * residents follow one channel while its alerts are posted to another.
+ *
+ * It takes a `villageId` and never reads one — the caller resolves it from the
+ * session profile (domain rule 4), because a village id in a form post is a way
+ * to configure somebody else's channel.
  *
  * Unlike everything else in this module it **does** throw on a database error:
  * a save that silently failed would leave the coordinator looking at the values

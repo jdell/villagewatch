@@ -369,7 +369,6 @@ export default async function DashboardPage() {
         <WhatsAppChannelForm
           values={{
             url: channel?.url ?? null,
-            id: channel?.id ?? null,
             enabled: channel?.enabled ?? false,
             // The column default, and deliberately higher than the push
             // default — a public feed is not the place for a missing cat.

@@ -765,6 +765,21 @@ the app that discloses outside the village.
   deployment serves many villages and each runs its own. `WHATSAPP_CHANNEL_API_URL`
   and `WHATSAPP_CHANNEL_API_TOKEN` are the one shared thing, because they are one
   relay account rather than one feed.
+- **The coordinator fills in one field, not two.** `whatsappChannelId` is still a
+  column, but it is *derived* from the invite link by `extractChannelCode` in
+  `src/lib/validations.ts` — the code a relay posts to is the last segment of the
+  link WhatsApp hands the channel owner under "Copy link", so asking for it
+  separately asked somebody to split a string by hand and let the two disagree:
+  alerts to one channel, residents following another, nothing on screen to show
+  it. The form previews the extracted code back, because a derived value that
+  silently came out empty is the failure this replaced. Anything posted as
+  `whatsappChannelId` is ignored — the transform on `villageChannelFormSchema` is
+  the only thing that sets that column from the application.
+  `getVillageChannel` falls back to the code in the link when the column is empty,
+  which is what keeps the rows set by hand in psql — the only rows that have ever
+  existed — from being enabled, configured and silently skipped as `no_channel`.
+  A relay that addresses a channel by something other than its invite code needs
+  that resolved at the relay.
 - **The follow link needs none of that.** A coordinator pastes the invite link
   into the dashboard form and `/settings` renders "Follow on WhatsApp" for every
   resident of that village; a village without one shows "WhatsApp Channel not set
@@ -1079,7 +1094,8 @@ open:
   a made-up number there is a false statement to a parish clerk deciding whether
   to hand over their residents' reports.
 - **The WhatsApp Channel has a UI now but still no relay.** All four `Village`
-  columns are set by a coordinator on `/dashboard`, validated by
+  columns are set from `/dashboard` — three by the coordinator and
+  `whatsappChannelId` derived from the invite link — validated by
   `villageChannelFormSchema`. What is still missing is the other end:
   `WHATSAPP_CHANNEL_API_URL` is unset, so every post logs and reports
   `skipped: "not_configured"` — a supported state, like OneSignal. Nothing has

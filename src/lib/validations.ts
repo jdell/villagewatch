@@ -634,21 +634,50 @@ function isHttpsUrl(value: string): boolean {
 }
 
 /**
+ * Pulls the channel code out of a WhatsApp Channel invite link.
+ *
+ * The code is the last segment of the link WhatsApp hands a channel owner under
+ * "Copy link" — `https://whatsapp.com/channel/0029Va…` — and it is also the
+ * address a posting relay writes to. They were two fields on the dashboard until
+ * now, which asked a coordinator to find the same string twice and to know that
+ * the second one was a credential; the link is the only thing WhatsApp actually
+ * gives them, so the code is derived from it here and never typed.
+ *
+ * Deliberately a loose `match` rather than a `URL` parse: WhatsApp has used both
+ * `whatsapp.com` and `chat.whatsapp.com`, links arrive with tracking query
+ * strings attached, and residents paste them out of messages. Anything with a
+ * recognisable `whatsapp.com/channel/<code>` in it yields the code. The
+ * `https:` requirement is a separate check — see `isHttpsUrl` — because this one
+ * says nothing about the protocol.
+ */
+export function extractChannelCode(url: string): string | null {
+  const match = url.match(/whatsapp\.com\/channel\/([A-Za-z0-9]+)/);
+  return match ? match[1] : null;
+}
+
+/**
  * The coordinator's WhatsApp Channel settings, posted from the dashboard.
  *
  * A `<form>`, so the same two shape problems `settingsFormSchema` has: an empty
  * text field arrives as `""` rather than absent, and an unchecked box does not
  * arrive at all.
  *
- * Both channel fields are per-village and neither is an env var. Only the API
- * token the relay authenticates with is platform-level — one deployment, one
- * relay account, many channels.
+ * **`whatsappChannelId` is derived, not posted.** It is the code inside the
+ * invite link, so asking for it separately was asking the coordinator to split a
+ * string by hand and gave them a way to point the village's public alerts at a
+ * channel other than the one residents follow. The transform below is now the
+ * only thing that sets that column from the application.
+ *
+ * Both values are per-village and neither is an env var. Only the API token the
+ * relay authenticates with is platform-level — one deployment, one relay
+ * account, many channels.
  *
  * The refine at the end is the one rule worth enforcing: `whatsappEnabled` with
- * no `whatsappChannelId` behind it is a switch that reads as on and posts
- * nothing, because `postIncidentToChannel` skips with `no_channel`. A
- * coordinator who thinks the village is mirroring alerts and is not would find
- * out weeks later, from nobody.
+ * no channel behind it is a switch that reads as on and posts nothing, because
+ * `postIncidentToChannel` skips with `no_channel`. A coordinator who thinks the
+ * village is mirroring alerts and is not would find out weeks later, from
+ * nobody. It points at the link now, because the link is the only field left to
+ * correct.
  */
 export const villageChannelFormSchema = z
   .object({
@@ -659,21 +688,26 @@ export const villageChannelFormSchema = z
       .transform((value) => (value === "" ? null : value))
       .refine((value) => value === null || isHttpsUrl(value), {
         error: "Paste the https:// invite link WhatsApp gives you",
+      })
+      .refine((value) => value === null || extractChannelCode(value) !== null, {
+        error:
+          "That is not a channel link — it should look like https://whatsapp.com/channel/0029Va…",
       }),
-    whatsappChannelId: z
-      .string()
-      .trim()
-      .max(200, "Keep the channel id under 200 characters")
-      .transform((value) => (value === "" ? null : value)),
     whatsappEnabled: z
       .union([z.literal("on"), z.literal("")])
       .optional()
       .transform((value) => value === "on"),
     whatsappMinSeverity: z.enum(SEVERITY_VALUES),
   })
+  .transform((v) => ({
+    ...v,
+    whatsappChannelId: v.whatsappChannelUrl
+      ? extractChannelCode(v.whatsappChannelUrl)
+      : null,
+  }))
   .refine((v) => !v.whatsappEnabled || Boolean(v.whatsappChannelId), {
-    error: "Add the channel id, or posting will silently do nothing",
-    path: ["whatsappChannelId"],
+    error: "Add the invite link, or posting will silently do nothing",
+    path: ["whatsappChannelUrl"],
   });
 
 export type VillageChannelFormInput = z.output<typeof villageChannelFormSchema>;
