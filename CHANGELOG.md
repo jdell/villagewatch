@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.7](https://github.com/jdell/villagewatch/compare/v0.1.6...v0.1.7) (2026-07-27)
+
+
+### Features
+
+* **whatsapp:** copy the published alert instead of posting it ([f791940](https://github.com/jdell/villagewatch/commit/f791940f1b6e374049ec3678a6a08c5988b9f3f8))
+
 ### [0.1.6](https://github.com/jdell/villagewatch/compare/v0.1.5...v0.1.6) (2026-07-27)
 
 
