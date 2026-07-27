@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Download,
   FileText,
   Inbox,
   MapPin,
@@ -21,6 +20,7 @@ import {
 import type { QueuedIncident } from "@/components/dashboard/moderation-card";
 import { ModerationQueue } from "@/components/dashboard/moderation-queue";
 import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
+import { ExportCsvButton } from "@/components/dashboard/export-csv-button";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { WhatsAppChannelForm } from "@/components/dashboard/whatsapp-channel-form";
 import { NoVillage } from "@/components/no-village";
@@ -245,14 +245,7 @@ export default async function DashboardPage() {
             Audit trail
           </Link>
 
-          <a
-            href="/api/dashboard/export"
-            download
-            className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-          >
-            <Download className="size-4" aria-hidden />
-            Export CSV
-          </a>
+          <ExportCsvButton />
         </div>
       </div>
 
