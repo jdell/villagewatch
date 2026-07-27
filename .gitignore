@@ -43,3 +43,10 @@ next-env.d.ts
 
 # generated Prisma client — rebuilt by `postinstall`
 /src/generated/prisma
+
+# ONS bulk downloads — `npm run download:ons` fetches these on demand.
+# 47MB of Crown copyright data that anyone can re-fetch in thirty seconds.
+# `data/cambridgeshire-villages.json` is NOT ignored: it is the small committed
+# snapshot the seed falls back to when the Open Geography Portal is unreachable.
+/data/ons-places.csv
+/data/*.csv

@@ -296,6 +296,15 @@ export default function PrivacyPage() {
             and your name against the report even when you filed anonymously to
             other residents.
           </Definition>
+          <Definition term="Anyone, if your village runs a WhatsApp Channel">
+            A WhatsApp Channel is public: anyone holding the invite link can
+            read it, in or out of the village. Your village coordinator decides
+            whether to run one, and it is switched off unless they turn it on.
+            When it is on, published reports at or above the severity they set
+            are posted as a headline, an approximate area, how long ago it
+            happened, and a link back to this app. Never your name, never your
+            original wording, never the coordinates, and never a photograph.
+          </Definition>
           <Definition term="The police, on request">
             Where there is a lawful basis to disclose, such as a formal request
             in the investigation of a crime. Your parish council decides this,

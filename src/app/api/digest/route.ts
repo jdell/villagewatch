@@ -7,6 +7,7 @@ import {
   type DigestIncident,
 } from "@/lib/ai/weekly-digest";
 import { notifyCoordinatorsOfDigest } from "@/lib/notifications";
+import { postDigestToChannel } from "@/lib/whatsapp-channel";
 import {
   DIGEST_MAX_INCIDENTS,
   DIGEST_WINDOW_DAYS,
@@ -57,6 +58,8 @@ type VillageOutcome = {
   detail?: string;
   patternAlertId?: string;
   notified?: number;
+  /** Whether the summary also went to the village's public WhatsApp Channel. */
+  channel?: string;
 };
 
 async function runDigest(request: NextRequest) {
@@ -210,12 +213,24 @@ async function digestVillage(input: {
     summary: digest.summary,
   });
 
+  // The public half of the week's roundup, for villages that run a channel.
+  // `digest.summary` only — the hotspots and advice folded into the
+  // `PatternAlert` above are a working document for coordinators, and the
+  // hotspot lines in particular name the areas a village is worried about,
+  // which is not something to put in front of an unauthenticated audience.
+  const channel = await postDigestToChannel({
+    villageId: village.id,
+    title: digest.title,
+    summary: digest.summary,
+  });
+
   return {
     village: village.name,
     incidents: incidents.length,
     status: "written",
     patternAlertId: alert.id,
     notified: push.sent,
+    channel: channel.posted ? "posted" : channel.skipped,
     detail: result.ok ? `Summarised by ${result.model}` : `AI unavailable (${result.code})`,
   };
 }

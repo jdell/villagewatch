@@ -168,6 +168,7 @@ src/
     auth.ts                   getSession / requireSession / requireRole
     moderation.ts             applyModeration + audited readRawDescription
     notifications.ts          OneSignal dispatch, audience rules — server only
+    whatsapp-channel.ts       Public channel posting — server only, opt-in, no official API
     cron.ts                   Constant-time CRON_SECRET check, shared by both jobs
     email/                    Templates only — no transport. layout, welcome,
                               weekly-digest, incident-notification
@@ -188,8 +189,12 @@ src/
 prisma/
   schema.prisma
   seed.ts                     One village, 5 incidents, 1 pattern alert; idempotent
+  seed-villages.ts            The ONS village directory — parish layer, PENDING
   sql/postgis.sql             Extension, triggers, GiST indexes
   sql/rls_policies.sql        Row-level security — apply after postgis.sql
+data/
+  cambridgeshire-villages.json  Committed snapshot — the offline seed fallback
+  ons-places.csv              The IPN download. Gitignored, 47MB, fetched on demand
 public/
   manifest.json               PWA manifest — start_url /map, two shortcuts
   sw.js                       Offline worker. Caches the shell only, never HTML
@@ -198,9 +203,11 @@ public/
   onesignal/                  OneSignal's worker, scoped away from root
 scripts/
   generate-icons.mjs          Authoring tool — renders the icons, run by hand
+  download-ons-places.ts      Finds + fetches the newest IPN release, unzips it
+  convert-grid-refs.ts        OSGB36 → WGS84 via geodesy; library + CLI
 .github/workflows/
   version.yml                 standard-version bump on a releasable push to main
-SETUP.md                      Twelve-step first-run guide + troubleshooting
+SETUP.md                      Thirteen-step first-run guide + troubleshooting
 ```
 
 ---
@@ -315,6 +322,23 @@ separately by everything else.
   not carved out with it: there is no denormalised village column, so nulling
   it would destroy the only record of which village an entry belongs to.
   `DELETE FROM villages` therefore still fails, and should.
+- **`villages` and `incidents` grant SELECT per column, not table-wide.**
+  `join_code`, `whatsapp_channel_id` and `raw_description` are credentials or
+  verbatim personal data, and a row policy cannot withhold a column — a
+  table-wide grant hands all three to anyone with the anon key regardless of
+  what the application selects. Safe columns are listed rather than unsafe ones
+  revoked, so a column added later is withheld until someone thinks about it.
+  Add a `Village` or `Incident` column and it needs a line there before a
+  browser can read it. The cost is that `select=*` from PostgREST errors rather
+  than quietly returning less — a loud failure over a silent one.
+- **The `public` schema's role grants are set here, not assumed.** A
+  `prisma migrate` reset runs `DROP SCHEMA public CASCADE` and the schema comes
+  back with no grants to `anon`, `authenticated` or `service_role`. Nothing in
+  the app breaks — Prisma is the owner — but every policy in the file goes
+  dormant, failing at `42501 permission denied for schema public` before a
+  policy is consulted, which reads as applied and enforces nothing. `anon` is
+  deliberately left without USAGE, and the Supabase default ACLs are revoked so
+  the next migration's table arrives closed rather than fully readable.
 - The file documents its two departures from the Day 5 brief: incident SELECT
   covers `RESOLVED` as well as `PUBLISHED` (matching
   `PUBLIC_INCIDENT_STATUSES`), and notification SELECT is own-rows-only rather
@@ -489,6 +513,9 @@ npx eslint .             # Lint
 npx prisma generate      # Regenerate client after schema changes
 npx prisma migrate dev   # Create + apply a migration locally
 npm run db:seed          # Seed one village — set SEED_ADMIN_USER_ID first
+npm run download:ons     # Fetch the ONS Index of Place Names to data/ (47MB)
+npm run db:seed:villages # Seed the Cambridgeshire directory — 270 parishes
+npm run db:seed:villages:all      # Every parish in England — 10,670
 npx prisma studio        # Browse data
 npm run release:patch    # Bump version + changelog by hand (CI usually does it)
 node scripts/generate-icons.mjs   # Re-render the PWA icons from the brand mark
@@ -553,6 +580,106 @@ else calls into it.
 - Only public columns reach a payload. A lock screen is the least private
   surface there is.
 
+## The WhatsApp Channel
+
+`src/lib/whatsapp-channel.ts`. Optional, off by default, and the only surface in
+the app that discloses outside the village.
+
+- **There is no official API for this.** Meta's Cloud API sends messages to
+  phone numbers; it has no endpoint that posts to a Channel. Third-party relays
+  (Whapi and similar) do it by driving the WhatsApp Web protocol, which can
+  breach WhatsApp's terms and get the number banned. So the module is a
+  provider-agnostic `POST {channelId, text}` to `WHATSAPP_CHANNEL_API_URL` and
+  takes no view on who answers. Change providers in `post()`; every call site
+  stays the same.
+- **The follow link needs none of that.** Set `Village.whatsappChannelUrl` and
+  `/settings` renders "Follow on WhatsApp". That half is officially supported,
+  needs no credentials, and is what most villages will actually use.
+- **A channel is public**, so the rules are stricter than anywhere else:
+  `whatsappEnabled` defaults false, `whatsappMinSeverity` defaults **HIGH** (push
+  defaults to LOW), and `ChannelIncident` has no field that could carry
+  `rawDescription`, `lat` or `lng` — the same structural guard
+  `IncidentEmailInput` uses. `locationText` is the one field whose audience
+  widens; it is the anonymised landmark, and an alert with no place is not an
+  alert.
+- The post carries a headline, an area, a time and a **link** — not the
+  `description`. Anyone entitled to the full report can open the link and sign
+  in.
+- **Nothing throws**, same contract as `notifications.ts`. Unconfigured relay,
+  timeout and a 500 all log and return `posted: false` with a reason. The relay
+  call sits inside a coordinator's Approve click, so it has an 8s timeout
+  (`WHATSAPP_RELAY_TIMEOUT_MS`) and runs *after* the push rather than racing it.
+- **No `Notification` rows** — that table is one row per user per delivery and a
+  channel has no known recipients. **No `AuditLog` row** either: the post is a
+  deterministic consequence of `incident.publish` plus the village's own
+  configuration, both already in the trail.
+- `getVillageChannel()` refuses to return a `url` that is not `https:`. Nothing
+  validates that column on the way in, and a `javascript:` URL rendered into
+  `/settings` would be stored XSS against the whole village.
+- **`/privacy` §6 names this disclosure and the landing-page FAQ carves it out.**
+  Both are statements about how the code behaves — change what a post contains
+  and they change in the same commit.
+
+## The village directory
+
+`prisma/seed-villages.ts`, fed by `scripts/download-ons-places.ts`. Builds the
+empty directory a resident picks their village out of, from the ONS Index of
+Place Names. Distinct from `prisma/seed.ts`, which builds one village with
+sample incidents in it; neither needs the other.
+
+- **The IPN's `descnm` is a code, not a word.** There is no "Village" or
+  "Hamlet" value to filter on and has not been since the 2021 release. The
+  layers are `PAR` (civil parish), `COM` (Welsh community) and `LOC` (locality),
+  plus a dozen administrative geographies — wards, districts, unitary
+  authorities, built-up areas — which are never seeded.
+- **The default is the parish layer**, `PAR` + `COM`: 10,670 in England, 878 in
+  Wales. That is the unit a watch scheme organises around — a parish council, a
+  clerk, a boundary everyone agrees on. `LOC` is 61,000 rows and mostly
+  farmsteads and field names; `--include-localities` opts into it.
+- **Dedupe on the ONS code, never the name.** A place straddling a boundary
+  appears once per geography (`splitind = 1`), so the 298 parishes tagged
+  Cambridgeshire arrive as 358 rows. The key is `par23cd` for a parish and
+  `placeid` for a locality — and it has to be layer-dependent, because a
+  locality row also carries the `par23cd` of the parish it sits in, which would
+  collapse every hamlet in a parish into one village.
+- Split members collapse to their **medoid**, not their mean. The widest split
+  in the file spans 82km and its mean is in neither half.
+- **`--county` filters after the collapse, not before**, and the ordering is
+  load-bearing. 747 English parishes have rows in more than one lieutenancy
+  county; filtering rows first would give each one a different county — and so a
+  different slug — depending on what you asked for, and seeding Cambridgeshire
+  and then England would list Barnack twice, once per county. Collapsing first
+  lets the medoid decide, so a parish has one county however it is selected.
+  Cambridgeshire ends up with 270 of its 298 for that reason.
+- **Slugs are `name-county`**, with the district added for the 44 English
+  name/county pairs that collide (`aislaby-whitby-north-yorkshire`) and a
+  counter behind that. Uniqueness is enforced against a set as they are built,
+  so the column's `@unique` is never what discovers a clash.
+- **Everything lands `PENDING` with no join code.** `PENDING` already renders as
+  "Pending approval" in `VILLAGE_STATUS_LABELS` and already means "exists, not
+  yet live" — there is deliberately no second `PENDING_APPROVAL` value, which
+  would leave two dormant statuses with nothing to tell them apart.
+- **Re-running refreshes but never clobbers.** New slugs are inserted; a village
+  still at `PENDING` has its ONS-derived fields updated if the next release
+  moved or renamed it; anything past `PENDING` is skipped entirely, so a
+  coordinator's adjusted map centre survives the annual refresh. `createMany` +
+  a targeted update rather than a blind upsert, for that reason and because
+  10,670 upserts is 10,670 round trips.
+- `Village.country` is `Char(2)`, so every IPN country is `GB`. Which one a
+  village is actually in survives in `description` and `region`.
+- **The encoding is sniffed, not assumed.** ONS ships the CSV as Windows-1252
+  and `download:ons` transcodes it, so both are in circulation — and a
+  hand-unzipped copy is the untranscoded one. Guessing wrong turns
+  `A' Chrìon Làraich` into mojibake and the village becomes unfindable by the
+  people who live in it.
+- **Attribution is a licence condition.** The IPN is OGL v3.0, which asks for an
+  acknowledgement wherever the data is shown. `ONS_ATTRIBUTION` in
+  `src/lib/constants.ts` holds it. Nothing renders it because nothing renders
+  the directory yet — that is a debt, not a decision.
+- `data/ons-places.csv` is gitignored; `data/cambridgeshire-villages.json` is
+  not. The snapshot is the same pipeline's output, committed, so the directory
+  can be seeded with no network at all.
+
 ## The weekly digest
 
 `GET|POST /api/digest`, wired to Sunday 09:00 UTC in `vercel.json`. This is what
@@ -591,13 +718,30 @@ moderation queue, CSV export, the weekly digest cron, settings, the RLS
 policies, rate limiting, the legal pages, home-location capture, the audit
 viewer, security headers, the error pages, the retention cron, the seed script,
 `SETUP.md`, auto-versioning, PWA install and offline support, the email
-templates and the onboarding tour. Still open:
+templates, the onboarding tour and the ONS village directory pipeline. Still
+open:
 
 - The Supabase project exists (eu-west-2), the first migration is applied, and
   `postgis.sql` and `rls_policies.sql` have both been run against it. The
   `incident-media` bucket exists, private. What has **not** happened: no
   production deployment, no Vercel environment variables, no cron has ever
   fired.
+- **The village directory has never been seeded against the real database**,
+  because there is not one yet. The whole pipeline has been run end to end
+  against the real July 2024 release and a throwaway local Postgres: 10,670
+  England parishes in 2.9s, re-runs idempotent, a village moved to `ACTIVE` by
+  hand left untouched while a drifted `PENDING` one was refreshed. What that
+  scratch database did **not** have is PostGIS, RLS, or the rest of the schema —
+  so `Village.boundary` and the policies in `rls_policies.sql` are still
+  unexercised against a seeded directory.
+- **Nothing renders the directory.** There is no village picker, no county
+  search and no way for a resident to choose a seeded village — registration
+  still takes a join code. Seeding 10,670 villages today puts 10,670 dormant
+  rows in a table nothing reads. When a picker is built it must carry
+  `ONS_ATTRIBUTION`.
+- **No way to claim a directory entry.** A seeded village is `PENDING` forever:
+  there is no flow that promotes it to `ACTIVE`, assigns a coordinator or mints
+  a join code. That flow is what makes the directory worth seeding.
 - **The retention job has never run against data.** It deletes files and takes
   reports off the map, and every line of it is untested against a real bucket.
   Watch the first run and read the counts in the response before trusting the
@@ -633,6 +777,15 @@ templates and the onboarding tour. Still open:
   villages" figure. Set it when somebody can point at the list, and not before:
   a made-up number there is a false statement to a parish clerk deciding whether
   to hand over their residents' reports.
+- **The WhatsApp Channel has no UI and no relay.** The four `Village` columns
+  are set by hand in the database — there is no coordinator village-settings
+  screen to set the invite link, flip `whatsappEnabled` or choose
+  `whatsappMinSeverity`, and no validation schema for them because nothing
+  submits them. `WHATSAPP_CHANNEL_API_URL` is unset, so every post logs and
+  reports `skipped: "not_configured"` — a supported state, like OneSignal.
+  Nothing has ever been posted to a real channel. **Before turning one on for a
+  live village, post to a test channel first and read what actually lands** —
+  this is the one feature whose output an unauthenticated stranger can read.
 - **No CI beyond the version bump.** `.github/workflows/version.yml` is the only
   workflow; nothing runs `npm run build`, `tsc` or `eslint` on a pull request.
 - The README's screenshots are placeholder text. Capture them after the first

@@ -141,6 +141,30 @@ model Village {
   contactEmail String? @map("contact_email")
   contactPhone String? @map("contact_phone")
 
+  // --- WhatsApp Channel -----------------------------------------------------
+  // A channel is a PUBLIC surface: anyone holding the invite link can follow it,
+  // village resident or not. That makes it the only place VillageWatch discloses
+  // outside the tenant boundary, so all four of these default to "off" or
+  // "cautious" and a coordinator has to opt in deliberately.
+
+  /// Public invite link residents follow, e.g.
+  /// `https://whatsapp.com/channel/0029Va...`. Shown on /settings. Safe to
+  /// render — it is already public by construction.
+  whatsappChannelUrl String? @map("whatsapp_channel_url")
+
+  /// The channel identifier the relay posts to. Never rendered to residents;
+  /// it is a write credential in everything but name.
+  whatsappChannelId String? @map("whatsapp_channel_id")
+
+  /// Mirror published alerts to the channel. **Off by default.** Enabling it
+  /// widens the audience for every post from "signed-in residents of this
+  /// village" to "the open internet".
+  whatsappEnabled Boolean @default(false) @map("whatsapp_enabled")
+
+  /// Floor for what gets mirrored. Higher than the push default on purpose —
+  /// a missing cat does not belong on a public feed, a burglary might.
+  whatsappMinSeverity Severity @default(HIGH) @map("whatsapp_min_severity")
+
   users         User[]
   incidents     Incident[]
   patternAlerts PatternAlert[]

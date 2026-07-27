@@ -8,6 +8,10 @@ import { prisma } from "@/lib/prisma";
 import { distanceMeters } from "@/lib/geo";
 import { formatTimeAgo } from "@/lib/format";
 import {
+  postIncidentToChannel,
+  type ChannelPostResult,
+} from "@/lib/whatsapp-channel";
+import {
   COORDINATOR_ROLES,
   LOCATION_FUZZ_METERS,
   MAX_PUSH_RECIPIENTS,
@@ -292,19 +296,34 @@ function incidentBody(incident: NotifiableIncident): string {
   return parts.join(" — ");
 }
 
+/** A publish fans out to two surfaces; this reports on both. */
+export type PublishDispatchResult = DispatchResult & {
+  /** The village's public WhatsApp Channel, when it has one turned on. */
+  channel: ChannelPostResult;
+};
+
 /**
  * Alerts the village that a report has been published.
  *
  * Called after a coordinator approves a report, never at report time: an
  * unreviewed report has not cleared the moderation queue and must not reach
  * residents (domain rule 6).
+ *
+ * Two surfaces, and they are not equivalent. Push goes to residents of this
+ * village who asked for it; the WhatsApp Channel is public to anyone holding
+ * the invite link, so it is off unless the village turned it on and carries a
+ * headline rather than the report. See `src/lib/whatsapp-channel.ts`.
+ *
+ * They run in sequence rather than concurrently on purpose: push is the one
+ * residents rely on, and it should not queue behind a third-party relay's
+ * timeout. Neither can throw, so neither can stop the other.
  */
 export async function notifyIncidentPublished(
   incident: NotifiableIncident,
-): Promise<DispatchResult> {
+): Promise<PublishDispatchResult> {
   const recipients = await residentsToNotify(incident);
 
-  return dispatch(
+  const push = await dispatch(
     {
       villageId: incident.villageId,
       title: `${SEVERITY_META[incident.severity].emoji} ${SEVERITY_META[incident.severity].label} alert`,
@@ -314,6 +333,17 @@ export async function notifyIncidentPublished(
     },
     recipients,
   );
+
+  const channel = await postIncidentToChannel({
+    id: incident.id,
+    villageId: incident.villageId,
+    title: incident.title,
+    severity: incident.severity,
+    locationText: incident.locationText,
+    occurredAt: incident.occurredAt,
+  });
+
+  return { ...push, channel };
 }
 
 /**
