@@ -3,6 +3,24 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.6](https://github.com/jdell/villagewatch/compare/v0.1.5...v0.1.6) (2026-07-27)
+
+
+### CI
+
+* apply migrations and the two SQL files from a workflow ([d5ecb8c](https://github.com/jdell/villagewatch/commit/d5ecb8c7654436012222c564fd07572bc1067fc8))
+* no-op the database workflow when DIRECT_URL is unset ([f0f2ab2](https://github.com/jdell/villagewatch/commit/f0f2ab2a6e3ca39b94b86e3d97fe88f95a4eec49))
+
+
+### Documentation
+
+* the migrations are applied and the OneSignal app exists ([19cec29](https://github.com/jdell/villagewatch/commit/19cec298c60d990c52c1e9fbdfe1c2f85621b6ea))
+
+
+### Fixes
+
+* **ui:** make the mobile navigation drawer reachable ([d0d7c73](https://github.com/jdell/villagewatch/commit/d0d7c732e08493d347de33fbe9c13e0496bfaf59))
+
 ### [0.1.5](https://github.com/jdell/villagewatch/compare/v0.1.4...v0.1.5) (2026-07-27)
 
 
