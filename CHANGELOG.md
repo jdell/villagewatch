@@ -3,6 +3,21 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.14](https://github.com/jdell/villagewatch/compare/v0.1.13...v0.1.14) (2026-07-27)
+
+
+### Features
+
+* **compliance:** gate a village's reporting on the DPIA and the APD ([ba3876e](https://github.com/jdell/villagewatch/commit/ba3876efe445946a44f9e0556febd9fc93242780))
+* **markdown:** render the compliance documents from docs/ without a dependency ([e7189d6](https://github.com/jdell/villagewatch/commit/e7189d6e953b89e8f389c5a30dfef04e23068e6d))
+* **schema:** record the DPIA and APD acceptance on the village ([adc1461](https://github.com/jdell/villagewatch/commit/adc146192c8cb5a3d3694108bf30b848b6dc026a))
+
+
+### Documentation
+
+* **apd:** add the Appropriate Policy Document template ([0c77ef0](https://github.com/jdell/villagewatch/commit/0c77ef0f9528afde6c998db55cb822b57437e942))
+* the compliance gate, and what applying its migration does ([ff55c2e](https://github.com/jdell/villagewatch/commit/ff55c2e1099cf6b5645cce10f3354f9248b0e2a8))
+
 ### [0.1.13](https://github.com/jdell/villagewatch/compare/v0.1.12...v0.1.13) (2026-07-27)
 
 
