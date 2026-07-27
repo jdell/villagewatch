@@ -62,7 +62,29 @@ type OneSignalApi = {
     permission: boolean;
     requestPermission(): Promise<void>;
   };
+  /**
+   * Read for the breadcrumb only, and optionally, because it is the one value
+   * that says whether this browser is actually addressable. Typed loosely so an
+   * SDK that reshapes it cannot break the init it is being logged from.
+   */
+  User?: {
+    PushSubscription?: { id?: string | null; optedIn?: boolean | null };
+  };
 };
+
+/**
+ * Breadcrumbs, deliberately unconditional and deliberately prefixed.
+ *
+ * Push has four silent failure modes — an app id that never reached the build, a
+ * `login()` that did not run, a service worker 404, and a permission the browser
+ * decided long ago — and none of them shows anything on screen. Every one of
+ * them is one line in the console away from being obvious, so the trade is three
+ * lines per page load against a feature that cannot otherwise be diagnosed from
+ * a resident's device. Filter the console on `[push` to read them.
+ */
+function trace(message: string, ...rest: unknown[]): void {
+  console.log(`[push:client] ${message}`, ...rest);
+}
 
 declare global {
   interface Window {
@@ -87,12 +109,34 @@ export function PushRegistration({
   const configured = APP_ID.length > 0;
 
   useEffect(() => {
-    if (!configured || !enabled) return;
+    // Both of these render nothing and send nothing, and both look identical
+    // from the outside — a resident who never sees a prompt cannot tell an
+    // unconfigured deployment from their own muted preference.
+    if (!configured) {
+      trace(
+        "NEXT_PUBLIC_ONESIGNAL_APP_ID is not set in this build — push is off. " +
+          "It is inlined at build time, so setting it in Vercel needs a redeploy.",
+      );
+      return;
+    }
+
+    if (!enabled) {
+      trace("this resident has notifyPush off in Settings — not initialising.");
+      return;
+    }
 
     window.OneSignalDeferred ??= [];
 
+    trace("SDK queued, waiting for OneSignalSDK.page.js — appId=%s", APP_ID);
+
     window.OneSignalDeferred.push(async (oneSignal) => {
       try {
+        trace(
+          "init → serviceWorkerPath=%s scope=%s",
+          SERVICE_WORKER.path,
+          SERVICE_WORKER.scope,
+        );
+
         await oneSignal.init({
           appId: APP_ID,
           // Without this the SDK refuses to run on http://localhost, which is
@@ -111,9 +155,26 @@ export function PushRegistration({
           // on in the OneSignal dashboard it will override this.
         });
 
+        trace("init ok");
+
         // Ties this browser to the resident, so the server can address them by
         // id rather than having to store a subscription.
         await oneSignal.login(userId);
+
+        // The single most useful line here. `externalId` is what
+        // `src/lib/notifications.ts` addresses residents by, and
+        // `subscriptionId` is what the OneSignal dashboard lists — a push that
+        // never arrives is almost always one of these two being absent, and
+        // there is nowhere else to see either of them.
+        trace(
+          "login ok → externalId=%s subscriptionId=%s optedIn=%s",
+          userId,
+          oneSignal.User?.PushSubscription?.id ?? "(none yet)",
+          String(oneSignal.User?.PushSubscription?.optedIn ?? "unknown"),
+        );
+
+        const browserPermission =
+          typeof Notification !== "undefined" ? Notification.permission : "unavailable";
 
         const alreadyDecided =
           oneSignal.Notifications.permission ||
@@ -123,11 +184,21 @@ export function PushRegistration({
         const dismissed =
           window.localStorage.getItem(DISMISSED_KEY) === "1";
 
+        trace(
+          "permission=%s sdkPermission=%s bannerDismissed=%s → prompt=%s",
+          browserPermission,
+          String(oneSignal.Notifications.permission),
+          String(dismissed),
+          String(!alreadyDecided && !dismissed),
+        );
+
         setShowPrompt(!alreadyDecided && !dismissed);
       } catch (cause) {
         // A blocked third-party script, a browser with no service worker
-        // support, an ad blocker. None of them are worth a message on screen.
-        console.warn("Push notifications are unavailable", cause);
+        // support, an ad blocker, or a 404 on the service worker path. None of
+        // them are worth a message on screen; all of them are worth a line here,
+        // because this is the only place the reason exists.
+        console.warn("[push:client] init failed — push is unavailable", cause);
       }
     });
   }, [configured, enabled, userId]);
@@ -138,7 +209,18 @@ export function PushRegistration({
     window.OneSignalDeferred ??= [];
     window.OneSignalDeferred.push(async (oneSignal) => {
       try {
+        trace("requesting browser notification permission");
+
         await oneSignal.Notifications.requestPermission();
+
+        // Logged after the answer, because the subscription id only exists once
+        // permission has been granted — this is the line that proves the device
+        // is now addressable by the server.
+        trace(
+          "permission answered → granted=%s subscriptionId=%s",
+          String(oneSignal.Notifications.permission),
+          oneSignal.User?.PushSubscription?.id ?? "(none)",
+        );
 
         if (oneSignal.Notifications.permission) {
           toast.success("You will be alerted when something is published nearby.");
@@ -148,7 +230,7 @@ export function PushRegistration({
           );
         }
       } catch (cause) {
-        console.warn("Could not request notification permission", cause);
+        console.warn("[push:client] permission request failed", cause);
         toast.error("This browser would not let us enable notifications.");
       } finally {
         setBusy(false);

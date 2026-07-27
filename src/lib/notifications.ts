@@ -1,4 +1,5 @@
 import {
+  type CreateNotificationSuccessResponse,
   DefaultApi,
   Notification as OneSignalNotification,
   createConfiguration,
@@ -45,16 +46,124 @@ import {
  *    is built from `title` and `locationText` only.
  */
 
-const APP_ID = process.env.ONESIGNAL_APP_ID ?? "";
+/**
+ * The app id, taken from the server variable and falling back to the public one.
+ *
+ * There are two variables holding one value, and that is the failure this
+ * fallback exists for. The browser SDK can only read a `NEXT_PUBLIC_` variable,
+ * and this module must never read a key that gets inlined into a client bundle
+ * — so the app id is configured twice. Setting only the public one is the
+ * obvious mistake, and until now it failed *silently*: the browser subscribed
+ * devices happily, `isPushConfigured` was false, and every dispatch reported
+ * `not_configured` on a deployment that looked fully set up.
+ *
+ * Falling back means one variable is enough. Setting both to *different* app ids
+ * is the genuinely broken state — devices subscribe to one app and the server
+ * pushes to another — so that one is warned about rather than papered over.
+ */
+function resolveAppId(): string {
+  const server = process.env.ONESIGNAL_APP_ID?.trim() ?? "";
+  const browser = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID?.trim() ?? "";
+
+  if (server && browser && server !== browser) {
+    console.warn(
+      "[push:config] ONESIGNAL_APP_ID (%s) and NEXT_PUBLIC_ONESIGNAL_APP_ID " +
+        "(%s) name different apps. Devices subscribe to the browser one and " +
+        "this server pushes to the other, so nothing can ever be delivered. " +
+        "Using the server value.",
+      server,
+      browser,
+    );
+  }
+
+  if (!server && browser) {
+    console.warn(
+      "[push:config] ONESIGNAL_APP_ID is not set; falling back to " +
+        "NEXT_PUBLIC_ONESIGNAL_APP_ID. Set both to the same value.",
+    );
+  }
+
+  return server || browser;
+}
+
+const APP_ID = resolveAppId();
 const REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY ?? "";
 
 export const isPushConfigured = APP_ID.length > 0 && REST_API_KEY.length > 0;
+
+if (!isPushConfigured) {
+  // The one line that tells the two unconfigured states apart. "No push arrived"
+  // looks identical whether nothing is set or the REST key alone is missing, and
+  // a half-configured deployment is the one worth naming out loud.
+  console.warn(
+    "[push:config] Push is off — appId=%s restApiKey=%s. Payloads will be " +
+      "logged instead of sent.",
+    APP_ID ? "set" : "MISSING",
+    REST_API_KEY ? "set" : "MISSING",
+  );
+}
 
 let cached: DefaultApi | null = null;
 
 function getOneSignal(): DefaultApi {
   cached ??= new DefaultApi(createConfiguration({ restApiKey: REST_API_KEY }));
   return cached;
+}
+
+/**
+ * What OneSignal actually did with a request it answered 200 to.
+ *
+ * A 200 is not delivery. Two everyday outcomes arrive with a success status and
+ * used to be counted here as a full send:
+ *
+ * - **Every alias unsubscribed.** `errors` is an array of strings, the usual one
+ *   being "All included players are not subscribed" — which is what a village
+ *   whose residents have all denied the browser prompt looks like, and is also
+ *   exactly what a wrong app id looks like.
+ * - **Some aliases unknown.** `errors.invalid_aliases.external_id` lists the
+ *   external ids OneSignal has no subscription for. Those residents have a
+ *   profile and a preference and no device, which is the normal state for anyone
+ *   who has not pressed "Turn on alerts".
+ *
+ * `recipients` is on the wire but not on the generated model, so it is read
+ * through a cast and only trusted when it is actually a number.
+ */
+type OneSignalOutcome = {
+  /** Devices OneSignal accepted the notification for. */
+  sent: number;
+  /** External ids it had no subscription for. */
+  unknownAliases: string[];
+  /** Set when OneSignal accepted nothing at all. */
+  fatal?: string;
+};
+
+function readOneSignalResponse(
+  response: CreateNotificationSuccessResponse,
+  requested: number,
+): OneSignalOutcome {
+  const errors = response.errors as
+    | string[]
+    | { invalid_aliases?: { external_id?: string[] } }
+    | undefined;
+
+  if (Array.isArray(errors) && errors.length > 0) {
+    return { sent: 0, unknownAliases: [], fatal: errors.join("; ") };
+  }
+
+  const unknownAliases =
+    (errors && !Array.isArray(errors)
+      ? errors.invalid_aliases?.external_id
+      : undefined) ?? [];
+
+  const reported = (response as { recipients?: number }).recipients;
+
+  return {
+    sent:
+      typeof reported === "number"
+        ? reported
+        : Math.max(0, requested - unknownAliases.length),
+    unknownAliases,
+  };
 }
 
 export type DispatchResult = {
@@ -126,6 +235,19 @@ async function dispatch(
     return { matched, sent: 0, skipped: "not_configured" };
   }
 
+  // The breadcrumb that answers "did the server even try?". Every id here is a
+  // Supabase auth user id, which is the external id the browser called
+  // `OneSignal.login()` with — so a dispatch that reports aliases the dashboard
+  // has never heard of is a login that did not happen, not a delivery problem.
+  console.log(
+    "[push:dispatch] app=%s village=%s aliases=%d title=%s url=%s",
+    APP_ID,
+    message.villageId,
+    audience.length,
+    message.title,
+    url,
+  );
+
   const notification = new OneSignalNotification();
   notification.app_id = APP_ID;
   notification.target_channel = "push";
@@ -142,40 +264,85 @@ async function dispatch(
     path: message.path,
   };
 
+  let response: CreateNotificationSuccessResponse;
+
   try {
-    await getOneSignal().createNotification(notification);
+    response = await getOneSignal().createNotification(notification);
   } catch (cause) {
-    // Includes the everyday case of every alias in the batch being unsubscribed,
-    // which OneSignal reports as an error rather than a zero-recipient success.
+    // A non-2xx: a bad REST key (401), an app id the key does not own (403), a
+    // malformed payload (400). All of them are configuration rather than
+    // delivery, and all of them look the same from a resident's phone.
     console.error(
-      "OneSignal rejected a notification for village %s",
+      "[push:error] OneSignal rejected a notification for village %s",
       message.villageId,
       cause,
     );
 
-    await recordNotifications(message, audience, "Push delivery failed");
+    await recordNotifications(message, audience, {
+      reason: "Push delivery failed",
+    });
 
     return { matched, sent: 0, skipped: "failed" };
   }
 
-  await recordNotifications(message, audience, null);
+  const outcome = readOneSignalResponse(response, audience.length);
 
-  return { matched, sent: audience.length };
+  console.log(
+    "[push:response] village=%s notificationId=%s sent=%d/%d%s%s",
+    message.villageId,
+    response.id || "(none)",
+    outcome.sent,
+    audience.length,
+    outcome.unknownAliases.length > 0
+      ? ` noSubscription=${outcome.unknownAliases.length}`
+      : "",
+    outcome.fatal ? ` error=${outcome.fatal}` : "",
+  );
+
+  if (outcome.fatal) {
+    // A 200 that delivered nothing. Reported as a failure rather than counted as
+    // a full send, because the number this returns is what a coordinator is told
+    // after approving a report — "42 residents alerted" when none were is worse
+    // than saying none were.
+    await recordNotifications(message, audience, { reason: outcome.fatal });
+
+    return { matched, sent: 0, skipped: "failed" };
+  }
+
+  await recordNotifications(
+    message,
+    audience,
+    outcome.unknownAliases.length > 0
+      ? {
+          reason: "No subscribed device for this account",
+          ids: new Set(outcome.unknownAliases),
+        }
+      : null,
+  );
+
+  return { matched, sent: outcome.sent };
 }
 
 /**
  * One `Notification` row per resident. Best effort: the push has already gone
  * out by this point, so a database failure here must not turn a delivered alert
  * into a thrown error upstream.
+ *
+ * `failure.ids`, when present, narrows the failure to those recipients and marks
+ * everyone else as sent — which is what a partial delivery actually is. Omitting
+ * it means the whole batch failed. Passing `null` means the whole batch went.
  */
 async function recordNotifications(
   message: PushMessage,
   recipients: readonly Recipient[],
-  failureReason: string | null,
+  failure: { reason: string; ids?: ReadonlySet<string> } | null,
 ): Promise<void> {
   if (!process.env.DATABASE_URL) return;
 
   const now = new Date();
+
+  const failed = (id: string) =>
+    failure !== null && (failure.ids === undefined || failure.ids.has(id));
 
   try {
     await prisma.notification.createMany({
@@ -187,9 +354,9 @@ async function recordNotifications(
         body: message.body,
         channel: "push",
         url: message.path,
-        sentAt: failureReason ? null : now,
-        failedAt: failureReason ? now : null,
-        failureReason,
+        sentAt: failed(recipient.id) ? null : now,
+        failedAt: failed(recipient.id) ? now : null,
+        failureReason: failed(recipient.id) ? failure!.reason : null,
       })),
     });
   } catch (cause) {
