@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.12](https://github.com/jdell/villagewatch/compare/v0.1.11...v0.1.12) (2026-07-27)
+
+
+### Features
+
+* **dashboard:** let a coordinator name their parish council ([af68167](https://github.com/jdell/villagewatch/commit/af68167e2245cc1a2f829349e01d19763031deca))
+
 ### [0.1.11](https://github.com/jdell/villagewatch/compare/v0.1.10...v0.1.11) (2026-07-27)
 
 
