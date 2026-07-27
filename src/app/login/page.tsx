@@ -3,7 +3,8 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { LoginForm } from "@/components/auth/login-form";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { AuthDivider, GoogleButton } from "@/components/auth/google-button";
+import { isGoogleAuthEnabled, isSupabaseConfigured } from "@/lib/supabase/env";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -12,11 +13,11 @@ export const metadata: Metadata = {
 
 /** Next.js 16: `searchParams` is a Promise and must be awaited. */
 type LoginPageProps = {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; error?: string }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const { next } = await searchParams;
+  const { next, error } = await searchParams;
 
   // Only accept relative paths — an absolute URL here would be an open redirect.
   const redirectTo =
@@ -56,6 +57,27 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               in <code className="font-mono text-xs">.env.local</code> before
               signing in.
             </p>
+          )}
+
+          {/*
+            Set by /api/auth/callback when a provider round trip fails — a
+            cancelled consent screen, or a provider that is not switched on.
+            Rendered as text, never as markup: it arrives in a query string.
+          */}
+          {error && (
+            <p
+              role="alert"
+              className="mt-5 rounded-lg bg-red-50 px-3.5 py-3 text-sm text-red-800 ring-1 ring-red-200"
+            >
+              {error}
+            </p>
+          )}
+
+          {isGoogleAuthEnabled && (
+            <div className="mt-6 space-y-5">
+              <GoogleButton next={redirectTo} label="Sign in with Google" />
+              <AuthDivider />
+            </div>
           )}
 
           <div className="mt-6">

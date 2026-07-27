@@ -57,6 +57,48 @@
 --    `notifications_select_own` — it is the only line that needs it.
 
 -- ---------------------------------------------------------------------------
+-- Schema grants
+-- ---------------------------------------------------------------------------
+--
+-- Everything below this line grants table privileges to `authenticated`, and a
+-- table privilege is worthless without USAGE on the schema that holds it. On a
+-- stock Supabase project the `public` schema is owned by `pg_database_owner`
+-- and already grants USAGE to anon, authenticated and service_role, so the rest
+-- of this file used to assume it.
+--
+-- It cannot. `prisma migrate` offers to reset on drift, and accepting runs
+-- `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` — the schema comes back
+-- owned by `postgres` with `{postgres=UC/postgres}` and nothing else. Nothing
+-- in the application breaks, because Prisma connects as the owner and Auth and
+-- Storage live in their own schemas; what breaks silently is every policy in
+-- this file, because PostgREST never gets far enough to be filtered by one.
+-- The symptom is `42501 permission denied for schema public` and the failure
+-- mode is worse than an error: the policies look applied and enforce nothing.
+--
+-- `anon` is deliberately NOT granted USAGE. It is the role a signed-out browser
+-- gets and no VillageWatch table has a row it should see, so it is kept out one
+-- layer earlier than RLS rather than being filtered by it.
+
+GRANT USAGE ON SCHEMA public TO authenticated, service_role;
+REVOKE USAGE ON SCHEMA public FROM anon;
+
+-- New tables inherit `pg_default_acl`, which on Supabase grants anon and
+-- authenticated *every* privilege on anything `postgres` creates — so the next
+-- Prisma migration would add a table that anon can read, write and delete, with
+-- RLS off, before anyone re-runs this file. Revoking the defaults makes a new
+-- table arrive closed, and every grant below deliberate.
+--
+-- service_role keeps its defaults: it is the admin key, it holds BYPASSRLS, and
+-- the server code that uses it does its own session and village checks.
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL ON TABLES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL ON SEQUENCES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL ON FUNCTIONS FROM anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Helper functions
 -- ---------------------------------------------------------------------------
 --
@@ -114,6 +156,14 @@ AS $$
   SELECT public.vw_current_role() = 'ADMIN'::public.user_role;
 $$;
 
+-- An earlier version of this file granted the column list by enumerating
+-- `information_schema` and excluding the sensitive names. It is dropped rather
+-- than left unused: a helper that grants a column to `authenticated` from a
+-- deny-list is exactly the shape a later reader should not find lying around and
+-- reach for, because it fails open — a column added by a migration is granted
+-- automatically, which is the wrong direction for this table.
+DROP FUNCTION IF EXISTS public.vw_grant_select_except(text, text[]);
+
 REVOKE EXECUTE ON FUNCTION public.vw_current_village_id() FROM public, anon;
 REVOKE EXECUTE ON FUNCTION public.vw_current_role() FROM public, anon;
 REVOKE EXECUTE ON FUNCTION public.vw_is_coordinator() FROM public, anon;
@@ -145,6 +195,15 @@ ALTER TABLE public."_PatternAlertIncidents" ENABLE ROW LEVEL SECURITY;
 -- Nothing in this schema is public. `anon` is the role a signed-out browser
 -- gets, and no VillageWatch table has a row it should see.
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
+
+-- And start `authenticated` from nothing too, so that every privilege it holds
+-- is one of the explicit GRANTs below. Tables created before the default-ACL
+-- revoke above already carry the Supabase default of *every* privilege to
+-- `authenticated` — including DELETE on `incidents`, which no policy in this
+-- file allows. RLS denies it anyway, but a table privilege nobody meant to
+-- issue is one `FORCE ROW LEVEL SECURITY` or one careless policy away from
+-- mattering.
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM authenticated;
 
 -- ---------------------------------------------------------------------------
 -- villages
@@ -305,12 +364,45 @@ CREATE TRIGGER users_guard_privilege_columns
 --
 -- Note what these policies cannot do: `raw_description` is a column on this
 -- table, so any policy that grants SELECT on a row grants SELECT on the
--- reporter's verbatim words. Domain rule 1 is kept by `PUBLIC_INCIDENT_SELECT`
--- omitting the column and `readRawDescription()` auditing every read — RLS
--- narrows *which rows* leak, not which columns. Anyone moving reads onto the
--- request-scoped client must add a column grant or a view here.
+-- reporter's verbatim words. RLS narrows *which rows* leak, not which columns,
+-- and domain rule 1 is otherwise kept only in application code —
+-- `PUBLIC_INCIDENT_SELECT` omitting the column and `readRawDescription()`
+-- auditing every read.
+--
+-- So the column grant that comment used to ask for is here, in the same shape
+-- as the one on `villages`: the safe columns are listed, `raw_description` is
+-- simply not among them. A resident reading their neighbour's verbatim words
+-- through PostgREST — names, plates, addresses, the whole reason the
+-- anonymisation pass exists — stops being a thing the database permits.
+--
+-- Listed rather than excluded, for the reason given on `villages`: a column
+-- added by a later migration is withheld until somebody adds it here, which is
+-- the direction we want to fail in. The cost is that this list has to be
+-- maintained, and SETUP.md already says to re-run this file after a migration.
+--
+-- INSERT and UPDATE stay table-wide: a reporter has to be able to write their
+-- own words in, and rewriting the raw text of their own queued report is not a
+-- disclosure. It is reading somebody else's that matters.
 
-GRANT SELECT, INSERT, UPDATE ON public.incidents TO authenticated;
+GRANT INSERT, UPDATE ON public.incidents TO authenticated;
+
+-- Clears any table-wide SELECT left by an earlier version of this file — a
+-- column grant adds to a table grant rather than narrowing it.
+REVOKE SELECT ON public.incidents FROM authenticated;
+
+GRANT SELECT (
+  id, reference, village_id, reporter_id,
+  type, severity, status, source,
+  title, description,
+  ai_summary, ai_model, ai_processed_at, ai_confidence, anonymized,
+  people_count, recurring, pattern_note, is_anonymous,
+  occurred_at, reported_at, resolved_at,
+  location_text, lat, lng, location_point, location_fuzz_meters,
+  reported_to_police, police_reference,
+  view_count, confirm_count,
+  moderated_by_id, moderated_at, moderation_note,
+  created_at, updated_at
+) ON public.incidents TO authenticated;
 
 /** Published and resolved reports, anywhere in the reader's own village. */
 DROP POLICY IF EXISTS incidents_select_public ON public.incidents;
@@ -653,12 +745,17 @@ CREATE POLICY audit_logs_insert_self
  * from application code" would be a convention one careless `deleteMany` could
  * break. This trigger makes it a constraint.
  *
- * A legitimate retention purge or a GDPR erasure that has to reach this table
- * is a deliberate, one-off, superuser act:
+ * Deleting an account no longer needs that hatch — see the actor_id carve-out
+ * below. Removing trail *rows*, which is what `RETENTION.auditLogMonths` would
+ * mean, still does, and remains a deliberate one-off act:
  *
  *   ALTER TABLE public.audit_logs DISABLE TRIGGER audit_logs_append_only;
  *   -- ... the purge ...
  *   ALTER TABLE public.audit_logs ENABLE TRIGGER audit_logs_append_only;
+ *
+ * Note that DISABLE TRIGGER takes an ACCESS EXCLUSIVE lock and is not
+ * transactional in the way it looks: if the purge fails halfway, the trigger is
+ * still off until the ENABLE runs. Wrap both in the same transaction.
  */
 CREATE OR REPLACE FUNCTION public.vw_audit_logs_append_only()
 RETURNS TRIGGER
@@ -666,6 +763,42 @@ LANGUAGE plpgsql
 SET search_path = ''
 AS $$
 BEGIN
+  -- One UPDATE is permitted, and only one: severing `actor_id` when the account
+  -- it points at is deleted.
+  --
+  -- `AuditLog.actorId` is ON DELETE SET NULL and `actor_email` / `actor_role`
+  -- are denormalised "so the trail survives account deletion" — the schema was
+  -- always designed for the actor row to go while the trail stays. A blanket
+  -- refusal broke that: the cascade is an UPDATE, so deleting any account that
+  -- had ever acted became impossible, and with it every UK GDPR erasure request
+  -- and the dormant-account closure the privacy notice promises. The failure
+  -- surfaced as `audit_logs is append-only: UPDATE is not permitted` raised from
+  -- a DELETE on `users`, which reads as a bug in the wrong table entirely.
+  --
+  -- The test is deliberately not "actor_id changed". Every other column must be
+  -- byte-identical, compared wholesale rather than listed, so a column added by
+  -- a later migration is covered without anyone remembering to add it here. The
+  -- content of the trail stays immutable; only the pointer to a person may be
+  -- cut, and only ever to NULL. `actor_email` still names who acted.
+  --
+  -- `village_id` is the other ON DELETE SET NULL foreign key on this table and
+  -- is deliberately NOT carved out with it. The two look symmetrical and are
+  -- not: `actor_email` and `actor_role` mean severing `actor_id` costs the trail
+  -- nothing, whereas there is no denormalised village column, so nulling
+  -- `village_id` destroys the only record of which village an entry belongs to
+  -- — the mutation of trail content this trigger exists to refuse. So
+  -- `DELETE FROM villages` still fails here, and should: erasure is a right of a
+  -- person, not of a tenant, and closing a village down is a deliberate act that
+  -- belongs with the retention purge above rather than happening as a side
+  -- effect of a cascade.
+  IF TG_OP = 'UPDATE'
+     AND OLD.actor_id IS NOT NULL
+     AND NEW.actor_id IS NULL
+     AND pg_catalog.to_jsonb(NEW) - 'actor_id' = pg_catalog.to_jsonb(OLD) - 'actor_id'
+  THEN
+    RETURN NEW;
+  END IF;
+
   RAISE EXCEPTION 'audit_logs is append-only: % is not permitted', TG_OP;
 END;
 $$;

@@ -465,6 +465,51 @@ export const registerSchema = z
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 
+/**
+ * Finishing an account that arrived through an identity provider.
+ *
+ * Google gives us a verified email and a display name and nothing else that
+ * matters here — no village, no join code, no acceptance of the terms. So the
+ * fields below are `registerSchema` minus everything the provider already
+ * settled: no email, because it comes from the verified JWT and a client-
+ * supplied one would let somebody claim an address they do not own, and no
+ * password, because there is not one.
+ *
+ * `fullName` stays, prefilled from the Google profile and editable — the name
+ * on a Google account is often not the name a neighbour would recognise.
+ */
+export const completeProfileSchema = z
+  .object({
+    fullName: z
+      .string()
+      .trim()
+      .min(2, "Enter your name")
+      .max(80, "Keep your name under 80 characters"),
+    villageId: z.uuid({ error: "Choose your village" }),
+    joinCode: z.string().trim().max(24).optional(),
+    addressLine: z
+      .string()
+      .trim()
+      .max(160, "Keep the address under 160 characters")
+      .optional(),
+    phone: z
+      .string()
+      .trim()
+      .max(24, "Keep the phone number under 24 characters")
+      .optional(),
+    homeLat: latitude.optional(),
+    homeLng: longitude.optional(),
+    acceptTerms: z.literal(true, {
+      error: "You must accept the terms to join your village",
+    }),
+  })
+  .refine((v) => (v.homeLat === undefined) === (v.homeLng === undefined), {
+    error: "Drop a pin on the map, or leave it blank",
+    path: ["homeLat"],
+  });
+
+export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
+
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------

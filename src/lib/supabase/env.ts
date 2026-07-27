@@ -17,6 +17,20 @@ export const SUPABASE_ANON_KEY =
 export const isSupabaseConfigured =
   SUPABASE_URL.length > 0 && SUPABASE_ANON_KEY.length > 0;
 
+/**
+ * Whether to offer "Continue with Google".
+ *
+ * There is no key to hold — the provider's client id and secret live in the
+ * Supabase dashboard, not here — so this is a flag rather than a credential,
+ * and it exists because the button cannot detect its own backend. With Google
+ * switched off in the dashboard, `signInWithOAuth` still redirects and the
+ * failure lands back on `/api/auth/callback` as `error=provider_disabled`,
+ * which is a confusing round trip to offer somebody. Off unless asked for.
+ */
+export const isGoogleAuthEnabled =
+  isSupabaseConfigured &&
+  process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === "true";
+
 export function assertSupabaseConfigured() {
   if (!isSupabaseConfigured) {
     throw new Error(
