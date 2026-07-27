@@ -5,9 +5,10 @@ import { RATE_LIMIT_RETENTION_DAYS } from "@/lib/constants";
 /**
  * Fixed-window rate limiting, counted in Postgres. **Server only.**
  *
- * Two routes cost real money per call — `POST /api/incidents/process` spends
- * Anthropic credit and `POST /api/incidents` writes a report that a coordinator
- * then has to read — and this is the brake on both.
+ * Three call sites cost real money per call — `POST /api/incidents/process` and
+ * the report narrative on `/reports` both spend Anthropic credit, and
+ * `POST /api/incidents` writes a report that a coordinator then has to read —
+ * and this is the brake on all three.
  *
  * ## Why this is not a `Map` any more
  *
@@ -82,6 +83,18 @@ export const RATE_LIMITS = {
    * below what it takes to bury a coordinator's queue.
    */
   incidentCreate: { name: "incident-create", limit: 10, windowMs: DAY_MS },
+
+  /**
+   * The community safety report's narrative.
+   *
+   * The most expensive single call in the app — a month of a village's reports
+   * goes into the prompt — and the only one a *coordinator* can trigger by
+   * hand, repeatedly, from a button. Twelve an hour is far above regenerating a
+   * report a few times while adjusting the dates and far below what a stuck
+   * retry loop would spend. The rest of the report is counted from the database
+   * and is unaffected: being limited here costs the prose, not the document.
+   */
+  reportNarrative: { name: "report-narrative", limit: 12, windowMs: HOUR_MS },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitResult = {

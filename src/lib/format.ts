@@ -61,6 +61,24 @@ export function formatDateTime(value: Date | string | number): string {
   return Number.isNaN(date.getTime()) ? "" : DATE_TIME.format(date);
 }
 
+const DATE_ONLY = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "long",
+  timeZone: "Europe/London",
+});
+
+/**
+ * "24 July 2026" — a day with no time on it.
+ *
+ * `dateStyle: "long"` rather than the `medium` used above, because the two
+ * places this renders are the head of a document that goes to a police officer
+ * or a parish clerk and the date-range picker that produced it. An abbreviated
+ * month is right in a card and wrong in a heading somebody prints.
+ */
+export function formatDate(value: Date | string | number): string {
+  const date = toDate(value);
+  return Number.isNaN(date.getTime()) ? "" : DATE_ONLY.format(date);
+}
+
 /**
  * Value for a `datetime-local` input, in the browser's own zone. Cannot use
  * `toISOString()` — that returns UTC, which silently shifts the time the

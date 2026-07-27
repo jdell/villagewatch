@@ -131,6 +131,10 @@ src/
                               village settings — auto-approve and the WhatsApp
                               Channel
       dashboard/audit/        Audit trail viewer — coordinator only, filterable
+      reports/                Community safety report for police or the council
+                              — date range as a GET form, coordinator only
+      reports/actions.ts      generateNarrativeAction — the one Claude call,
+                              rate limited, and where the audit row is written
       settings/               Profile and notification preferences
       settings/actions.ts     saveSettingsAction — never touches role/village
     forgot-password/          Ask for a reset link — public, no session
@@ -172,6 +176,10 @@ src/
     incident-location-map.tsx Client wrapper for the detail page's single pin
     incident-card.tsx         One incident, used by preview, list and detail
     incident-actions.tsx      Detail-page actions — reporter and coordinator
+    share-summary.tsx         One report for a PCSO — navigator.share, then
+                              the clipboard. Coordinator, published only
+    reports/report-view.tsx   The period report on screen, on the clipboard and
+                              on paper — one format, three destinations
     incident-edit-form.tsx    Five-field edit, no wizard, no re-anonymisation
     settings-form.tsx         Profile + notification preferences, one action
     delete-account.tsx        The danger zone — type your email to confirm
@@ -205,11 +213,19 @@ src/
                               server only, opt-in, no API that can post
     format-alert.ts           formatIncidentAlert — the one WhatsApp alert
                               format, client-safe, shared by log and clipboard
+    community-report.ts       The police/council documents — one incident and a
+                              period. Client-safe, no rawDescription/lat/lng
+    reports.ts                Resolves the date range, counts the period, and
+                              writes the narrative when Claude is unavailable
+    clipboard.ts              copyText + shareText, browser only, shared by the
+                              three surfaces that copy
     cron.ts                   Constant-time CRON_SECRET check, shared by both jobs
     email/                    Templates only — no transport. layout, welcome,
                               weekly-digest, incident-notification,
                               coordinator-decision
     ai/weekly-digest.ts       Claude weekly summary, structured, typed failures
+    ai/report-narrative.ts    Claude pattern analysis for a date range — same
+                              contract, written for a PCSO rather than residents
     geo.ts                    fuzzCoordinates — server only, uses node:crypto
     rate-limit.ts             Fixed windows counted in `rate_limit` — server only
     erasure.ts                Article 17 — tombstone a report, close an account
@@ -948,6 +964,82 @@ default, and the only surface in the app that discloses outside the village.
 - **`/privacy` §6 names this disclosure and the landing-page FAQ carves it out.**
   Both are statements about how the code behaves — change what a post contains
   and they change in the same commit.
+
+## Sharing with police and the parish council
+
+`src/lib/community-report.ts` formats, `src/lib/reports.ts` counts,
+`src/lib/ai/report-narrative.ts` writes the prose, and `/reports` puts the three
+together. Two documents: one incident, and everything published over a period.
+
+- **`community-report.ts` is client-safe, and that is load-bearing.** The
+  narrative arrives in the browser from a server action, so the final text has
+  to be assembled there — which is what makes the copy, the print and the share
+  the same document by construction rather than by three call sites agreeing.
+  Same import budget as `format-alert.ts`: `constants.ts`, `format.ts`, and
+  nothing that touches Prisma or a secret.
+- **`ReportIncident` has no field for `rawDescription`, `lat` or `lng`**, the
+  same structural guard `AlertIncident` and `IncidentEmailInput` use, and here
+  for a sharper reason: this text goes to the operating system's share sheet,
+  and the app cannot see whether the coordinator taps an email to one officer
+  or a group chat with forty people in it. The "map link" is the report's own
+  page, which needs a signed-in resident of the village to open. A coordinate
+  pair would be worse than useless — it was jittered on the way in (domain rule
+  2), so it is precise enough to point at a house and not precise enough to be
+  right about which one.
+- **Published and resolved only**, which is narrower than the CSV export. The
+  spreadsheet is a coordinator's own copy; this is written to be sent outside
+  the village, and a report still in the queue has not cleared moderation
+  (domain rule 6) while a rejected one is a report somebody decided should not
+  be published at all.
+- **The single-incident summary is gated exactly like the WhatsApp alert** —
+  coordinators, published reports only. The destination is different and the
+  reasoning still carries: approving is the act that says a report is fit to
+  leave the queue, and a button that sends an unreviewed one over the reporter's
+  head to the police is not one to hand out. A coordinator who wants the police
+  to have it can approve it first, which is a decision and leaves a trail.
+- **That summary is deliberately not audited, and the reason is a platform
+  constraint rather than a preference.** `navigator.share()` has to be called
+  inside the user gesture that triggered it; an `await` in front of it spends
+  the gesture and iOS Safari refuses the call. An audit write before the sheet
+  opens is a share button that does not work on a phone. What is left is a
+  coordinator formatting one report they are already looking at, carrying only
+  what every resident can already read.
+- **The period report is audited** — `incident.report_generated`, toned
+  `sensitive` next to `incident.export`, and written by the action rather than
+  the page render. Same reasoning as `incident.raw_viewed`: a row per page view
+  is a trail nobody can read, and viewing the figures is the dashboard's data in
+  a different arrangement. Producing the document is the act.
+- **The rate limit comes before the audit write, not after.** `AuditLog` is
+  append-only including to the owner (domain rule 7), so a row written on every
+  press with no ceiling in front of it is a held button filling a table nothing
+  can clear. `RATE_LIMITS.reportNarrative` is that ceiling.
+- **The narrative is a button, and the report is complete without it.** Every
+  other section is counted from the database; this one is an Anthropic call over
+  a month of a village's reports, and a page that spent it on render would spend
+  it again on every date change, refresh and back button. When Claude is
+  unavailable, `countedNarrative` produces a summary assembled from the counts
+  and the document says which of the two it has — inventing prose to fill the
+  gap would make an outage look like a working report to an officer with no way
+  to tell.
+- **"Download PDF" is `window.print()` and `@media print` in `globals.css`.**
+  Every desktop browser and iOS Safari offer "Save as PDF" from the print
+  dialogue, so a PDF library would buy nothing but a second layout to keep in
+  step with the on-screen one — and the first time they disagreed nobody would
+  notice. `[data-print-region]` marks what survives, `[data-print-hide]` the
+  controls inside it that do not. The rules use `visibility` rather than
+  `display` because the report sits several layers deep in the app shell and
+  hiding an ancestor would hide the report with it.
+- **`Village.parishCouncil` names the data controller in the footer**, falling
+  back to `DATA_CONTROLLER` in `constants.ts` — which is still placeholders, so
+  `/reports` shows a warning when the footer would read "[Parish Council name]".
+  That is the first thing in the app to actually read the column.
+- **`/privacy` §6 changed in the same commit**, for the reason the legal-pages
+  section gives. It named one route to the police — a formal request the council
+  decides on — and this adds a routine one a coordinator drives. The notice now
+  describes both, says what a summary carries, and says which of the two is
+  recorded in the audit trail.
+- The date-range boundaries are the server's midnight, not London's. See
+  `resolveReportRange` for why that hour is left alone.
 
 ## The village directory
 

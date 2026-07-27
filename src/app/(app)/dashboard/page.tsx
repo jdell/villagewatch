@@ -1,6 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Download, Inbox, MapPin, ScrollText, ShieldCheck, Zap } from "lucide-react";
+import {
+  Download,
+  FileText,
+  Inbox,
+  MapPin,
+  ScrollText,
+  ShieldCheck,
+  Zap,
+} from "lucide-react";
 import type {
   IncidentStatus,
   IncidentType,
@@ -215,6 +223,20 @@ export default async function DashboardPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {/*
+            First of the three, and the only one that is a document rather than
+            a data dump: this is what a coordinator actually takes to a police
+            liaison call. `range=7` because the weekly meeting is the common
+            case; the page itself offers thirty days and a custom range.
+          */}
+          <Link
+            href="/reports?range=7"
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
+          >
+            <FileText className="size-4" aria-hidden />
+            Generate weekly report
+          </Link>
+
           <Link
             href="/dashboard/audit"
             className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"

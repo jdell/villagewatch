@@ -15,8 +15,13 @@ import { IncidentActions } from "@/components/incident-actions";
 import { IncidentCard } from "@/components/incident-card";
 import { IncidentLocationMap } from "@/components/incident-location-map";
 import { NoVillage } from "@/components/no-village";
+import { ShareSummary } from "@/components/share-summary";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  formatIncidentSummary,
+  reportController,
+} from "@/lib/community-report";
 import { PUBLIC_INCIDENT_STATUSES, isCoordinatorRole } from "@/lib/constants";
 import { canReporterErase } from "@/lib/erasure";
 import { formatIncidentAlert } from "@/lib/format-alert";
@@ -178,6 +183,54 @@ export default async function IncidentDetailPage({ params }: PageProps) {
 
   const channel = alert ? await getVillageChannel(villageId) : null;
 
+  /*
+    The written summary a coordinator sends to their PCSO or the parish council.
+
+    Gated the same way the WhatsApp alert is — coordinators, and published or
+    resolved reports only — and the reasoning carries over even though the
+    destination does not. A channel is public and a named officer is not, but
+    approving a report is still the act that says it is fit to leave the queue
+    (domain rule 6), and a button that sends an unreviewed report over the
+    reporter's head to the police is not one to hand out. A coordinator who
+    wants the police to have it can approve it first; that is a decision, and
+    it leaves a trail.
+
+    Built from the columns already on the page, so — as with the alert — there
+    is nothing in it that is not already on the village map. `parishCouncil` is
+    the one extra read: it names the data controller in the footer, which is
+    what makes the document answerable to somebody outside the village.
+  */
+  const village =
+    isCoordinator && isPublic
+      ? await prisma.village.findUnique({
+          where: { id: villageId },
+          select: { name: true, parishCouncil: true },
+        })
+      : null;
+
+  const summary = village
+    ? formatIncidentSummary({
+        villageName: village.name,
+        dataController: reportController(village.parishCouncil),
+        incident: {
+          id: incident.id,
+          reference: incident.reference,
+          type: incident.type,
+          severity: incident.severity,
+          title: incident.title,
+          description: incident.description,
+          locationText: incident.locationText,
+          occurredAt: incident.occurredAt,
+          reportedAt: incident.reportedAt,
+          recurring: incident.recurring,
+          patternNote: incident.patternNote,
+          anonymized: incident.anonymized,
+          reportedToPolice: incident.reportedToPolice,
+          policeReference: incident.policeReference,
+        },
+      })
+    : null;
+
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
       <Link
@@ -338,6 +391,16 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             : "This description is the reporter's own wording, reviewed by a coordinator."}
         </p>
       </section>
+
+      {summary && (
+        <section className="mt-6">
+          <ShareSummary
+            text={summary}
+            shareTitle={`${incident.reference} — ${incident.title}`}
+            anonymized={incident.anonymized}
+          />
+        </section>
+      )}
 
       {alert && (
         <section className="mt-6">

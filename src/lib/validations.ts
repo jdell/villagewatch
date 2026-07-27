@@ -2,8 +2,10 @@ import { z } from "zod";
 import {
   COORDINATOR_APPLICANT_ROLE_VALUES,
   COORDINATOR_REASON_MIN_CHARS,
+  DEFAULT_REPORT_RANGE,
   INCIDENT_TYPE_VALUES,
   NOTIFICATION_RADIUS_VALUES,
+  REPORT_RANGE_VALUES,
   SEVERITY_VALUES,
   PUBLIC_INCIDENT_STATUSES,
 } from "@/lib/constants";
@@ -727,6 +729,33 @@ export type VillageChannelFormInput = z.output<typeof villageChannelFormSchema>;
  *
  * No `villageId`. It comes from the session profile server-side (domain rule 4).
  */
+// ---------------------------------------------------------------------------
+// Village administration
+// ---------------------------------------------------------------------------
+
+/**
+ * The three things a platform administrator can do to a village from
+ * `/admin/villages`.
+ *
+ * `villageId` **is** in these payloads, unlike everywhere else in this file —
+ * and it is the one place that is correct. Domain rule 4 says never trust a
+ * village id from a request, because every other screen renders the caller's
+ * own village and an id in the body would be a way to reach a neighbouring
+ * one. This screen is the deliberate exception: an administrator is
+ * platform-wide by definition, acts on villages they are not a member of, and
+ * `requireAdmin()` plus the `isPlatformAdmin()` re-check inside
+ * `src/lib/villages.ts` is what stands in for the tenant scope here.
+ */
+export const villageActionSchema = z.object({
+  villageId: z.uuid({ error: "Choose a village" }),
+});
+
+/** Appointing a coordinator: the village, and who. */
+export const villageAppointSchema = z.object({
+  villageId: z.uuid({ error: "Choose a village" }),
+  email: z.email({ error: "Enter the address they registered with" }),
+});
+
 export const villageAutoApproveFormSchema = z.object({
   autoApprove: z
     .union([z.literal("on"), z.literal("")])
@@ -861,6 +890,50 @@ export const weeklyDigestSchema = z.object({
 });
 
 export type WeeklyDigest = z.output<typeof weeklyDigestSchema>;
+
+/**
+ * The narrative section of a community safety report, from
+ * `generateReportNarrative`.
+ *
+ * Deliberately not `weeklyDigestSchema`. The digest is written for residents
+ * and carries `advice` — "check your side gates" — which is the wrong register
+ * entirely in a document addressed to a police officer, who does not need to be
+ * told to lock up. This one is written for the recipient of a report: what the
+ * period looked like, what appears to be connected, and where the coordinator
+ * suggests attention goes.
+ */
+export const reportNarrativeSchema = z.object({
+  summary: z.string().trim().min(1).max(2000),
+  /** Observations that hold across more than one report. Empty is a valid week. */
+  patterns: z.array(z.string().trim().min(1).max(300)).max(5).default([]),
+  /**
+   * One line for the recipient. Nullable rather than defaulted: a period with
+   * nothing to suggest should say nothing, and an empty string in a document is
+   * a heading with a blank under it.
+   */
+  recommendation: z.string().trim().max(300).nullable().default(null),
+  confidence: z.number().min(0).max(1),
+});
+
+export type ReportNarrativeOutput = z.output<typeof reportNarrativeSchema>;
+
+/**
+ * The date range behind `/reports`.
+ *
+ * A GET form, so everything arrives as a string and anything unparseable is
+ * dropped rather than rejected — a hand-edited query string should show the
+ * default period, not an error page. The ordering and the ceiling are checked
+ * in `resolveReportRange`, which has the clock; this only says what the shapes
+ * are.
+ */
+export const reportRangeSchema = z.object({
+  range: z.enum(REPORT_RANGE_VALUES).catch(DEFAULT_REPORT_RANGE),
+  /** `yyyy-mm-dd` from a date input. Only read when `range` is `custom`. */
+  from: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
+  to: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
+});
+
+export type ReportRangeInput = z.output<typeof reportRangeSchema>;
 
 /**
  * Formats a ZodError into `{ field: message }` for rendering next to inputs.

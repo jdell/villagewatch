@@ -1,0 +1,479 @@
+import type { IncidentType, Severity } from "@/generated/prisma/enums";
+import {
+  APP_NAME,
+  DATA_CONTROLLER,
+  INCIDENT_TYPE_LABELS,
+  REPORT_DESCRIPTION_MAX_CHARS,
+  SEVERITY_LABELS,
+} from "@/lib/constants";
+import { appBaseUrl, truncateWords } from "@/lib/format-alert";
+import { formatDate, formatDateTime } from "@/lib/format";
+
+/**
+ * The written record a coordinator hands to a PCSO or a parish clerk.
+ *
+ * Two documents, one module: `formatIncidentSummary` is a single report, and
+ * `formatCommunityReport` is everything published over a period. They share a
+ * house style deliberately — an officer who has read one should not have to
+ * work out the shape of the other — and they share the rule about what may be
+ * in them, which is the part that matters.
+ *
+ * **Safe to import from a Client Component**, and for the same reason
+ * `format-alert.ts` is: `constants.ts` (Prisma types only), `format.ts` (Intl)
+ * and `format-alert.ts`. No Prisma client, no `node:crypto`, no secret. That is
+ * load-bearing rather than tidy — the period report's narrative arrives in the
+ * browser from a server action, so the final text has to be assembled *there*,
+ * where the copy, print and share buttons are.
+ *
+ * ## What may be in these
+ *
+ * The same structural guard `AlertIncident` and `IncidentEmailInput` use, and
+ * for a sharper reason than either: this text is handed to the operating
+ * system's share sheet, and from there it goes wherever the coordinator taps —
+ * an email to a named officer, or a group chat with forty people in it. The app
+ * cannot see which. So `ReportIncident` has **no field that could carry
+ * `rawDescription`, `lat` or `lng`**, and there is nowhere in the formatters
+ * below to put one.
+ *
+ * `description` is the anonymised public column, already on the village map for
+ * every resident. Where the AI pass did not run it is the reporter's own
+ * wording — `anonymized` is the column that says which, and the two screens
+ * that render these say so in red when it is false.
+ *
+ * ## Why there are no coordinates, when "map link" was asked for
+ *
+ * The link is the report's own page on this deployment, which needs a signed-in
+ * resident of the village to open. That is deliberate. A coordinate pair in a
+ * document that reaches a group chat is not recallable, and the pin it would
+ * describe was jittered on the way in (domain rule 2) — so it is precise enough
+ * to point at a house and not precise enough to be correct about which one. The
+ * location a police officer can act on is `locationText`, the landmark a
+ * resident typed, and that is what these carry.
+ *
+ * ## Why the single-incident summary is not audited
+ *
+ * `navigator.share()` has to be called inside the user gesture that triggered
+ * it — an `await` in front of it spends the gesture and iOS Safari refuses the
+ * call (see `src/lib/clipboard.ts`). An audit write before the sheet opens is
+ * therefore a share button that does not work on a phone, which is the device
+ * this feature is for. What is left is a coordinator formatting one report they
+ * are already looking at, carrying only what every resident of the village can
+ * already read. The period report has no such constraint and *is* audited:
+ * `incident.report_generated`.
+ */
+
+// ---------------------------------------------------------------------------
+// Shapes
+// ---------------------------------------------------------------------------
+
+/** One incident, as either document needs it. Never `rawDescription`. */
+export type ReportIncident = {
+  id: string;
+  reference: string;
+  type: IncidentType;
+  severity: Severity;
+  title: string;
+  /** The anonymised public column. */
+  description: string;
+  locationText: string | null;
+  occurredAt: Date | string | number;
+  reportedAt: Date | string | number;
+  recurring: boolean;
+  patternNote: string | null;
+  /** False means `description` is the reporter's own words, never rewritten. */
+  anonymized: boolean;
+  /** Whether the reporter said they had already been to the police. */
+  reportedToPolice?: boolean;
+  policeReference?: string | null;
+};
+
+export type IncidentSummaryInput = {
+  incident: ReportIncident;
+  villageName: string;
+  /** `Village.parishCouncil`, falling back to the deployment-wide constant. */
+  dataController: string;
+};
+
+/** One row of a breakdown, already counted. */
+export type ReportCount<K extends string> = { key: K; count: number };
+
+export type ReportHotspot = { location: string; count: number };
+
+/**
+ * The narrative, and where it came from.
+ *
+ * `source` is on the document rather than in a comment: a summary written by a
+ * model and a summary assembled from counts read very differently to somebody
+ * deciding whether to act on it, and the footer says which one they have.
+ */
+export type ReportNarrative = {
+  summary: string;
+  patterns: readonly string[];
+  recommendation: string | null;
+  source: "ai" | "counted";
+  model: string | null;
+};
+
+export type CommunityReportData = {
+  villageName: string;
+  dataController: string;
+  from: Date | string | number;
+  to: Date | string | number;
+  generatedAt: Date | string | number;
+  /** Published incidents in the range. */
+  total: number;
+  /** The same length of period immediately before it, for the trend line. */
+  previousTotal: number;
+  byType: readonly ReportCount<IncidentType>[];
+  bySeverity: readonly ReportCount<Severity>[];
+  hotspots: readonly ReportHotspot[];
+  /** Null until the coordinator asks for one. The rest of the report stands. */
+  narrative: ReportNarrative | null;
+  /** Newest first, capped at `REPORT_MAX_INCIDENTS`. */
+  incidents: readonly ReportIncident[];
+  /** Rows the cap left out of the log. Stated in the document, never hidden. */
+  omitted: number;
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** The one heading both documents wear, so an officer recognises the second. */
+const DOCUMENT_TITLE = "COMMUNITY SAFETY REPORT";
+
+const RULE = "─".repeat(52);
+
+/**
+ * Absolute link to a path on this deployment.
+ *
+ * A malformed `NEXT_PUBLIC_APP_URL` costs a relative link rather than a throw
+ * inside a render — the same call `format-alert.ts` makes, for the same reason.
+ */
+function appUrlFor(path: string, appUrl: string): string {
+  try {
+    return new URL(path, appUrl).toString();
+  } catch {
+    return path;
+  }
+}
+
+/** `Village.parishCouncil` if it is set, the deployment constant if not. */
+export function reportController(parishCouncil: string | null): string {
+  return parishCouncil?.trim() || DATA_CONTROLLER.name;
+}
+
+/**
+ * The closing block, identical on both documents.
+ *
+ * It is not decoration. A recipient outside the village has no other way to
+ * know that the descriptions were rewritten, that the locations are landmarks
+ * rather than addresses, or who to go to under UK GDPR — and a summary that
+ * reads like a police log without saying any of that invites an officer to
+ * treat an approximate area as an address.
+ */
+function footer(dataController: string): string[] {
+  return [
+    RULE,
+    `Generated by ${APP_NAME} AI. Data controller: ${dataController}.`,
+    "Descriptions are anonymised before publication — personal details, names and",
+    "registrations are removed. Locations are the landmark a resident named, not an",
+    "address, and mapped positions are deliberately offset. Reports are what",
+    "residents said they saw; they are not verified crime records.",
+  ];
+}
+
+/** "Vehicle crime            4" — a label column and a right-aligned count. */
+function countLines(rows: readonly { label: string; count: number }[]): string[] {
+  if (rows.length === 0) return ["  (none)"];
+
+  const width = Math.max(...rows.map((row) => row.label.length));
+
+  return rows.map((row) => `  ${row.label.padEnd(width)}  ${row.count}`);
+}
+
+/** "3 more than the 9 in the previous 7 days", or the honest absence of one. */
+function trendLine(total: number, previous: number, days: number): string {
+  const period = `previous ${days} day${days === 1 ? "" : "s"}`;
+
+  if (previous === 0) {
+    return `There is no comparable figure for the ${period}.`;
+  }
+
+  const change = total - previous;
+
+  if (change === 0) {
+    return `The ${period} saw the same number, ${previous}.`;
+  }
+
+  return `The ${period} saw ${previous} — ${Math.abs(change)} ${
+    change > 0 ? "fewer" : "more"
+  } than this period.`;
+}
+
+/** Whole days between two instants, rounded up. Never zero. */
+export function rangeDays(
+  from: Date | string | number,
+  to: Date | string | number,
+): number {
+  const ms = new Date(to).getTime() - new Date(from).getTime();
+  return Math.max(1, Math.round(ms / (24 * 60 * 60 * 1000)));
+}
+
+// ---------------------------------------------------------------------------
+// One incident
+// ---------------------------------------------------------------------------
+
+/**
+ * A single report, formatted for a PCSO or a parish clerk.
+ *
+ * ```
+ * COMMUNITY SAFETY REPORT — VillageWatch
+ * Little Barford
+ *
+ * Reference:  VW-4K2P9M
+ * Category:   Vehicle crime
+ * Severity:   High
+ * Occurred:   21 Jul 2026, 02:30
+ * Reported:   21 Jul 2026, 07:14
+ * Location:   The lay-by on Mill Road (approximate)
+ * ...
+ * ```
+ *
+ * A label column rather than prose, because the first thing a recipient does
+ * with this is copy the reference and the time into their own system.
+ */
+export function formatIncidentSummary(
+  input: IncidentSummaryInput,
+  appUrl: string = appBaseUrl(),
+): string {
+  const { incident } = input;
+
+  const fields: [string, string][] = [
+    ["Reference", incident.reference],
+    ["Category", INCIDENT_TYPE_LABELS[incident.type]],
+    ["Severity", SEVERITY_LABELS[incident.severity]],
+    ["Occurred", formatDateTime(incident.occurredAt)],
+    ["Reported", formatDateTime(incident.reportedAt)],
+    [
+      "Location",
+      incident.locationText?.trim()
+        ? `${incident.locationText.trim()} (approximate)`
+        : "Not given",
+    ],
+  ];
+
+  if (incident.reportedToPolice) {
+    fields.push([
+      "Police ref",
+      incident.policeReference?.trim() ||
+        "Reporter says this was reported to the police",
+    ]);
+  }
+
+  const width = Math.max(...fields.map(([label]) => label.length)) + 1;
+
+  const lines = [
+    `${DOCUMENT_TITLE} — ${APP_NAME}`,
+    input.villageName,
+    "",
+    RULE,
+    incident.title.trim(),
+    RULE,
+    "",
+    ...fields.map(([label, value]) => `${`${label}:`.padEnd(width + 2)}${value}`),
+    "",
+    "DESCRIPTION",
+    incident.description.trim() || "(no description was given)",
+  ];
+
+  if (incident.recurring && incident.patternNote?.trim()) {
+    lines.push("", "PATTERN", incident.patternNote.trim());
+  }
+
+  if (!incident.anonymized) {
+    lines.push(
+      "",
+      "NOTE",
+      "This description was never rewritten, so it is the reporter's own wording",
+      "and may name people, vehicles or addresses. Read it before you forward it.",
+    );
+  }
+
+  lines.push(
+    "",
+    `Full report: ${appUrlFor(`/incidents/${incident.id}`, appUrl)}`,
+    "(opens for signed-in residents and coordinators of this village)",
+    "",
+    ...footer(input.dataController),
+  );
+
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// A period
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything published in a village over a period, as one document.
+ *
+ * The order is the order a recipient reads in: what the period looked like,
+ * where it clustered, what it might mean, and only then the log. A police
+ * officer with two minutes reads the first screen; a clerk writing minutes
+ * reads the log.
+ *
+ * The narrative is optional and the document is complete without it. Every
+ * figure above it is counted from the database, so a report produced when the
+ * AI was unreachable is a shorter report rather than a wrong one.
+ */
+export function formatCommunityReport(
+  report: CommunityReportData,
+  appUrl: string = appBaseUrl(),
+): string {
+  const days = rangeDays(report.from, report.to);
+
+  const lines: string[] = [
+    `${DOCUMENT_TITLE} — ${APP_NAME}`,
+    report.villageName,
+    "",
+    `Period:     ${formatDate(report.from)} to ${formatDate(report.to)}`,
+    `Generated:  ${formatDateTime(report.generatedAt)}`,
+    "",
+    RULE,
+    "SUMMARY",
+    RULE,
+    "",
+    `Total reports published in this period: ${report.total}`,
+    trendLine(report.total, report.previousTotal, days),
+    "",
+    "By category",
+    ...countLines(
+      report.byType.map((row) => ({
+        label: INCIDENT_TYPE_LABELS[row.key],
+        count: row.count,
+      })),
+    ),
+    "",
+    "By severity",
+    ...countLines(
+      report.bySeverity.map((row) => ({
+        label: SEVERITY_LABELS[row.key],
+        count: row.count,
+      })),
+    ),
+    "",
+    RULE,
+    "HOTSPOTS",
+    RULE,
+    "",
+  ];
+
+  if (report.hotspots.length === 0) {
+    lines.push("No location was named more than once in this period.");
+  } else {
+    lines.push(
+      ...report.hotspots.map(
+        (spot, index) =>
+          `${index + 1}. ${spot.location} — ${spot.count} report${
+            spot.count === 1 ? "" : "s"
+          }`,
+      ),
+      "",
+      "Grouped by the landmark residents typed, so wording varies between reports.",
+    );
+  }
+
+  lines.push("", RULE, "PATTERN ANALYSIS", RULE, "");
+
+  if (!report.narrative) {
+    lines.push(
+      "No analysis was generated for this report. The figures above and the log",
+      "below are counted directly from the reports.",
+    );
+  } else {
+    lines.push(report.narrative.summary.trim());
+
+    if (report.narrative.patterns.length > 0) {
+      lines.push(
+        "",
+        ...report.narrative.patterns.map((note) => `- ${note.trim()}`),
+      );
+    }
+
+    if (report.narrative.recommendation?.trim()) {
+      lines.push("", `Suggested focus: ${report.narrative.recommendation.trim()}`);
+    }
+
+    lines.push(
+      "",
+      report.narrative.source === "ai"
+        ? `Written by ${report.narrative.model ?? "an AI model"} from the reports listed below. It reflects what was reported, not a police assessment.`
+        : "Assembled from the counts above. No AI summary was available when this report was produced.",
+    );
+  }
+
+  lines.push("", RULE, "INCIDENT LOG", RULE, "");
+
+  if (report.incidents.length === 0) {
+    lines.push("Nothing was published in this village during the period.");
+  } else {
+    for (const incident of report.incidents) {
+      lines.push(
+        `${formatDateTime(incident.occurredAt)} | ${incident.reference} | ${
+          INCIDENT_TYPE_LABELS[incident.type]
+        } | ${SEVERITY_LABELS[incident.severity]}`,
+        `  ${incident.title.trim()}`,
+        `  Location: ${incident.locationText?.trim() || "not given"}`,
+        `  ${truncateWords(
+          incident.description.trim().replace(/\s+/g, " "),
+          REPORT_DESCRIPTION_MAX_CHARS,
+        )}`,
+      );
+
+      if (incident.recurring && incident.patternNote?.trim()) {
+        lines.push(`  Pattern: ${incident.patternNote.trim()}`);
+      }
+
+      lines.push("");
+    }
+
+    if (report.omitted > 0) {
+      lines.push(
+        `${report.omitted} further report${
+          report.omitted === 1 ? "" : "s"
+        } in this period are not listed above. The counts,`,
+        "breakdowns and hotspots cover the whole period. Narrow the dates, or use the",
+        "CSV export, to see the rest.",
+      );
+      lines.push("");
+    }
+
+    lines.push(
+      `Full reports: ${appUrlFor("/incidents", appUrl)}`,
+      "(opens for signed-in residents and coordinators of this village)",
+      "",
+    );
+  }
+
+  lines.push(...footer(report.dataController));
+
+  return lines.join("\n");
+}
+
+/** Filename for the printed or downloaded document. */
+export function reportFileName(report: {
+  villageName: string;
+  from: Date | string | number;
+  to: Date | string | number;
+}): string {
+  const slug = report.villageName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  const stamp = (value: Date | string | number) =>
+    new Date(value).toISOString().slice(0, 10);
+
+  return `villagewatch-report-${slug || "village"}-${stamp(report.from)}-to-${stamp(report.to)}`;
+}

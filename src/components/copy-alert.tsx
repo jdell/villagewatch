@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Check, ClipboardCopy, MessageCircle } from "lucide-react";
+import { copyText } from "@/lib/clipboard";
 
 /**
  * The published alert, ready to paste into WhatsApp.
@@ -64,39 +65,6 @@ const COPIED_MS = 2_000;
 /** WhatsApp's own share link. Mobile opens the app, desktop opens Web. */
 function whatsappShareUrl(text: string): string {
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
-}
-
-/**
- * Copies through the async clipboard API, falling back to a hidden textarea.
- *
- * The fallback is what makes this work on `http://` — `navigator.clipboard` is
- * gated on a secure context, and a coordinator on a LAN deployment or a preview
- * over plain HTTP would otherwise get a button that does nothing.
- */
-async function copyText(value: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value);
-      return true;
-    }
-  } catch {
-    // Denied permission, or an insecure origin. Fall through.
-  }
-
-  try {
-    const area = document.createElement("textarea");
-    area.value = value;
-    area.setAttribute("readonly", "");
-    area.style.position = "fixed";
-    area.style.opacity = "0";
-    document.body.appendChild(area);
-    area.select();
-    const copied = document.execCommand("copy");
-    document.body.removeChild(area);
-    return copied;
-  } catch {
-    return false;
-  }
 }
 
 export function CopyAlert({

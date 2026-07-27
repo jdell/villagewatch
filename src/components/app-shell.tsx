@@ -5,9 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ClipboardList,
+  FileText,
   LayoutDashboard,
   LogOut,
   Map,
+  MapPinned,
   Menu,
   Plus,
   Settings,
@@ -39,6 +41,24 @@ const NAV_ITEMS = [
     icon: LayoutDashboard,
     requires: "coordinator",
   },
+  /*
+    Below the dashboard, because that is the order they are used in: a
+    coordinator reviews the queue, and then once a week or once a month turns
+    what cleared it into a document for somebody outside the village.
+
+    `requires: "coordinator"` covers the platform administrator who also holds
+    `UserRole.ADMIN` — that role is in `COORDINATOR_ROLES`. An administrator by
+    email alone does not get this link, and should not: a report is one
+    village's data (domain rule 4), and somebody in `ADMIN_EMAILS` with no
+    village has nothing to report on. `requireCoordinator()` on the route says
+    the same thing, and it is the half that enforces it.
+  */
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: FileText,
+    requires: "coordinator",
+  },
   { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },
 ] as const;
 
@@ -57,11 +77,10 @@ const NAV_ITEMS = [
  * is not a coordinator sees this and not the dashboard — which is right. They
  * decide who moderates; they do not moderate.
  */
-const ADMIN_ITEM = {
-  href: "/admin/coordinators",
-  label: "Admin",
-  icon: Shield,
-} as const;
+const ADMIN_ITEMS = [
+  { href: "/admin/villages", label: "Villages", icon: MapPinned },
+  { href: "/admin/coordinators", label: "Coordinators", icon: Shield },
+] as const;
 
 export type AppShellUser = {
   name: string;
@@ -198,9 +217,12 @@ export function AppShell({
         </nav>
 
         {/*
-          Its own <nav> below a rule, rather than a fifth item in the list above.
+          Its own <nav> below a rule, rather than more items in the list above.
           The separation is the point: everything in that list is this resident's
-          village, and this one link is the whole platform.
+          village, and these links are the whole platform.
+
+          Villages first, because it comes first in practice — a village has to be
+          activated before anybody can join it, let alone apply to coordinate it.
         */}
         {user.isAdmin && (
           <nav
@@ -210,15 +232,21 @@ export function AppShell({
             <p className="px-3 pb-2 text-xs font-medium uppercase tracking-wider text-brand-300">
               Platform
             </p>
-            <Link
-              href={ADMIN_ITEM.href}
-              onClick={() => setMobileOpen(false)}
-              aria-current={isActive(ADMIN_ITEM.href) ? "page" : undefined}
-              className={linkClass(ADMIN_ITEM.href)}
-            >
-              <ADMIN_ITEM.icon className="size-5 shrink-0" aria-hidden />
-              {ADMIN_ITEM.label}
-            </Link>
+            <ul className="space-y-1">
+              {ADMIN_ITEMS.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    aria-current={isActive(item.href) ? "page" : undefined}
+                    className={linkClass(item.href)}
+                  >
+                    <item.icon className="size-5 shrink-0" aria-hidden />
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </nav>
         )}
       </div>

@@ -152,7 +152,27 @@ model Village {
   population Int?
 
   /// Short code residents enter at registration to join this village.
+  ///
+  /// Minted by `activateVillage()` in `src/lib/village.ts` and **required at
+  /// registration whenever it is set** — a village with a code does not accept
+  /// a resident who cannot produce it. Null is what a seeded directory entry
+  /// looks like before anybody activates it, and the two auth routes refuse
+  /// those on `status` before they ever reach this column.
+  ///
+  /// A credential in everything but name: it is deliberately absent from the
+  /// `villages` SELECT grant in `prisma/sql/rls_policies.sql`, so it is not
+  /// readable through PostgREST with the anon key.
   joinCode String? @unique @map("join_code")
+
+  /// The parish or town council that is the data controller for this village.
+  ///
+  /// `DATA_CONTROLLER` in `src/lib/constants.ts` names one controller for the
+  /// whole deployment, which was true while a deployment served one parish and
+  /// stops being true the moment the directory is activated village by village.
+  /// Set by a platform administrator on `/admin/villages/[id]`; nothing renders
+  /// it yet beyond that screen — wiring it into `/privacy` is the follow-up, and
+  /// until then the constant is still what that page shows.
+  parishCouncil String? @map("parish_council")
 
   /// Minimum severity that triggers a broadcast push to every resident.
   alertThreshold Severity @default(HIGH) @map("alert_threshold")

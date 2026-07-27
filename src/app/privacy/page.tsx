@@ -318,10 +318,24 @@ export default function PrivacyPage() {
             and a link back to this app. Never your name, never the
             coordinates, and never a photograph.
           </Definition>
+          <Definition term="Your local police officer and parish council, in a summary from a coordinator">
+            Your village coordinator can produce a written summary — of one
+            report, or of everything published over a period — and send it to
+            your PCSO or to the parish council. This is what a neighbourhood
+            watch scheme is for, and it is the same information your neighbours
+            already see: the anonymised description, the category, how serious
+            it was, when it happened and the landmark the reporter named. Never
+            your original wording, never your name or contact details, never the
+            map coordinates, and never a photograph. A summary covering a period
+            is recorded in your village&rsquo;s audit trail. A single
+            report&rsquo;s summary is the same text already on the village map,
+            so it is not recorded separately.
+          </Definition>
           <Definition term="The police, on request">
-            Where there is a lawful basis to disclose, such as a formal request
-            in the investigation of a crime. Your parish council decides this,
-            not {APP_NAME}, and the disclosure is logged.
+            Separately from the above: where there is a lawful basis to
+            disclose, such as a formal request in the investigation of a crime.
+            That can include your original wording. Your parish council decides
+            this, not {APP_NAME}, and the disclosure is logged.
           </Definition>
           <Definition term="The people who run this service">
             We keep an internal staff channel on Slack that is told when

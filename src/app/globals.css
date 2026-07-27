@@ -207,3 +207,83 @@ body[data-tour-active] [data-push-prompt] {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Printing a community safety report.
+ *
+ * `window.print()` against these rules is the whole "Download PDF" feature —
+ * every desktop browser and iOS Safari offer "Save as PDF" from the print
+ * dialogue, so a PDF library would buy nothing but a second layout to keep in
+ * step with the on-screen one. See `src/components/reports/report-view.tsx`.
+ *
+ * The `visibility` trick rather than `display: none` on everything else: the
+ * report sits several layers deep inside the app shell, and hiding an ancestor
+ * hides the report with it. `visibility` is inherited and then overridden on
+ * the region, which works regardless of how deeply it is nested — and unlike
+ * `display`, an invisible element still occupies its box, which is why the
+ * region is then pulled to the top-left of the page.
+ *
+ * `[data-print-hide]` is for the controls *inside* the region — the buttons
+ * that made this printable in the first place, and the "not generated yet"
+ * placeholder. Those really are `display: none`, so they leave no gap.
+ */
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  [data-print-region],
+  [data-print-region] * {
+    visibility: visible;
+  }
+
+  [data-print-region] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  [data-print-hide],
+  [data-print-region] [data-print-hide] {
+    display: none !important;
+  }
+
+  /*
+    Colour is not guaranteed — "print backgrounds" is off by default in every
+    browser — so the printed copy is black on white and leans on rules and
+    weight for structure rather than on tinted panels.
+  */
+  [data-print-region] * {
+    color: #000000 !important;
+    background: transparent !important;
+  }
+
+  /* Keep a row's description with its date rather than orphaned overleaf. */
+  [data-print-region] tr,
+  [data-print-region] section {
+    break-inside: avoid;
+  }
+
+  [data-print-region] thead {
+    display: table-header-group;
+  }
+
+  /* The toast layer and the tour both sit outside the region and are fixed. */
+  [data-sonner-toaster],
+  [data-tour],
+  [data-push-prompt] {
+    display: none !important;
+  }
+}

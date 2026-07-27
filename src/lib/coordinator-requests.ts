@@ -10,14 +10,21 @@ import { canApplyForCoordinator } from "@/lib/constants";
 import type { CoordinatorRequestInput } from "@/lib/validations";
 
 /**
- * Applying for coordinator access, and deciding on an application.
+ * Applying for coordinator access, deciding on an application, and the two
+ * direct role changes an administrator can make from `/admin/villages/[id]`.
  *
- * This module is the only place `User.role` is ever raised to `COORDINATOR`.
- * That is the whole point of it existing rather than the two call sites — the
- * API route and the admin page's server action — each doing the work: a
- * promotion here is the moment somebody gains the ability to read their
- * neighbours' verbatim reports and to decide what the village sees, and it
- * carries obligations that are easy to do twice and easier to forget once.
+ * This module is the only place `User.role` is ever moved into or out of
+ * `COORDINATOR`. That is the whole point of it existing rather than the call
+ * sites — the API route, the admin queue's server action, and now village
+ * administration — each doing the work: a promotion here is the moment somebody
+ * gains the ability to read their neighbours' verbatim reports and to decide
+ * what the village sees, and it carries obligations that are easy to do twice
+ * and easier to forget once.
+ *
+ * `appointCoordinator` at the bottom is the second way in, and it exists for a
+ * reason the application flow structurally cannot cover: an application comes
+ * *from* a resident of a village, so a village whose first coordinator does not
+ * exist yet has nobody who can file one. See `src/lib/village.ts`.
  *
  * 1. **Roles come from the server** (domain rule 5). Nothing in either payload
  *    names a role, a village or a user — the applicant is the session, the
@@ -350,5 +357,244 @@ export async function decideCoordinatorRequest(input: {
     status,
     applicantName: request.user.fullName,
     villageName: request.village.name,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Direct appointment, from village administration
+// ---------------------------------------------------------------------------
+
+export type AppointmentOutcome =
+  | { ok: true; message: string; userId: string; fullName: string }
+  | { ok: false; error: string };
+
+/**
+ * The audit row behind both functions below.
+ *
+ * `actorId` is null for an administrator with no profile row — the gate is an
+ * address in `ADMIN_EMAILS`, not a `users` row, and the column is a foreign key.
+ * Same reasoning as `actorIdFor` in `src/lib/village.ts`.
+ */
+async function auditRoleChange(input: {
+  session: Session;
+  villageId: string;
+  action: string;
+  subjectId: string;
+  before: string;
+  after: string;
+}) {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorId: input.session.profile ? input.session.user.id : null,
+        actorEmail: input.session.user.email ?? null,
+        actorRole: "PLATFORM_ADMIN",
+        villageId: input.villageId,
+        action: input.action,
+        entityType: "User",
+        entityId: input.subjectId,
+        before: { role: input.before },
+        after: { role: input.after },
+      },
+    });
+  } catch (cause) {
+    console.error("Could not audit %s for %s", input.action, input.subjectId, cause);
+  }
+}
+
+/**
+ * Promotes one registered resident of one village to coordinator.
+ *
+ * The village is the caller's argument rather than the subject's own column, and
+ * then checked against it — an appointment that silently followed the resident
+ * to whichever village they belong to would be a way to hand somebody coordinator
+ * access to a village the administrator never named (domain rule 4).
+ *
+ * Matched on email because that is what an administrator has: the parish clerk
+ * gives them an address, not a user id. The lookup is case-insensitive, since an
+ * address typed into an admin form and one typed into a registration form agree
+ * about as often as not.
+ */
+export async function appointCoordinator(input: {
+  session: Session;
+  villageId: string;
+  /** Either identifier — whichever the screen had to hand. */
+  email?: string;
+  userId?: string;
+}): Promise<AppointmentOutcome> {
+  const { session, villageId } = input;
+
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "The database is not configured." };
+  }
+
+  if (!isPlatformAdmin(session)) {
+    return {
+      ok: false,
+      error: "Only a platform administrator can appoint a coordinator.",
+    };
+  }
+
+  const email = input.email?.trim().toLowerCase();
+
+  if (!email && !input.userId) {
+    return { ok: false, error: "Name the resident to appoint." };
+  }
+
+  const user = await prisma.user.findFirst({
+    where: input.userId ? { id: input.userId } : { email },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      role: true,
+      villageId: true,
+      verifiedAt: true,
+      deletedAt: true,
+    },
+  });
+
+  if (!user) {
+    return {
+      ok: false,
+      error: `No registered resident with that email${email ? ` (${email})` : ""}.`,
+    };
+  }
+
+  if (user.deletedAt) {
+    return { ok: false, error: `${user.fullName} has closed their account.` };
+  }
+
+  if (user.villageId !== villageId) {
+    // Deliberately not "they are in <other village>". The administrator is
+    // platform-wide and could be told, but the useful half is that this is the
+    // wrong screen for it, and naming somebody else's village here would make
+    // the queue a directory of who lives where.
+    return {
+      ok: false,
+      error: `${user.fullName} is not a resident of this village.`,
+    };
+  }
+
+  if (!canApplyForCoordinator(user.role)) {
+    // Covers "already a coordinator" and the two roles above it, which this
+    // must never quietly demote — see the same guard in the approval path.
+    return {
+      ok: false,
+      error: `${user.fullName} already has coordinator access.`,
+    };
+  }
+
+  const now = new Date();
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      role: "COORDINATOR",
+      // Appointing somebody to coordinate a village answers the question
+      // `verifiedAt` records. Only filled when empty, so an existing
+      // verification keeps its original date and verifier.
+      verifiedAt: user.verifiedAt ?? now,
+      verifiedById: user.verifiedAt ? undefined : session.user.id,
+    },
+  });
+
+  await auditRoleChange({
+    session,
+    villageId,
+    action: "village.coordinator_appointed",
+    subjectId: user.id,
+    before: user.role,
+    after: "COORDINATOR",
+  });
+
+  await notifySlack(`🛡️ ${user.fullName} appointed coordinator by an administrator`);
+
+  return {
+    ok: true,
+    userId: user.id,
+    fullName: user.fullName,
+    message: `${user.fullName} is now a coordinator.`,
+  };
+}
+
+/**
+ * Takes coordinator access away again.
+ *
+ * Only a `COORDINATOR` is demoted. `MODERATOR` and `ADMIN` are not roles this
+ * screen granted and not ones it should quietly take, and neither is reachable
+ * from anything in the application today — a demotion that swept them up would
+ * be a surprise nobody asked for.
+ *
+ * They land on `VERIFIED_RESIDENT` when `verifiedAt` is set and `RESIDENT`
+ * otherwise. `verifiedAt` records that somebody confirmed this person lives in
+ * the village, which does not stop being true when they stop coordinating —
+ * dropping everyone to `RESIDENT` flat would silently un-verify a resident as a
+ * side effect of an unrelated decision, and it is the column the notification
+ * audience and the moderation screens read.
+ */
+export async function removeCoordinator(input: {
+  session: Session;
+  villageId: string;
+  userId: string;
+}): Promise<AppointmentOutcome> {
+  const { session, villageId, userId } = input;
+
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "The database is not configured." };
+  }
+
+  if (!isPlatformAdmin(session)) {
+    return {
+      ok: false,
+      error: "Only a platform administrator can remove a coordinator.",
+    };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      fullName: true,
+      role: true,
+      villageId: true,
+      verifiedAt: true,
+    },
+  });
+
+  if (!user) return { ok: false, error: "That resident no longer exists." };
+
+  if (user.villageId !== villageId) {
+    return {
+      ok: false,
+      error: `${user.fullName} is not a resident of this village.`,
+    };
+  }
+
+  if (user.role !== "COORDINATOR") {
+    return { ok: false, error: `${user.fullName} is not a coordinator.` };
+  }
+
+  const demoted = user.verifiedAt ? "VERIFIED_RESIDENT" : "RESIDENT";
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { role: demoted },
+  });
+
+  await auditRoleChange({
+    session,
+    villageId,
+    action: "village.coordinator_removed",
+    subjectId: user.id,
+    before: "COORDINATOR",
+    after: demoted,
+  });
+
+  return {
+    ok: true,
+    userId: user.id,
+    fullName: user.fullName,
+    message: `${user.fullName} no longer coordinates this village.`,
   };
 }

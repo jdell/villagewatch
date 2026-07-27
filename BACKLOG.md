@@ -50,6 +50,27 @@
 
 ---
 
+## Can launch without
+
+Everything here is real work that makes the product better. None of it stops
+the first parish going live, and treating any of it as a blocker is how a
+launch date slips for reasons nobody can defend to a parish clerk.
+
+| Item | Why it can wait |
+|------|-----------------|
+| Heatmap overlay | Pins on the map already answer "where is this happening". Density is a nicer way to read the same data, not a missing one. |
+| CSV export | Coordinator convenience for a council meeting. The dashboard and the reports page both show the same figures on screen. (B4 says the button is broken — fix or hide it, but neither blocks launch.) |
+| Email digest | Push-only is fine. Push works, has no transport dependency, and the digest already reaches coordinators through it. Email needs a provider, a DPA and a sender domain. |
+| WhatsApp Channel | Extra reach, not core. A village with no channel loses nothing it had — residents are alerted in the app, and the coordinator can paste an alert anywhere. |
+| Notification radius filtering | Village-wide is fine at 200 people. A radius is a way to hear *less*; at parish scale there is not enough to filter. Most residents have no home location captured anyway (T8). |
+| Severity filter | Same reasoning. Every report in a village of 200 is worth a resident's attention. |
+| Time-range filters | The list shows the most recent 30 and the map the last 500. That is the whole history for a village in its first months. |
+| Full WCAG audit | The obvious things are in place — labels, focus rings, 44px targets, `aria-current`, reduced motion. A formal AA audit is a launch-plus-one, not a launch gate. |
+| PWA offline resilience | The offline page and the shell cache exist. A resident with no signal cannot file a report to a server they cannot reach, and queueing one for later is a feature, not a fix. |
+| ONS seed beyond your village | The first parish needs one row. Seeding England's other 10,400 is what makes the picker need a server-side search endpoint — cost, not benefit, until there is a second village. |
+
+---
+
 ## Technical Debt
 
 | # | Item | Priority | Details |

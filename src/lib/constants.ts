@@ -327,6 +327,80 @@ export const VILLAGE_STATUS_LABELS = {
   ARCHIVED: "Archived",
 } satisfies Record<VillageStatus, string>;
 
+/** Badge classes for the admin village list, same palette as severity pills. */
+export const VILLAGE_STATUS_BADGES = {
+  PENDING: "bg-slate-100 text-slate-700 ring-slate-500/20",
+  ACTIVE: "bg-green-50 text-green-700 ring-green-600/20",
+  SUSPENDED: "bg-amber-50 text-amber-800 ring-amber-600/20",
+  ARCHIVED: "bg-slate-100 text-slate-500 ring-slate-400/20",
+} satisfies Record<VillageStatus, string>;
+
+/**
+ * The statuses village administration offers as a filter.
+ *
+ * `ARCHIVED` is deliberately absent, and so is a `PENDING_APPROVAL` value: the
+ * schema has exactly one dormant status and `PENDING` is it, already rendering
+ * as "Pending approval" above. A second value meaning the same thing would leave
+ * two states with nothing to tell them apart and every read filter having to
+ * name both. Archived villages are reachable by URL and simply not in the tabs —
+ * bringing one back is not a button, it is a decision.
+ */
+export const VILLAGE_ADMIN_STATUSES = [
+  "PENDING",
+  "ACTIVE",
+  "SUSPENDED",
+] as const satisfies readonly VillageStatus[];
+
+/**
+ * Characters in a join code.
+ *
+ * Six, drawn from `JOIN_CODE_ALPHABET` in `src/lib/village.ts` — long enough not
+ * to be guessed off a village's name, short enough to read down the phone and to
+ * fit on a noticeboard. Here rather than beside the generator because the
+ * registration form renders it in a hint and cannot import a module that pulls
+ * in `node:crypto`.
+ */
+export const JOIN_CODE_LENGTH = 6;
+
+/**
+ * Why a resident cannot join the village they just picked.
+ *
+ * The client half of `VILLAGE_JOIN_REFUSALS` in `src/lib/village.ts`, which says
+ * the same things to a hand-crafted POST. Two copies because this one has to
+ * render in a Client Component and that one has to sit next to the check it
+ * describes; they are three short strings and the alternative is a Client
+ * Component importing the server-only village module.
+ *
+ * `ACTIVE` is empty and unreachable — it is here so `satisfies` keeps the record
+ * exhaustive when a status is added to the enum.
+ */
+export const VILLAGE_JOIN_MESSAGES = {
+  PENDING: "This village is not yet active. Contact your parish council.",
+  SUSPENDED: "Registration is temporarily closed for this village.",
+  ARCHIVED: "This village is no longer on VillageWatch.",
+  ACTIVE: "",
+} satisfies Record<VillageStatus, string>;
+
+/**
+ * Villages shown per tab on `/admin/villages`.
+ *
+ * Small on purpose. The directory tab is 10,670 parishes once England is
+ * seeded, so that list is only ever useful once it has been searched — a bigger
+ * page would make an unsearched view look like a browsable index rather than
+ * the prompt to type something that it is.
+ */
+export const VILLAGE_ADMIN_PAGE_SIZE = 25;
+
+/**
+ * Residents listed on one village's admin page.
+ *
+ * The appointment picker filters this list in the browser, the same trade
+ * `village-picker.tsx` makes and for the same reason: a village is a few hundred
+ * people, and a search endpoint for that is a debounce and a loading state
+ * bought with nothing. A village that outgrows it says so on the screen.
+ */
+export const VILLAGE_RESIDENT_PAGE_SIZE = 200;
+
 // ---------------------------------------------------------------------------
 // Coordinator access requests
 // ---------------------------------------------------------------------------
@@ -719,6 +793,18 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    value: "incident.report_generated",
+    label: "Community safety report generated",
+    description:
+      "A coordinator produced a written report of a period, for police or the parish council",
+    // Sensitive, and it sits next to the CSV export for the same reason: both
+    // are a bulk read of the village's reports assembled into a document that
+    // leaves the app. The single-incident summary is deliberately not in this
+    // list — see `src/lib/community-report.ts` for why that one cannot be
+    // audited without breaking the share sheet it exists to open.
+    tone: "sensitive",
+  },
+  {
     value: "coordinator_request.created",
     label: "Coordinator access requested",
     description: "A resident applied to coordinate this village",
@@ -763,6 +849,33 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    value: "village.activated",
+    label: "Village activated",
+    description:
+      "An administrator put a village into service and minted its join code",
+    // Sensitive: it is the moment a directory entry becomes a joinable tenant.
+    // Before it, a seeded parish is a name and a map centre; after it, anyone
+    // holding the code registers into it as a verified resident.
+    tone: "sensitive",
+  },
+  {
+    value: "village.join_code_reset",
+    label: "Join code changed",
+    description:
+      "An administrator replaced the village's join code — the old one stopped working",
+    tone: "sensitive",
+  },
+  {
+    value: "village.coordinator_appointed",
+    label: "Coordinator appointed",
+    description:
+      "An administrator made a resident a coordinator directly, without an application",
+    // Sensitive for the same reason `coordinator_request.approved` is: it hands
+    // somebody the ability to read their neighbours' verbatim reports. This one
+    // has no application behind it, so the trail is the only record of it.
+    tone: "sensitive",
+  },
+  {
     value: "retention.sweep",
     label: "Retention sweep",
     description:
@@ -780,6 +893,68 @@ export const AUDIT_LOG_PAGE_SIZE = 50;
 
 /** How many locations the dashboard calls out as hotspots. */
 export const HOTSPOT_COUNT = 3;
+
+// ---------------------------------------------------------------------------
+// Community safety reports
+// ---------------------------------------------------------------------------
+
+/**
+ * The periods `/reports` offers, plus the custom option.
+ *
+ * Seven and thirty days, because those are the two meetings a coordinator
+ * actually attends: a police liaison call about the week, and a parish council
+ * meeting about the month. Anything else is `custom`, which is a pair of date
+ * inputs rather than a longer list of presets nobody would read.
+ */
+export const REPORT_RANGES = [
+  { value: "7", label: "Last 7 days", days: 7 },
+  { value: "30", label: "Last 30 days", days: 30 },
+  { value: "custom", label: "Custom range", days: null },
+] as const satisfies readonly {
+  value: string;
+  label: string;
+  days: number | null;
+}[];
+
+export type ReportRangePreset = (typeof REPORT_RANGES)[number]["value"];
+
+export const REPORT_RANGE_VALUES = REPORT_RANGES.map((r) => r.value) as [
+  ReportRangePreset,
+  ...ReportRangePreset[],
+];
+
+/** The preset used when nothing valid is in the query string. */
+export const DEFAULT_REPORT_RANGE: ReportRangePreset = "7";
+
+/**
+ * The widest custom range the picker will accept, in days.
+ *
+ * A year matches the CSV export's window, and the ceiling is not arbitrary: the
+ * incident log below is a table a person reads, and the whole document is
+ * assembled in one render and held in one clipboard string. Somebody asking for
+ * five years wants the spreadsheet, not this.
+ */
+export const REPORT_MAX_RANGE_DAYS = 365;
+
+/**
+ * How many incidents one report's log will list.
+ *
+ * The counts, the breakdowns and the hotspots above it are computed over the
+ * *whole* range regardless — they are aggregates, and an aggregate that quietly
+ * covered a subset would be a wrong number in a document going to the police.
+ * Only the log is capped, and the report says on its face how many rows it left
+ * out rather than ending early and looking complete.
+ */
+export const REPORT_MAX_INCIDENTS = 200;
+
+/**
+ * Characters of a description that reach the incident log.
+ *
+ * Longer than the WhatsApp alert's allowance — this is a document somebody sits
+ * down with, not a line on a lock screen — and still bounded, because a police
+ * report that runs to forty pages does not get read.
+ */
+export const REPORT_DESCRIPTION_MAX_CHARS = 400;
 
 /** The window the weekly digest covers, and the comparison window before it. */
 export const DIGEST_WINDOW_DAYS = 7;

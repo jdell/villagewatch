@@ -1,0 +1,32 @@
+-- Village activation: the data controller column.
+--
+-- Hand-written, like the four migrations before it. `prisma migrate diff`
+-- against this database also proposes:
+--
+--   DROP INDEX "incidents_location_point_idx";
+--   DROP INDEX "pattern_alerts_centroid_point_idx";
+--   DROP INDEX "villages_boundary_idx";
+--
+-- Those are the GiST indexes created by `prisma/sql/postgis.sql`. They sit on
+-- `Unsupported("geography(...)")` columns, so Prisma cannot see them, reads
+-- them as drift, and offers to remove them — which would take out every radius
+-- query (`ST_DWithin`) the app makes. They are deliberately not in this file.
+-- Check any future generated migration for the same three lines.
+--
+-- `join_code` is NOT added here: the column, its `@unique` and its index have
+-- existed since the init migration. What changes in this release is who writes
+-- it (`activateVillage()` in `src/lib/village.ts`, never a human in psql) and
+-- what it means at registration (required whenever it is set, rather than an
+-- optional shortcut to `VERIFIED_RESIDENT`). Neither is a schema change.
+--
+-- Nullable with no default, so every existing row is untouched and no village
+-- claims a controller nobody named. `/privacy` still renders the deployment-wide
+-- `DATA_CONTROLLER` constant until something reads this column.
+--
+-- Re-run `prisma/sql/rls_policies.sql` after this. The `villages` SELECT grant
+-- is enumerated per column, so `parish_council` is unreadable through PostgREST
+-- until that file names it — which is the intended default for a new column,
+-- and it is named there now. `join_code` is deliberately still absent from it.
+
+-- AlterTable
+ALTER TABLE "villages" ADD COLUMN     "parish_council" TEXT;

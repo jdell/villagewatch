@@ -263,6 +263,7 @@ GRANT SELECT (
   center_lat, center_lng, default_zoom, radius_meters, boundary,
   region, postcode, country, timezone, population,
   alert_threshold, contact_email, contact_phone, auto_approve,
+  parish_council,
   whatsapp_channel_url, whatsapp_enabled, whatsapp_min_severity,
   created_at, updated_at
 ) ON public.villages TO authenticated;
