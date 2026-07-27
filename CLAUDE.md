@@ -146,6 +146,7 @@ src/
   components/                 Shared UI (logo, app-shell, placeholder, auth forms)
     auth/google-button.tsx    "Continue with Google" + the or-divider, shared
     auth/welcome-form.tsx     The provider sign-up's second half
+    auth/village-picker.tsx   Type-to-search village combobox + OGL attribution
     site-footer.tsx           Public footer, incl. the legal links — shared
     legal-page.tsx            Shell + typography for /privacy and /terms
     status-screen.tsx         Shell behind not-found.tsx and error.tsx
@@ -741,8 +742,10 @@ sample incidents in it; neither needs the other.
   people who live in it.
 - **Attribution is a licence condition.** The IPN is OGL v3.0, which asks for an
   acknowledgement wherever the data is shown. `ONS_ATTRIBUTION` in
-  `src/lib/constants.ts` holds it. Nothing renders it because nothing renders
-  the directory yet — that is a debt, not a decision.
+  `src/lib/constants.ts` holds it, and `VillageAttribution` in
+  `src/components/auth/village-picker.tsx` renders it under the picker on both
+  `/register` and `/welcome` — the only two screens a resident sees the
+  directory through. Any further surface that lists villages needs it too.
 - `data/ons-places.csv` is gitignored; `data/cambridgeshire-villages.json` is
   not. The snapshot is the same pipeline's output, committed, so the directory
   can be seeded with no network at all.
@@ -872,25 +875,39 @@ open:
   a database. Apply it, then re-run the whole RLS file — a new table arrives
   with row-level security off, so until that second step an application sitting
   in the queue is readable through PostgREST by anyone with a key.
-- **The village directory has never been seeded against the real database**,
-  because there is not one yet. The whole pipeline has been run end to end
-  against the real July 2024 release and a throwaway local Postgres: 10,670
-  England parishes in 2.9s, re-runs idempotent, a village moved to `ACTIVE` by
-  hand left untouched while a drifted `PENDING` one was refreshed. What that
-  scratch database did **not** have is PostGIS, RLS, or the rest of the schema —
-  so `Village.boundary` and the policies in `rls_policies.sql` are still
-  unexercised against a seeded directory.
-- **Nothing renders the directory.** There is no village picker, no county
-  search and no way for a resident to choose a seeded village — registration
-  still takes a join code. Seeding 10,670 villages today puts 10,670 dormant
-  rows in a table nothing reads. When a picker is built it must carry
-  `ONS_ATTRIBUTION`.
-- **A directory entry still cannot be claimed from cold.** Coordinator access
-  requests close half of this — there is now a flow that gives a village a
-  coordinator — but it starts from a resident who is *already* in the village,
-  and joining still needs a join code that a seeded village does not have.
-  Nothing promotes a `PENDING` village to `ACTIVE` or mints its first join code.
-  The missing piece is the first step, not the last.
+- **Only Cambridgeshire is seeded.** The 270 parishes from
+  `data/cambridgeshire-villages.json` are in the real database as `PENDING`,
+  seeded from the committed snapshot rather than the CSV (`--file`, because
+  `data/ons-places.csv` is gitignored and not downloaded). Re-running reported
+  `unchanged 270`, so idempotency is now confirmed against the real schema and
+  not only the throwaway Postgres the pipeline was first built against. England's
+  other 10,400 parishes are **not** seeded. `Village.boundary` is null on all 271
+  rows, which is correct — it is a hand-drawn polygon with a GiST index and no
+  trigger, unlike the geography columns on `Incident` and `PatternAlert`.
+- **The picker searches, but the `ACTIVE` filter still decides.**
+  `src/components/auth/village-picker.tsx` replaced the `<select>` on
+  `/register` and `/welcome`: a type-to-search combobox, folding case and
+  diacritics so `Chrion` finds `A' Chrìon Làraich`, capped at `MAX_VISIBLE`
+  rendered rows. Both pages still query `status: "ACTIVE"` and both auth routes
+  still enforce it, so **the 270 seeded parishes do not appear in it** — the only
+  selectable village is whatever `prisma/seed.ts` created. Filtering happens in
+  the browser over the whole list; at a county's 270 that is free, but activating
+  the national directory wholesale wants a server-side search endpoint first.
+- **A directory entry still cannot be claimed from cold, and this is now the
+  blocker.** Nothing in the repo writes `Village.status` except `prisma/seed.ts`,
+  which hardcodes `ACTIVE` for its one placeholder; `seed-villages.ts`
+  deliberately never touches it, and every other `status: "ACTIVE"` in `src/` is
+  a read filter. So a seeded parish is `PENDING` forever and the only promotion
+  path is editing the row by hand in Prisma Studio or psql. Joining it would
+  still need a join code a seeded village does not have, and both auth routes
+  hardcode `role: codeMatches ? "VERIFIED_RESIDENT" : "RESIDENT"`. Coordinator
+  access requests close the *second* half of this — `coordinator-requests.ts`
+  does assign `COORDINATOR` on approval — but that flow starts from a resident
+  who is *already* in the village, so it cannot bootstrap one. The missing piece
+  is the first step, not the last: activate a village, mint its join code and
+  appoint its first coordinator in the same operation, or the village is a black
+  hole where every report filed sits in `PENDING_REVIEW` unreachable (domain
+  rule 6).
 - **The retention job has never run against data.** It deletes files and takes
   reports off the map, and every line of it is untested against a real bucket.
   Watch the first run and read the counts in the response before trusting the
