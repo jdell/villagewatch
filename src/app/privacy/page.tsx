@@ -257,15 +257,25 @@ export default function PrivacyPage() {
           <LI>
             <strong>It is not a decision about you.</strong> There is no automated
             decision-making with legal or similarly significant effects, in the
-            sense of Article 22. A human coordinator reviews every report before
-            it is published, and the AI&apos;s judgement is advice to them, not a
-            substitute for them.
+            sense of Article 22. The rewrite is shown to you before anything is
+            saved, and nothing is published unless you accept it — the
+            AI&apos;s judgement is advice, never the last word.
+          </LI>
+          <LI>
+            <strong>Whether a coordinator reads it first is your village&apos;s
+            choice.</strong> By default every report waits in a moderation queue
+            until a coordinator approves it, and that is what the screens tell
+            you as you file. A village&apos;s coordinators can switch that off,
+            in which case reports are published the moment you press publish and
+            you are told so on the screen before you do. Either way the
+            anonymised text is what other residents see, and your original
+            wording stays restricted to you, your coordinators and moderators.
           </LI>
           <LI>
             <strong>If it is unavailable, nothing breaks.</strong> Reports filed
             when the AI cannot be reached use your own wording, and the screen
-            says so. They still go to a coordinator for review before anyone sees
-            them.
+            says so — including a warning that they will be published as written
+            if your village has turned review off.
           </LI>
           <LI>
             Anthropic processes this data as a processor on our behalf, under

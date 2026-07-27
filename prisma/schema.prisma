@@ -160,6 +160,15 @@ model Village {
   contactEmail String? @map("contact_email")
   contactPhone String? @map("contact_phone")
 
+  /// Publish reports the moment they are filed, with no coordinator review.
+  /// **Off by default**, and the default is the safe one: with this on there is
+  /// no human between a resident's submission and the village map, so a report
+  /// the AI pass never touched — no key, a timeout, a reporter who declined the
+  /// rewrite — goes public in the reporter's own words. Domain rule 6 still
+  /// holds either way; this changes which status a report is filed in, never
+  /// which statuses residents can see.
+  autoApprove Boolean @default(false) @map("auto_approve")
+
   // --- WhatsApp Channel -----------------------------------------------------
   // A channel is a PUBLIC surface: anyone holding the invite link can follow it,
   // village resident or not. That makes it the only place VillageWatch discloses

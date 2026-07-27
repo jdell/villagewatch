@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCoordinator } from "@/lib/auth";
-import { applyModeration, readRawDescription } from "@/lib/moderation";
+import {
+  applyModeration,
+  getVillageAutoApprove,
+  readRawDescription,
+  setVillageAutoApprove,
+} from "@/lib/moderation";
 import { prisma } from "@/lib/prisma";
 import {
   getVillageChannelSettings,
@@ -11,6 +16,7 @@ import {
 import {
   fieldErrors,
   incidentModerationSchema,
+  villageAutoApproveFormSchema,
   villageChannelFormSchema,
 } from "@/lib/validations";
 
@@ -109,6 +115,98 @@ export async function revealRawDescriptionAction(
   return result.ok
     ? { text: result.text, error: null }
     : { text: null, error: result.error };
+}
+
+export type AutoApproveState = {
+  ok: boolean;
+  message: string;
+};
+
+/**
+ * Turns coordinator review on or off for the whole village.
+ *
+ * `requireCoordinator()` rather than an admin gate, and the village comes from
+ * the session profile: this is a coordinator deciding how their own village
+ * works, and a `villageId` in the payload would be a way to switch off the
+ * moderation on somebody else's (domain rule 4).
+ *
+ * **Audited, and the row is the point.** This is the second configuration
+ * change in `AUDIT_ACTIONS` and the more consequential of the two: the WhatsApp
+ * switch widens who can read a published report, and this one removes the
+ * person who decides whether it is published. Every report filed afterwards
+ * reaches the map on the reporter's own say-so, and the trail is the only place
+ * that records who accepted that and when.
+ *
+ * Existing reports are deliberately left alone. Turning the setting on does not
+ * flush the queue — those reports were filed under a promise of review, some of
+ * them may be sitting there precisely because a coordinator had doubts, and
+ * publishing them in a batch from a settings toggle is not a thing anybody
+ * asked for. It applies to what is filed next.
+ */
+export async function saveAutoApproveAction(
+  _previous: AutoApproveState,
+  formData: FormData,
+): Promise<AutoApproveState> {
+  const session = await requireCoordinator("/dashboard");
+  const villageId = session.profile?.villageId;
+
+  if (!villageId || !process.env.DATABASE_URL) {
+    return { ok: false, message: "You are not attached to a village." };
+  }
+
+  const parsed = villageAutoApproveFormSchema.safeParse({
+    // An unchecked checkbox is absent from the payload entirely.
+    autoApprove: formData.get("autoApprove") ?? "",
+  });
+
+  if (!parsed.success) {
+    return { ok: false, message: "That setting is not valid." };
+  }
+
+  const { autoApprove } = parsed.data;
+  // Read before the write, so the trail records what actually changed rather
+  // than what was submitted.
+  const before = await getVillageAutoApprove(villageId);
+
+  try {
+    await setVillageAutoApprove(villageId, autoApprove);
+  } catch (cause) {
+    console.error(
+      "Could not save the auto-approve setting for village %s",
+      villageId,
+      cause,
+    );
+    return { ok: false, message: "Could not save that setting. Try again." };
+  }
+
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorId: session.user.id,
+        actorEmail: session.user.email ?? null,
+        actorRole: session.profile?.role ?? null,
+        villageId,
+        action: "village.auto_approve_changed",
+        entityType: "village",
+        entityId: villageId,
+        before: { autoApprove: before },
+        after: { autoApprove },
+      },
+    });
+  } catch (cause) {
+    // The setting is saved either way. A trail write that failed is worth a log
+    // and not worth telling the coordinator their save did not happen.
+    console.error("Could not audit the auto-approve change for %s", villageId, cause);
+  }
+
+  revalidatePath("/dashboard");
+
+  return {
+    ok: true,
+    message: autoApprove
+      ? "Auto-approve is on. New reports go live the moment they are filed."
+      : "Auto-approve is off. New reports wait for a coordinator.",
+  };
 }
 
 export type ChannelSettingsState = {

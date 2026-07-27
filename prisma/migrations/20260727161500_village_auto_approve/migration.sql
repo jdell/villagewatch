@@ -1,0 +1,27 @@
+-- Per-village auto-approve.
+--
+-- Hand-written, like the three migrations before it. `prisma migrate diff`
+-- against this database also proposes:
+--
+--   DROP INDEX "incidents_location_point_idx";
+--   DROP INDEX "pattern_alerts_centroid_point_idx";
+--   DROP INDEX "villages_boundary_idx";
+--
+-- Those are the GiST indexes created by `prisma/sql/postgis.sql`. They sit on
+-- `Unsupported("geography(...)")` columns, so Prisma cannot see them, reads
+-- them as drift, and offers to remove them — which would take out every radius
+-- query (`ST_DWithin`) the app makes. They are deliberately not in this file.
+-- Check any future generated migration for the same three lines.
+--
+-- `DEFAULT false` is the whole safety story for existing rows: every village
+-- that exists when this runs keeps coordinator review, and turning it off is a
+-- deliberate act on /dashboard that writes a `village.auto_approve_changed`
+-- audit row.
+--
+-- Re-run `prisma/sql/rls_policies.sql` after this. The `villages` SELECT grant
+-- is enumerated per column, so `auto_approve` is unreadable through PostgREST
+-- until that file names it — which is the intended default for a new column,
+-- and it is named there now.
+
+-- AlterTable
+ALTER TABLE "villages" ADD COLUMN     "auto_approve" BOOLEAN NOT NULL DEFAULT false;

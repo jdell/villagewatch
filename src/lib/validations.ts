@@ -712,6 +712,28 @@ export const villageChannelFormSchema = z
 
 export type VillageChannelFormInput = z.output<typeof villageChannelFormSchema>;
 
+/**
+ * The village's auto-approve switch, posted from the dashboard.
+ *
+ * One field, and a schema all the same: an unchecked box is absent from a form
+ * payload entirely, so `formData.get()` returns null and a bare `Boolean()` on
+ * it would be right by accident rather than on purpose. Stating the two shapes
+ * a checkbox can arrive in is what makes "absent means off" a decision.
+ *
+ * Its own schema rather than a field on `villageChannelFormSchema`, because they
+ * are two forms with two save buttons and two audit actions. Merging them would
+ * mean a coordinator correcting an invite link could not save without also
+ * re-submitting — and so re-confirming — whether the village moderates.
+ *
+ * No `villageId`. It comes from the session profile server-side (domain rule 4).
+ */
+export const villageAutoApproveFormSchema = z.object({
+  autoApprove: z
+    .union([z.literal("on"), z.literal("")])
+    .optional()
+    .transform((value) => value === "on"),
+});
+
 // ---------------------------------------------------------------------------
 // Moderation and editing
 // ---------------------------------------------------------------------------

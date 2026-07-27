@@ -127,8 +127,9 @@ src/
       incidents/[id]/actions.ts  Moderate / edit / withdraw server actions
       incidents/new/          Report wizard host (village lookup, server-side)
       dashboard/              Stats, breakdowns, hotspots, moderation queue
-      dashboard/actions.ts    Moderate, audited raw-text reveal, and the
-                              village's WhatsApp Channel settings
+      dashboard/actions.ts    Moderate, audited raw-text reveal, and the two
+                              village settings — auto-approve and the WhatsApp
+                              Channel
       dashboard/audit/        Audit trail viewer — coordinator only, filterable
       settings/               Profile and notification preferences
       settings/actions.ts     saveSettingsAction — never touches role/village
@@ -180,6 +181,8 @@ src/
     dashboard/stat-card.tsx   One figure with its trend against last period
     dashboard/breakdown-bar.tsx  CSS bars — no charting dependency
     dashboard/moderation-card.tsx  Queue row; audited raw-text reveal
+    dashboard/auto-approve-form.tsx  The switch that turns coordinator review
+                              off for the whole village — warns on the way on
     dashboard/whatsapp-channel-form.tsx  The village's own channel — link, id,
                               posting switch, severity floor
     severity-badge.tsx        green / amber / red / purple pill
@@ -191,7 +194,8 @@ src/
                               requireCoordinator / requireAdmin
     admin.ts                  ADMIN_EMAILS — the platform admin allow-list
     slack.ts                  Staff webhook, fire-and-forget, server only
-    moderation.ts             applyModeration + audited readRawDescription
+    moderation.ts             applyModeration, audited readRawDescription, and
+                              the village's auto-approve setting (fails closed)
     erasure.ts                removeIncident + eraseAccount — Article 17,
                               tombstones the row and deletes the media
     coordinator-requests.ts   Apply, approve, reject — the only place a role
@@ -516,11 +520,18 @@ linked from `SiteFooter` and the registration form.
 - `DATA_CONTROLLER` in `src/lib/constants.ts` is **placeholders**. A privacy
   notice that does not name a controller does not satisfy Article 13 — fill it
   in before a single real resident registers.
-- The privacy notice makes four claims that are statements about how the code
+- The privacy notice makes five claims that are statements about how the code
   behaves: on-device blur with no server-side fallback (domain rule 3),
-  coordinate jitter (domain rule 2), report text going to Anthropic, and what
-  the Slack staff channel is told. If any of those changes, `/privacy` changes
-  in the same commit.
+  coordinate jitter (domain rule 2), report text going to Anthropic, what the
+  Slack staff channel is told, and whether a human sees a report before it is
+  published. If any of those changes, `/privacy` changes in the same commit.
+- **The fifth one is now conditional, and both documents say so.** `/privacy`
+  §"It is not a decision about you" used to rest the Article 22 position on a
+  coordinator reviewing every report; `Village.autoApprove` made that false for
+  any village that switches it off. The human in the loop the notice now names
+  is the reporter, who reads the rewrite and accepts it before anything is
+  saved — which is true in both configurations. `/terms` §7 opened with the same
+  claim and carries the same qualification. See Auto-approve.
 - `RETENTION` describes the schedule the policy states, and
   `/api/cron/retention` now enforces the first two figures nightly. The other
   two — audit log expiry and dormant account closure — are still schedule-only;
@@ -681,17 +692,91 @@ reporter reads and edits the result, and `POST /api/incidents` saves it.
   timeout and a refusal are all ordinary states; the wizard falls back to the
   reporter's own wording and says on screen that it did. Never make this path
   block filing a report.
-- **Reports still land in `PENDING_REVIEW`.** The rewrite is good; it is not a
-  moderation queue.
+- **Reports land in `PENDING_REVIEW` unless the village turned that off.** The
+  rewrite is good; it is not a moderation queue. See Auto-approve below — the
+  queue is still the default and the setting is the village's own decision.
 - `rawDescription` and `description` now hold different text — the reporter's
   words and the published rewrite. When no rewrite happened, both hold the
-  reporter's words, which is safe because of the point above.
+  reporter's words. That was unconditionally safe while everything went through
+  the queue; under auto-approve the reporter's read of the preview step is the
+  only check, which is what the red warning on that screen is for.
 - The `ai` block on the publish payload is **provenance, not authorisation**.
   It comes from the browser and could be forged; it decides nothing, because
-  the moderation queue is the gate.
+  the moderation queue is the gate — and where there is no queue, because it
+  still writes no column a resident could not have typed by hand.
 - Pattern detection reads **published incidents only**. Feeding pending reports
   in would let a pattern note describe something the queue has not cleared
   (domain rule 6).
+
+## Auto-approve
+
+`Village.autoApprove`, off by default, set by a coordinator on `/dashboard`. It
+is the only setting in the app that removes a person from a path rather than
+adding one, and it is read in exactly one place that matters:
+`POST /api/incidents` asks `getVillageAutoApprove()` and files the report as
+`PUBLISHED` or `PENDING_REVIEW` accordingly.
+
+- **It changes the status a report is filed in, never which statuses are
+  public.** Domain rule 6 is untouched — residents still see
+  `PUBLIC_INCIDENT_STATUSES` and nothing else. Everything that reads incidents
+  is unchanged, which is why the diff is small and the consequences are not.
+- **The setting is read server-side from the village row and never from the
+  body.** A client-supplied status or "publish me" flag would be precisely the
+  escalation the queue exists to prevent. The wizard is *told* the value so its
+  copy can be true; it is not asked for it.
+- **`getVillageAutoApprove` fails closed**, the opposite of `rate-limit.ts` and
+  deliberately so. A database error means we do not know what the village asked
+  for, and the safe guess is the queue: a report that waits for a coordinator
+  who was not expecting it is an inconvenience, and a report published because a
+  `SELECT` failed is not recallable.
+- **Auto-publishing owes the same fan-out a coordinator's Approve does** —
+  village push, the public WhatsApp Channel post, the staff Slack line and an
+  `incident.publish` audit row. `announce()` in the route is where that set
+  lives; keep it in step with `applyModeration`, which is where the same set is
+  defined for the human path.
+- **`announce()` cannot throw.** It is called inside the reference-clash retry
+  loop, where an exception would be read as a P2002 and the report filed a
+  second time. Every failure in it is a log.
+- **The `incident.publish` row carries `autoApproved: true` and no `before`.**
+  Without the row, the audit viewer's "Published" filter is empty in an
+  auto-approving village and a coordinator asking what went live gets nothing.
+  Without the flag it would read as somebody's decision. A `before` of
+  `PENDING_REVIEW` would put a review in the trail that never happened.
+- **`moderatedById` and `moderatedAt` stay null.** Nobody moderated it, and
+  filling them with the reporter would put a resident's name against a review
+  that did not occur.
+- **Turning it on does not flush the queue.** Reports already filed were filed
+  under a promise of review, and some are sitting there because a coordinator
+  had doubts. It applies to what is filed next. The dashboard says so, and keeps
+  rendering the queue underneath the notice while anything is still in it —
+  a notice shown *instead* of a non-empty queue would leave a resident's report
+  invisible to the village and to the only people who could publish it.
+- **Coordinators are pushed when a report enters the queue**
+  (`notifyCoordinatorsOfPendingReport`), which is new and is the other half of
+  this: the queue only works if somebody knows it filled up. Not filtered by
+  `notifyPush`, radius or `notifyMinSeverity` — those are how a *resident* asks
+  to hear less village news, and this is work, not news. The reporter is
+  excluded from their own alert. Reference and title only; a push body lands on
+  a lock screen.
+- **`village.auto_approve_changed` is audited and toned `sensitive`**, alongside
+  `village.channel_update`. That one widens who can read a published report;
+  this one removes the person who decides whether it is published at all.
+- **Three screens had to stop making a promise the code no longer keeps**: the
+  wizard's "what happens when you publish" list, the "Not anonymised" panel
+  (which goes red and inverts its advice — the reporter's own words are about to
+  be public), and the success toast. All three read the *server's* answer or the
+  village row, never an assumption.
+- **`/privacy` and `/terms` changed in the same commit**, for the reason the
+  legal-pages section gives. Both stated that a coordinator reviews every report
+  before publication; the Article 22 paragraph rested on it. The rewrite makes
+  the human in the loop the reporter — who sees the rewrite and accepts it
+  before anything is saved — and names the village setting as the village's
+  choice. The landing FAQ said the same thing and changed with them.
+- **A village running auto-approve *and* WhatsApp Channel posting has put
+  unreviewed reports in front of the open internet.** Both default off, both are
+  audited, and the dashboard orders them so the pair is visible at a glance.
+  Nothing forbids the combination; it is a coordinator's call and it should be
+  an informed one.
 
 ## Push notifications
 
@@ -1004,14 +1089,17 @@ open:
   `incident-media` bucket exists, private. What has **not** happened: no
   production deployment, no Vercel environment variables, no cron has ever
   fired.
-- **Two migrations have not been applied anywhere.**
-  `20260727113000_coordinator_requests` and
-  `20260727150000_erasure_and_rate_limits` are both hand-written, like the
-  WhatsApp one before them, and neither has met a database. Apply them in order,
+- **Three migrations have not been applied anywhere.**
+  `20260727113000_coordinator_requests`,
+  `20260727150000_erasure_and_rate_limits` and
+  `20260727161500_village_auto_approve` are all hand-written, like the WhatsApp
+  one before them, and none has met a database. Apply them in order,
   then re-run the whole RLS file — a new table arrives with row-level security
   off, so until that second step an application sitting in the queue is readable
   through PostgREST by anyone with a key, and every resident's remaining quota
-  is readable and resettable.
+  is readable and resettable. The `villages` SELECT grant is enumerated per
+  column, so `auto_approve` is also unreadable through PostgREST until that
+  re-run; the app is unaffected either way, because Prisma is the owner.
   The erasure migration is the one to watch. It carries
   `ALTER TYPE "incident_status" ADD VALUE 'REMOVED'`, which is only safe inside
   Prisma's migration transaction because nothing else in that file uses the new
@@ -1102,9 +1190,17 @@ open:
   ever been posted to a real channel. **Before turning one on for a live
   village, post to a test channel first and read what actually lands** — this is
   the one feature whose output an unauthenticated stranger can read.
+- **Auto-approve has a UI, a migration and no village behind it.** Nothing has
+  ever been filed through the published-on-submit path against a real database,
+  and its migration is one of the three above that have never run. Watch the
+  first report filed with it on: check the status, the push, the audit rows and —
+  if the village also has channel posting on — what actually lands in the
+  channel, which is the one surface an unauthenticated stranger can read.
 - No test suite. `.github/workflows/ci.yml` runs `lint`, `typecheck` and `build`
   on every pull request and every push to `main`, which is the floor rather than
-  the goal — there is still nothing asserting behaviour.
+  the goal — there is still nothing asserting behaviour. This change lands with
+  no test asserting that a `PENDING_REVIEW` village still queues, which is the
+  regression worth having one for.
 - The README's screenshots are placeholder text. Capture them after the first
   seeded deploy.
 - `aiSummary` is still unused; the AI pass fills `aiModel`, `aiConfidence`,

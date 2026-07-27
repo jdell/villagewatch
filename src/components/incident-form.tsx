@@ -79,6 +79,16 @@ export type IncidentFormVillage = {
   centerLat: number;
   centerLng: number;
   defaultZoom: number;
+  /**
+   * Whether this village publishes on submit rather than into a queue.
+   *
+   * **Copy only.** It changes what the preview step and the success toast tell
+   * the reporter, and nothing else — `POST /api/incidents` reads the column
+   * itself and never trusts a status or a flag from the body. Passed down
+   * because "your coordinator will read this first" is a promise the wizard has
+   * always made, and in a village that has turned review off it is not true.
+   */
+  autoApprove: boolean;
 };
 
 type IncidentFormProps = {
@@ -485,8 +495,13 @@ export function IncidentForm({ village }: IncidentFormProps) {
         return;
       }
 
+      // The server's answer, not the prop — the village setting could have
+      // changed while the wizard was open, and the status in the response is
+      // what actually happened to the report.
       toast.success(
-        `Report ${result.reference} filed — your coordinator will review it.`,
+        result.autoApproved
+          ? `Report ${result.reference} is live — your neighbours have been alerted.`
+          : `Report ${result.reference} filed — your coordinator will review it.`,
       );
       router.replace(result.redirectTo ?? "/incidents");
       router.refresh();
@@ -817,6 +832,7 @@ export function IncidentForm({ village }: IncidentFormProps) {
             processing={ai.status === "processing"}
             aiError={ai.status === "failed" ? ai.error : null}
             patternNote={ai.patternNote}
+            autoApprove={village.autoApprove}
             onReprocess={() => void runAiPass(true)}
           />
         )}

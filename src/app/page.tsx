@@ -109,7 +109,7 @@ const FAQS = [
   {
     question: 'How does the AI work?',
     answer:
-      'When you submit a report, the text goes to Claude, which rewrites it without the identifying details, sorts it into a category and suggests how serious it is. You see the result and can edit it before anything is saved. If the AI is unavailable your report still files in your own words — it simply waits for your coordinator, exactly as it would otherwise.',
+      'When you submit a report, the text goes to Claude, which rewrites it without the identifying details, sorts it into a category and suggests how serious it is. You see the result and can edit it before anything is saved. If the AI is unavailable your report still files in your own words, and the screen says so. Reports wait for a coordinator to approve them unless your village has turned that review off, which is a setting its coordinators control and which the app tells you about before you file.',
   },
   {
     question: 'How do I become a coordinator?',

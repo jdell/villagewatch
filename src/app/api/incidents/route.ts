@@ -1,9 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
+import type { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { fuzzCoordinates } from "@/lib/geo";
 import { isAiConfigured } from "@/lib/ai/client";
-import { LOCATION_FUZZ_METERS } from "@/lib/constants";
+import { getVillageAutoApprove } from "@/lib/moderation";
+import {
+  notifyCoordinatorsOfPendingReport,
+  notifyIncidentPublished,
+} from "@/lib/notifications";
+import { notifySlack } from "@/lib/slack";
+import { LOCATION_FUZZ_METERS, SEVERITY_META } from "@/lib/constants";
 import { RATE_LIMITS, rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { fieldErrors, incidentReportSchema } from "@/lib/validations";
 
@@ -12,12 +19,20 @@ import { fieldErrors, incidentReportSchema } from "@/lib/validations";
  *
  * Three things here look like shortcuts and are not:
  *
- * 1. **The report lands in `PENDING_REVIEW`, never `PUBLISHED`.** Claude's
- *    rewrite is good, and it is not a moderation queue. Only
- *    `PUBLIC_INCIDENT_STATUSES` (`PUBLISHED`, `RESOLVED`) reach residents, so
- *    a coordinator sees every report before any neighbour does. Publishing
- *    straight from here would breach domain rule 1 the first time the model
- *    left a name in.
+ * 1. **The report lands in `PENDING_REVIEW` unless the village has said
+ *    otherwise.** Claude's rewrite is good, and it is not a moderation queue —
+ *    publishing straight from here would breach domain rule 1 the first time
+ *    the model left a name in, which is why this was unconditional for as long
+ *    as the route has existed. `Village.autoApprove` is a coordinator's
+ *    deliberate decision to accept that risk for their own village: it is off
+ *    by default, changing it is audited, and the switch says on screen what it
+ *    costs. What it does **not** change is domain rule 6 — residents still see
+ *    `PUBLIC_INCIDENT_STATUSES` and nothing else. The setting decides which
+ *    status a report is filed in, never which statuses are public.
+ *
+ *    The setting is read here, from the village row, and never from the body.
+ *    A client-supplied "publish me" flag would be exactly the escalation the
+ *    queue exists to prevent.
  *
  * 2. **`rawDescription` and `description` are different columns and now hold
  *    different text.** `rawDescription` is the reporter's verbatim words, kept
@@ -46,6 +61,109 @@ async function nextReference(year: number): Promise<string> {
   });
 
   return `VW-${year}-${String(count + 1).padStart(4, "0")}`;
+}
+
+/**
+ * Everything that happens because a report was filed, once it has been.
+ *
+ * Split out because the two branches are not variations on a theme. A report in
+ * the queue is work for a coordinator and nobody else hears about it; an
+ * auto-approved report is already on the map, so it owes the village the same
+ * broadcast, the same public channel post and the same staff line that a
+ * coordinator's Approve click owes — see `applyModeration`, which is where that
+ * set is defined and where this one has to stay in step with it.
+ *
+ * **It cannot throw.** It is called inside the create loop's `try`, where an
+ * exception would be read as a reference clash and retried — filing the report a
+ * second time. Every failure in here is a log and nothing else: the row is
+ * written, the reporter has their reference, and a push that did not go out is
+ * not a reason to tell them their report did not file.
+ */
+async function announce(input: {
+  incidentId: string;
+  reference: string;
+  villageId: string;
+  autoApprove: boolean;
+  session: NonNullable<Awaited<ReturnType<typeof getSession>>>;
+  report: z.output<typeof incidentReportSchema>;
+  fuzzed: { lat: number; lng: number };
+}): Promise<void> {
+  const { incidentId, reference, villageId, autoApprove, session, report } =
+    input;
+
+  try {
+    if (!autoApprove) {
+      await notifyCoordinatorsOfPendingReport({
+        villageId,
+        incidentId,
+        reference,
+        title: report.title,
+        severity: report.severity,
+        reporterId: session.user.id,
+      });
+      return;
+    }
+
+    // Published on arrival: the village hears about it now, because there is no
+    // later. `notifyIncidentPublished` carries the WhatsApp Channel post with
+    // it, which is the surface worth pausing on — a village running both
+    // auto-approve and channel posting has put an unreviewed report in front of
+    // the open internet. Both switches are off by default and both are audited,
+    // and that combination is spelled out on the dashboard.
+    await notifyIncidentPublished({
+      id: incidentId,
+      villageId,
+      title: report.title,
+      severity: report.severity,
+      locationText: report.locationText ?? null,
+      lat: input.fuzzed.lat,
+      lng: input.fuzzed.lng,
+      occurredAt: report.occurredAt,
+    });
+
+    // The second audit row, and the reason it is worth writing: without it the
+    // trail's "Published" filter is empty in an auto-approving village, and a
+    // coordinator asking what went live this week gets nothing. The actor is the
+    // reporter because they are whose action published it; `autoApproved` is
+    // what distinguishes this from somebody's decision.
+    await prisma.auditLog.create({
+      data: {
+        actorId: session.user.id,
+        actorEmail: session.user.email,
+        actorRole: session.profile?.role,
+        villageId,
+        action: "incident.publish",
+        entityType: "Incident",
+        entityId: incidentId,
+        // No `before`. Every other `incident.publish` row moved a report out of
+        // the queue and says so; this one had no prior state to record, and
+        // writing PENDING_REVIEW here would put a review in the trail that
+        // never happened.
+        after: { status: "PUBLISHED", autoApproved: true },
+      },
+    });
+
+    // The same line `applyModeration` sends, with the same rule about what may
+    // be in it: the anonymised title, the severity and the landmark. Never the
+    // reporter's wording, never the coordinates.
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      select: { name: true },
+    });
+
+    await notifySlack(
+      `🚨 New incident in ${village?.name ?? "a village"} (auto-approved): ${SEVERITY_META[report.severity].label} — ${report.title}${
+        report.locationText ? ` — ${report.locationText}` : ""
+      }`,
+    );
+  } catch (cause) {
+    console.error(
+      "Could not announce incident %s in village %s",
+      reference,
+      villageId,
+      cause,
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -133,6 +251,11 @@ export async function POST(request: NextRequest) {
   // a deployment with no key cannot have produced one, whatever the body claims.
   const ai = isAiConfigured ? report.ai : undefined;
 
+  // The village's own decision, read from its row. Fails closed to the queue —
+  // see `getVillageAutoApprove`.
+  const autoApprove = await getVillageAutoApprove(villageId);
+  const status = autoApprove ? "PUBLISHED" : "PENDING_REVIEW";
+
   for (let attempt = 0; attempt < REFERENCE_ATTEMPTS; attempt += 1) {
     try {
       const incident = await prisma.incident.create({
@@ -143,8 +266,11 @@ export async function POST(request: NextRequest) {
           type: report.type,
           severity: report.severity,
           // Set explicitly rather than left to the schema default, because the
-          // reason it must not be PUBLISHED is not obvious from the schema.
-          status: "PENDING_REVIEW",
+          // reason it is usually PENDING_REVIEW is not obvious from the schema.
+          // `moderatedById` and `moderatedAt` stay null even when this is
+          // PUBLISHED: nobody moderated it, and filling them with the reporter
+          // would put a resident's name against a review that never happened.
+          status,
           source: "WEB",
           title: report.title,
           // The reporter's own words when the AI pass ran, a duplicate of the
@@ -212,6 +338,7 @@ export async function POST(request: NextRequest) {
             type: report.type,
             severity: report.severity,
             status: incident.status,
+            autoApproved: autoApprove,
             mediaCount: report.media.length,
             anonymized: Boolean(ai),
             aiModel: ai?.model ?? null,
@@ -222,11 +349,27 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // Everything from here on is fan-out, and none of it may turn a filed
+      // report into an error. The row is written and the reference is spoken
+      // for; a push that failed is a push that failed.
+      await announce({
+        incidentId: incident.id,
+        reference: incident.reference,
+        villageId,
+        autoApprove,
+        session,
+        report,
+        fuzzed,
+      });
+
       return NextResponse.json(
         {
           id: incident.id,
           reference: incident.reference,
           status: incident.status,
+          // The wizard says something different depending on whether a
+          // coordinator is about to read this or the village already has.
+          autoApproved: autoApprove,
           redirectTo: "/incidents",
         },
         { status: 201 },

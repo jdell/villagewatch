@@ -290,8 +290,11 @@ export default function TermsPage() {
       <LegalSection id="moderation" title="7. Moderation and removal">
         <UL>
           <LI>
-            Every report is reviewed by a coordinator before publication. Nothing
-            you file is visible to other residents until it has been.
+            By default, every report is reviewed by a coordinator before
+            publication, and nothing you file is visible to other residents
+            until it has been. Your village&apos;s coordinators can turn that
+            review off, in which case reports are published the moment they are
+            filed — the screen tells you which applies before you press publish.
           </LI>
           <LI>
             Coordinators may edit, reject, resolve or archive any report in their

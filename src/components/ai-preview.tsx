@@ -65,6 +65,12 @@ type AiPreviewProps = {
   aiError?: string | null;
   /** Cross-referencing result, when there is one worth showing. */
   patternNote?: string | null;
+  /**
+   * Whether the reporter's village publishes on submit. Copy only — it changes
+   * what this screen promises and nothing about what the server does. Defaults
+   * to false so the reassuring wording is never shown by omission.
+   */
+  autoApprove?: boolean;
   /** Wizard navigation, rendered below everything else. */
   footer?: React.ReactNode;
 };
@@ -99,14 +105,27 @@ function Disclaimer() {
   );
 }
 
+/**
+ * What the reporter is told about the state of the anonymisation pass.
+ *
+ * `autoApprove` changes the sentence at the end of each branch, and the "not
+ * anonymised" one is why it is threaded through the wizard at all. That panel
+ * has always said a coordinator reads the report before anybody else does,
+ * which is the reassurance that makes filing un-rewritten text reasonable. In a
+ * village that has turned review off it is false, and false in the one
+ * direction that matters: the reporter's own words, names and registrations
+ * included, go on the map the moment they press publish.
+ */
 function StatusNotice({
   processing,
   aiProcessed,
   aiError,
+  autoApprove,
 }: {
   processing: boolean;
   aiProcessed: boolean;
   aiError?: string | null;
+  autoApprove: boolean;
 }) {
   if (processing) {
     return (
@@ -131,6 +150,9 @@ function StatusNotice({
           <p className="mt-1 text-brand-800">
             Your own wording is kept for your coordinator. Check this reads
             correctly — you can edit it or rewrite it again before publishing.
+            {autoApprove
+              ? " Your village publishes reports straight away, so this is the last chance to change it."
+              : ""}
           </p>
         </div>
       </div>
@@ -138,17 +160,36 @@ function StatusNotice({
   }
 
   return (
-    <div className="flex gap-3 rounded-xl bg-amber-50 p-3.5 ring-1 ring-amber-200">
-      <TriangleAlert className="size-5 shrink-0 text-amber-600" aria-hidden />
-      <div className="text-sm leading-relaxed text-amber-900">
+    <div
+      className={
+        autoApprove
+          ? "flex gap-3 rounded-xl bg-red-50 p-3.5 ring-1 ring-red-200"
+          : "flex gap-3 rounded-xl bg-amber-50 p-3.5 ring-1 ring-amber-200"
+      }
+    >
+      <TriangleAlert
+        className={
+          autoApprove
+            ? "size-5 shrink-0 text-red-600"
+            : "size-5 shrink-0 text-amber-600"
+        }
+        aria-hidden
+      />
+      <div
+        className={
+          autoApprove
+            ? "text-sm leading-relaxed text-red-900"
+            : "text-sm leading-relaxed text-amber-900"
+        }
+      >
         <p className="font-medium">Not anonymised</p>
-        <p className="mt-1 text-amber-800">
+        <p className={autoApprove ? "mt-1 text-red-800" : "mt-1 text-amber-800"}>
           {aiError
             ? `${aiError} This is your own wording.`
             : "Automatic anonymisation did not run, so this is your own wording."}{" "}
-          Your report goes to your coordinator for review before anyone else can
-          see it — read it through now and take out anything that identifies a
-          person.
+          {autoApprove
+            ? "Your village publishes reports without review, so this goes on the map exactly as it reads now — take out anything that identifies a person before you publish."
+            : "Your report goes to your coordinator for review before anyone else can see it — read it through now and take out anything that identifies a person."}
         </p>
       </div>
     </div>
@@ -168,6 +209,7 @@ export function AiPreview({
   processing = false,
   aiError,
   patternNote,
+  autoApprove = false,
   footer,
 }: AiPreviewProps) {
   const [editing, setEditing] = useState(false);
@@ -200,6 +242,7 @@ export function AiPreview({
         processing={processing}
         aiProcessed={aiProcessed}
         aiError={aiError}
+        autoApprove={autoApprove}
       />
 
       {patternNote && (
@@ -434,12 +477,26 @@ export function AiPreview({
               What happens when you publish
             </h3>
             <ul className="mt-3 space-y-2 text-sm text-slate-600">
-              {[
-                "Your report goes to your village coordinator for review.",
-                "Once approved it appears on the village map, with the pin shifted slightly from where you placed it.",
-                "Any photo or video was already blurred on your device — the original was never uploaded.",
-                "Your original wording is kept for the coordinator, but is never shown to other residents.",
-              ].map((line) => (
+              {/*
+                The first two lines are the ones the village setting changes.
+                This list is the last thing a reporter reads before pressing
+                publish, so it has to describe what will actually happen — not
+                the flow the app was originally built around.
+              */}
+              {(autoApprove
+                ? [
+                    "Your report is published straight away — your village has turned coordinator review off.",
+                    "It appears on the village map immediately and your neighbours are alerted, with the pin shifted slightly from where you placed it.",
+                    "Any photo or video was already blurred on your device — the original was never uploaded.",
+                    "Your original wording is kept for your coordinator, but is never shown to other residents.",
+                  ]
+                : [
+                    "Your report goes to your village coordinator for review.",
+                    "Once approved it appears on the village map, with the pin shifted slightly from where you placed it.",
+                    "Any photo or video was already blurred on your device — the original was never uploaded.",
+                    "Your original wording is kept for the coordinator, but is never shown to other residents.",
+                  ]
+              ).map((line) => (
                 <li key={line} className="flex items-start gap-2.5">
                   <Check
                     className="mt-0.5 size-4 shrink-0 text-safe-600"

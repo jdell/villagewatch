@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Download, Inbox, MapPin, ScrollText, ShieldCheck } from "lucide-react";
+import { Download, Inbox, MapPin, ScrollText, ShieldCheck, Zap } from "lucide-react";
 import type {
   IncidentStatus,
   IncidentType,
@@ -14,10 +14,12 @@ import {
   ModerationCard,
   type QueuedIncident,
 } from "@/components/dashboard/moderation-card";
+import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { WhatsAppChannelForm } from "@/components/dashboard/whatsapp-channel-form";
 import { NoVillage } from "@/components/no-village";
 import { requireCoordinator } from "@/lib/auth";
+import { getVillageAutoApprove } from "@/lib/moderation";
 import { prisma } from "@/lib/prisma";
 import {
   getVillageChannelSettings,
@@ -83,6 +85,7 @@ export default async function DashboardPage() {
     queue,
     pendingCount,
     channel,
+    autoApprove,
   ] = await Promise.all([
     prisma.incident.count({
       where: { ...published, occurredAt: { gte: weekStart } },
@@ -151,6 +154,7 @@ export default async function DashboardPage() {
     // this is the screen that edits them, so a stored link that failed the
     // `https:` check has to appear in the field to be correctable.
     getVillageChannelSettings(villageId),
+    getVillageAutoApprove(villageId),
   ]);
 
   const typeRows: BreakdownRow[] = byType
@@ -317,12 +321,51 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        <p className="mt-1 text-sm text-slate-500">
-          Nothing here is on the map yet. Approving a report publishes it and
-          alerts the neighbours who asked to hear about it.
-        </p>
+        {/*
+          The notice takes the place of the queue while auto-approve is on —
+          there is no queue to work, and "the queue is empty" would read as a
+          quiet village rather than a village that does not moderate.
 
-        {queued.length === 0 ? (
+          What it does not do is hide reports that are actually waiting. Reports
+          filed before the switch was flipped are still PENDING_REVIEW, and only
+          `PUBLIC_INCIDENT_STATUSES` reach residents (domain rule 6) — so a
+          notice rendered *instead* of a non-empty queue would leave somebody's
+          report invisible to the village and to the only people who could
+          publish it. When there is something there, both are shown.
+        */}
+        {autoApprove ? (
+          <div className="mt-3 flex gap-3 rounded-2xl bg-amber-50 p-4 ring-1 ring-inset ring-amber-600/20">
+            <Zap className="size-5 shrink-0 text-amber-600" aria-hidden />
+            <div className="text-sm leading-relaxed text-amber-900">
+              <p className="font-medium">
+                Auto-approve is enabled. Incidents go live immediately.
+              </p>
+              <p className="mt-1">
+                Reports filed in your village are published the moment they are
+                submitted, and the neighbours who asked to hear about them are
+                alerted straight away. Nothing is queued for you to read first.
+                You can still edit, resolve, archive or remove anything on the
+                map, and you can turn review back on in Village settings below.
+              </p>
+              {pendingCount > 0 && (
+                <p className="mt-2 font-medium">
+                  {pendingCount} report{pendingCount === 1 ? "" : "s"} filed
+                  before this was switched on {pendingCount === 1 ? "is" : "are"}{" "}
+                  still waiting below. Until you review{" "}
+                  {pendingCount === 1 ? "it" : "them"}, no one in the village can
+                  see {pendingCount === 1 ? "it" : "them"}.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-1 text-sm text-slate-500">
+            Nothing here is on the map yet. Approving a report publishes it and
+            alerts the neighbours who asked to hear about it.
+          </p>
+        )}
+
+        {autoApprove && queued.length === 0 ? null : queued.length === 0 ? (
           <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-8 text-center">
             <span className="mx-auto grid size-12 place-items-center rounded-xl bg-safe-50 text-safe-600">
               <ShieldCheck className="size-6" aria-hidden />
@@ -365,6 +408,15 @@ export default async function DashboardPage() {
         <p className="mt-1 text-sm text-slate-500">
           These apply to everyone in your village, not just to you.
         </p>
+
+        {/*
+          Review first, the channel second, in the order of how much they
+          change. One decides whether anybody reads a report before the village
+          does; the other decides who can read it afterwards. A village with
+          both on has put unreviewed reports in front of the open internet,
+          which is worth being able to see in one glance.
+        */}
+        <AutoApproveForm value={autoApprove} />
 
         <WhatsAppChannelForm
           values={{

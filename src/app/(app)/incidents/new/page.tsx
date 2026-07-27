@@ -29,6 +29,11 @@ export default async function NewIncidentPage() {
             centerLat: true,
             centerLng: true,
             defaultZoom: true,
+            // Read here so the wizard can tell the reporter the truth about
+            // what pressing publish does. It is *display only* — the route
+            // reads the column again server-side and decides the status from
+            // that, so a browser that lies about it changes nothing.
+            autoApprove: true,
           },
         })
       : null;
@@ -66,6 +71,7 @@ export default async function NewIncidentPage() {
         centerLat: village.centerLat,
         centerLng: village.centerLng,
         defaultZoom: village.defaultZoom || MAP_DEFAULTS.zoom,
+        autoApprove: village.autoApprove,
       }}
     />
   );

@@ -742,10 +742,22 @@ export const AUDIT_ACTIONS = [
     label: "WhatsApp Channel changed",
     description:
       "A coordinator changed where the village's public channel posts go",
-    // Sensitive, and it is the only configuration change in this list. Turning
+    // Sensitive, and one of two configuration changes in this list. Turning
     // the channel on widens the audience for every alert published afterwards
     // from "signed-in residents of this village" to anyone holding the link —
     // the one setting in the app that reaches past the tenant boundary.
+    tone: "sensitive",
+  },
+  {
+    value: "village.auto_approve_changed",
+    label: "Auto-approve changed",
+    description:
+      "A coordinator turned publication without review on or off for the village",
+    // Sensitive for the mirror-image reason to the channel setting. That one
+    // widens who can read a published report; this one removes the human who
+    // decides whether it is published at all, so every report filed afterwards
+    // reaches the map on the reporter's say-so alone. Who did that, and when,
+    // is exactly what the trail is for.
     tone: "sensitive",
   },
   {

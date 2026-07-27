@@ -236,3 +236,72 @@ export async function readRawDescription(input: {
 
   return { ok: true, text: incident.rawDescription };
 }
+
+// ---------------------------------------------------------------------------
+// Auto-approve
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether this village publishes reports without a coordinator seeing them
+ * first.
+ *
+ * Off for every village until somebody turns it on. What it removes is not a
+ * formality: `POST /api/incidents` writes both `rawDescription` and
+ * `description` from the same submission, and when the AI pass did not run —
+ * no key, a timeout, a reporter who declined the rewrite — those two columns
+ * hold the same text, which is the reporter's verbatim words. The moderation
+ * queue is what has always caught that before a neighbour read it. With
+ * auto-approve on, the reporter's own read of the preview step is the only
+ * check there is.
+ *
+ * **It fails closed**, which is the opposite of the rate limiter and
+ * deliberately so. A database error here means we do not know what the village
+ * asked for, and the safe guess is the queue: a report that waits for a
+ * coordinator who was not expecting it is an inconvenience, and a report
+ * published because a `SELECT` failed is not recallable.
+ */
+export async function getVillageAutoApprove(villageId: string): Promise<boolean> {
+  if (!process.env.DATABASE_URL) return false;
+
+  try {
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      select: { autoApprove: true },
+    });
+
+    return village?.autoApprove ?? false;
+  } catch (cause) {
+    // The column arrives with a migration that may not have run yet, so a
+    // deployment pointed at an older database throws here on every report.
+    // Caught rather than propagated: filing must not fail because of a setting,
+    // and the fallback is the behaviour every village had before this existed.
+    console.error(
+      "Could not read the auto-approve setting for village %s",
+      villageId,
+      cause,
+    );
+    return false;
+  }
+}
+
+/**
+ * Writes the village's auto-approve setting.
+ *
+ * Takes a `villageId` and never reads one — the caller resolves it from the
+ * session profile (domain rule 4), because a village id in a form post is a way
+ * to switch off a neighbouring parish's moderation.
+ *
+ * Unlike `getVillageAutoApprove` it **throws** on a database error, for the same
+ * reason `saveVillageChannel` does: a save that failed silently would leave the
+ * coordinator looking at a switch that reads as on and a queue that is still
+ * filling up. The call site turns it into a message.
+ */
+export async function setVillageAutoApprove(
+  villageId: string,
+  autoApprove: boolean,
+): Promise<void> {
+  await prisma.village.update({
+    where: { id: villageId },
+    data: { autoApprove },
+  });
+}

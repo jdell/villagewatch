@@ -385,6 +385,61 @@ export async function notifyReporterOfDecision(input: {
   );
 }
 
+/**
+ * Tells the village's coordinators that a report is waiting on them.
+ *
+ * Sent when a report lands in `PENDING_REVIEW` — so never in a village that has
+ * turned auto-approve on, where there is no queue to join and the village-wide
+ * broadcast has already gone out.
+ *
+ * Coordinators only, and not filtered by `notifyPush`, radius or
+ * `notifyMinSeverity`, for the same reason the weekly digest is not: those three
+ * are how a *resident* asks to hear less village news, and this is not village
+ * news. It is work assigned to the person who volunteered to do it, and a
+ * report nobody was told about sits in the queue until somebody happens to open
+ * the dashboard.
+ *
+ * **The title is all that travels.** No description, anonymised or otherwise:
+ * a push body lands on a lock screen, which is the least private surface in the
+ * app, and a coordinator is one tap from the queue where the full report is.
+ */
+export async function notifyCoordinatorsOfPendingReport(input: {
+  villageId: string;
+  incidentId: string;
+  reference: string;
+  title: string;
+  severity: Severity;
+  /** The reporter, so their own filing does not buzz their own phone. */
+  reporterId: string | null;
+}): Promise<DispatchResult> {
+  if (!process.env.DATABASE_URL) {
+    return { matched: 0, sent: 0, skipped: "no_recipients" };
+  }
+
+  const coordinators = await prisma.user.findMany({
+    where: {
+      villageId: input.villageId,
+      deletedAt: null,
+      role: { in: [...COORDINATOR_ROLES] },
+      // A coordinator filing their own report already knows about it, and
+      // being pushed your own submission reads as a bug.
+      ...(input.reporterId ? { id: { not: input.reporterId } } : {}),
+    },
+    select: { id: true },
+  });
+
+  return dispatch(
+    {
+      villageId: input.villageId,
+      title: `📥 ${SEVERITY_META[input.severity].label} report awaiting review`,
+      body: `${input.reference} — ${input.title}`,
+      path: "/dashboard",
+      incidentId: input.incidentId,
+    },
+    coordinators,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Coordinator access requests
 // ---------------------------------------------------------------------------
