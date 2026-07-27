@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.9](https://github.com/jdell/villagewatch/compare/v0.1.8...v0.1.9) (2026-07-27)
+
+
+### Features
+
+* **reports:** share incident summaries with police and the parish council ([f42611f](https://github.com/jdell/villagewatch/commit/f42611f9c5fe569a634873498e0c56e503ce4c8c))
+
+
+### Documentation
+
+* add backlog and improvements tracker ([1bfba00](https://github.com/jdell/villagewatch/commit/1bfba00a0d30aa3232be0921e0aa15999878ae18))
+
 ### [0.1.8](https://github.com/jdell/villagewatch/compare/v0.1.7...v0.1.8) (2026-07-27)
 
 
