@@ -1,0 +1,128 @@
+name: Database
+
+# Applies pending migrations to production, then re-applies the two SQL files
+# that Prisma does not manage.
+#
+# ## Why this is not in the Vercel build command
+#
+# The obvious place for `prisma migrate deploy` is `"build"` in package.json.
+# It is not there for three reasons:
+#
+#   1. **Vercel builds every preview.** A build-command migration runs against
+#      whatever DIRECT_URL that environment happens to hold, and there is no
+#      staging Supabase project yet — so a PR preview would migrate production.
+#   2. **`migrate deploy` is only half the job.** `prisma/sql/rls_policies.sql`
+#      has to be re-applied after any migration that adds a table OR a column:
+#      a new table arrives with row-level security OFF, and the `villages` and
+#      `incidents` SELECT grants are enumerated per column, so a new column is
+#      unreadable through PostgREST until it is named there. Automating the
+#      migration alone would turn "a table exists without RLS" from something
+#      somebody forgot into something every deploy creates.
+#   3. **A database blip should not fail an unrelated deploy**, and a migration
+#      should be re-runnable from a button without pushing a commit.
+#
+# ## Ordering against the Vercel deploy
+#
+# This runs on the same push that Vercel deploys, so the two race. That is
+# tolerable because every migration in this repo so far is additive, and the two
+# reads that touch a not-yet-existing column — `getVillageAutoApprove` and
+# `getVillageChannel` — both catch and fall back. Keep it that way: a migration
+# that DROPs or renames needs the deploy to land first, and wants to be run by
+# hand rather than through here.
+#
+# ## Requirements
+#
+#   * A `DIRECT_URL` secret: the Supabase **session pooler**, port 5432, user
+#     `postgres.<ref>`. Not the pooled 6543 URL — migrations cannot run through
+#     pgBouncer — and not `db.<ref>.supabase.co`, which is IPv6-only.
+#   * Nothing else. Both SQL files are re-runnable by construction: every policy
+#     and trigger is dropped before it is created, indexes are IF NOT EXISTS and
+#     functions are CREATE OR REPLACE.
+#
+# ## Making it ask first
+#
+# The job names a `production` environment. Add a required reviewer to it under
+# Settings → Environments → production and every run waits for a human to
+# approve it, which is the closest thing to the review beat that reading a
+# hand-written migration used to provide.
+
+on:
+  push:
+    branches: [main]
+    # Docs, components and copy changes do not need a database run. Everything
+    # this workflow applies lives under prisma/ — the migrations themselves and
+    # both SQL files — so the filter is exact rather than a guess.
+    paths:
+      - "prisma/**"
+      - ".github/workflows/database.yml"
+  workflow_dispatch:
+
+# Never cancel a run in progress. `prisma migrate deploy` takes a Postgres
+# advisory lock so two runs cannot interleave, but a cancelled psql part way
+# through rls_policies.sql would leave the policies half-applied — which reads
+# as applied and enforces nothing.
+concurrency:
+  group: database-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Fails here, with a sentence, rather than forty lines into a psql
+      # connection error. An unset secret is the likeliest way this breaks.
+      - name: Check the secret is set
+        run: |
+          if [ -z "$DIRECT_URL" ]; then
+            echo "::error::DIRECT_URL is not set. Add it under Settings → Secrets and variables → Actions. It must be the Supabase session pooler on port 5432, not the pooled 6543 URL."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # postinstall runs `prisma generate`, which reads the schema rather than
+      # the database. Needed here only because the CLI is invoked below.
+      - name: Install
+        run: npm ci
+
+      # Printed before anything is applied, so the log records what the database
+      # looked like going in. This is the step to read when a run goes wrong.
+      - name: Migration status
+        run: npx prisma migrate status || true
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      # psql ships with the ubuntu-latest runner image. The version is printed
+      # so that "psql: command not found" is legible if that ever changes.
+      #
+      # ON_ERROR_STOP=1 is the load-bearing flag: without it psql runs on past a
+      # failed statement and exits 0, which would report a green run over a
+      # half-applied policy file.
+      - name: PostGIS triggers and indexes
+        run: |
+          psql --version
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/sql/postgis.sql
+
+      # Always after postgis.sql, and always after the migrations — the grants
+      # are enumerated per column, so this is what makes a newly added column
+      # readable and a newly added table protected.
+      - name: Row-level security
+        run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/sql/rls_policies.sql
+
+      - name: Final status
+        run: npx prisma migrate status
