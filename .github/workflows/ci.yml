@@ -1,0 +1,76 @@
+name: CI
+
+# Lint, typecheck and build every pull request, and every push to main.
+#
+# Until this existed, nothing mechanical ran before a merge — `npm run build`
+# was a line in CONTRIBUTING that a human had to remember, and main
+# auto-deploys to production. A broken build reached Vercel before it reached
+# a reviewer.
+#
+# It needs no secrets, and that is deliberate rather than lucky:
+#
+#   * `src/lib/prisma.ts` creates its pool lazily, so importing it with no
+#     DATABASE_URL is fine — only a query would fail, and nothing queries at
+#     build time.
+#   * `prisma.config.ts` falls back to DATABASE_URL and then to undefined.
+#     `prisma generate` reads the schema, not the database.
+#   * `src/lib/supabase/env.ts` degrades to `isSupabaseConfigured === false`
+#     instead of throwing, which is what lets a fresh clone render the landing
+#     page.
+#   * Every page that reads the database guards on `process.env.DATABASE_URL`
+#     first and returns an empty list.
+#
+# So a CI run here proves the build is sound, not that the deployment is
+# configured. Those are different questions and Vercel already answers the
+# second one.
+#
+# A commit carrying `[skip ci]` — which is every `chore(release):` commit from
+# version.yml — is skipped by GitHub Actions natively. No `if:` needed.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A second push to the same PR makes the first run irrelevant. Cancelling it
+# keeps the queue short; the main branch is excluded because a cancelled run
+# there would leave a commit with no verdict against it.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # No `--ignore-scripts` here, unlike version.yml: the postinstall runs
+      # `prisma generate`, and `src/generated/prisma` is gitignored. Without it
+      # every import of `@/generated/prisma/client` is a type error and both
+      # the typecheck and the build fail on a clean checkout.
+      - name: Install
+        run: npm ci
+
+      # Separate steps rather than one chained command, so the failing check is
+      # named in the job summary instead of buried in a log.
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
