@@ -1,6 +1,6 @@
 {
   "name": "villagewatch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -24,17 +24,50 @@
   "standard-version": {
     "header": "# Changelog\n\nEvery release of VillageWatch. Generated from Conventional Commits by\n`standard-version` — see CONTRIBUTING in the README for the commit format.\n",
     "types": [
-      { "type": "feat", "section": "Features" },
-      { "type": "fix", "section": "Fixes" },
-      { "type": "perf", "section": "Performance" },
-      { "type": "refactor", "section": "Refactoring" },
-      { "type": "docs", "section": "Documentation" },
-      { "type": "build", "section": "Build and dependencies" },
-      { "type": "ci", "section": "CI" },
-      { "type": "revert", "section": "Reverts" },
-      { "type": "chore", "hidden": true },
-      { "type": "style", "hidden": true },
-      { "type": "test", "hidden": true }
+      {
+        "type": "feat",
+        "section": "Features"
+      },
+      {
+        "type": "fix",
+        "section": "Fixes"
+      },
+      {
+        "type": "perf",
+        "section": "Performance"
+      },
+      {
+        "type": "refactor",
+        "section": "Refactoring"
+      },
+      {
+        "type": "docs",
+        "section": "Documentation"
+      },
+      {
+        "type": "build",
+        "section": "Build and dependencies"
+      },
+      {
+        "type": "ci",
+        "section": "CI"
+      },
+      {
+        "type": "revert",
+        "section": "Reverts"
+      },
+      {
+        "type": "chore",
+        "hidden": true
+      },
+      {
+        "type": "style",
+        "hidden": true
+      },
+      {
+        "type": "test",
+        "hidden": true
+      }
     ]
   },
   "dependencies": {
