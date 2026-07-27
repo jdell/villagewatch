@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.5](https://github.com/jdell/villagewatch/compare/v0.1.4...v0.1.5) (2026-07-27)
+
+
+### Features
+
+* **moderation:** per-village auto-approve ([d1f870c](https://github.com/jdell/villagewatch/commit/d1f870cd370f007fa77a1552ce954b2ff36d528d))
+
 ### [0.1.4](https://github.com/jdell/villagewatch/compare/v0.1.3...v0.1.4) (2026-07-27)
 
 
