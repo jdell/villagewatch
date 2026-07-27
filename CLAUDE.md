@@ -130,10 +130,13 @@ src/
       dashboard/audit/        Audit trail viewer — coordinator only, filterable
       settings/               Profile and notification preferences
       settings/actions.ts     saveSettingsAction — never touches role/village
+    forgot-password/          Ask for a reset link — public, no session
+    reset-password/           Where the link lands; expired-link state built in
     api/auth/                 login, logout, register route handlers
     api/auth/callback/        OAuth return leg — exchanges the code, routes on
-                              whether a profile row exists
+                              whether a profile row exists. Also the recovery leg
     api/auth/complete-profile/  Writes the profile for a provider sign-up
+    api/auth/reset-password/  Sets a new password for the current session
     api/coordinator-requests/   POST apply (resident), GET list (admin only)
     api/coordinator-requests/[id]/  PATCH approve or reject — admin only
     api/incidents/            POST create report (writes AI fields + tags)
@@ -147,6 +150,8 @@ src/
     auth/google-button.tsx    "Continue with Google" + the or-divider, shared
     auth/welcome-form.tsx     The provider sign-up's second half
     auth/village-picker.tsx   Type-to-search village combobox + OGL attribution
+    auth/forgot-password-form.tsx  Reset request — never reveals if an account exists
+    auth/reset-password-form.tsx   New password; the session says whose
     site-footer.tsx           Public footer, incl. the legal links — shared
     legal-page.tsx            Shell + typography for /privacy and /terms
     status-screen.tsx         Shell behind not-found.tsx and error.tsx
@@ -307,6 +312,42 @@ separately by everything else.
 - **`next` is hostile input.** It survives a round trip through Google, so the
   callback re-validates it: relative paths only, and never protocol-relative —
   `//evil.test` is off-origin and starts with the `/` a naive check accepts.
+
+### The password reset
+
+`/forgot-password` → email → `/api/auth/callback` → `/reset-password` →
+`POST /api/auth/reset-password`. Three of those four already existed.
+
+- **`resetPasswordForEmail` runs in the browser**, for the same reason
+  `signInWithOAuth` does: it starts PKCE and stores a verifier the callback has
+  to read back. Called server-side, the verifier lands on the wrong machine and
+  the exchange fails with nothing on screen to explain it.
+- **The recovery link reuses `/api/auth/callback`.** It already exchanges a code
+  and already validates `next`, so the recovery leg inherits that hardening
+  instead of growing a second, less careful copy. `redirectTo` is the callback
+  with `next=/reset-password`.
+- **The request screen never reveals whether an account exists.** A Supabase
+  error is logged and swallowed, and the same "check your email" panel renders
+  either way. A form that says "no account with that email" is an enumeration
+  oracle, and here the membership list is itself sensitive — it says who reports
+  on their neighbours.
+- **Nothing in the reset payload identifies a user.** No email, no id: the
+  session decides whose password changes, which is what stops a link addressed
+  to one resident setting another's. The route checks the session *before* it
+  validates the body, so an unauthenticated caller gets 401 rather than a 422
+  describing the password rules.
+- **Neither route needs a proxy change** — `PROTECTED_ROUTES` is a denylist, so
+  both are reachable signed-out, and `/reset-password` is deliberately not in
+  `AUTH_ROUTES`, which would bounce to `/map` the very session a recovery link
+  creates.
+- `/reset-password` uses `getSession()` rather than `requireSession()`. The
+  redirect to `/login` would tell somebody whose link expired only that they
+  need to sign in — the one thing they cannot do. It renders an expired state
+  with a link back instead.
+- **Supabase sends the email, and its redirect URL must be allow-listed** in
+  Authentication → URL Configuration, or the link dead-ends. The wording is
+  Supabase's own template, not `src/lib/email/` — same constraint as the sign-up
+  confirmation, and for the same reason.
 
 ---
 
@@ -956,8 +997,9 @@ open:
   ever been posted to a real channel. **Before turning one on for a live
   village, post to a test channel first and read what actually lands** — this is
   the one feature whose output an unauthenticated stranger can read.
-- **No CI beyond the version bump.** `.github/workflows/version.yml` is the only
-  workflow; nothing runs `npm run build`, `tsc` or `eslint` on a pull request.
+- No test suite. `.github/workflows/ci.yml` runs `lint`, `typecheck` and `build`
+  on every pull request and every push to `main`, which is the floor rather than
+  the goal — there is still nothing asserting behaviour.
 - The README's screenshots are placeholder text. Capture them after the first
   seeded deploy.
 - `aiSummary` is still unused; the AI pass fills `aiModel`, `aiConfidence`,
@@ -997,8 +1039,10 @@ open:
   `PatternAlert`-style badge count anywhere but on that page's own tab, so an
   administrator finds out there is something waiting from the push
   notification.
-- `/forgot-password` is linked from the login form but does not exist yet.
-- No tests, no CI, no staging environment, no auto-versioning.
+- Password recovery exists but **no email has ever been sent through it**.
+  Supabase's own recovery template is what arrives, and its redirect URL must be
+  on the project's allow list or the link dead-ends — see The password reset.
+- No test suite and no staging environment. CI and auto-versioning both exist.
 - Light theme only. Add a dark palette deliberately — `prefers-color-scheme`
   would half-apply to the map and severity badges.
 

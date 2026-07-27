@@ -413,6 +413,38 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/**
+ * Asking for a reset link. Email and nothing else.
+ *
+ * The screen's response deliberately does not depend on whether the address has
+ * an account — see `forgot-password-form.tsx`. Validation here is only about the
+ * address being well formed, so the Supabase call is worth making at all.
+ */
+export const forgotPasswordSchema = z.object({
+  email: z.email("Enter a valid email address"),
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+/**
+ * Choosing a new password, once a recovery link has produced a session.
+ *
+ * The same `password` rules as registration — a reset is not the place to let a
+ * weaker one in, and a resident who cannot meet them at `/register` would be
+ * confused to find they can here.
+ */
+export const resetPasswordSchema = z
+  .object({
+    password,
+    confirmPassword: z.string(),
+  })
+  .refine((v) => v.password === v.confirmPassword, {
+    error: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 export const registerSchema = z
   .object({
     fullName: z
