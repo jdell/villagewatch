@@ -1,52 +1,52 @@
 import type { Severity } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
-import { formatTimeAgo } from "@/lib/format";
-import { extractChannelCode } from "@/lib/validations";
 import {
-  SEVERITY_META,
-  WHATSAPP_POST_MAX_CHARS,
-  WHATSAPP_RELAY_TIMEOUT_MS,
-} from "@/lib/constants";
+  appBaseUrl,
+  formatIncidentAlert,
+  type AlertIncident,
+} from "@/lib/format-alert";
+import { extractChannelCode } from "@/lib/validations";
+import { SEVERITY_META } from "@/lib/constants";
 
 /**
- * Mirrors published alerts to a village's WhatsApp Channel. **Server only** —
- * `WHATSAPP_CHANNEL_API_TOKEN` has no `NEXT_PUBLIC_` prefix and this module
- * reads a village's channel credentials.
+ * A village's WhatsApp Channel: the follow link residents see, and the alert
+ * text a coordinator posts to it. **Server only** — it reads `Village` rows.
  *
- * ## There is no official API for this
+ * ## Nothing here posts anything, and that is now the design
  *
- * Read this before wiring a provider in. Meta's WhatsApp Cloud API sends
- * messages to phone numbers; it has **no endpoint that posts to a Channel**.
- * Channels are a broadcast surface Meta expects a human to post to from the
- * app, and as of this writing there is no sanctioned programmatic path.
+ * Meta's WhatsApp Cloud API sends messages to phone numbers; it has **no
+ * endpoint that posts to a Channel**. Channels are a broadcast surface Meta
+ * expects a human to post to from the app, and there is no sanctioned
+ * programmatic path. Third-party relays (Whapi and similar) do it by driving the
+ * WhatsApp Web protocol, which can breach WhatsApp's terms and get the number
+ * behind it banned.
  *
- * Third-party relays (Whapi and similar) do offer channel posting, by driving
- * the WhatsApp Web protocol. They work. They are also, explicitly, not a Meta
- * feature: automating that protocol can breach WhatsApp's terms and the number
- * behind it can be banned. That is a decision for whoever runs the deployment,
- * not one to be baked into a client library here — so this module is a
- * provider-agnostic HTTP POST to whatever endpoint `WHATSAPP_CHANNEL_API_URL`
- * names, and takes no view on who is on the other end.
+ * This module used to POST to whatever endpoint `WHATSAPP_CHANNEL_API_URL`
+ * named, on the theory that a deployment might wire one up. None ever did, and
+ * the outcome of that was a feature whose success path had never run once: every
+ * publish took the unconfigured branch, logged, and reported
+ * `skipped: "not_configured"`. **The relay is gone.** What is left is the shape
+ * that was always doing the work — resolve the village's channel, decide whether
+ * this incident clears its threshold, and write the alert to the log — plus a
+ * "Copy to WhatsApp" button on the surfaces a coordinator already uses, which is
+ * the honest version of "post this to the channel" when the posting is a person
+ * with a clipboard. `src/lib/format-alert.ts` is the shared format, so the text
+ * in the log and the text on the clipboard are the same text.
  *
- * **The follow link needs none of this.** `Village.whatsappChannelUrl` is a
+ * **The follow link never needed a relay.** `Village.whatsappChannelUrl` is a
  * public invite link a coordinator pastes in on `/dashboard`; `/settings`
  * renders it and residents follow the channel in the app. That half is
- * officially supported, works with zero configuration, and is what a village
- * gets if it never sets up a relay at all. Posting is the optional half.
+ * officially supported, works with zero configuration, and is the half most
+ * villages will actually use.
  *
- * ## The channel is the village's, the relay account is the platform's
+ * ## The channel is the village's
  *
- * Both halves of a channel's identity — the public invite link and the code a
- * relay posts to — live on the `Village` row, and a coordinator now supplies
- * only the first: the code is the last segment of the link, so the dashboard
- * asks for the link alone and `extractChannelCode` derives the rest. Nothing
- * about *which* channel is an environment variable, because a deployment serves
- * many villages and each one runs its own.
- *
- * What is platform-level is the relay itself: `WHATSAPP_CHANNEL_API_URL` and
- * `WHATSAPP_CHANNEL_API_TOKEN` are one account with one endpoint, shared by
- * every village that has switched posting on. A coordinator never sees them and
- * cannot set them.
+ * Both halves of a channel's identity — the public invite link and the code that
+ * addresses it — live on the `Village` row, and a coordinator supplies only the
+ * first: the code is the last segment of the link, so the dashboard asks for the
+ * link alone and `extractChannelCode` derives the rest. Nothing about *which*
+ * channel is an environment variable, because a deployment serves many villages
+ * and each one runs its own.
  *
  * ## A channel is public, and that changes the rules
  *
@@ -61,7 +61,7 @@ import {
  * - **It has its own severity floor**, `whatsappMinSeverity`, defaulting to
  *   HIGH rather than the LOW that push defaults to. A missing cat does not
  *   belong on a public feed.
- * - **`ChannelIncident` has no field that could carry `rawDescription`, `lat`
+ * - **`AlertIncident` has no field that could carry `rawDescription`, `lat`
  *   or `lng`** — the same structural guard `IncidentEmailInput` uses. A leak
  *   here is not recallable: a channel post is forwarded, screenshotted and
  *   indexed, and deleting it does not un-send it.
@@ -73,47 +73,35 @@ import {
  *
  * ## Nothing throws
  *
- * Same contract as `src/lib/notifications.ts`. A missing relay, a timeout and a
- * 500 from the provider are ordinary states. Publishing a report must never
- * fail because a WhatsApp post did — the incident is on the map and the push
+ * Same contract as `src/lib/notifications.ts`. Publishing a report must never
+ * fail because of anything in here — the incident is on the map and the push
  * has gone out either way.
  *
  * No `Notification` rows are written. That table is one row per user per
  * delivery and a channel post has no recipient list — nobody knows who follows
  * a channel, which is rather the point of one.
  *
- * No `AuditLog` row either. The post is a deterministic consequence of
+ * No `AuditLog` row either. The alert is a deterministic consequence of
  * `incident.publish` plus the village's own configuration, both of which are
- * already in the trail; a second row per post would say nothing the first does
+ * already in the trail; a second row per alert would say nothing the first does
  * not and would bury the human actions around it.
  */
 
-const RELAY_URL = process.env.WHATSAPP_CHANNEL_API_URL ?? "";
-const RELAY_TOKEN = process.env.WHATSAPP_CHANNEL_API_TOKEN ?? "";
-
-/** Whether a relay is wired up. Without one the follow link still works. */
-export const isWhatsAppRelayConfigured =
-  RELAY_URL.length > 0 && RELAY_TOKEN.length > 0;
-
-export type ChannelPostResult = {
-  posted: boolean;
-  /** Why nothing was posted, when nothing was. */
-  skipped?:
-    | "not_configured"
-    | "village_disabled"
-    | "no_channel"
-    | "below_threshold"
-    | "failed";
+export type ChannelAlertResult = {
+  /** Whether the alert was written to the server log for this village. */
+  logged: boolean;
+  /** Why nothing was logged, when nothing was. */
+  skipped?: "village_disabled" | "no_channel" | "below_threshold";
 };
 
 /**
  * A village's channel configuration.
  *
- * `url` is public and safe to render. `id` is the code a relay writes to. It is
- * the last segment of `url` and no longer a secret in any meaningful sense —
- * anyone holding the invite link holds it too — but it stays server-side out of
- * habit rather than need: no screen has a reason to show it except the dashboard
- * form, which derives its own preview from the link.
+ * `url` is public and safe to render. `id` is the code that addresses the
+ * channel. It is the last segment of `url` and not a secret in any meaningful
+ * sense — anyone holding the invite link holds it too — but it stays server-side
+ * out of habit rather than need: no screen has a reason to show it except the
+ * dashboard form, which derives its own preview from the link.
  */
 export type VillageChannel = {
   url: string | null;
@@ -288,146 +276,65 @@ function safeChannelUrl(value: string | null): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// The transport
+// The alerts themselves
 // ---------------------------------------------------------------------------
 
 /**
- * One POST to the configured relay. The only place in this module that touches
- * the network, and the only place that can fail.
+ * Writes one alert to the server log, addressed to the village's channel.
  *
- * The body is deliberately minimal — `{ channelId, text }`. Relay providers
- * disagree on everything else, and a request shaped around one vendor's
- * envelope is a request that has to be rewritten to change vendor. If a
- * provider needs a different shape, adapt it here and leave every call site
- * alone.
- */
-async function post(
-  channelId: string,
-  text: string,
-): Promise<ChannelPostResult> {
-  if (!isWhatsAppRelayConfigured) {
-    // The branch a deployment with no relay takes — which, given there is no
-    // official API, is expected to be most of them. Logged rather than silent,
-    // so "did that go to the channel?" is answerable in a Vercel log.
-    console.log(
-      "[whatsapp:not-configured] channel %s ← %s",
-      channelId,
-      text.replace(/\n+/g, " · "),
-    );
-
-    return { posted: false, skipped: "not_configured" };
-  }
-
-  try {
-    const response = await fetch(RELAY_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${RELAY_TOKEN}`,
-      },
-      body: JSON.stringify({ channelId, text }),
-      // A relay that has stopped answering must not hold a moderation action
-      // open. `applyModeration` is awaiting this inside a coordinator's click.
-      signal: AbortSignal.timeout(WHATSAPP_RELAY_TIMEOUT_MS),
-    });
-
-    if (!response.ok) {
-      console.error(
-        "WhatsApp relay refused a post to channel %s: %d %s",
-        channelId,
-        response.status,
-        response.statusText,
-      );
-
-      return { posted: false, skipped: "failed" };
-    }
-
-    return { posted: true };
-  } catch (cause) {
-    // Timeouts, DNS, TLS, and a relay that went away mid-request.
-    console.error("WhatsApp relay post to channel %s failed", channelId, cause);
-
-    return { posted: false, skipped: "failed" };
-  }
-}
-
-/** Absolute link back into the app, so a follower can read the full report. */
-function absoluteUrl(path: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  return new URL(path, base).toString();
-}
-
-/**
- * Trims a post to something a phone will render without a "read more" fold,
- * on a whole word.
- */
-function truncate(value: string, max: number): string {
-  if (value.length <= max) return value;
-
-  const cut = value.slice(0, max - 1);
-  const lastSpace = cut.lastIndexOf(" ");
-
-  return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
-}
-
-// ---------------------------------------------------------------------------
-// The posts themselves
-// ---------------------------------------------------------------------------
-
-/**
- * What may be said about an incident on a public channel.
+ * All that is left of the transport, and it does not pretend otherwise. There is
+ * no relay to POST to (see the header), so the alert reaches the channel when a
+ * coordinator copies it from `/dashboard` or the incident page and pastes it —
+ * and this line is what makes "did that alert get as far as somebody's
+ * clipboard?" answerable in a Vercel log without going back to the database.
  *
- * Note what is absent: `rawDescription`, `lat`, `lng`, the reporter, and the
- * anonymised `description` itself. The first three are the leak; the last is a
- * judgement call — a full description on a public feed is a great deal more
- * detail than a headline, and anyone entitled to it can open the link and sign
- * in. The post is a pointer, not a copy.
+ * The text is the one `formatIncidentAlert` produced, flattened onto a single
+ * log line. Newlines become `·` so a multi-line alert does not arrive in the log
+ * as five entries with no relationship to each other.
  */
-export type ChannelIncident = {
-  id: string;
-  villageId: string;
-  title: string;
-  severity: Severity;
-  locationText: string | null;
-  occurredAt: Date;
-};
+function logAlert(channelId: string, text: string): ChannelAlertResult {
+  console.log(
+    "[whatsapp:alert] channel %s ← %s",
+    channelId,
+    text.replace(/\n+/g, " · "),
+  );
+
+  return { logged: true };
+}
 
 /**
- * Mirrors a freshly published incident to the village's channel.
+ * The village's freshly published incident, as a channel alert.
  *
  * Called from `notifyIncidentPublished`, so it runs on publish and never on
  * file — a report in the queue has not cleared moderation and must not reach
  * residents (domain rule 6), let alone the public.
+ *
+ * The three refusals are the village's own settings and are unchanged from when
+ * this posted for real: off unless the village turned it on, nothing without a
+ * channel to name, and nothing below the village's severity floor. They still
+ * matter with no relay behind them — the log line is what a coordinator reads
+ * back, and one written for a village that has posting switched off would
+ * describe an alert nobody agreed to send.
  */
-export async function postIncidentToChannel(
-  incident: ChannelIncident,
-): Promise<ChannelPostResult> {
+export async function logIncidentAlert(
+  incident: AlertIncident & { villageId: string },
+): Promise<ChannelAlertResult> {
   const channel = await getVillageChannel(incident.villageId);
 
-  if (!channel?.enabled) return { posted: false, skipped: "village_disabled" };
-  if (!channel.id) return { posted: false, skipped: "no_channel" };
+  if (!channel?.enabled) return { logged: false, skipped: "village_disabled" };
+  if (!channel.id) return { logged: false, skipped: "no_channel" };
 
   const meta = SEVERITY_META[incident.severity];
 
   if (meta.weight < SEVERITY_META[channel.minSeverity].weight) {
-    return { posted: false, skipped: "below_threshold" };
+    return { logged: false, skipped: "below_threshold" };
   }
 
-  const lines = [
-    `${meta.emoji} *${meta.label} alert* — ${incident.title}`,
-    "",
-    incident.locationText
-      ? `📍 ${incident.locationText} · ${formatTimeAgo(incident.occurredAt)}`
-      : `🕒 ${formatTimeAgo(incident.occurredAt)}`,
-    "",
-    `Full report: ${absoluteUrl(`/incidents/${incident.id}`)}`,
-  ];
-
-  return post(channel.id, truncate(lines.join("\n"), WHATSAPP_POST_MAX_CHARS));
+  return logAlert(channel.id, formatIncidentAlert(incident));
 }
 
 /**
- * Posts the weekly digest to the village's channel.
+ * The weekly digest, as a channel alert.
  *
  * **Not severity-gated**, unlike an incident. `whatsappMinSeverity` asks "is
  * this one thing worth telling the public about?", and a week in review is a
@@ -436,23 +343,20 @@ export async function postIncidentToChannel(
  * respects `whatsappEnabled`, which is the switch that decides whether this
  * village talks to the public at all.
  */
-export async function postDigestToChannel(input: {
+export async function logDigestAlert(input: {
   villageId: string;
   title: string;
   summary: string;
-}): Promise<ChannelPostResult> {
+}): Promise<ChannelAlertResult> {
   const channel = await getVillageChannel(input.villageId);
 
-  if (!channel?.enabled) return { posted: false, skipped: "village_disabled" };
-  if (!channel.id) return { posted: false, skipped: "no_channel" };
+  if (!channel?.enabled) return { logged: false, skipped: "village_disabled" };
+  if (!channel.id) return { logged: false, skipped: "no_channel" };
 
-  const lines = [
-    `📋 *${input.title}*`,
-    "",
-    input.summary,
-    "",
-    `The full week: ${absoluteUrl("/map")}`,
-  ];
-
-  return post(channel.id, truncate(lines.join("\n"), WHATSAPP_POST_MAX_CHARS));
+  return logAlert(
+    channel.id,
+    [`📋 ${input.title}`, "", input.summary, "", `The full week: ${appBaseUrl()}/map`].join(
+      "\n",
+    ),
+  );
 }

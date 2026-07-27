@@ -6,6 +6,7 @@ import {
   notifyReporterOfDecision,
 } from "@/lib/notifications";
 import { notifySlack } from "@/lib/slack";
+import { formatIncidentAlert } from "@/lib/format-alert";
 import { SEVERITY_META } from "@/lib/constants";
 
 /**
@@ -31,7 +32,22 @@ import { SEVERITY_META } from "@/lib/constants";
 export type ModerationAction = "PUBLISH" | "REJECT" | "RESOLVE" | "ARCHIVE";
 
 export type ModerationOutcome =
-  | { ok: true; status: IncidentStatus; reference: string; notified: number }
+  | {
+      ok: true;
+      status: IncidentStatus;
+      reference: string;
+      notified: number;
+      /**
+       * The published report as WhatsApp-ready text, on a PUBLISH and nowhere
+       * else. There is no relay that could post it (see
+       * `src/lib/whatsapp-channel.ts`), so the coordinator who just approved it
+       * is the one who posts it — and the moment they clicked Approve is the
+       * moment they have it in front of them. Built here rather than in the
+       * screen so the queue, the incident page and the server log all copy the
+       * same text.
+       */
+      alert?: string;
+    }
   | { ok: false; error: string };
 
 /** Which statuses each action is allowed to move a report out of. */
@@ -82,13 +98,18 @@ export async function applyModeration(input: {
       status: true,
       severity: true,
       title: true,
+      // The anonymised public column, for the alert a coordinator pastes into
+      // WhatsApp. `rawDescription` is deliberately absent from this select and
+      // always has been (domain rule 1).
+      description: true,
+      recurring: true,
+      patternNote: true,
       locationText: true,
       lat: true,
       lng: true,
       occurredAt: true,
       reporterId: true,
-      // For the staff Slack line only. `rawDescription` is deliberately absent
-      // from this select and always has been (domain rule 1).
+      // For the staff Slack line only.
       village: { select: { name: true } },
     },
   });
@@ -141,6 +162,7 @@ export async function applyModeration(input: {
   });
 
   let notified = 0;
+  let alert: string | undefined;
 
   if (action === "PUBLISH") {
     // The village hears about it now, and only now — a report in the queue has
@@ -150,6 +172,9 @@ export async function applyModeration(input: {
       villageId,
       title: incident.title,
       severity: incident.severity,
+      description: incident.description,
+      recurring: incident.recurring,
+      patternNote: incident.patternNote,
       locationText: incident.locationText,
       lat: incident.lat,
       lng: incident.lng,
@@ -157,6 +182,23 @@ export async function applyModeration(input: {
     });
 
     notified = broadcast.sent;
+
+    // Handed back whatever the village's channel settings say, and deliberately
+    // so: `logIncidentAlert` above respects `whatsappEnabled` and the severity
+    // floor because it writes to a shared log, but this text goes to the one
+    // coordinator who just approved this one report, into a clipboard, for them
+    // to decide what to do with. A village that has not filled in the channel
+    // form still has a parish mailing list.
+    alert = formatIncidentAlert({
+      id: incident.id,
+      title: incident.title,
+      severity: incident.severity,
+      description: incident.description,
+      locationText: incident.locationText,
+      occurredAt: incident.occurredAt,
+      recurring: incident.recurring,
+      patternNote: incident.patternNote,
+    });
 
     // The staff channel gets what the village got: the anonymised title, the
     // severity and the landmark. Never the coordinates, never the reporter's
@@ -180,7 +222,7 @@ export async function applyModeration(input: {
     });
   }
 
-  return { ok: true, status, reference: incident.reference, notified };
+  return { ok: true, status, reference: incident.reference, notified, alert };
 }
 
 /**

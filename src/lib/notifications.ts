@@ -9,8 +9,8 @@ import { adminEmails } from "@/lib/admin";
 import { distanceMeters } from "@/lib/geo";
 import { formatTimeAgo } from "@/lib/format";
 import {
-  postIncidentToChannel,
-  type ChannelPostResult,
+  logIncidentAlert,
+  type ChannelAlertResult,
 } from "@/lib/whatsapp-channel";
 import {
   COORDINATOR_ROLES,
@@ -215,6 +215,16 @@ type NotifiableIncident = {
   lat: number | null;
   lng: number | null;
   occurredAt: Date;
+  /**
+   * The anonymised public column, and the pattern note beside it. Optional
+   * because the two callers that only need a push — `POST /api/notifications`
+   * re-sending an alert, and the digest — have no reason to select them. They
+   * reach the channel alert and nothing else; `lat`, `lng` and the reporter
+   * never do (see `AlertIncident`).
+   */
+  description?: string;
+  recurring?: boolean;
+  patternNote?: string | null;
 };
 
 /**
@@ -300,10 +310,10 @@ function incidentBody(incident: NotifiableIncident): string {
   return parts.join(" — ");
 }
 
-/** A publish fans out to two surfaces; this reports on both. */
+/** A publish reaches two surfaces; this reports on both. */
 export type PublishDispatchResult = DispatchResult & {
   /** The village's public WhatsApp Channel, when it has one turned on. */
-  channel: ChannelPostResult;
+  channel: ChannelAlertResult;
 };
 
 /**
@@ -313,14 +323,16 @@ export type PublishDispatchResult = DispatchResult & {
  * unreviewed report has not cleared the moderation queue and must not reach
  * residents (domain rule 6).
  *
- * Two surfaces, and they are not equivalent. Push goes to residents of this
- * village who asked for it; the WhatsApp Channel is public to anyone holding
- * the invite link, so it is off unless the village turned it on and carries a
- * headline rather than the report. See `src/lib/whatsapp-channel.ts`.
+ * Two surfaces, and they are not equivalent — nor are they both automatic any
+ * more. Push goes to residents of this village who asked for it, and it is sent
+ * here. The WhatsApp Channel is public to anyone holding the invite link, and
+ * **nothing is sent to it from here**: there is no API that posts to a Channel,
+ * so `logIncidentAlert` writes the alert to the server log and a coordinator
+ * copies the same text from `/dashboard` or the incident page and pastes it.
+ * The relay POST that used to sit here is gone — see
+ * `src/lib/whatsapp-channel.ts`.
  *
- * They run in sequence rather than concurrently on purpose: push is the one
- * residents rely on, and it should not queue behind a third-party relay's
- * timeout. Neither can throw, so neither can stop the other.
+ * Neither call can throw, so neither can stop the other or fail a publish.
  */
 export async function notifyIncidentPublished(
   incident: NotifiableIncident,
@@ -338,13 +350,18 @@ export async function notifyIncidentPublished(
     recipients,
   );
 
-  const channel = await postIncidentToChannel({
+  const channel = await logIncidentAlert({
     id: incident.id,
     villageId: incident.villageId,
     title: incident.title,
     severity: incident.severity,
+    // Never `lat`, `lng` or the reporter — `AlertIncident` has no field that
+    // could carry them.
+    description: incident.description ?? "",
     locationText: incident.locationText,
     occurredAt: incident.occurredAt,
+    recurring: incident.recurring,
+    patternNote: incident.patternNote,
   });
 
   return { ...push, channel };

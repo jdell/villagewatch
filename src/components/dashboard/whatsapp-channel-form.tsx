@@ -23,9 +23,14 @@ import {
  * residents followed another, with nothing on screen to show it.
  *
  * These values are per-village columns on `Village`, not environment variables —
- * one deployment serves many villages and each runs its own channel. The only
- * platform-level part is the relay account the server posts through, which is
- * not on this screen and never will be.
+ * one deployment serves many villages and each runs its own channel.
+ *
+ * **Nothing on this screen makes the app post anything.** There is no API that
+ * can write to a WhatsApp Channel, so the switch below decides whether published
+ * alerts for this village are *prepared* — written to the server log, and offered
+ * as a "Copy to WhatsApp" panel on the dashboard and on each report — and a
+ * coordinator does the posting. The wording says so rather than implying a
+ * delivery the code cannot perform.
  *
  * On the dashboard rather than in `/settings` because it is a village setting,
  * not a personal one: `/settings` is where a resident decides what *they* hear,
@@ -78,18 +83,7 @@ function FieldError({ message }: { message?: string }) {
   return <p className="mt-1.5 text-sm text-red-600">{message}</p>;
 }
 
-export function WhatsAppChannelForm({
-  values,
-  relayConfigured,
-}: {
-  values: ChannelSettingsValues;
-  /**
-   * Whether the deployment has a relay wired up. Computed on the server —
-   * `WHATSAPP_CHANNEL_API_URL` has no `NEXT_PUBLIC_` prefix, and the endpoint
-   * and its token are not a coordinator's business either way.
-   */
-  relayConfigured: boolean;
-}) {
+export function WhatsAppChannelForm({ values }: { values: ChannelSettingsValues }) {
   const [state, save] = useActionState(saveChannelSettingsAction, IDLE);
   const [enabled, setEnabled] = useState(values.enabled);
   const [url, setUrl] = useState(values.url ?? "");
@@ -179,8 +173,9 @@ export function WhatsAppChannelForm({
           <p className="mt-1.5 text-xs text-slate-500">
             The public link WhatsApp gives you under &ldquo;Copy link&rdquo;.
             Every resident sees a &ldquo;Follow on WhatsApp&rdquo; button on
-            their settings page once this is set, and the channel code alerts are
-            posted to is read out of the link — there is nothing else to fill in.
+            their settings page once this is set, and the &ldquo;Open
+            WhatsApp&rdquo; button on an approved report takes you straight to
+            the channel — there is nothing else to fill in.
           </p>
           <FieldError message={errors.whatsappChannelUrl} />
         </div>
@@ -196,13 +191,16 @@ export function WhatsAppChannelForm({
             />
             <span>
               <span className="block text-sm font-medium text-slate-900">
-                Post published alerts to the channel
+                Prepare published alerts for the channel
               </span>
               <span className="mt-0.5 block text-sm text-amber-900">
                 A channel is public. Anyone with the link can read it, including
-                people outside the village. A post carries a headline, the area
-                and a link back — never a reporter&rsquo;s name, their original
-                wording, or the exact spot.
+                people outside the village. An alert carries a headline, the
+                area, a short description and a link back — never a
+                reporter&rsquo;s name, their original wording, or the exact spot.
+                You post it yourself: WhatsApp has no way for an app to write to
+                a channel, so approving a report gives you the text and a copy
+                button.
               </span>
             </span>
           </label>
@@ -213,7 +211,7 @@ export function WhatsAppChannelForm({
             htmlFor="whatsappMinSeverity"
             className="block text-sm font-medium text-slate-700"
           >
-            Post anything at or above
+            Prepare an alert for anything at or above
           </label>
           <select
             id="whatsappMinSeverity"
@@ -229,23 +227,22 @@ export function WhatsAppChannelForm({
           </select>
           <p className="mt-1.5 text-xs text-slate-500">
             Higher than your push threshold by default. The weekly digest is
-            posted whatever this says — a quiet week is worth saying out loud.
+            prepared whatever this says — a quiet week is worth saying out loud.
           </p>
           <FieldError message={errors.whatsappMinSeverity} />
         </div>
 
         {/*
-          Shown only once the coordinator has asked for posting, because until
+          Shown only once the coordinator has asked for alerts, because until
           then it is answering a question they have not asked. It is not an
-          error: the follow link is the half most villages will use, and it
-          works with no relay at all.
+          error or a missing setup step: this is how the feature works, and the
+          follow link half needs none of it.
         */}
-        {enabled && !relayConfigured && (
-          <p className="rounded-xl bg-slate-50 p-3.5 text-xs text-slate-600 ring-1 ring-inset ring-slate-200">
-            No posting relay is set up on this deployment yet, so alerts will be
-            recorded in the server log instead of sent. Your invite link still
-            works — residents can follow the channel and you can post to it
-            yourself from WhatsApp in the meantime.
+        {enabled && (
+          <p className="rounded-xl bg-slate-50 p-3.5 text-xs leading-relaxed text-slate-600 ring-1 ring-inset ring-slate-200">
+            Approving a report will show you the alert with a copy button, ready
+            to paste into your channel. Your invite link works regardless —
+            residents can follow the channel whether or not you switch this on.
           </p>
         )}
 

@@ -327,54 +327,55 @@ Channel not set up yet"* instead, and their coordinator sees a way through to
 the form. No credentials, no API, nothing to break. The coordinator posts to
 the channel by hand from WhatsApp.
 
-### The half that needs a relay (posting automatically)
+### The half you do by hand (posting the alerts)
 
-**Read this before wiring anything up.** Meta's WhatsApp Cloud API sends
-messages to phone numbers. It has **no endpoint that posts to a Channel** —
-Channels are a broadcast surface Meta expects a human to post to from the app.
-Third-party relays (Whapi and similar) do offer channel posting, by driving the
-WhatsApp Web protocol. They work, and they can breach WhatsApp's terms and get
-the number behind them banned. That is a decision for whoever runs the
-deployment.
+**There is no relay, and there is not going to be one.** Meta's WhatsApp Cloud
+API sends messages to phone numbers. It has **no endpoint that posts to a
+Channel** — Channels are a broadcast surface Meta expects a human to post to
+from the app. Third-party relays (Whapi and similar) do offer channel posting by
+driving the WhatsApp Web protocol; they work, and they can breach WhatsApp's
+terms and get the number behind them banned.
 
-If you go ahead, the relay account is **platform-level** — one endpoint and one
-token for the whole deployment, shared by every village that switches posting
-on. A coordinator never sees these and cannot set them:
+So VillageWatch does not try. `WHATSAPP_CHANNEL_API_URL` and
+`WHATSAPP_CHANNEL_API_TOKEN` are **gone** — if they are still in your
+environment, delete them; nothing reads them. What a coordinator gets instead:
 
-```bash
-WHATSAPP_CHANNEL_API_URL="https://your-relay.example/messages"
-WHATSAPP_CHANNEL_API_TOKEN="..."     # SERVER ONLY
-```
+- **Approving a report** on `/dashboard` shows the alert straight away, with
+  **📋 Copy alert** and **💬 Open WhatsApp** underneath it. Copy, open the
+  channel, paste.
+- **Any published report's own page** shows the same panel, for coordinators
+  only, for as long as the report exists — so an alert can be posted later, or
+  posted again.
+- **A report filed by a coordinator in an auto-approving village** ends on a
+  success screen carrying the same two buttons, because it went live on submit
+  and there was no approval step to catch it.
 
-The app POSTs `{ channelId, text }` with `Authorization: Bearer <token>`. If
-your provider wants a different envelope, adapt `post()` in
-`src/lib/whatsapp-channel.ts` — every call site stays the same.
+Every one of those renders the same text, built by `formatIncidentAlert` in
+`src/lib/format-alert.ts`, and the server writes that identical text to its log
+on publish — so "what went to the channel?" is answerable from a Vercel log.
 
-**There is nothing more to paste in.** The channel code the relay posts to is
-the last segment of the invite link, so the app reads it out of what the
-coordinator already entered and shows it back under the field ("Channel code:
-`0029Va…` extracted"). There is no second box to fill in and no credential for a
-coordinator to go and find. Only two switches remain on the same dashboard form:
+**There is nothing more to paste in.** The channel code is the last segment of
+the invite link, so the app reads it out of what the coordinator already entered
+and shows it back under the field ("Channel code: `0029Va…` extracted"). Only
+two switches remain on the same dashboard form:
 
-- **Post published alerts to the channel** — off by default. This is the switch
-  that widens the audience for every alert published afterwards from "signed-in
-  residents of this village" to anyone holding the link.
-- **Post anything at or above** — defaults to **High**, deliberately stricter
-  than the push default of Low. A missing cat does not belong on a public feed.
+- **Prepare published alerts for the channel** — off by default. This is the
+  switch that says this village's alerts are meant for an audience wider than
+  "signed-in residents of this village".
+- **Prepare an alert for anything at or above** — defaults to **High**,
+  deliberately stricter than the push default of Low. A missing cat does not
+  belong on a public feed.
 
-A link with no channel code in it is rejected by the form, and so is switching
-posting on without one: it would read as on and post nothing.
-
-Leave `WHATSAPP_CHANNEL_API_URL` blank and posts are written to the server
-console instead of sent — `skipped: "not_configured"`, a supported state, same
-as OneSignal. The dashboard form says so when a coordinator switches posting on.
+Neither switch gates the copy button on a report you have just approved: that
+text goes to one coordinator's clipboard, and what they do with it is their
+call. What the switches gate is the server-side log line.
 
 **Post to a test channel first and read what actually lands.** This is the one
-feature whose output an unauthenticated stranger can read. A post carries a
-headline, the area, the time and a link back into the app — never the
-reporter's name, their original wording, or the exact coordinates. Changing
-what a post contains changes `/privacy` §6 and the landing-page FAQ in the same
-commit.
+feature whose output an unauthenticated stranger can read. An alert carries a
+headline, the area, the time, a short anonymised description and a link back
+into the app — never the reporter's name, their original wording, or the exact
+coordinates. Changing what an alert contains changes `/privacy` §6 and the
+landing-page FAQ in the same commit.
 
 ---
 

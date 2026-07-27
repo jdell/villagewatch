@@ -69,7 +69,7 @@ const FEATURES = [
   {
     icon: MessageCircle,
     title: 'WhatsApp Channel',
-    body: 'Your village can mirror its serious alerts to a WhatsApp Channel, so neighbours who never install anything still see them. It is a one-way feed: a headline, an area and a link, with no phone numbers shared in either direction.',
+    body: 'Approve a report and it is formatted ready for your village’s WhatsApp Channel — copy, paste, done — so neighbours who never install anything still see the serious ones. It is a one-way feed: a headline, an area, a short extract and a link, with no phone numbers shared in either direction.',
   },
 ] as const;
 
@@ -104,7 +104,7 @@ const FAQS = [
   {
     question: 'Who can see what I report?',
     answer:
-      'Your neighbours see a rewritten version with names, registrations and house numbers taken out. Your village coordinator can see your original wording, and every time they do it is written to an audit trail with their name against it. Nobody outside your village sees any of it — not another village, not us. The one exception is a WhatsApp Channel, which is public and which your coordinator has to switch on: when it is on, serious reports are posted there as a headline, an area and a link, and nothing else.',
+      'Your neighbours see a rewritten version with names, registrations and house numbers taken out. Your village coordinator can see your original wording, and every time they do it is written to an audit trail with their name against it. Nobody outside your village sees any of it — not another village, not us. The one exception is a WhatsApp Channel, which is public and which your coordinator has to switch on: nothing is posted automatically, but a coordinator can copy a serious report to it as a headline, an area, a short extract and a link, and nothing else.',
   },
   {
     question: 'How does the AI work?',

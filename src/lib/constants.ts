@@ -579,18 +579,20 @@ export const MAX_PUSH_RECIPIENTS = 2_000;
  *
  * WhatsApp itself allows far more, but a post longer than this collapses behind
  * a "read more" on a phone — which is the whole message for an alert somebody
- * is meant to act on. `src/lib/whatsapp-channel.ts` trims on a word boundary.
+ * is meant to act on. `src/lib/format-alert.ts` trims on a word boundary.
  */
 export const WHATSAPP_POST_MAX_CHARS = 900;
 
 /**
- * How long to wait on the relay before giving up.
+ * Characters of the anonymised description carried in a pasted alert.
  *
- * A coordinator's Approve click is awaiting this. Eight seconds is long enough
- * for a slow third-party relay and short enough that a dead one does not make
- * moderation feel broken — the post is abandoned, the publish is not.
+ * A summary, not the report. The alert ends in a link to the full thing, and
+ * anyone entitled to read it can sign in and do so — so the description's job
+ * here is to say enough that a reader knows whether to open it, and no more. It
+ * is also the field most likely to hold the reporter's own wording (see
+ * `formatIncidentAlert`), which is a second reason to keep it short.
  */
-export const WHATSAPP_RELAY_TIMEOUT_MS = 8_000;
+export const ALERT_DESCRIPTION_MAX_CHARS = 240;
 
 /**
  * Where a coordinator creates the channel, linked from `/settings` for anyone

@@ -668,16 +668,16 @@ export function extractChannelCode(url: string): string | null {
  * channel other than the one residents follow. The transform below is now the
  * only thing that sets that column from the application.
  *
- * Both values are per-village and neither is an env var. Only the API token the
- * relay authenticates with is platform-level — one deployment, one relay
- * account, many channels.
+ * Both values are per-village and neither is an env var. Nothing about a channel
+ * is platform-level any more — there is no relay account, because there is no
+ * API that can post to a Channel (see `src/lib/whatsapp-channel.ts`).
  *
  * The refine at the end is the one rule worth enforcing: `whatsappEnabled` with
- * no channel behind it is a switch that reads as on and posts nothing, because
- * `postIncidentToChannel` skips with `no_channel`. A coordinator who thinks the
- * village is mirroring alerts and is not would find out weeks later, from
- * nobody. It points at the link now, because the link is the only field left to
- * correct.
+ * no channel behind it is a switch that reads as on and does nothing, because
+ * `logIncidentAlert` skips with `no_channel`. A coordinator who thinks the
+ * village's alerts are being prepared and is not would find out weeks later,
+ * from nobody. It points at the link now, because the link is the only field
+ * left to correct.
  */
 export const villageChannelFormSchema = z
   .object({

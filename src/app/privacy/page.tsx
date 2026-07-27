@@ -310,10 +310,13 @@ export default function PrivacyPage() {
             A WhatsApp Channel is public: anyone holding the invite link can
             read it, in or out of the village. Your village coordinator decides
             whether to run one, and it is switched off unless they turn it on.
-            When it is on, published reports at or above the severity they set
-            are posted as a headline, an approximate area, how long ago it
-            happened, and a link back to this app. Never your name, never your
-            original wording, never the coordinates, and never a photograph.
+            Nothing is posted automatically — WhatsApp gives an app no way to
+            write to a channel, so a coordinator copies the alert and posts it
+            themselves, which means a person makes the decision each time. An
+            alert carries a headline, an approximate area, how long ago it
+            happened, a short extract of the same report your neighbours see,
+            and a link back to this app. Never your name, never the
+            coordinates, and never a photograph.
           </Definition>
           <Definition term="The police, on request">
             Where there is a lawful basis to disclose, such as a formal request

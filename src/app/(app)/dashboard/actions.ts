@@ -35,6 +35,18 @@ import {
 export type ModerationState = {
   ok: boolean;
   message: string;
+  /**
+   * The published report as WhatsApp-ready text, on a successful PUBLISH only.
+   *
+   * Approving is the moment the coordinator has the report in front of them and
+   * has just decided the village should hear about it — which is the moment to
+   * hand them the text, because nothing posts it for them (see
+   * `src/lib/whatsapp-channel.ts`). Built by `applyModeration` so the queue, the
+   * incident page and the server log all carry the same words.
+   */
+  alert?: string;
+  /** The reference the alert belongs to, for labelling it in the queue. */
+  reference?: string;
 };
 
 export async function moderateIncidentAction(
@@ -82,6 +94,12 @@ export async function moderateIncidentAction(
         result.notified > 0
           ? `${result.reference} published — ${result.notified} neighbour${result.notified === 1 ? "" : "s"} alerted.`
           : `${result.reference} is now on the village map.`,
+      // Carried back to the screen because `revalidatePath` above takes the
+      // report out of the queue: the card that submitted this is about to
+      // unmount, and the text has to outlive it somewhere the coordinator can
+      // still reach it. See `ModerationQueue`.
+      alert: result.alert,
+      reference: result.reference,
     };
   }
 

@@ -25,6 +25,12 @@ import {
  * returns the text (domain rule 1). That is the whole reason this component is
  * a Client Component — the reveal has to be an action the coordinator takes,
  * not a column on the page's query.
+ *
+ * Approving hands the WhatsApp alert **upwards** rather than rendering it here.
+ * `moderateIncidentAction` revalidates `/dashboard`, the report leaves
+ * `PENDING_REVIEW`, and this card is unmounted with the queue it was in — so an
+ * alert panel rendered inside it would appear and vanish in the same frame. It
+ * goes to `ModerationQueue`, which survives the re-render.
  */
 
 export type QueuedIncident = {
@@ -77,7 +83,24 @@ function SubmitButton({
   );
 }
 
-export function ModerationCard({ incident }: { incident: QueuedIncident }) {
+/** What an approval hands to the queue above it. */
+export type PublishedAlert = {
+  incidentId: string;
+  reference: string;
+  /** WhatsApp-ready text, built by `formatIncidentAlert` on the server. */
+  text: string;
+  /** False when the description is the reporter's own wording. */
+  anonymized: boolean;
+};
+
+export function ModerationCard({
+  incident,
+  onPublished,
+}: {
+  incident: QueuedIncident;
+  /** Called once, with the alert, when this report is approved. */
+  onPublished?: (alert: PublishedAlert) => void;
+}) {
   const [state, moderate] = useActionState(moderateIncidentAction, IDLE);
   const [raw, reveal, revealing] = useActionState(revealRawDescriptionAction, {
     text: null,
@@ -90,6 +113,24 @@ export function ModerationCard({ incident }: { incident: QueuedIncident }) {
     if (state.ok) toast.success(state.message);
     else toast.error(state.message);
   }, [state]);
+
+  useEffect(() => {
+    if (!state.ok || !state.alert) return;
+
+    onPublished?.({
+      incidentId: incident.id,
+      reference: state.reference ?? incident.reference,
+      text: state.alert,
+      // Read off the row this card was rendered from rather than round-tripped
+      // through the action: it is the same column either way, and the queue
+      // already had it.
+      anonymized: incident.anonymized,
+    });
+    // `onPublished` is deliberately not a dependency. The parent recreates the
+    // callback on every render, and this effect must fire once per approval —
+    // not again each time the page revalidates underneath it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, incident.id, incident.reference, incident.anonymized]);
 
   useEffect(() => {
     if (raw.error) toast.error(raw.error);

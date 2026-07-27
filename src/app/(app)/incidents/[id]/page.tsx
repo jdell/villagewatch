@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { CopyAlert } from "@/components/copy-alert";
 import { IncidentActions } from "@/components/incident-actions";
 import { IncidentCard } from "@/components/incident-card";
 import { IncidentLocationMap } from "@/components/incident-location-map";
@@ -18,8 +19,10 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PUBLIC_INCIDENT_STATUSES, isCoordinatorRole } from "@/lib/constants";
 import { canReporterErase } from "@/lib/erasure";
+import { formatIncidentAlert } from "@/lib/format-alert";
 import { PUBLIC_INCIDENT_SELECT, toMapIncident } from "@/lib/incidents";
 import { signedMediaUrls } from "@/lib/media/storage";
+import { getVillageChannel } from "@/lib/whatsapp-channel";
 import { formatDateTime } from "@/lib/format";
 
 /**
@@ -147,6 +150,33 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const inQueue =
     incident.status === "DRAFT" || incident.status === "PENDING_REVIEW";
   const deletable = canReporterErase(incident.status);
+
+  /*
+    The alert a coordinator posts to WhatsApp by hand — nothing posts it for
+    them (see `src/lib/whatsapp-channel.ts`). Coordinators only, and published
+    reports only: a channel is public, so offering this on a report still in the
+    queue would be a button that publishes past the moderation queue and past the
+    tenant boundary in one press (domain rules 4 and 6).
+
+    Built from the columns already on the page. `PUBLIC_INCIDENT_SELECT` has no
+    `rawDescription`, so there is nothing here that could reach a channel that is
+    not already on the village map.
+  */
+  const alert =
+    isCoordinator && isPublic
+      ? formatIncidentAlert({
+          id: incident.id,
+          title: incident.title,
+          severity: incident.severity,
+          description: incident.description,
+          locationText: incident.locationText,
+          occurredAt: incident.occurredAt,
+          recurring: incident.recurring,
+          patternNote: incident.patternNote,
+        })
+      : null;
+
+  const channel = alert ? await getVillageChannel(villageId) : null;
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
@@ -308,6 +338,18 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             : "This description is the reporter's own wording, reviewed by a coordinator."}
         </p>
       </section>
+
+      {alert && (
+        <section className="mt-6">
+          <CopyAlert
+            text={alert}
+            channelUrl={channel?.url ?? null}
+            anonymized={incident.anonymized}
+            title="Post this to WhatsApp"
+            hint="Coordinators only. Your neighbours were alerted in the app when this was published — this is the text for your village's WhatsApp Channel, which nothing posts to automatically."
+          />
+        </section>
+      )}
 
       <IncidentActions
         incidentId={incident.id}

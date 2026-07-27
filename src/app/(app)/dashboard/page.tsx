@@ -10,10 +10,8 @@ import {
   BreakdownBar,
   type BreakdownRow,
 } from "@/components/dashboard/breakdown-bar";
-import {
-  ModerationCard,
-  type QueuedIncident,
-} from "@/components/dashboard/moderation-card";
+import type { QueuedIncident } from "@/components/dashboard/moderation-card";
+import { ModerationQueue } from "@/components/dashboard/moderation-queue";
 import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { WhatsAppChannelForm } from "@/components/dashboard/whatsapp-channel-form";
@@ -22,8 +20,8 @@ import { requireCoordinator } from "@/lib/auth";
 import { getVillageAutoApprove } from "@/lib/moderation";
 import { prisma } from "@/lib/prisma";
 import {
+  getVillageChannel,
   getVillageChannelSettings,
-  isWhatsAppRelayConfigured,
 } from "@/lib/whatsapp-channel";
 import {
   HOTSPOT_COUNT,
@@ -85,6 +83,7 @@ export default async function DashboardPage() {
     queue,
     pendingCount,
     channel,
+    followLink,
     autoApprove,
   ] = await Promise.all([
     prisma.incident.count({
@@ -154,6 +153,10 @@ export default async function DashboardPage() {
     // this is the screen that edits them, so a stored link that failed the
     // `https:` check has to appear in the field to be correctable.
     getVillageChannelSettings(villageId),
+    // And the filtered view, for the "Open WhatsApp" button on a freshly
+    // approved report. That one is an `href`, so it takes the `https:`-checked
+    // value and never the raw column.
+    getVillageChannel(villageId),
     getVillageAutoApprove(villageId),
   ]);
 
@@ -365,27 +368,31 @@ export default async function DashboardPage() {
           </p>
         )}
 
-        {autoApprove && queued.length === 0 ? null : queued.length === 0 ? (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-8 text-center">
-            <span className="mx-auto grid size-12 place-items-center rounded-xl bg-safe-50 text-safe-600">
-              <ShieldCheck className="size-6" aria-hidden />
-            </span>
-            <h3 className="mt-4 text-lg font-semibold text-slate-900">
-              The queue is empty
-            </h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-              Every report your village has filed has been reviewed.
-            </p>
-          </div>
-        ) : (
-          <ul className="mt-4 space-y-3">
-            {queued.map((incident) => (
-              <li key={incident.id}>
-                <ModerationCard incident={incident} />
-              </li>
-            ))}
-          </ul>
-        )}
+        {/*
+          The queue and the alerts for what has just left it, in one client
+          component. Approving revalidates this page and takes the report out of
+          `queued`, so the alert cannot live in the card that produced it — see
+          `ModerationQueue`.
+        */}
+        <ModerationQueue
+          incidents={queued}
+          channelUrl={followLink?.url ?? null}
+          empty={
+            autoApprove ? null : (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-8 text-center">
+                <span className="mx-auto grid size-12 place-items-center rounded-xl bg-safe-50 text-safe-600">
+                  <ShieldCheck className="size-6" aria-hidden />
+                </span>
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">
+                  The queue is empty
+                </h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                  Every report your village has filed has been reviewed.
+                </p>
+              </div>
+            )
+          }
+        />
 
         {pendingCount > queued.length && (
           <p className="mt-4 text-center text-sm text-slate-500">
@@ -426,7 +433,6 @@ export default async function DashboardPage() {
             // default — a public feed is not the place for a missing cat.
             minSeverity: channel?.minSeverity ?? "HIGH",
           }}
-          relayConfigured={isWhatsAppRelayConfigured}
         />
       </section>
     </div>

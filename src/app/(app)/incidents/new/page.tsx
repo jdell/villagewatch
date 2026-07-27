@@ -4,7 +4,8 @@ import { MapPinOff } from "lucide-react";
 import { IncidentForm } from "@/components/incident-form";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { MAP_DEFAULTS } from "@/lib/constants";
+import { getVillageChannel } from "@/lib/whatsapp-channel";
+import { MAP_DEFAULTS, isCoordinatorRole } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Report an incident" };
 
@@ -63,6 +64,13 @@ export default async function NewIncidentPage() {
     );
   }
 
+  // Only ever used by the success screen's "Open WhatsApp" button, which only a
+  // coordinator filing into an auto-approving village ever sees — so it is read
+  // only for them. `getVillageChannel` is the `https:`-checked view, because
+  // this ends up in an `href`.
+  const canPostAlert = isCoordinatorRole(session.profile?.role);
+  const channel = canPostAlert ? await getVillageChannel(village.id) : null;
+
   return (
     <IncidentForm
       village={{
@@ -72,7 +80,9 @@ export default async function NewIncidentPage() {
         centerLng: village.centerLng,
         defaultZoom: village.defaultZoom || MAP_DEFAULTS.zoom,
         autoApprove: village.autoApprove,
+        channelUrl: channel?.url ?? null,
       }}
+      canPostAlert={canPostAlert}
     />
   );
 }

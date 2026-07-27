@@ -201,7 +201,10 @@ src/
     coordinator-requests.ts   Apply, approve, reject — the only place a role
                               is ever raised to COORDINATOR
     notifications.ts          OneSignal dispatch, audience rules — server only
-    whatsapp-channel.ts       Public channel posting — server only, opt-in, no official API
+    whatsapp-channel.ts       Village channel config + the publish log line —
+                              server only, opt-in, no API that can post
+    format-alert.ts           formatIncidentAlert — the one WhatsApp alert
+                              format, client-safe, shared by log and clipboard
     cron.ts                   Constant-time CRON_SECRET check, shared by both jobs
     email/                    Templates only — no transport. layout, welcome,
                               weekly-digest, incident-notification,
@@ -730,7 +733,7 @@ adding one, and it is read in exactly one place that matters:
   who was not expecting it is an inconvenience, and a report published because a
   `SELECT` failed is not recallable.
 - **Auto-publishing owes the same fan-out a coordinator's Approve does** —
-  village push, the public WhatsApp Channel post, the staff Slack line and an
+  village push, the public WhatsApp Channel log line, the staff Slack line and an
   `incident.publish` audit row. `announce()` in the route is where that set
   lives; keep it in step with `applyModeration`, which is where the same set is
   defined for the human path.
@@ -773,10 +776,15 @@ adding one, and it is read in exactly one place that matters:
   before anything is saved — and names the village setting as the village's
   choice. The landing FAQ said the same thing and changed with them.
 - **A village running auto-approve *and* WhatsApp Channel posting has put
-  unreviewed reports in front of the open internet.** Both default off, both are
-  audited, and the dashboard orders them so the pair is visible at a glance.
-  Nothing forbids the combination; it is a coordinator's call and it should be
-  an informed one.
+  unreviewed reports one paste away from the open internet.** Both default off,
+  both are audited, and the dashboard orders them so the pair is visible at a
+  glance. Nothing forbids the combination; it is a coordinator's call and it
+  should be an informed one. The paste is now the safety margin that used to be
+  the relay's absence: a coordinator filing into an auto-approving village lands
+  on a success screen with the alert on it, having just read what it says.
+- **A coordinator's own auto-approved report ends on a success screen, not a
+  redirect.** Everyone else still gets the toast and `/incidents` — there is
+  nothing for them to act on. See The WhatsApp Channel.
 
 ## Push notifications
 
@@ -810,7 +818,7 @@ else calls into it.
 `src/lib/slack.ts`. One webhook URL, one function, a plain `fetch` POST — no
 SDK, because an incoming webhook is a URL you post JSON to. Optional: with
 `SLACK_WEBHOOK_URL` blank every alert is written to the server console instead,
-the same supported state OneSignal and the WhatsApp relay have.
+the same supported state OneSignal has.
 
 - **It is a staff channel, not a product surface.** Residents never see it and
   nothing in the app depends on it. Four events: a registration (both the
@@ -833,38 +841,63 @@ the same supported state OneSignal and the WhatsApp relay have.
 
 ## The WhatsApp Channel
 
-`src/lib/whatsapp-channel.ts`. Optional, off by default, and the only surface in
-the app that discloses outside the village.
+`src/lib/whatsapp-channel.ts` and `src/lib/format-alert.ts`. Optional, off by
+default, and the only surface in the app that discloses outside the village.
 
-- **There is no official API for this.** Meta's Cloud API sends messages to
-  phone numbers; it has no endpoint that posts to a Channel. Third-party relays
-  (Whapi and similar) do it by driving the WhatsApp Web protocol, which can
-  breach WhatsApp's terms and get the number banned. So the module is a
-  provider-agnostic `POST {channelId, text}` to `WHATSAPP_CHANNEL_API_URL` and
-  takes no view on who answers. Change providers in `post()`; every call site
-  stays the same.
-- **The channel is the village's; the relay account is the platform's.** Both
-  halves of a channel's identity — the public invite link and the id a relay
-  writes to — are columns on `Village`, set by that village's coordinator on
-  `/dashboard`. **No environment variable names a channel**, and none should: a
-  deployment serves many villages and each runs its own. `WHATSAPP_CHANNEL_API_URL`
-  and `WHATSAPP_CHANNEL_API_TOKEN` are the one shared thing, because they are one
-  relay account rather than one feed.
+- **Nothing posts to it, and that is the design now.** Meta's Cloud API sends
+  messages to phone numbers; it has no endpoint that posts to a Channel.
+  Third-party relays (Whapi and similar) do it by driving the WhatsApp Web
+  protocol, which can breach WhatsApp's terms and get the number banned. The
+  module used to be a provider-agnostic `POST {channelId, text}` to
+  `WHATSAPP_CHANNEL_API_URL`; nothing was ever pointed at one, so its success
+  path never ran and every publish took the `not_configured` branch. **The relay
+  is gone** — both environment variables with it. What replaced it is a person:
+  approving a report shows the coordinator the alert with a **Copy to WhatsApp**
+  button, and they paste it.
+- **`formatIncidentAlert(incident, appUrl)` is the one format**, in
+  `src/lib/format-alert.ts`, and it is client-safe on purpose — `constants.ts`
+  and `format.ts` and nothing else, so the same function builds the text the
+  server logs and the text three screens render. Severity emoji and label,
+  title, `📍 landmark · time ago`, a truncated description, the pattern note when
+  the report is recurring, and the link. **The link is never sacrificed to the
+  length limit**: the fixed parts are built first and the description gets what
+  is left of `WHATSAPP_POST_MAX_CHARS`, capped at `ALERT_DESCRIPTION_MAX_CHARS`.
+- **Three surfaces render it, all coordinator-only** (`CopyAlert` in
+  `src/components/copy-alert.tsx`): the moderation queue the moment a report is
+  approved, any published report's own page, and the wizard's success screen when
+  a coordinator files into an auto-approving village. A resident never gets a
+  button that republishes their neighbour's report outside the village.
+- **The queue's alert lives in `ModerationQueue`, not in `ModerationCard`.**
+  `moderateIncidentAction` revalidates `/dashboard`, so the approved report
+  leaves `PENDING_REVIEW` and its card unmounts on the next render — an alert
+  panel inside the card would appear and vanish in the same frame. The card hands
+  it upwards through `onPublished`; the wrapper is not re-keyed by the queue, so
+  React keeps it mounted and the text survives.
+- **"Open WhatsApp" copies first, then navigates**, and it is `https://wa.me/`
+  rather than a `whatsapp://` scheme URL. A channel invite link opens the channel
+  and cannot carry a prefilled message, so a coordinator who pressed only that
+  button would arrive with an empty clipboard; and `whatsapp://` fails silently
+  on a desktop with no WhatsApp installed, where `wa.me` falls through to
+  WhatsApp Web. `navigator.clipboard` needs a secure context, so there is an
+  `execCommand` fallback behind it and the text stays selectable on screen.
+- **The channel is the village's.** Both halves of a channel's identity — the
+  public invite link and the code that addresses it — are columns on `Village`,
+  set by that village's coordinator on `/dashboard`. **No environment variable
+  names a channel**, and now none names anything else either: a deployment serves
+  many villages and each runs its own.
 - **The coordinator fills in one field, not two.** `whatsappChannelId` is still a
   column, but it is *derived* from the invite link by `extractChannelCode` in
-  `src/lib/validations.ts` — the code a relay posts to is the last segment of the
-  link WhatsApp hands the channel owner under "Copy link", so asking for it
-  separately asked somebody to split a string by hand and let the two disagree:
-  alerts to one channel, residents following another, nothing on screen to show
-  it. The form previews the extracted code back, because a derived value that
-  silently came out empty is the failure this replaced. Anything posted as
-  `whatsappChannelId` is ignored — the transform on `villageChannelFormSchema` is
-  the only thing that sets that column from the application.
-  `getVillageChannel` falls back to the code in the link when the column is empty,
-  which is what keeps the rows set by hand in psql — the only rows that have ever
-  existed — from being enabled, configured and silently skipped as `no_channel`.
-  A relay that addresses a channel by something other than its invite code needs
-  that resolved at the relay.
+  `src/lib/validations.ts` — the code is the last segment of the link WhatsApp
+  hands the channel owner under "Copy link", so asking for it separately asked
+  somebody to split a string by hand and let the two disagree: alerts to one
+  channel, residents following another, nothing on screen to show it. The form
+  previews the extracted code back, because a derived value that silently came
+  out empty is the failure this replaced. Anything posted as `whatsappChannelId`
+  is ignored — the transform on `villageChannelFormSchema` is the only thing that
+  sets that column from the application. `getVillageChannel` falls back to the
+  code in the link when the column is empty, which is what keeps the rows set by
+  hand in psql — the only rows that have ever existed — from being enabled,
+  configured and silently skipped as `no_channel`.
 - **The follow link needs none of that.** A coordinator pastes the invite link
   into the dashboard form and `/settings` renders "Follow on WhatsApp" for every
   resident of that village; a village without one shows "WhatsApp Channel not set
@@ -872,30 +905,38 @@ the app that discloses outside the village.
   most villages will actually use.
 - **`getVillageChannel` filters, `getVillageChannelSettings` does not.** The
   first is the read path and puts `url` through `safeChannelUrl`, because it
-  feeds an `href`. The second is for the form that edits the column, where a bad
-  link has to be visible to be correctable — it goes into a text input and never
-  into an anchor.
-- **Changing the settings is audited; the posts are not.** `village.channel_update`
-  is the only configuration change in `AUDIT_ACTIONS` and is toned `sensitive`,
-  because turning posting on widens the audience for every alert published
-  afterwards past the tenant boundary. Who did that, and when, is exactly what
-  the trail is for. A post itself still writes nothing — see below.
+  feeds an `href` — including the "Open WhatsApp" button. The second is for the
+  form that edits the column, where a bad link has to be visible to be
+  correctable — it goes into a text input and never into an anchor.
+- **The two village switches gate the log line, not the copy button.**
+  `whatsappEnabled` and `whatsappMinSeverity` decide whether `logIncidentAlert`
+  writes an alert for this village on publish. The button on a report a
+  coordinator has just approved is not gated by them: that text goes to one
+  person's clipboard, they have just read the report, and a village with no
+  channel row still has a parish mailing list.
+- **Changing the settings is audited; the alerts are not.**
+  `village.channel_update` is toned `sensitive`, because switching it on says
+  this village's alerts are meant for an audience wider than its own residents.
+  An alert itself writes nothing — see below.
 - **A channel is public**, so the rules are stricter than anywhere else:
   `whatsappEnabled` defaults false, `whatsappMinSeverity` defaults **HIGH** (push
-  defaults to LOW), and `ChannelIncident` has no field that could carry
+  defaults to LOW), and `AlertIncident` has no field that could carry
   `rawDescription`, `lat` or `lng` — the same structural guard
-  `IncidentEmailInput` uses. `locationText` is the one field whose audience
-  widens; it is the anonymised landmark, and an alert with no place is not an
-  alert.
-- The post carries a headline, an area, a time and a **link** — not the
-  `description`. Anyone entitled to the full report can open the link and sign
-  in.
-- **Nothing throws**, same contract as `notifications.ts`. Unconfigured relay,
-  timeout and a 500 all log and return `posted: false` with a reason. The relay
-  call sits inside a coordinator's Approve click, so it has an 8s timeout
-  (`WHATSAPP_RELAY_TIMEOUT_MS`) and runs *after* the push rather than racing it.
+  `IncidentEmailInput` uses. `locationText` is the anonymised landmark, and an
+  alert with no place is not an alert.
+- **The alert now carries the `description`, which the relay post did not.** The
+  old post was a headline and a link on the reasoning that anyone entitled to the
+  detail could sign in; this one is truncated to `ALERT_DESCRIPTION_MAX_CHARS` and
+  is pasted by a coordinator who has just read the report, so the judgement is a
+  person's and it is made with the text in front of them. **Where the AI pass did
+  not run, `description` is the reporter's own wording** — the same text as
+  `rawDescription`, already public on the map. `CopyAlert` reads `anonymized` and
+  says so in red when it is false, because this is the one button that puts it in
+  front of the open internet.
+- **Nothing throws**, same contract as `notifications.ts`. There is no network
+  call left in the module to fail.
 - **No `Notification` rows** — that table is one row per user per delivery and a
-  channel has no known recipients. **No `AuditLog` row** either: the post is a
+  channel has no known recipients. **No `AuditLog` row** either: the alert is a
   deterministic consequence of `incident.publish` plus the village's own
   configuration, both already in the trail.
 - `getVillageChannel()` refuses to return a `url` that is not `https:`. The
@@ -1186,15 +1227,19 @@ open:
   villages" figure. Set it when somebody can point at the list, and not before:
   a made-up number there is a false statement to a parish clerk deciding whether
   to hand over their residents' reports.
-- **The WhatsApp Channel has a UI now but still no relay.** All four `Village`
-  columns are set from `/dashboard` — three by the coordinator and
-  `whatsappChannelId` derived from the invite link — validated by
-  `villageChannelFormSchema`. What is still missing is the other end:
-  `WHATSAPP_CHANNEL_API_URL` is unset, so every post logs and reports
-  `skipped: "not_configured"` — a supported state, like OneSignal. Nothing has
-  ever been posted to a real channel. **Before turning one on for a live
-  village, post to a test channel first and read what actually lands** — this is
-  the one feature whose output an unauthenticated stranger can read.
+- **The WhatsApp Channel is copy-and-paste, and no alert has been pasted into a
+  real channel yet.** All four `Village` columns are set from `/dashboard` —
+  three by the coordinator and `whatsappChannelId` derived from the invite link —
+  validated by `villageChannelFormSchema`. The relay that was supposed to be the
+  other end is gone, along with `WHATSAPP_CHANNEL_API_URL` and
+  `WHATSAPP_CHANNEL_API_TOKEN`; the alert is now built by `formatIncidentAlert`,
+  logged on publish and offered with a copy button. **Paste one into a test
+  channel first and read what actually lands** — this is the one feature whose
+  output an unauthenticated stranger can read, and the description in it is a
+  field the old relay post never carried. Watch in particular a report where the
+  AI pass did not run: `anonymized` is false, the description is the reporter's
+  own wording, and the red warning on the panel is the only thing between it and
+  a public feed.
 - **Auto-approve has a UI, a migration and no village behind it.** Nothing has
   ever been filed through the published-on-submit path against a real database,
   and its migration is one of the three above that have never run. Watch the

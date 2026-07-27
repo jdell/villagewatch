@@ -10,7 +10,12 @@ import {
   notifyIncidentPublished,
 } from "@/lib/notifications";
 import { notifySlack } from "@/lib/slack";
-import { LOCATION_FUZZ_METERS, SEVERITY_META } from "@/lib/constants";
+import { formatIncidentAlert } from "@/lib/format-alert";
+import {
+  LOCATION_FUZZ_METERS,
+  SEVERITY_META,
+  isCoordinatorRole,
+} from "@/lib/constants";
 import { RATE_LIMITS, rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { fieldErrors, incidentReportSchema } from "@/lib/validations";
 
@@ -87,6 +92,8 @@ async function announce(input: {
   session: NonNullable<Awaited<ReturnType<typeof getSession>>>;
   report: z.output<typeof incidentReportSchema>;
   fuzzed: { lat: number; lng: number };
+  /** The provenance block, when the AI pass genuinely ran. */
+  ai?: z.output<typeof incidentReportSchema>["ai"];
 }): Promise<void> {
   const { incidentId, reference, villageId, autoApprove, session, report } =
     input;
@@ -115,6 +122,9 @@ async function announce(input: {
       villageId,
       title: report.title,
       severity: report.severity,
+      description: report.description,
+      recurring: input.ai?.recurring ?? false,
+      patternNote: input.ai?.patternNote ?? null,
       locationText: report.locationText ?? null,
       lat: input.fuzzed.lat,
       lng: input.fuzzed.lng,
@@ -360,6 +370,7 @@ export async function POST(request: NextRequest) {
         session,
         report,
         fuzzed,
+        ai,
       });
 
       return NextResponse.json(
@@ -370,6 +381,26 @@ export async function POST(request: NextRequest) {
           // The wizard says something different depending on whether a
           // coordinator is about to read this or the village already has.
           autoApproved: autoApprove,
+          // The WhatsApp text, for the success screen — but only for a report
+          // that is actually live, and only to somebody who moderates this
+          // village. A channel is public: a resident is not offered a button
+          // that republishes a report outside the village, and no report still
+          // waiting in the queue gets one at all (domain rule 6).
+          alert:
+            autoApprove && isCoordinatorRole(session.profile?.role)
+              ? formatIncidentAlert({
+                  id: incident.id,
+                  title: report.title,
+                  severity: report.severity,
+                  description: report.description,
+                  locationText: report.locationText ?? null,
+                  occurredAt: report.occurredAt,
+                  recurring: ai?.recurring ?? false,
+                  patternNote: ai?.patternNote ?? null,
+                })
+              : undefined,
+          // Whether that text is the rewrite or the reporter's own wording.
+          anonymized: Boolean(ai),
           redirectTo: "/incidents",
         },
         { status: 201 },

@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { AiPreview, type AiPreviewFields } from "@/components/ai-preview";
+import { CopyAlert } from "@/components/copy-alert";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { MediaUploader, type AttachedMedia } from "@/components/media-uploader";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -89,10 +91,25 @@ export type IncidentFormVillage = {
    * always made, and in a village that has turned review off it is not true.
    */
   autoApprove: boolean;
+  /**
+   * The village's WhatsApp Channel invite link, when it has one. Already
+   * `https:`-checked server-side — it goes into an `href` on the success screen.
+   */
+  channelUrl: string | null;
 };
 
 type IncidentFormProps = {
   village: IncidentFormVillage;
+  /**
+   * Whether this reporter moderates this village.
+   *
+   * **Display only, like `autoApprove`.** It decides whether the success screen
+   * offers the WhatsApp alert; the route decides whether to build one at all,
+   * from the session's own role. A channel is public, so republishing a report
+   * outside the village is a coordinator's call and not a button every resident
+   * gets — see `CopyAlert`.
+   */
+  canPostAlert?: boolean;
 };
 
 const STEPS = [
@@ -204,12 +221,30 @@ const IDLE_AI: AiState = {
   signature: null,
 };
 
-export function IncidentForm({ village }: IncidentFormProps) {
+/**
+ * The terminal state of the wizard, when there is something left to do.
+ *
+ * A report that went into the queue redirects to `/incidents` with a toast, the
+ * way filing has always ended — there is nothing to act on and a screen saying
+ * "wait for your coordinator" is a screen in the way. A report that went **live
+ * on submit**, filed by somebody who moderates the village, ends here instead:
+ * nothing posts to a WhatsApp Channel on its own, so this is the one moment the
+ * text is in front of the person who would post it.
+ */
+type PublishedReport = {
+  id: string;
+  reference: string;
+  alert: string;
+  anonymized: boolean;
+};
+
+export function IncidentForm({ village, canPostAlert = false }: IncidentFormProps) {
   const router = useRouter();
 
   const [step, setStep] = useState(0);
   const [textOnly, setTextOnly] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState<PublishedReport | null>(null);
   const [ai, setAi] = useState<AiState>(IDLE_AI);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -503,6 +538,23 @@ export function IncidentForm({ village }: IncidentFormProps) {
           ? `Report ${result.reference} is live — your neighbours have been alerted.`
           : `Report ${result.reference} filed — your coordinator will review it.`,
       );
+
+      // A live report with an alert to post stops here rather than redirecting:
+      // the text exists to be copied, and navigating away from it is how it gets
+      // lost. `canPostAlert` is checked as well as `result.alert` so the screen
+      // cannot appear from a stale response shape; the route decides the real
+      // question, from the session's own role.
+      if (canPostAlert && result.autoApproved && result.alert) {
+        setPublished({
+          id: result.id,
+          reference: result.reference,
+          alert: result.alert,
+          anonymized: Boolean(result.anonymized),
+        });
+        router.refresh();
+        return;
+      }
+
       router.replace(result.redirectTo ?? "/incidents");
       router.refresh();
     } catch {
@@ -510,6 +562,51 @@ export function IncidentForm({ village }: IncidentFormProps) {
     } finally {
       setPublishing(false);
     }
+  }
+
+  if (published) {
+    return (
+      <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center sm:p-8">
+          <span className="mx-auto grid size-12 place-items-center rounded-xl bg-safe-50 text-safe-600 ring-1 ring-safe-100">
+            <Check className="size-6" aria-hidden />
+          </span>
+          <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">
+            {published.reference} is live
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            It is on the {village.name} map and the neighbours who asked to hear
+            about it have been alerted.
+          </p>
+        </div>
+
+        <div className="mt-4">
+          <CopyAlert
+            text={published.alert}
+            channelUrl={village.channelUrl}
+            anonymized={published.anonymized}
+            title="Post it to WhatsApp"
+            hint="Nothing is posted to your village's WhatsApp Channel automatically — copy this and paste it there."
+          />
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href={`/incidents/${published.id}`}
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
+          >
+            View the report
+            <ArrowRight className="size-4" aria-hidden />
+          </Link>
+          <Link
+            href="/incidents"
+            className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            All incidents
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   const currentStep = STEPS[step]!;
