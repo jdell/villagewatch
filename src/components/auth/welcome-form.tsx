@@ -12,6 +12,10 @@ import {
 } from "@/lib/validations";
 import type { LocationValue } from "@/components/location-picker";
 import type { VillageOption } from "@/components/auth/register-form";
+import {
+  VillageAttribution,
+  VillagePicker,
+} from "@/components/auth/village-picker";
 
 /** Leaflet touches `window` on import — never let it reach the server bundle. */
 const LocationPicker = dynamic(
@@ -166,30 +170,17 @@ export function WelcomeForm({
             : "Reports you file are only visible inside this village."
         }
       >
-        <select
-          id="villageId"
-          name="villageId"
-          required
-          disabled={noVillages}
+        <VillagePicker
+          villages={villages}
           value={villageId}
-          onChange={(event) => {
-            setVillageId(event.target.value);
+          onChange={(id) => {
+            setVillageId(id);
             // A pin dropped on one village's map means nothing on another's.
             setHome(null);
           }}
-          aria-invalid={Boolean(errors.villageId)}
-          className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400`}
-        >
-          <option value="" disabled>
-            {noVillages ? "No villages available" : "Choose your village"}
-          </option>
-          {villages.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
-              {option.region ? ` — ${option.region}` : ""}
-            </option>
-          ))}
-        </select>
+          invalid={Boolean(errors.villageId)}
+        />
+        <VillageAttribution />
       </Field>
 
       <Field

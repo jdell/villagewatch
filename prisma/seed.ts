@@ -8,7 +8,10 @@ import type {
   Severity,
 } from "../src/generated/prisma/enums";
 import { fuzzCoordinates } from "../src/lib/geo";
-import { LOCATION_FUZZ_METERS } from "../src/lib/constants";
+import {
+  LOCATION_FUZZ_METERS,
+  VILLAGE_STATUS_LABELS,
+} from "../src/lib/constants";
 
 /**
  * Seeds one village with enough realistic data to see every screen working.
@@ -35,8 +38,10 @@ import { LOCATION_FUZZ_METERS } from "../src/lib/constants";
  * 2. **It is idempotent, and it does not clobber.** Everything is an `upsert`
  *    keyed on the natural key (village slug, user id, incident reference), and
  *    the `update` half is deliberately narrow: re-running will not resurrect a
- *    report a coordinator has since rejected, or undo a role you changed by
- *    hand. Delete the rows if you want them rebuilt.
+ *    report a coordinator has since rejected, undo a role you changed by hand,
+ *    or reactivate a village you deliberately took out of the picker — the
+ *    village's `update` half is empty, so an existing row is left untouched and
+ *    its status is only reported. Delete the rows if you want them rebuilt.
  *
  * 3. **It is sample data, and it reads like it.** The village is called
  *    `[Your Village]` and sits at the geographic centre of England, both of
@@ -239,9 +244,27 @@ async function main() {
 
   console.log("");
   console.log(`  Village        ${village.name} (join code ${JOIN_CODE})`);
+  console.log(`  Status         ${VILLAGE_STATUS_LABELS[village.status]}`);
   console.log(`  Coordinator    ${ADMIN_EMAIL}`);
   console.log(`  Incidents      ${incidents.length}`);
   console.log("");
+
+  // Only `ACTIVE` villages reach the register and welcome pickers, so a sample
+  // village left at any other status is invisible to a new resident. That is a
+  // legitimate thing to want — it is how you keep the placeholder out of a
+  // picker showing real parishes — but it should never be a surprise.
+  if (village.status !== "ACTIVE") {
+    console.warn(
+      `  ⚠  This village is ${VILLAGE_STATUS_LABELS[village.status]}, so it does\n` +
+        "     not appear in the village picker on /register or /welcome and gets\n" +
+        "     no weekly digest. The seed left it alone rather than reactivating\n" +
+        "     it. Residents already in it are unaffected — nothing gates a signed\n" +
+        "     in resident on village status. To put it back in the picker:\n" +
+        "\n" +
+        `       UPDATE villages SET status = 'ACTIVE' WHERE slug = '${VILLAGE_SLUG}';`,
+    );
+    console.log("");
+  }
 
   if (!ADMIN_USER_ID) {
     console.warn(
@@ -257,9 +280,21 @@ async function main() {
 async function seedVillage() {
   return prisma.village.upsert({
     where: { slug: VILLAGE_SLUG },
-    // Narrow on purpose. A village that already exists has probably had its
-    // name, centre or join code set for real, and a seed should not undo that.
-    update: { status: "ACTIVE" },
+    /*
+      Empty on purpose: an existing village is left exactly as it is.
+
+      Its name, centre and join code have probably been set for real, and
+      `status` especially is a decision somebody made — deactivating the sample
+      village is how you take it out of the register and welcome pickers, and a
+      seed that flipped it back to `ACTIVE` would silently undo that on the next
+      run. `seed-villages.ts` takes the same line for the same reason: anything
+      past `PENDING` is a human's choice and survives a re-seed.
+
+      A row that vanished from the picker unexpectedly is a bad way to find out
+      the seed had an opinion about it, so `main()` reports the status it found
+      rather than quietly leaving it alone.
+    */
+    update: {},
     create: {
       name: VILLAGE_NAME,
       slug: VILLAGE_SLUG,
@@ -279,7 +314,7 @@ async function seedVillage() {
       alertThreshold: "HIGH",
       contactEmail: ADMIN_EMAIL,
     },
-    select: { id: true, name: true },
+    select: { id: true, name: true, status: true },
   });
 }
 

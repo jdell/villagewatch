@@ -7,6 +7,10 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, MapPinHouse, UserPlus } from "lucide-react";
 import type { LocationValue } from "@/components/location-picker";
+import {
+  VillageAttribution,
+  VillagePicker,
+} from "@/components/auth/village-picker";
 import { fieldErrors as toFieldErrors, registerSchema } from "@/lib/validations";
 
 // Leaflet dereferences `window` on import, so the picker can never be part of
@@ -180,30 +184,17 @@ export function RegisterForm({ villages }: RegisterFormProps) {
             : "Reports you file are only visible inside this village."
         }
       >
-        <select
-          id="villageId"
-          name="villageId"
-          required
-          disabled={noVillages}
+        <VillagePicker
+          villages={villages}
           value={villageId}
-          onChange={(event) => {
-            setVillageId(event.target.value);
+          onChange={(id) => {
+            setVillageId(id);
             // A pin dropped on one village's map means nothing on another's.
             setHome(null);
           }}
-          aria-invalid={Boolean(errors.villageId)}
-          className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400`}
-        >
-          <option value="" disabled>
-            {noVillages ? "No villages available" : "Choose your village"}
-          </option>
-          {villages.map((village) => (
-            <option key={village.id} value={village.id}>
-              {village.name}
-              {village.region ? ` — ${village.region}` : ""}
-            </option>
-          ))}
-        </select>
+          invalid={Boolean(errors.villageId)}
+        />
+        <VillageAttribution />
       </Field>
 
       <Field

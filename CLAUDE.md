@@ -130,10 +130,13 @@ src/
       dashboard/audit/        Audit trail viewer — coordinator only, filterable
       settings/               Profile and notification preferences
       settings/actions.ts     saveSettingsAction — never touches role/village
+    forgot-password/          Ask for a reset link — public, no session
+    reset-password/           Where the link lands; expired-link state built in
     api/auth/                 login, logout, register route handlers
     api/auth/callback/        OAuth return leg — exchanges the code, routes on
-                              whether a profile row exists
+                              whether a profile row exists. Also the recovery leg
     api/auth/complete-profile/  Writes the profile for a provider sign-up
+    api/auth/reset-password/  Sets a new password for the current session
     api/coordinator-requests/   POST apply (resident), GET list (admin only)
     api/coordinator-requests/[id]/  PATCH approve or reject — admin only
     api/incidents/            POST create report (writes AI fields + tags)
@@ -146,6 +149,9 @@ src/
   components/                 Shared UI (logo, app-shell, placeholder, auth forms)
     auth/google-button.tsx    "Continue with Google" + the or-divider, shared
     auth/welcome-form.tsx     The provider sign-up's second half
+    auth/village-picker.tsx   Type-to-search village combobox + OGL attribution
+    auth/forgot-password-form.tsx  Reset request — never reveals if an account exists
+    auth/reset-password-form.tsx   New password; the session says whose
     site-footer.tsx           Public footer, incl. the legal links — shared
     legal-page.tsx            Shell + typography for /privacy and /terms
     status-screen.tsx         Shell behind not-found.tsx and error.tsx
@@ -306,6 +312,42 @@ separately by everything else.
 - **`next` is hostile input.** It survives a round trip through Google, so the
   callback re-validates it: relative paths only, and never protocol-relative —
   `//evil.test` is off-origin and starts with the `/` a naive check accepts.
+
+### The password reset
+
+`/forgot-password` → email → `/api/auth/callback` → `/reset-password` →
+`POST /api/auth/reset-password`. Three of those four already existed.
+
+- **`resetPasswordForEmail` runs in the browser**, for the same reason
+  `signInWithOAuth` does: it starts PKCE and stores a verifier the callback has
+  to read back. Called server-side, the verifier lands on the wrong machine and
+  the exchange fails with nothing on screen to explain it.
+- **The recovery link reuses `/api/auth/callback`.** It already exchanges a code
+  and already validates `next`, so the recovery leg inherits that hardening
+  instead of growing a second, less careful copy. `redirectTo` is the callback
+  with `next=/reset-password`.
+- **The request screen never reveals whether an account exists.** A Supabase
+  error is logged and swallowed, and the same "check your email" panel renders
+  either way. A form that says "no account with that email" is an enumeration
+  oracle, and here the membership list is itself sensitive — it says who reports
+  on their neighbours.
+- **Nothing in the reset payload identifies a user.** No email, no id: the
+  session decides whose password changes, which is what stops a link addressed
+  to one resident setting another's. The route checks the session *before* it
+  validates the body, so an unauthenticated caller gets 401 rather than a 422
+  describing the password rules.
+- **Neither route needs a proxy change** — `PROTECTED_ROUTES` is a denylist, so
+  both are reachable signed-out, and `/reset-password` is deliberately not in
+  `AUTH_ROUTES`, which would bounce to `/map` the very session a recovery link
+  creates.
+- `/reset-password` uses `getSession()` rather than `requireSession()`. The
+  redirect to `/login` would tell somebody whose link expired only that they
+  need to sign in — the one thing they cannot do. It renders an expired state
+  with a link back instead.
+- **Supabase sends the email, and its redirect URL must be allow-listed** in
+  Authentication → URL Configuration, or the link dead-ends. The wording is
+  Supabase's own template, not `src/lib/email/` — same constraint as the sign-up
+  confirmation, and for the same reason.
 
 ---
 
@@ -741,8 +783,10 @@ sample incidents in it; neither needs the other.
   people who live in it.
 - **Attribution is a licence condition.** The IPN is OGL v3.0, which asks for an
   acknowledgement wherever the data is shown. `ONS_ATTRIBUTION` in
-  `src/lib/constants.ts` holds it. Nothing renders it because nothing renders
-  the directory yet — that is a debt, not a decision.
+  `src/lib/constants.ts` holds it, and `VillageAttribution` in
+  `src/components/auth/village-picker.tsx` renders it under the picker on both
+  `/register` and `/welcome` — the only two screens a resident sees the
+  directory through. Any further surface that lists villages needs it too.
 - `data/ons-places.csv` is gitignored; `data/cambridgeshire-villages.json` is
   not. The snapshot is the same pipeline's output, committed, so the directory
   can be seeded with no network at all.
@@ -872,25 +916,39 @@ open:
   a database. Apply it, then re-run the whole RLS file — a new table arrives
   with row-level security off, so until that second step an application sitting
   in the queue is readable through PostgREST by anyone with a key.
-- **The village directory has never been seeded against the real database**,
-  because there is not one yet. The whole pipeline has been run end to end
-  against the real July 2024 release and a throwaway local Postgres: 10,670
-  England parishes in 2.9s, re-runs idempotent, a village moved to `ACTIVE` by
-  hand left untouched while a drifted `PENDING` one was refreshed. What that
-  scratch database did **not** have is PostGIS, RLS, or the rest of the schema —
-  so `Village.boundary` and the policies in `rls_policies.sql` are still
-  unexercised against a seeded directory.
-- **Nothing renders the directory.** There is no village picker, no county
-  search and no way for a resident to choose a seeded village — registration
-  still takes a join code. Seeding 10,670 villages today puts 10,670 dormant
-  rows in a table nothing reads. When a picker is built it must carry
-  `ONS_ATTRIBUTION`.
-- **A directory entry still cannot be claimed from cold.** Coordinator access
-  requests close half of this — there is now a flow that gives a village a
-  coordinator — but it starts from a resident who is *already* in the village,
-  and joining still needs a join code that a seeded village does not have.
-  Nothing promotes a `PENDING` village to `ACTIVE` or mints its first join code.
-  The missing piece is the first step, not the last.
+- **Only Cambridgeshire is seeded.** The 270 parishes from
+  `data/cambridgeshire-villages.json` are in the real database as `PENDING`,
+  seeded from the committed snapshot rather than the CSV (`--file`, because
+  `data/ons-places.csv` is gitignored and not downloaded). Re-running reported
+  `unchanged 270`, so idempotency is now confirmed against the real schema and
+  not only the throwaway Postgres the pipeline was first built against. England's
+  other 10,400 parishes are **not** seeded. `Village.boundary` is null on all 271
+  rows, which is correct — it is a hand-drawn polygon with a GiST index and no
+  trigger, unlike the geography columns on `Incident` and `PatternAlert`.
+- **The picker searches, but the `ACTIVE` filter still decides.**
+  `src/components/auth/village-picker.tsx` replaced the `<select>` on
+  `/register` and `/welcome`: a type-to-search combobox, folding case and
+  diacritics so `Chrion` finds `A' Chrìon Làraich`, capped at `MAX_VISIBLE`
+  rendered rows. Both pages still query `status: "ACTIVE"` and both auth routes
+  still enforce it, so **the 270 seeded parishes do not appear in it** — the only
+  selectable village is whatever `prisma/seed.ts` created. Filtering happens in
+  the browser over the whole list; at a county's 270 that is free, but activating
+  the national directory wholesale wants a server-side search endpoint first.
+- **A directory entry still cannot be claimed from cold, and this is now the
+  blocker.** Nothing in the repo writes `Village.status` except `prisma/seed.ts`,
+  which hardcodes `ACTIVE` for its one placeholder; `seed-villages.ts`
+  deliberately never touches it, and every other `status: "ACTIVE"` in `src/` is
+  a read filter. So a seeded parish is `PENDING` forever and the only promotion
+  path is editing the row by hand in Prisma Studio or psql. Joining it would
+  still need a join code a seeded village does not have, and both auth routes
+  hardcode `role: codeMatches ? "VERIFIED_RESIDENT" : "RESIDENT"`. Coordinator
+  access requests close the *second* half of this — `coordinator-requests.ts`
+  does assign `COORDINATOR` on approval — but that flow starts from a resident
+  who is *already* in the village, so it cannot bootstrap one. The missing piece
+  is the first step, not the last: activate a village, mint its join code and
+  appoint its first coordinator in the same operation, or the village is a black
+  hole where every report filed sits in `PENDING_REVIEW` unreachable (domain
+  rule 6).
 - **The retention job has never run against data.** It deletes files and takes
   reports off the map, and every line of it is untested against a real bucket.
   Watch the first run and read the counts in the response before trusting the
@@ -939,8 +997,9 @@ open:
   ever been posted to a real channel. **Before turning one on for a live
   village, post to a test channel first and read what actually lands** — this is
   the one feature whose output an unauthenticated stranger can read.
-- **No CI beyond the version bump.** `.github/workflows/version.yml` is the only
-  workflow; nothing runs `npm run build`, `tsc` or `eslint` on a pull request.
+- No test suite. `.github/workflows/ci.yml` runs `lint`, `typecheck` and `build`
+  on every pull request and every push to `main`, which is the floor rather than
+  the goal — there is still nothing asserting behaviour.
 - The README's screenshots are placeholder text. Capture them after the first
   seeded deploy.
 - `aiSummary` is still unused; the AI pass fills `aiModel`, `aiConfidence`,
@@ -980,8 +1039,10 @@ open:
   `PatternAlert`-style badge count anywhere but on that page's own tab, so an
   administrator finds out there is something waiting from the push
   notification.
-- `/forgot-password` is linked from the login form but does not exist yet.
-- No tests, no CI, no staging environment, no auto-versioning.
+- Password recovery exists but **no email has ever been sent through it**.
+  Supabase's own recovery template is what arrives, and its redirect URL must be
+  on the project's allow list or the link dead-ends — see The password reset.
+- No test suite and no staging environment. CI and auto-versioning both exist.
 - Light theme only. Add a dark palette deliberately — `prefers-color-scheme`
   would half-apply to the map and severity badges.
 
