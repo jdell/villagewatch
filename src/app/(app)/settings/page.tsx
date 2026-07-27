@@ -1,8 +1,15 @@
 import type { Metadata } from "next";
+import { CoordinatorApplication } from "@/components/coordinator-application";
+import { FlashToast } from "@/components/flash-toast";
 import { SettingsForm } from "@/components/settings-form";
 import { requireSession } from "@/lib/auth";
+import { getLatestCoordinatorRequest } from "@/lib/coordinator-requests";
 import { getVillageChannel } from "@/lib/whatsapp-channel";
-import { isCoordinatorRole, USER_ROLE_LABELS } from "@/lib/constants";
+import {
+  canApplyForCoordinator,
+  isCoordinatorRole,
+  USER_ROLE_LABELS,
+} from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -14,21 +21,40 @@ export const metadata: Metadata = { title: "Settings" };
  * so a resident who just saved never sees a cached copy of their old settings.
  *
  * Role and village are shown but not editable: both are set by server code from
- * a verified join code or a coordinator action (domain rule 5).
+ * a verified join code or a coordinator action (domain rule 5). Asking to have
+ * the role changed is the one thing this screen can start, and it starts it by
+ * linking to `/coordinator-apply` rather than by putting a role field on a form
+ * — see `CoordinatorApplication`.
  */
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  // Next 16: `searchParams` is a Promise and has to be awaited.
+  searchParams: Promise<{ applied?: string }>;
+}) {
   const session = await requireSession("/settings");
   const profile = session.profile;
 
   // A resident with no village has no channel to follow — `getVillageChannel`
   // is scoped by the village id off the session profile and never by anything
   // that arrived in a request (domain rule 4).
-  const channel = profile?.villageId
-    ? await getVillageChannel(profile.villageId)
-    : null;
+  const [{ applied }, channel, coordinatorRequest] = await Promise.all([
+    searchParams,
+    profile?.villageId ? getVillageChannel(profile.villageId) : null,
+    // Only read for someone who could still apply. A coordinator's own old
+    // application is history they have no use for on this screen.
+    canApplyForCoordinator(profile?.role)
+      ? getLatestCoordinatorRequest(session.user.id)
+      : null,
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-10">
+      {/* Set by the redirect at the end of `applyForCoordinatorAction`. */}
+      {applied === "1" && (
+        <FlashToast message="Application sent. We will let you know." />
+      )}
+
       <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
         Settings
       </h1>
@@ -59,6 +85,18 @@ export default async function SettingsPage() {
           canSetUp: isCoordinatorRole(profile?.role),
         }}
       />
+
+      {/*
+        Outside SettingsForm, and below the save button, because it is not a
+        setting: applying is a form on its own page and the state shown here is
+        the outcome of one. Rendered only for a resident with a village — there
+        is nothing to coordinate without one.
+      */}
+      {canApplyForCoordinator(profile?.role) && profile?.villageId && (
+        <div className="mt-4">
+          <CoordinatorApplication request={coordinatorRequest} />
+        </div>
+      )}
 
       {/*
         Sits outside SettingsForm because HTML forbids nested forms — the button

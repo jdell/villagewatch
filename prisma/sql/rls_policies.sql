@@ -189,6 +189,7 @@ ALTER TABLE public.incident_media           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.incident_tags            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pattern_alerts           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.coordinator_requests     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."_PatternAlertIncidents" ENABLE ROW LEVEL SECURITY;
 
@@ -674,6 +675,91 @@ CREATE POLICY pattern_alerts_update_coordinator
     public.vw_is_coordinator()
     AND village_id = public.vw_current_village_id()
   );
+
+-- ---------------------------------------------------------------------------
+-- coordinator_requests
+-- ---------------------------------------------------------------------------
+--
+-- An applicant reads their own applications. An administrator reads every one.
+--
+-- **The admin predicate here is deliberately not village-scoped**, unlike
+-- `users_select_admin` and `audit_logs_select_admin` above. It is the one place
+-- in this file where that is right, and the reason is the village directory:
+-- `prisma/seed-villages.ts` seeds 10,670 parishes that contain nobody at all.
+-- A village-scoped reviewer would mean an application could only ever be
+-- approved by somebody who already holds the access being applied for — fine
+-- for the first village, impossible for the second. This flow is what turns a
+-- PENDING directory entry into a village with a coordinator, so its reviewer is
+-- platform-wide. `src/lib/coordinator-requests.ts` makes the same call in the
+-- application, for the same reason.
+--
+-- Note the consequence, because it is easy to read as a bug later: an admin can
+-- SELECT a cross-village application here but NOT the applicant's `users` row,
+-- which `users_select_admin` still scopes to their own village. Through
+-- PostgREST that means an application whose applicant is a name they cannot
+-- join to. The admin queue is unaffected — it reads through Prisma as the table
+-- owner. Widen `users_select_admin` if and when something needs the join, and
+-- widen it to the columns it actually needs.
+--
+-- SELECT is granted table-wide rather than per column, unlike `villages` and
+-- `incidents`. Those two hold columns no row policy can withhold — a join code,
+-- a channel id, a reporter's verbatim words. This table has no such column:
+-- `reason` is the applicant's own account of themselves, written to be read by
+-- the reviewer, and there is nobody the row policies admit who should be
+-- reading a subset of it. Add a column for which that stops being true and it
+-- needs the same per-column treatment `villages` got.
+
+GRANT SELECT, INSERT, UPDATE ON public.coordinator_requests TO authenticated;
+
+DROP POLICY IF EXISTS coordinator_requests_select_own ON public.coordinator_requests;
+CREATE POLICY coordinator_requests_select_own
+  ON public.coordinator_requests FOR SELECT
+  TO authenticated
+  USING (user_id = (SELECT auth.uid()));
+
+DROP POLICY IF EXISTS coordinator_requests_select_admin ON public.coordinator_requests;
+CREATE POLICY coordinator_requests_select_admin
+  ON public.coordinator_requests FOR SELECT
+  TO authenticated
+  USING (public.vw_is_admin());
+
+/**
+ * Apply as yourself, to your own village, and only into the queue.
+ *
+ * The three pinned columns are the point. Without them a client could insert a
+ * row that already says APPROVED, reviewed by whoever they liked — which grants
+ * no access at all, because the role lives on `users` and
+ * `users_guard_privilege_columns` refuses that write, but which would put a
+ * forged approval in front of the next administrator to open the history tab.
+ * A fabricated record of a decision is worse than no record, for the same
+ * reason `audit_logs_insert_self` exists.
+ */
+DROP POLICY IF EXISTS coordinator_requests_insert_own ON public.coordinator_requests;
+CREATE POLICY coordinator_requests_insert_own
+  ON public.coordinator_requests FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    user_id = (SELECT auth.uid())
+    AND village_id = public.vw_current_village_id()
+    AND status = 'PENDING'::public.coordinator_request_status
+    AND reviewed_by_id IS NULL
+    AND reviewed_at IS NULL
+    AND review_note IS NULL
+  );
+
+/** Deciding is an administrator's job and nobody else's. */
+DROP POLICY IF EXISTS coordinator_requests_update_admin ON public.coordinator_requests;
+CREATE POLICY coordinator_requests_update_admin
+  ON public.coordinator_requests FOR UPDATE
+  TO authenticated
+  USING (public.vw_is_admin())
+  WITH CHECK (public.vw_is_admin());
+
+-- No DELETE policy, and no applicant UPDATE either. An application is a record
+-- of something somebody asked for and what was decided about it; withdrawing it
+-- by editing the row would leave the administrator's decision attached to text
+-- they never read. The absence of a WITHDRAWN status in the enum is the same
+-- decision seen from the other side.
 
 -- ---------------------------------------------------------------------------
 -- _PatternAlertIncidents (implicit m2m join table)

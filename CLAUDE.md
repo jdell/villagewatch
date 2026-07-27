@@ -115,6 +115,9 @@ src/
     terms/                    Terms of use + community guidelines
     (app)/                    Authenticated shell (sidebar); force-dynamic
       layout.tsx              requireSession() — the real auth boundary
+      admin/coordinators/     Platform-admin queue — the only page not scoped
+                              to one village; approve promotes to COORDINATOR
+      coordinator-apply/      The resident's application form + its action
       map/                    Full-screen Leaflet map, severity pins
       incidents/              List with type + severity filters (GET form)
       incidents/[id]/         Detail — media, tags, map pin; params is a Promise
@@ -130,6 +133,8 @@ src/
     api/auth/callback/        OAuth return leg — exchanges the code, routes on
                               whether a profile row exists
     api/auth/complete-profile/  Writes the profile for a provider sign-up
+    api/coordinator-requests/   POST apply (resident), GET list (admin only)
+    api/coordinator-requests/[id]/  PATCH approve or reject — admin only
     api/incidents/            POST create report (writes AI fields + tags)
     api/incidents/process/    POST run a draft through Claude; writes nothing
     api/incidents/media/      POST blurred upload, DELETE abandoned attachment
@@ -143,6 +148,10 @@ src/
     site-footer.tsx           Public footer, incl. the legal links — shared
     legal-page.tsx            Shell + typography for /privacy and /terms
     status-screen.tsx         Shell behind not-found.tsx and error.tsx
+    coordinator-apply-form.tsx  The application — role, detail, why
+    coordinator-application.tsx Settings section: apply / pending / declined
+    flash-toast.tsx           One toast after a redirecting server action
+    admin/coordinator-request-card.tsx  One application, approve or reject
     incident-form.tsx         5-step wizard, react-hook-form + Zod
     media-uploader.tsx        Blur-then-upload; never touches the original
     location-picker.tsx       Leaflet pin picker — dynamic import, ssr: false
@@ -165,13 +174,17 @@ src/
     no-village.tsx            Shown wherever a resident has no village yet
   lib/
     prisma.ts                 Singleton + pg driver adapter
-    auth.ts                   getSession / requireSession / requireRole
+    auth.ts                   getSession / requireSession / requireRole /
+                              requireCoordinator / requireAdmin
     moderation.ts             applyModeration + audited readRawDescription
+    coordinator-requests.ts   Apply, approve, reject — the only place a role
+                              is ever raised to COORDINATOR
     notifications.ts          OneSignal dispatch, audience rules — server only
     whatsapp-channel.ts       Public channel posting — server only, opt-in, no official API
     cron.ts                   Constant-time CRON_SECRET check, shared by both jobs
     email/                    Templates only — no transport. layout, welcome,
-                              weekly-digest, incident-notification
+                              weekly-digest, incident-notification,
+                              coordinator-decision
     ai/weekly-digest.ts       Claude weekly summary, structured, typed failures
     geo.ts                    fuzzCoordinates — server only, uses node:crypto
     rate-limit.ts             In-memory fixed-window limiter — server only
@@ -697,6 +710,64 @@ finally creates `PatternAlert` rows.
 - The digest pushes to coordinators only, ignoring `notifyPush` and radius — it
   is a working document for moderators, not a broadcast.
 
+## Coordinator access requests
+
+`src/lib/coordinator-requests.ts`. A resident applies from `/settings`, a
+**platform** administrator decides at `/admin/coordinators`, and an approval is
+what writes `role: "COORDINATOR"`. This module is the only place in the codebase
+that raises a role, which is why the rules live here rather than at the two call
+sites — the API route and the admin page's server action both go through it.
+
+- **The reviewer is platform-wide, and it is the one thing in the app that is.**
+  Every other authenticated surface renders one village (domain rule 4). This
+  one cannot: `seed-villages.ts` seeds 10,670 parishes with nobody in them, so a
+  village-scoped reviewer would mean an application could only be approved by
+  somebody who already holds the access being applied for. Fine for the first
+  village, impossible for the second. `requireAdmin()` guards it; the RLS
+  section says the same thing and names the consequence (an admin can read a
+  cross-village application but not, through PostgREST, the applicant's `users`
+  row — `users_select_admin` is still village-scoped).
+- **`CoordinatorRequest.role` is not a `UserRole`.** It is the standing the
+  applicant claims — "Parish councillor", "Neighbourhood Watch coordinator" —
+  free text in the column, constrained to `COORDINATOR_APPLICANT_ROLES` by Zod,
+  and it grants nothing. The role that is granted is a constant written by
+  server code on approval (domain rule 5).
+- **Both resident roles can apply**, not `RESIDENT` alone. A
+  `VERIFIED_RESIDENT` is somebody a coordinator has already confirmed lives in
+  the village, which makes them the strongest candidate rather than one to lock
+  out. `canApplyForCoordinator()` is the test; the roles that cannot apply are
+  the ones in `COORDINATOR_ROLES`, which already have the access.
+- **Approving also fills `verifiedAt`** when it is empty, with the approving
+  admin as `verifiedById`. Approving somebody to coordinate a village answers
+  the question that column records. An existing verification is left alone.
+- **A rejection requires a note.** `coordinatorRequestDecisionSchema` enforces
+  it, because the rejection notification quotes it back to the applicant —
+  "declined" with nothing after it tells a volunteer nothing about whether to
+  ask again. Reapplying is supported and `/coordinator-apply` shows the previous
+  note above the form.
+- **One pending application per resident**, enforced by a read-then-create
+  rather than a partial unique index: Prisma cannot express one, so it would be
+  a second database object the migrate engine offers to drop on every diff (the
+  problem the PostGIS GiST indexes already cause). The race that leaves open
+  costs an administrator one extra click.
+- Three audit actions — `coordinator_request.created`, `.approved`,
+  `.rejected`, the middle one toned `sensitive` alongside reading raw text.
+  The applicant's `reason` is deliberately **not** in the trail: every
+  coordinator in the village can read `/dashboard/audit`, and that answer was
+  written for the reviewer.
+- Push goes to admins on a new application and to the applicant on a decision.
+  `notifyAdminsOfCoordinatorRequest` is the only dispatch in
+  `notifications.ts` whose audience is not a village.
+- `src/lib/email/coordinator-decision.ts` renders the same decision as an email.
+  Nothing sends it — there is still no transport — so push is what actually
+  runs.
+- **The flow needs at least one `ADMIN` to exist, and nothing creates one.**
+  With none, applications are accepted and queue up correctly, the notification
+  dispatch reports `no_recipients`, and there is nobody who can open
+  `/admin/coordinators` to find them. The first administrator is an `UPDATE
+  users SET role = 'ADMIN'` by hand, the same as it was before this existed —
+  bootstrapping is deliberately not self-service.
+
 ## Reading `rawDescription`
 
 There is exactly one path: `readRawDescription()` in `src/lib/moderation.ts`,
@@ -726,6 +797,12 @@ open:
   `incident-media` bucket exists, private. What has **not** happened: no
   production deployment, no Vercel environment variables, no cron has ever
   fired.
+- **`20260727113000_coordinator_requests` has not been applied anywhere**, and
+  neither has the `coordinator_requests` section of `rls_policies.sql`. The
+  migration is hand-written, like the WhatsApp one before it, and has never met
+  a database. Apply it, then re-run the whole RLS file — a new table arrives
+  with row-level security off, so until that second step an application sitting
+  in the queue is readable through PostgREST by anyone with a key.
 - **The village directory has never been seeded against the real database**,
   because there is not one yet. The whole pipeline has been run end to end
   against the real July 2024 release and a throwaway local Postgres: 10,670
@@ -739,9 +816,12 @@ open:
   still takes a join code. Seeding 10,670 villages today puts 10,670 dormant
   rows in a table nothing reads. When a picker is built it must carry
   `ONS_ATTRIBUTION`.
-- **No way to claim a directory entry.** A seeded village is `PENDING` forever:
-  there is no flow that promotes it to `ACTIVE`, assigns a coordinator or mints
-  a join code. That flow is what makes the directory worth seeding.
+- **A directory entry still cannot be claimed from cold.** Coordinator access
+  requests close half of this — there is now a flow that gives a village a
+  coordinator — but it starts from a resident who is *already* in the village,
+  and joining still needs a join code that a seeded village does not have.
+  Nothing promotes a `PENDING` village to `ACTIVE` or mints its first join code.
+  The missing piece is the first step, not the last.
 - **The retention job has never run against data.** It deletes files and takes
   reports off the map, and every line of it is untested against a real bucket.
   Watch the first run and read the counts in the response before trusting the
@@ -796,9 +876,9 @@ open:
   acknowledge and dismiss have no UI, and the dashboard does not list them.
   (The RLS UPDATE policy for them is already in place, waiting on the screen.)
 - **Email has templates but no transport.** `src/lib/email/` renders welcome,
-  weekly digest and incident notification; nothing sends them, `notifyEmail` is
-  absent from the settings screen, and no dispatch honours it. SMS has neither
-  templates nor transport.
+  weekly digest, incident notification and the coordinator decision; nothing
+  sends them, `notifyEmail` is absent from the settings screen, and no dispatch
+  honours it. SMS has neither templates nor transport.
 - Home location is captured at registration only, and it is optional. Anyone
   who registered before Day 5, or who skipped the map, still has no
   `homeLat`/`homeLng` and falls into the village-wide audience — which is the
@@ -819,7 +899,14 @@ open:
   three script origins to account for, not two: the App Router bootstrap, the
   OneSignal CDN, and the two service workers.
 - Resident verification has no UI — no way to approve a join request or promote
-  someone to `VERIFIED_RESIDENT`.
+  someone to `VERIFIED_RESIDENT`. Approving a coordinator request is the one
+  path that sets `verifiedAt` today, and it is a side effect of a different
+  decision rather than the verification screen this still wants.
+- The coordinator request queue does not paginate, filter or search; it shows
+  the first `COORDINATOR_REQUEST_PAGE_SIZE` of each tab. Nothing renders the
+  `PatternAlert`-style badge count anywhere but on that page's own tab, so an
+  administrator finds out there is something waiting from the push
+  notification.
 - `/forgot-password` is linked from the login form but does not exist yet.
 - No tests, no CI, no staging environment, no auto-versioning.
 - Light theme only. Add a dark palette deliberately — `prefers-color-scheme`

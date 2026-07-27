@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+  COORDINATOR_APPLICANT_ROLE_VALUES,
+  COORDINATOR_REASON_MIN_CHARS,
   INCIDENT_TYPE_VALUES,
   NOTIFICATION_RADIUS_VALUES,
   SEVERITY_VALUES,
@@ -606,6 +608,79 @@ export const incidentEditSchema = z.object({
     .max(200, "Keep the landmark under 200 characters")
     .optional(),
 });
+
+// ---------------------------------------------------------------------------
+// Coordinator access requests
+// ---------------------------------------------------------------------------
+
+/**
+ * A resident's application to coordinate their village.
+ *
+ * Note what is **not** here: no `villageId` and no `userId`. Both are read from
+ * the session profile server-side. A village id in this payload would be a way
+ * to apply to coordinate somebody else's village (domain rule 4), and a user id
+ * would be a way to apply on their behalf.
+ *
+ * `role` is validated against the offered list but stored as text — it is the
+ * standing the applicant claims, not a `UserRole`, and it grants nothing on its
+ * own. See `COORDINATOR_APPLICANT_ROLES`.
+ */
+export const coordinatorRequestSchema = z
+  .object({
+    role: z.enum(COORDINATOR_APPLICANT_ROLE_VALUES, {
+      error: "Choose how you are involved in the village",
+    }),
+    roleDetail: z
+      .string()
+      .trim()
+      .max(200, "Keep this under 200 characters")
+      .optional(),
+    reason: z
+      .string()
+      .trim()
+      .min(
+        COORDINATOR_REASON_MIN_CHARS,
+        `Tell us why in at least ${COORDINATOR_REASON_MIN_CHARS} characters`,
+      )
+      .max(2000, "Keep your answer under 2000 characters"),
+  })
+  /**
+   * "Something else" with nothing after it is not an application — it is the
+   * one option that carries no information at all unless the applicant fills in
+   * what it means.
+   */
+  .refine((v) => v.role !== "OTHER" || Boolean(v.roleDetail?.length), {
+    error: "Tell us how you are involved",
+    path: ["roleDetail"],
+  });
+
+export type CoordinatorRequestInput = z.output<typeof coordinatorRequestSchema>;
+
+/**
+ * An administrator's decision on one application.
+ *
+ * The note is required on a rejection and optional on an approval, because the
+ * rejection notification quotes it back to the applicant — "not approved" with
+ * no reason attached is the version of this that generates an email to the
+ * parish clerk. On an approval there is nothing to explain.
+ */
+export const coordinatorRequestDecisionSchema = z
+  .object({
+    decision: z.enum(["APPROVE", "REJECT"], { error: "Choose a decision" }),
+    note: z
+      .string()
+      .trim()
+      .max(1000, "Keep the note under 1000 characters")
+      .optional(),
+  })
+  .refine((v) => v.decision !== "REJECT" || Boolean(v.note?.length), {
+    error: "Tell the applicant why, so they know whether to reapply",
+    path: ["note"],
+  });
+
+export type CoordinatorRequestDecisionInput = z.output<
+  typeof coordinatorRequestDecisionSchema
+>;
 
 /** Structured weekly summary returned by `generateWeeklyDigest`. */
 export const weeklyDigestSchema = z.object({

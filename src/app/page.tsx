@@ -112,6 +112,11 @@ const FAQS = [
       "When you submit a report, the text goes to Claude, which rewrites it without the identifying details, sorts it into a category and suggests how serious it is. You see the result and can edit it before anything is saved. If the AI is unavailable your report still files in your own words — it simply waits for your coordinator, exactly as it would otherwise.",
   },
   {
+    question: "How do I become a coordinator?",
+    answer:
+      "Register as a resident, then apply from Settings. You are asked how you are involved in the village — Neighbourhood Watch, the parish council, something else — and why you want the access. A platform administrator reviews the application by hand and you hear back either way. It is not self-service on purpose: a coordinator can read the original wording of every report their village files, so somebody has to decide that rather than a form.",
+  },
+  {
     question: "Is it free?",
     answer:
       "Free for one village, for residents and coordinators alike, with no card and no trial period. A paid tier for groups of parishes is planned and does not exist yet — nothing on this site can charge anybody anything today.",

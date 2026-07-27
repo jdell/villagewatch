@@ -1,4 +1,5 @@
 import type {
+  CoordinatorRequestStatus,
   IncidentStatus,
   IncidentType,
   Severity,
@@ -314,6 +315,118 @@ export const VILLAGE_STATUS_LABELS = {
 } satisfies Record<VillageStatus, string>;
 
 // ---------------------------------------------------------------------------
+// Coordinator access requests
+// ---------------------------------------------------------------------------
+
+/**
+ * The standings an applicant can claim when asking for coordinator access.
+ *
+ * These are **descriptions, not permissions**. `CoordinatorRequest.role` is a
+ * free-text column and nothing anywhere branches on its value — it is context
+ * for the administrator reading the application, in the same way a covering
+ * letter is. The list is here rather than as a Prisma enum precisely so that
+ * adding "PCSO" one day is a one-line change and not a migration.
+ */
+export type CoordinatorApplicantRole = {
+  value: string;
+  label: string;
+  description: string;
+  /** Show the free-text follow-up when this one is chosen. */
+  needsDetail: boolean;
+};
+
+/**
+ * `needsDetail` is written out on every entry rather than omitted where it is
+ * false, for the reason spelled out on `PRICING.featured` below: `as const`
+ * narrows each entry to its own literal type, so an absent optional key is
+ * absent from that union member and `option.needsDetail` stops type-checking at
+ * the call site.
+ */
+export const COORDINATOR_APPLICANT_ROLES = [
+  {
+    value: "NW_COORDINATOR",
+    label: "Neighbourhood Watch coordinator",
+    description: "You already run the watch scheme for this village or a street in it",
+    needsDetail: false,
+  },
+  {
+    value: "PARISH_COUNCILLOR",
+    label: "Parish councillor",
+    description: "You sit on the parish or town council",
+    needsDetail: false,
+  },
+  {
+    value: "COMMUNITY_LEADER",
+    label: "Community leader",
+    description: "You run a group the village recognises — church, school, hall committee",
+    needsDetail: false,
+  },
+  {
+    value: "OTHER",
+    label: "Something else",
+    description: "Tell us how you are involved",
+    needsDetail: true,
+  },
+] as const satisfies readonly CoordinatorApplicantRole[];
+
+export const COORDINATOR_APPLICANT_ROLE_VALUES =
+  COORDINATOR_APPLICANT_ROLES.map((r) => r.value) as [string, ...string[]];
+
+/**
+ * Value → label, for rendering an application back to the admin reviewing it.
+ *
+ * Falls back to the stored string in the viewer rather than dropping the row:
+ * `role` is a plain text column, so an application filed against an option that
+ * has since been renamed must still be readable. Same reasoning as
+ * `AUDIT_ACTION_META`.
+ */
+export const COORDINATOR_APPLICANT_ROLE_LABELS = Object.fromEntries(
+  COORDINATOR_APPLICANT_ROLES.map((r) => [r.value, r.label]),
+) as Record<string, string | undefined>;
+
+export const COORDINATOR_REQUEST_STATUS_LABELS = {
+  PENDING: "Awaiting review",
+  APPROVED: "Approved",
+  REJECTED: "Declined",
+} satisfies Record<CoordinatorRequestStatus, string>;
+
+/**
+ * Who may apply.
+ *
+ * Both resident roles, not `RESIDENT` alone. A `VERIFIED_RESIDENT` is someone a
+ * coordinator has already confirmed actually lives in the village, which makes
+ * them the *strongest* candidate for the job — locking them out would leave the
+ * best applicants with the button hidden and no way to ask. The roles that
+ * cannot apply are the ones in `COORDINATOR_ROLES`, because they already have
+ * the access this asks for.
+ */
+export const COORDINATOR_APPLICANT_USER_ROLES = [
+  "RESIDENT",
+  "VERIFIED_RESIDENT",
+] as const satisfies readonly UserRole[];
+
+/** Whether this role is one that can still ask for coordinator access. */
+export function canApplyForCoordinator(
+  role: UserRole | null | undefined,
+): boolean {
+  return role !== null && role !== undefined
+    ? (COORDINATOR_APPLICANT_USER_ROLES as readonly UserRole[]).includes(role)
+    : false;
+}
+
+/**
+ * Shortest application the form accepts.
+ *
+ * Long enough that "please" is not an application, short enough that a
+ * one-sentence answer from the person who has run the watch scheme for a decade
+ * still goes through. The reviewer is reading these, not a classifier.
+ */
+export const COORDINATOR_REASON_MIN_CHARS = 20;
+
+/** Applications shown per tab in the admin queue. Beyond this, decide some. */
+export const COORDINATOR_REQUEST_PAGE_SIZE = 50;
+
+// ---------------------------------------------------------------------------
 // The village directory
 // ---------------------------------------------------------------------------
 
@@ -567,6 +680,27 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    value: "coordinator_request.created",
+    label: "Coordinator access requested",
+    description: "A resident applied to coordinate this village",
+    tone: "neutral",
+  },
+  {
+    value: "coordinator_request.approved",
+    label: "Coordinator access granted",
+    description:
+      "An administrator approved an application and promoted the applicant",
+    // Sensitive, alongside reading raw text and exporting the CSV: this is the
+    // action that hands somebody the ability to do both.
+    tone: "sensitive",
+  },
+  {
+    value: "coordinator_request.rejected",
+    label: "Coordinator access declined",
+    description: "An administrator turned down an application",
+    tone: "negative",
+  },
+  {
     value: "retention.sweep",
     label: "Retention sweep",
     description:
@@ -610,6 +744,8 @@ export const PROTECTED_ROUTES = [
   "/incidents",
   "/dashboard",
   "/settings",
+  "/coordinator-apply",
+  "/admin",
 ] as const;
 
 /** The source. Linked from the landing page footer and the README. */

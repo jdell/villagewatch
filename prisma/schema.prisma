@@ -104,6 +104,18 @@ enum VillageStatus {
   @@map("village_status")
 }
 
+/// Where a resident's application for coordinator access has got to. Note there
+/// is no WITHDRAWN value: an applicant who changes their mind simply does not
+/// get approved, and adding a state only they can set would be a second way for
+/// a row to leave the queue with nothing recorded about who decided what.
+enum CoordinatorRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("coordinator_request_status")
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -165,10 +177,11 @@ model Village {
   /// a missing cat does not belong on a public feed, a burglary might.
   whatsappMinSeverity Severity @default(HIGH) @map("whatsapp_min_severity")
 
-  users         User[]
-  incidents     Incident[]
-  patternAlerts PatternAlert[]
-  auditLogs     AuditLog[]
+  users               User[]
+  incidents           Incident[]
+  patternAlerts       PatternAlert[]
+  auditLogs           AuditLog[]
+  coordinatorRequests CoordinatorRequest[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -222,6 +235,9 @@ model User {
   acknowledgedAlerts PatternAlert[] @relation("PatternAlertAcknowledger")
   notifications      Notification[]
   auditLogs          AuditLog[]
+
+  coordinatorRequests         CoordinatorRequest[] @relation("CoordinatorRequestApplicant")
+  reviewedCoordinatorRequests CoordinatorRequest[] @relation("CoordinatorRequestReviewer")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -463,6 +479,61 @@ model PatternAlert {
   @@index([villageId, createdAt(sort: Desc)])
   @@index([villageId, acknowledgedAt])
   @@map("pattern_alerts")
+}
+
+/// A resident asking to be made a coordinator of their village.
+///
+/// Coordinator is the role that can read `Incident.rawDescription` and decide
+/// what the whole village sees, so it is never self-service: a resident applies
+/// here and a platform administrator approves. The promotion itself is written
+/// by server code from an approval on this table, never from a client payload
+/// (domain rule 5) — see `src/lib/coordinator-requests.ts`.
+model CoordinatorRequest {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// The applicant. Cascades: a closed account has no live application.
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation("CoordinatorRequestApplicant", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// The village they are applying to coordinate — always their own, taken
+  /// from their profile and never from the submitted form.
+  villageId String  @map("village_id") @db.Uuid
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  /// The standing the applicant claims in the village — "Neighbourhood Watch
+  /// coordinator", "Parish councillor" and so on. **Not a `UserRole`**: it is
+  /// what they say they are, for the reviewer to weigh, and it grants nothing.
+  /// Free text in the column and constrained to `COORDINATOR_APPLICANT_ROLES`
+  /// by `src/lib/validations.ts`, so a later addition to that list does not
+  /// need a migration.
+  role String
+
+  /// Whatever "Something else" meant, or extra context on the role above.
+  roleDetail String? @map("role_detail")
+
+  /// Why they want it, in their own words. Shown to the reviewing admin.
+  reason String
+
+  status CoordinatorRequestStatus @default(PENDING)
+
+  /// The administrator who decided. Null while pending, and null again if that
+  /// account is later deleted — `reviewedAt` still records that it happened.
+  reviewedById String?   @map("reviewed_by_id") @db.Uuid
+  reviewedBy   User?     @relation("CoordinatorRequestReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime? @map("reviewed_at")
+
+  /// The reviewer's note. Sent to the applicant on a rejection, so it is
+  /// written to be read by them rather than filed about them.
+  reviewNote String? @map("review_note")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// The admin queue: pending first, newest first.
+  @@index([status, createdAt(sort: Desc)])
+  /// The applicant's own latest application, for the settings screen.
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([villageId, status])
+  @@map("coordinator_requests")
 }
 
 /// Append-only trail of privileged actions — moderation, role changes, and

@@ -25,3 +25,8 @@ export {
   incidentNotificationEmail,
   type IncidentEmailInput,
 } from "@/lib/email/incident-notification";
+
+export {
+  coordinatorDecisionEmail,
+  type CoordinatorDecisionEmailInput,
+} from "@/lib/email/coordinator-decision";

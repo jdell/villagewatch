@@ -11,6 +11,7 @@ import {
   Menu,
   Plus,
   Settings,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -23,6 +24,16 @@ import { COORDINATOR_ROLES, USER_ROLE_LABELS } from "@/lib/constants";
  * `tour` marks an item the onboarding tour points at. The highlight itself is a
  * CSS attribute selector in `globals.css` keyed off `body[data-tour-step]` —
  * see `src/components/onboarding-tour.tsx` for why it works that way.
+ *
+ * `requires` hides an item from roles that cannot use it. Hiding is all it is:
+ * every route behind these links calls `requireCoordinator()` or
+ * `requireAdmin()` on the server, and an absent link has never been an
+ * authorisation check.
+ *
+ * Note `"admin"` is not a superset of `"coordinator"` — an `ADMIN` is in
+ * `COORDINATOR_ROLES` and so sees both, but the admin item is deliberately
+ * narrower than the dashboard rather than a rung above it. A coordinator runs
+ * one village's reports; an administrator decides who gets to.
  */
 const NAV_ITEMS = [
   { href: "/map", label: "Map", icon: Map, tour: "map" },
@@ -31,7 +42,13 @@ const NAV_ITEMS = [
     href: "/dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
-    coordinatorOnly: true,
+    requires: "coordinator",
+  },
+  {
+    href: "/admin/coordinators",
+    label: "Coordinator requests",
+    icon: ShieldCheck,
+    requires: "admin",
   },
   { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },
 ] as const;
@@ -60,10 +77,12 @@ export function AppShell({
   const isCoordinator =
     user.role !== null &&
     (COORDINATOR_ROLES as readonly UserRole[]).includes(user.role);
+  const isAdmin = user.role === "ADMIN";
 
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => !("coordinatorOnly" in item && item.coordinatorOnly) || isCoordinator,
-  );
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (!("requires" in item)) return true;
+    return item.requires === "admin" ? isAdmin : isCoordinator;
+  });
 
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);

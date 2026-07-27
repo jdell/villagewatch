@@ -381,6 +381,91 @@ export async function notifyReporterOfDecision(input: {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Coordinator access requests
+// ---------------------------------------------------------------------------
+
+/**
+ * Tells the platform's administrators that somebody has applied to coordinate.
+ *
+ * **Not village-scoped, and it is the one dispatch here that is not.** Every
+ * other audience in this module is "residents of village X", because that is
+ * the tenant boundary. An application is the opposite shape: the whole point of
+ * the seeded village directory is that a village can exist with nobody in it
+ * who could review anything, so the reviewers are the platform's admins
+ * wherever they happen to live. `message.villageId` below therefore names the
+ * village being *applied for*, not the recipients' own — it is used for the log
+ * line and nothing else.
+ *
+ * The applicant's name is in the body. That is their own name, attached to
+ * their own application, going to the people who have to decide it; none of the
+ * personal data rules that govern an incident payload are in play.
+ */
+export async function notifyAdminsOfCoordinatorRequest(input: {
+  villageId: string;
+  villageName: string;
+  applicantName: string;
+}): Promise<DispatchResult> {
+  if (!process.env.DATABASE_URL) {
+    return { matched: 0, sent: 0, skipped: "no_recipients" };
+  }
+
+  const admins = await prisma.user.findMany({
+    where: { role: "ADMIN" },
+    select: { id: true },
+  });
+
+  return dispatch(
+    {
+      villageId: input.villageId,
+      title: "📥 New coordinator request",
+      body: `${input.applicantName} has applied to coordinate ${input.villageName}.`,
+      path: "/admin/coordinators",
+    },
+    admins,
+  );
+}
+
+/**
+ * Tells one applicant what an administrator decided.
+ *
+ * Sent regardless of `notifyPush`, on the same reasoning as
+ * `notifyReporterOfDecision`: this is the outcome of something they personally
+ * submitted and waited on, not village news. Somebody who muted broadcast
+ * alerts has not asked to stop hearing about their own application.
+ *
+ * A rejection carries the reviewer's note, because "declined" on its own leaves
+ * the applicant with nothing to act on and no idea whether reapplying is worth
+ * it. The note is written by an administrator to be read by the applicant —
+ * `coordinatorRequestDecisionSchema` requires one for exactly this line.
+ */
+export async function notifyApplicantOfCoordinatorDecision(input: {
+  villageId: string;
+  userId: string;
+  approved: boolean;
+  note?: string | null;
+}): Promise<DispatchResult> {
+  const body = input.approved
+    ? "Your coordinator application has been approved. You now have access to the moderation dashboard."
+    : input.note
+      ? `Your coordinator application was not approved. Reason: ${input.note} You can reapply from Settings.`
+      : "Your coordinator application was not approved. You can reapply from Settings.";
+
+  return dispatch(
+    {
+      villageId: input.villageId,
+      title: input.approved
+        ? "✅ You are now a coordinator"
+        : "Your coordinator application was reviewed",
+      body,
+      // Approved lands them on the thing they just got; declined lands them
+      // where the reapply button is.
+      path: input.approved ? "/dashboard" : "/settings",
+    },
+    [{ id: input.userId }],
+  );
+}
+
 /**
  * Sends the weekly digest to the people who act on it.
  *

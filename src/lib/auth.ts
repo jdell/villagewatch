@@ -85,6 +85,18 @@ export function requireCoordinator(nextPath?: string) {
 }
 
 /**
+ * Platform administrator guard, for the `/admin` routes.
+ *
+ * Narrower than `requireCoordinator()` and not a superset of it: a coordinator
+ * moderates one village's reports, an administrator decides who gets to. The
+ * only screen behind this today is the coordinator request queue, which is
+ * deliberately not village-scoped — see `src/lib/coordinator-requests.ts`.
+ */
+export function requireAdmin(nextPath?: string) {
+  return requireRole(["ADMIN"], nextPath);
+}
+
+/**
  * The village the current user belongs to. Every incident query must be scoped
  * by this — it is the tenant boundary.
  */
