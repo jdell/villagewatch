@@ -116,6 +116,23 @@ const nextConfig: NextConfig = {
   /** No `X-Powered-By: Next.js`. Free information for an attacker, no use to us. */
   poweredByHeader: false,
 
+  /**
+   * `/dashboard/compliance` renders `docs/DPIA.md` and `docs/APD_TEMPLATE.md`
+   * from disk — the coordinator accepts those documents on their council's
+   * behalf, so the page shows the real files rather than a restatement of them
+   * (see `src/lib/compliance-documents.ts`).
+   *
+   * Neither file is imported by any module, so Next's file tracing has no way to
+   * know the serverless function needs them and would not bundle them. Without
+   * these two lines the page builds, deploys, and fails **only in production**,
+   * because `npm run dev` reads straight from the working tree.
+   *
+   * Add a compliance document and add it here in the same commit.
+   */
+  outputFileTracingIncludes: {
+    "/dashboard/compliance": ["./docs/DPIA.md", "./docs/APD_TEMPLATE.md"],
+  },
+
   async headers() {
     return [
       {
