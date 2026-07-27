@@ -131,6 +131,10 @@ src/
                               village settings — the parish council,
                               auto-approve and the WhatsApp Channel
       dashboard/audit/        Audit trail viewer — coordinator only, filterable
+      dashboard/compliance/   The legal gate — renders the DPIA and the APD in
+                              full and records the coordinator's acceptance.
+                              Until both are accepted the village accepts no
+                              report at all
       reports/                Community safety report for police or the council
                               — date range as a GET form, coordinator only
       reports/actions.ts      generateNarrativeAction — the one Claude call,
@@ -208,6 +212,12 @@ src/
                               tombstones the row and deletes the media
     coordinator-requests.ts   Apply, approve, reject — the only place a role
                               is ever raised to COORDINATOR
+    compliance.ts             The DPIA/APD gate — three states, and the missing
+                              column is one of them. Server only
+    compliance-documents.ts   Reads docs/*.md at request time. Server only, and
+                              needs outputFileTracingIncludes to ship
+    markdown.ts               A small Markdown parser to a typed tree, so the
+                              renderer needs no dangerouslySetInnerHTML
     notifications.ts          OneSignal dispatch, audience rules — server only
     whatsapp-channel.ts       Village channel config + the publish log line —
                               server only, opt-in, no API that can post
@@ -266,6 +276,8 @@ tests/                        Vitest, unit only — see The test suite
   validations.test.ts         The Zod schemas, both directions
   channel-code.test.ts        extractChannelCode + the dashboard's channel form
   format-alert.test.ts        The WhatsApp alert — severity, place, the link
+  compliance.test.ts          The gate's three states and its one-way write
+  markdown.test.ts            The parser, incl. leaving snake_case alone
 vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
   ci.yml                      lint → typecheck → test → build, PRs and main
@@ -661,10 +673,12 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Seven files, ~135 assertions, covering the
+between the typecheck and the build. Nine files, ~171 assertions, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 AI pass's failure modes, the Zod schemas, the WhatsApp channel code, the alert
-format, and the CSV export's escaping and formula-injection guard.
+format, the CSV export's escaping and formula-injection guard, the compliance
+gate's three states, and the Markdown parser the compliance page renders the two
+legal documents through.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -836,6 +850,75 @@ reporter reads and edits the result, and `POST /api/incidents` saves it.
 - Pattern detection reads **published incidents only**. Feeding pending reports
   in would let a pattern note describe something the queue has not cleared
   (domain rule 6).
+
+## The compliance gate
+
+`src/lib/compliance.ts`, `/dashboard/compliance`, and four columns on `Village`.
+A village accepts **no** report until its coordinator has read and accepted the
+DPIA (`docs/DPIA.md`) and the Appropriate Policy Document
+(`docs/APD_TEMPLATE.md`). It is the only gate in the app with no switch to turn
+it off, and the reason is that it is a lawfulness question rather than a
+configuration one.
+
+- **Why it blocks rather than reminds.** Reports describe suspected criminal
+  activity, which is criminal offence data under Article 10. Article 10 allows
+  it only where domestic law authorises it; the authorisation is DPA 2018
+  s.10(5) with Schedule 1 paragraph 10, and **paragraph 5 of that Schedule makes
+  an APD a condition of relying on it**. A village with no APD is not a village
+  with incomplete paperwork — its processing has no authorisation at all.
+- **Three states, and the third is the interesting one.** Not accepted **blocks**.
+  Accepted **allows**. And the columns not existing — because
+  `20260728090000_village_compliance_gate` has not been applied — **allows**,
+  loudly. That last one is the opposite direction to the gate's whole purpose
+  and it is deliberate: an unapplied migration is a deployment fault, not a
+  council's decision, and taking every village offline over one would be a
+  compliance feature causing the outage it exists to prevent. It is logged on
+  every check and the dashboard names the migration. Any *other* database error
+  blocks, on `getVillageAutoApprove`'s reasoning.
+- **Applying the migration closes every existing village at once.** Nullable,
+  no default, null means not accepted. A default that let existing villages
+  carry on would be a gate that gates nothing.
+- **Two documents, two acceptances, two audit rows.** They answer to two
+  different instruments — Article 35 and Schedule 1 paragraph 5 — and a
+  regulator asking when a council adopted its APD is entitled to an answer that
+  is not "at the same time as something else". `compliance.dpia_accepted` and
+  `compliance.apd_accepted`, both toned `sensitive`.
+- **Acceptance is one-way, and re-accepting is a no-op.** Nothing here clears a
+  timestamp or moves an existing one onto today, and nothing replaces the name
+  against it — a council that adopted a document on a date did adopt it on that
+  date, and a screen that could rewrite that would make the record worthless to
+  its only audience. The annual review is a new signature on the paper document.
+  Withdrawing is suspending the village, which is a different act.
+- **The whole document is on screen, expanded, not summarised and not in an
+  accordion.** The coordinator is accepting on the *council's* behalf, and an
+  acceptance recorded against a summary would be worth less than none — it would
+  look like a controlled process in the trail while standing for something
+  nobody was shown. `src/lib/markdown.ts` parses to a typed tree and
+  `MarkdownView` renders it as React, so there is no HTML string in the path and
+  nothing to sanitise. It supports no `_underscore_` emphasis on purpose: both
+  documents are full of snake_case column names outside backticks.
+- **`docs/*.md` need `outputFileTracingIncludes`.** Nothing imports them, so
+  Next's tracing would leave them out of the serverless bundle — it works in
+  `npm run dev` and fails **only in production**. `next.config.ts` names both.
+  Add a document and add it there in the same commit. Also keep the literal
+  `docs` segment in the `path.join`: a fully dynamic path makes Turbopack trace
+  the whole project into the bundle.
+- **Both routes are gated, not just the write.** `POST /api/incidents` refuses
+  with 403 before the body is parsed and before a rate-limit slot is spent.
+  `POST /api/incidents/process` refuses too — it sends a resident's verbatim
+  words to Anthropic, and doing that for a report the village cannot lawfully
+  accept would be a disclosure with nothing behind it.
+- **`/incidents/new` renders the refusal rather than relying on it**, so nobody
+  fills in five steps and attaches a photo before being told. A coordinator
+  landing there gets a link through to the fix; a resident gets the sentence and
+  the 999/101 numbers, because there is nothing they can do.
+- **The checkbox names `Village.parishCouncil`**, falling back to
+  `DATA_CONTROLLER` — which is still placeholders. A coordinator accepting "on
+  behalf of [Parish Council name]" has accepted on behalf of nobody, so fill
+  that in first. See The parish council.
+- The two `*_accepted_by_id` columns are deliberately **absent** from the
+  `villages` SELECT grant in `rls_policies.sql`. They are `users.id` values; the
+  timestamps are granted and the identities are not.
 
 ## Auto-approve
 
@@ -1407,10 +1490,17 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates, the onboarding tour and the ONS village directory pipeline. Still
 open:
 
-- The Supabase project exists (eu-west-2), **all five migrations are applied**,
-  and `postgis.sql` and `rls_policies.sql` have both been re-run after them. The
+- The Supabase project exists (eu-west-2), **migrations 1–5 of the seven are
+  applied**, and `postgis.sql` and `rls_policies.sql` have both been re-run after
+  them. `20260727180000_village_activation` (`parish_council`) and
+  `20260728090000_village_compliance_gate` have never been applied anywhere. The
   `incident-media` bucket exists, private. What has **not** happened: no
   production deployment and no cron has ever fired.
+- **Applying migration 7 closes every village's reporting** until a coordinator
+  has been through `/dashboard/compliance`. That is the gate working as
+  designed — see The compliance gate — but it is the one migration in this
+  repository whose application is a visible change to what residents can do, so
+  do not run it without telling whoever coordinates the village.
 - **Migrations are applied by `.github/workflows/database.yml`**, on a push to
   main touching `prisma/**` or from the Run workflow button: `migrate deploy`,
   then `postgis.sql`, then `rls_policies.sql`, in that order. It is not in the
@@ -1544,7 +1634,12 @@ open:
   first report filed with it on: check the status, the push, the audit rows and —
   if the village also has channel posting on — what actually lands in the
   channel, which is the one surface an unauthenticated stranger can read.
-- **There is a test suite now, and it covers six modules rather than the app.**
+- **The compliance gate has never been exercised against a database**, because
+  its migration has never run. Nothing has ever been blocked by it and no
+  acceptance has ever been recorded. Its unit tests cover the three states and
+  the one-way write; what they cannot cover is the 403 actually reaching a
+  resident, which wants the route test named below.
+- **There is a test suite now, and it covers eight modules rather than the app.**
   `npm run test` runs Vitest over `tests/`, and `.github/workflows/ci.yml` runs
   it between the typecheck and the build. See The test suite below for what is
   asserted and what is deliberately not. Nothing yet asserts that a

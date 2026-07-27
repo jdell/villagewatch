@@ -122,7 +122,7 @@ alerts are written to the server console, which is what local development wants.
 
 ## 4. Apply the schema
 
-`prisma/migrations/` is committed and holds **six** migrations. On a fresh
+`prisma/migrations/` is committed and holds **seven** migrations. On a fresh
 database you apply all of them; on an existing one you apply whatever is
 outstanding. Either way the command is the same and it is **not**
 `migrate dev` — that is for authoring a migration, and it will offer to reset a
@@ -145,9 +145,10 @@ working out what a database is missing.
 | 4 | `20260727150000_erasure_and_rate_limits` | `incident_status.REMOVED`, `users.deleted_at`, the `rate_limit` table. |
 | 5 | `20260727161500_village_auto_approve` | `villages.auto_approve`. |
 | 6 | `20260727180000_village_activation` | `villages.parish_council`. |
+| 7 | `20260728090000_village_compliance_gate` | The four `villages.[dpia\|apd]_accepted_*` columns behind step 8c. |
 
-**As of 27 July 2026, migrations 1–5 are applied to the Supabase project and
-migration 6 is not.** It has never been applied anywhere. Until it runs:
+**As of 28 July 2026, migrations 1–5 are applied to the Supabase project and
+migrations 6 and 7 are not.** Neither has been applied anywhere. Until 6 runs:
 
 - The parish council field on `/dashboard` renders as a note explaining that a
   migration has to run first, rather than failing on Save — `getVillageParishCouncil`
@@ -155,6 +156,16 @@ migration 6 is not.** It has never been applied anywhere. Until it runs:
   screen can tell "no council named" apart from "nowhere to name one".
 - `/reports` falls back to the deployment-wide `DATA_CONTROLLER` constant in
   its footers.
+
+Until 7 runs, **the compliance gate is not enforced** — `getVillageCompliance`
+reports the columns as unavailable and allows reporting, on the reasoning that an
+unapplied migration is a deployment fault and taking every village's reporting
+offline over one would be a compliance feature causing the outage it exists to
+prevent. It is logged on every check and `/dashboard/compliance` says so on
+screen. **Applying migration 7 turns the gate on for every village at once**,
+including any that already has reports in it: the columns are nullable with no
+default, null means "not accepted", and a default that let existing villages
+carry on would be a gate that gates nothing. Read step 8c before running it.
 
 ### Village activation needs no new migration
 
@@ -184,8 +195,9 @@ optional follow-ups; they are part of applying a migration.
 
 `.github/workflows/database.yml` does all three in order on a push to `main`
 touching `prisma/**`, or from the Run workflow button. It has only ever run as a
-no-op — the five applied migrations were applied by hand — so migration 6 will
-be the first one it actually applies. Watch that run.
+no-op — the five applied migrations were applied by hand — so migrations 6 and 7
+will be the first ones it actually applies. Watch that run: 7 closes every
+village's reporting until a coordinator has been through step 8c.
 
 With no `DIRECT_URL` secret the migrate job is **skipped rather than failed**,
 so a fork or a fresh clone still goes green.
@@ -605,6 +617,76 @@ landing-page FAQ in the same commit.
 
 ---
 
+## 8c. The compliance gate (not optional)
+
+**A village accepts no report until its coordinator has accepted two documents
+on `/dashboard/compliance`.** This is the one gate in the app that is a
+lawfulness question rather than a configuration one, and it is why there is no
+switch to turn it off.
+
+Reports describe suspected criminal activity, which is **criminal offence data**
+under UK GDPR Article 10. Article 10 permits processing it only where domestic
+law authorises it; the authorisation is DPA 2018 s.10(5) with Schedule 1 Part 2
+paragraph 10 (preventing or detecting unlawful acts), and **paragraph 5 of that
+Schedule makes an Appropriate Policy Document a condition of relying on it**. A
+village processing reports without one is not a village with incomplete
+paperwork — it is a village whose processing has no lawful authorisation.
+
+### What a coordinator does
+
+1. Sign in as a coordinator of the village → **Compliance** in the sidebar, or
+   the amber banner on `/dashboard`.
+2. Read both documents. They are rendered in full on the page, from
+   `docs/DPIA.md` and `docs/APD_TEMPLATE.md` — the same files the council is
+   sent, not a summary of them.
+3. Tick both boxes and press **Accept and enable village**.
+
+The date and the coordinator's identity are written to `villages`, and
+`compliance.dpia_accepted` and `compliance.apd_accepted` go to the audit trail.
+Both are visible in `/dashboard/audit`.
+
+**Acceptance is one-way.** There is no un-accept and re-accepting never moves an
+existing timestamp onto today or replaces the name against it. A council that
+adopted an APD on a date did adopt it on that date, and the record exists for a
+regulator. Withdrawing from the processing is suspending the village, which is a
+different act.
+
+### Before the coordinator gets there
+
+Both files in `docs/` are **templates**, prepared from the source code. Their
+account of what the software does is accurate; they are not completed documents.
+The parish council is the data controller and both duties sit with the
+controller, not with the service. Everything in square brackets needs the
+council's own answer, and the whole of each needs their review and signature.
+
+Fill in `Village.parishCouncil` first (**/dashboard → Parish council**, which
+needs migration 6). The compliance page names that council in the checkbox the
+coordinator ticks, and it falls back to `DATA_CONTROLLER` in
+`src/lib/constants.ts` — which is still `[Parish Council name]`. A coordinator
+accepting "on behalf of [Parish Council name]" has accepted on behalf of nobody.
+
+### What a resident sees while it is outstanding
+
+`/incidents/new` renders an explanation instead of the wizard, so nobody fills in
+five steps and attaches a photo before being told. `POST /api/incidents` and
+`POST /api/incidents/process` both return **403** with the same sentence — the
+second is gated too, because it sends a resident's verbatim words to Anthropic
+and doing that for a report the village cannot lawfully accept would be a
+disclosure with nothing behind it.
+
+A coordinator hitting the same screen gets a link through to the fix instead.
+
+### If the documents do not render
+
+The page reads them from disk at request time. `outputFileTracingIncludes` in
+`next.config.ts` names both files, because nothing imports them and Next's file
+tracing would otherwise leave them out of the serverless bundle — **it works in
+`npm run dev` and fails only in production**. Add a compliance document and add
+it there in the same commit. The page reports the failure with the path it looked
+for rather than 500-ing.
+
+---
+
 ## 9. Add the Anthropic API key
 
 <https://console.anthropic.com> → API keys.
@@ -831,6 +913,15 @@ None of these are optional, and none of them are code.
 - [ ] **Have the council read `/privacy` and `/terms`.** The community
       guidelines in §5 are the common village-watch set, not any particular
       parish's.
+- [ ] **Accept the DPIA and the APD in the app**, on `/dashboard/compliance`,
+      for every village that will take reports. Until both are accepted the
+      village accepts nothing — see step 8c. Do this *after* the council has
+      actually reviewed and signed the two documents, not instead of it: the
+      screen records that a named coordinator accepted on a date, and it is
+      worth exactly as much as the review behind it.
+- [ ] **Fill in `Village.parishCouncil`** for each village first. The compliance
+      checkbox names it, and a coordinator accepting on behalf of
+      `[Parish Council name]` has accepted on behalf of nobody.
 - [ ] **Complete and sign the DPIA.** `docs/DPIA.md` is written and is a
       template — the council is the data controller and Article 35 puts the duty
       on the controller, not on us. Its §9 carries five blockers that are
