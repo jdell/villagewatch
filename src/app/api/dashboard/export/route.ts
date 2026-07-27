@@ -34,7 +34,7 @@ import {
  * string; the `try/catch` below is what guarantees there is one to report
  * rather than an HTML error page. The formatting itself lives in
  * `src/lib/incident-csv.ts`, which is exercised by
- * `scripts/check-incident-csv.ts`.
+ * `tests/incident-csv.test.ts`.
  */
 
 /** A year of reports is more than any meeting needs and keeps the file small. */

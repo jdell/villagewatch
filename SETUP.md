@@ -379,6 +379,149 @@ ONESIGNAL_APP_ID="..."               # the same value
 ONESIGNAL_REST_API_KEY="..."         # SERVER ONLY
 ```
 
+### The checklist
+
+**Every failure mode in this integration is silent.** There is no error on
+screen for any of them: the page reports a healthy init, the dispatch reports a
+success, and no notification arrives. Work down the list in order — each step
+names the breadcrumb that proves it, and they only appear once the step before
+it has passed.
+
+Open the browser console on any signed-in page and filter on `[push`. The
+server's own lines are in the Vercel function logs (or the `npm run dev`
+terminal) under the same prefix.
+
+**1. The app id reached the browser build.**
+
+```
+[push:client] SDK queued, waiting for OneSignalSDK.page.js — appId=<uuid>
+```
+
+If instead you see *"NEXT_PUBLIC_ONESIGNAL_APP_ID is not set in this build"*,
+the variable is missing from the environment that **built** the bundle.
+`NEXT_PUBLIC_` variables are inlined at build time, so adding it in Vercel
+requires a redeploy and adding it to `.env.local` requires restarting
+`npm run dev`. Setting it in the Vercel dashboard alone changes nothing until
+the next build.
+
+**2. The resident has not muted push themselves.**
+
+```
+[push:client] this resident has notifyPush off in Settings — not initialising.
+```
+
+That is `User.notifyPush`, on `/settings`. It is a preference, not a fault, and
+it suppresses the SDK entirely — no init, no login, no subscription.
+
+**3. The SDK loaded and the service worker registered.**
+
+```
+[push:client] init → serviceWorkerPath=onesignal/OneSignalSDKWorker.js scope=/onesignal/
+[push:client] init ok
+```
+
+No `init ok` means the init threw — the reason is on the `[push:client] init
+failed` line beside it. The usual causes are an ad blocker eating
+`cdn.onesignal.com`, a browser with no service worker support (Safari in private
+browsing), and **a service worker path that does not match the dashboard**.
+
+That last one is the trap. The dashboard's *Service Workers* settings must say
+path `/onesignal/` and filename `OneSignalSDKWorker.js`, matching
+`SERVICE_WORKER` in `src/components/push-registration.tsx` and the file at
+`public/onesignal/OneSignalSDKWorker.js`. A 404 there fails **silently** — some
+SDK versions still resolve `init()`. Confirm it directly:
+
+```bash
+curl -sI https://<your-domain>/onesignal/OneSignalSDKWorker.js | head -1   # expect 200
+```
+
+And in DevTools → Application → Service Workers you should see **two**
+registrations: `/` (VillageWatch's offline worker, `public/sw.js`) and
+`/onesignal/`. One registration means they are fighting over the root scope,
+which is the whole reason OneSignal's was moved.
+
+**4. The device is tied to the resident.**
+
+```
+[push:client] login ok → externalId=<supabase-uid> subscriptionId=<uuid> optedIn=true
+```
+
+`externalId` is the Supabase auth user id and is what the server addresses
+residents by — there are no OneSignal segments, so if this line is missing
+nothing on the server can ever find this device. `subscriptionId=(none yet)` is
+normal *before* permission is granted; after step 5 it must be a uuid. Paste it
+into OneSignal → **Audience → Subscriptions** and you should find this browser,
+with the external id attached.
+
+**5. Permission was actually granted.**
+
+```
+[push:client] permission=default sdkPermission=false bannerDismissed=false → prompt=true
+[push:client] permission answered → granted=true subscriptionId=<uuid>
+```
+
+The banner is VillageWatch's own; the browser prompt only fires from its "Turn
+on alerts" click handler. **Leave auto-prompting off in the OneSignal
+dashboard** — it overrides this and asks on arrival, which is how Chrome
+permanently blocks an origin and how Safari refuses the call outright.
+
+`permission=denied` cannot be undone from the page. The resident has to clear it
+in browser site settings; a second click does nothing and Chrome will not ask
+again for that origin.
+
+**6. The server tried to send.**
+
+```
+[push:dispatch] app=<uuid> village=<id> aliases=3 title=🔴 High alert url=https://…/incidents/…
+```
+
+No line at all means nothing called into `src/lib/notifications.ts` — check the
+report actually reached `PUBLISHED`, since alerts fire on publish and never on
+file (domain rule 6). A `[push:config]` warning at boot names the missing
+variable instead:
+
+- *"Push is off — appId=MISSING restApiKey=set"* — set `ONESIGNAL_APP_ID`.
+- *"ONESIGNAL_APP_ID is not set; falling back to NEXT_PUBLIC_…"* — works, but
+  set both.
+- *"…name different apps"* — the broken one. Devices subscribe to the browser's
+  app id and the server pushes to the other, so nothing can ever be delivered.
+
+**7. OneSignal accepted it.**
+
+```
+[push:response] village=<id> notificationId=<uuid> sent=3/3
+```
+
+`sent=0/3 error=All included players are not subscribed` is the common one and
+means exactly what it says: none of those external ids has a subscribed device.
+Re-check step 4 — it is also what a **wrong app id** looks like, because the
+aliases were registered against a different app.
+
+`noSubscription=2` is a partial: two of the residents in the audience have a
+profile and a notification preference and no device. That is the normal state
+for anyone who has not pressed "Turn on alerts", and only those two get a
+`Notification` row marked failed.
+
+A thrown error (`[push:error]`) is a non-2xx from OneSignal and is always
+configuration: **401** is a bad `ONESIGNAL_REST_API_KEY`, **403** is a key that
+does not own that app id, **400** is a malformed payload.
+
+### What the server sends, and why it looks like that
+
+`src/lib/notifications.ts` is the only thing that sends. It targets
+`include_aliases: { external_id: [...] }` with `target_channel: "push"` —
+never a segment, because the audience is village membership plus each
+resident's own preferences plus distance from their home location, and all
+three live in the database rather than in a dashboard nobody reviews.
+
+Authentication is the v5 REST scheme, `Authorization: Key <REST_API_KEY>`,
+applied by `@onesignal/node-onesignal` — there is no hand-rolled `fetch` and no
+endpoint to get wrong.
+
+Only public columns go into a payload. A notification lands on a lock screen,
+which is the least private surface in the app, so `rawDescription` never reaches
+this module at all (domain rule 1).
+
 ---
 
 ## 8b. WhatsApp Channel (optional, one per village)
@@ -566,6 +709,53 @@ The seed is idempotent — everything is an upsert on a natural key, and the
 update halves are deliberately narrow, so re-running will not resurrect a report
 you rejected.
 
+### Taking it back out again — run this before going live
+
+The five incidents are invented crimes with invented names and registrations in
+them, and the village is called `[Your Village]` and sits in a field in
+Leicestershire. None of that should be in front of a real resident.
+`scripts/clean-seed-data.ts` removes it.
+
+```bash
+npm run db:clean-seed                    # dry run — prints, changes nothing
+npm run db:clean-seed -- --confirm       # actually delete it
+npm run db:clean-seed -- --confirm --deactivate   # …and take the village out of the pickers
+```
+
+**It is a dry run by default.** Read the report first: it lists every incident,
+pattern alert and profile it would delete, and everything in the sample village
+it is leaving alone and why.
+
+What it targets is deliberately narrow — the five sample incidents matched by
+their own hardcoded titles, the one pattern alert with `detector = "seed"`, and
+the sample coordinator profile. Three things it will not do:
+
+- **It only ever touches the village with slug `your-village`.** That slug is
+  what `prisma/seed.ts` hardcodes, and there is no flag or variable that can
+  point the script at another village. Against a database that was never seeded
+  it finds nothing and exits.
+- **It never deletes a profile that has a Supabase Auth account behind it**, so
+  a real coordinator who joined the sample village during testing survives. That
+  check needs `SUPABASE_SERVICE_ROLE_KEY`; without it **no** profile is deleted
+  and the script says so. `SEED_ADMIN_USER_ID`, if set, is protected outright.
+- **It never deletes an incident that has media attached.** The seed attaches
+  none, so one that has some was filed through the wizard whatever its title
+  says — and deleting the row would orphan the file in the bucket forever
+  (`src/lib/erasure.ts` explains the ordering). Those are reported and skipped.
+
+Two consequences worth reading before you run it with `--confirm`:
+
+- **Audit trail rows are not deleted and cannot be.** The trail is append-only
+  and the database trigger rejects a DELETE from everyone including the table
+  owner (domain rule 7). Rows written while you were testing moderation will
+  name incident ids that no longer resolve. The report counts them for you. That
+  is the right way round — a trail with a gap in it would be worse.
+- **The village row itself is never deleted either**, because `AuditLog`
+  references it and that foreign key is `ON DELETE SET NULL`, which the same
+  trigger refuses. `--deactivate` sets its status to `ARCHIVED` instead, which
+  is what takes `[Your Village]` out of the picker on `/register` and
+  `/welcome`.
+
 ---
 
 ## 13. Seed the village directory (optional)
@@ -661,8 +851,15 @@ None of these are optional, and none of them are code.
 - [ ] **Post to a test WhatsApp Channel first** if any village has switched
       posting on in step 8b, and read what lands. It is the only output an
       unauthenticated stranger can read, and a post cannot be un-forwarded.
-- [ ] **Change the seeded join code** if you ran step 12, and delete the sample
-      incidents.
+- [ ] **Clear the sample data** if you ran step 12. `npm run db:clean-seed`
+      prints what it would remove; `-- --confirm --deactivate` removes it and
+      takes `[Your Village]` out of the village pickers. The five seeded reports
+      are invented crimes with invented names and registrations in them. Change
+      the seeded join code too if you keep the village for anything.
+- [ ] **Deliver one push to a real device.** No notification has ever arrived
+      from this deployment. Every failure mode in that integration is silent —
+      work down the checklist in step 8, which names the console breadcrumb that
+      proves each stage.
 - [ ] **Show the ONS attribution** if you ran step 13 and anything renders the
       village directory. `ONS_ATTRIBUTION` in `src/lib/constants.ts` is a
       condition of the Open Government Licence, not a courtesy.
@@ -732,15 +929,19 @@ rather than an error — look at the function logs for the reason code.
 
 **"Reprocess" stops working after a few tries**
 Rate limiting. Five AI passes an hour and ten reports a day, per resident. The
-counters are in-process, so they reset on a cold start and are per lambda
-instance — that stops a retry loop, not a distributed attacker.
+counters are rows in the `rate_limit` table, keyed by Supabase auth user id and
+by a window aligned to the clock, so they are shared across lambda instances and
+survive a cold start. It fails open: a database error is logged and the request
+is allowed, because being rate limited must never block filing a report.
 
 **Push notifications do nothing**
 With no `ONESIGNAL_*` keys, that is the supported state: the payload is logged
-and `skipped: "not_configured"` is returned. With keys set, check the worker is
-at `/onesignal/OneSignalSDKWorker.js` and the OneSignal dashboard's service
-worker path matches (step 8). A 404 there fails silently — the page reports a
-healthy init and no push ever arrives.
+and `skipped: "not_configured"` is returned. With keys set, work down **the
+checklist in step 8** — every failure mode here is silent, and each step names
+the console breadcrumb that proves it. The two that catch people are a service
+worker path that does not match the OneSignal dashboard (a 404 there reports a
+healthy init) and `NEXT_PUBLIC_ONESIGNAL_APP_ID` missing from the environment
+that *built* the bundle rather than the one running it.
 
 **The offline page appears when the site is up**
 A stale service worker. DevTools → Application → Service Workers → Unregister,
