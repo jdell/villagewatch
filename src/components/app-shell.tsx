@@ -11,7 +11,7 @@ import {
   Menu,
   Plus,
   Settings,
-  ShieldCheck,
+  Shield,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -29,12 +29,6 @@ import { COORDINATOR_ROLES, USER_ROLE_LABELS } from "@/lib/constants";
  * every route behind these links calls `requireCoordinator()` or
  * `requireAdmin()` on the server, and an absent link has never been an
  * authorisation check.
- *
- * Note `"admin"` is not a superset of `"coordinator"`, and the two are decided
- * by different things entirely: coordinator comes from `User.role`, platform
- * administrator from the signed-in email against `ADMIN_EMAILS`. An
- * administrator who is not also a coordinator sees this item and not the
- * dashboard, which is correct — they decide who moderates, they do not moderate.
  */
 const NAV_ITEMS = [
   { href: "/map", label: "Map", icon: Map, tour: "map" },
@@ -45,14 +39,29 @@ const NAV_ITEMS = [
     icon: LayoutDashboard,
     requires: "coordinator",
   },
-  {
-    href: "/admin/coordinators",
-    label: "Coordinator requests",
-    icon: ShieldCheck,
-    requires: "admin",
-  },
   { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },
 ] as const;
+
+/**
+ * The platform administrator's way in, kept out of `NAV_ITEMS` deliberately.
+ *
+ * Everything above it is one village's data (domain rule 4). `/admin` is the
+ * only authenticated surface in the app that is not — it lists applications
+ * from every village, because a village-scoped reviewer could only ever be
+ * somebody who already holds the access being applied for. Sitting it below the
+ * divider says that on the screen rather than only in the docs.
+ *
+ * It is also decided by something else entirely: coordinator comes from
+ * `User.role`, platform administrator from the signed-in email against
+ * `ADMIN_EMAILS`. Neither is a superset of the other, and an administrator who
+ * is not a coordinator sees this and not the dashboard — which is right. They
+ * decide who moderates; they do not moderate.
+ */
+const ADMIN_ITEM = {
+  href: "/admin/coordinators",
+  label: "Admin",
+  icon: Shield,
+} as const;
 
 export type AppShellUser = {
   name: string;
@@ -87,13 +96,20 @@ export function AppShell({
     user.role !== null &&
     (COORDINATOR_ROLES as readonly UserRole[]).includes(user.role);
 
-  const visibleItems = NAV_ITEMS.filter((item) => {
-    if (!("requires" in item)) return true;
-    return item.requires === "admin" ? user.isAdmin : isCoordinator;
-  });
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => !("requires" in item) || isCoordinator,
+  );
 
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
+  function linkClass(href: string) {
+    return `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+      isActive(href)
+        ? "bg-white/15 text-white"
+        : "text-brand-100 hover:bg-white/10 hover:text-white"
+    }`;
   }
 
   const sidebar = (
@@ -135,11 +151,7 @@ export function AppShell({
                 data-tour={"tour" in item ? item.tour : undefined}
                 onClick={() => setMobileOpen(false)}
                 aria-current={isActive(item.href) ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive(item.href)
-                    ? "bg-white/15 text-white"
-                    : "text-brand-100 hover:bg-white/10 hover:text-white"
-                }`}
+                className={linkClass(item.href)}
               >
                 <item.icon className="size-5 shrink-0" aria-hidden />
                 {item.label}
@@ -148,6 +160,28 @@ export function AppShell({
           ))}
         </ul>
       </nav>
+
+      {/*
+        Its own <nav> below a rule, rather than a fifth item in the list above.
+        The separation is the point: everything in that list is this resident's
+        village, and this one link is the whole platform.
+      */}
+      {user.isAdmin && (
+        <nav aria-label="Administration" className="border-t border-white/10 pt-4">
+          <p className="px-3 pb-2 text-xs font-medium uppercase tracking-wider text-brand-300">
+            Platform
+          </p>
+          <Link
+            href={ADMIN_ITEM.href}
+            onClick={() => setMobileOpen(false)}
+            aria-current={isActive(ADMIN_ITEM.href) ? "page" : undefined}
+            className={linkClass(ADMIN_ITEM.href)}
+          >
+            <ADMIN_ITEM.icon className="size-5 shrink-0" aria-hidden />
+            {ADMIN_ITEM.label}
+          </Link>
+        </nav>
+      )}
 
       <div className="border-t border-white/10 pt-4">
         {user.villageName && (
