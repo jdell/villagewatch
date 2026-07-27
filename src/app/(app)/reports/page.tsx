@@ -4,7 +4,7 @@ import { CalendarRange, LayoutDashboard, TriangleAlert } from "lucide-react";
 import { NoVillage } from "@/components/no-village";
 import { ReportView } from "@/components/reports/report-view";
 import { requireCoordinator } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getVillageController } from "@/lib/village";
 import { DATA_CONTROLLER, REPORT_RANGES } from "@/lib/constants";
 import { collectVillageReport, resolveReportRange } from "@/lib/reports";
 
@@ -54,10 +54,7 @@ export default async function ReportsPage({
   const params = await searchParams;
   const range = resolveReportRange(params);
 
-  const village = await prisma.village.findUnique({
-    where: { id: villageId },
-    select: { name: true, parishCouncil: true },
-  });
+  const village = await getVillageController(villageId);
 
   if (!village) return <NoVillage />;
 

@@ -562,6 +562,67 @@ export async function regenerateJoinCode(input: {
 }
 
 /**
+ * The village name and the data controller named in a document leaving it.
+ *
+ * ## Why this is not a plain `findUnique`
+ *
+ * `parish_council` arrives with `20260727180000_village_activation`, and that
+ * migration has never run anywhere. `.github/workflows/database.yml` skips its
+ * `migrate` job when no `DIRECT_URL` secret is set, which is the state the
+ * repository is in — the run for the commit that added both the column and
+ * `/reports` went green in five seconds having done nothing. Being nullable in
+ * `schema.prisma` does not help: Prisma names the column in the SELECT list
+ * either way, so Postgres rejects the whole statement with `42703` and every
+ * read throws. That is what took `/reports` down rather than anything on the
+ * page itself.
+ *
+ * Caught and retried without the column, the same shape `getVillageChannel` and
+ * `getVillageAutoApprove` use for their own not-yet-migrated columns, and the
+ * shape `database.yml`'s header asks the next such read to keep.
+ *
+ * ## The degradation is deliberately partial
+ *
+ * `name` survives, because it titles the report and it has existed since the
+ * init migration; only the controller falls back, through `reportController`,
+ * to the deployment-wide `DATA_CONTROLLER`. That is a state the product already
+ * has an answer for — `/reports` renders an amber warning naming it, and the
+ * placeholder is what the footer would have said for a village with the column
+ * empty anyway. Returning null here instead would send `/reports` to
+ * `<NoVillage />` and tell a coordinator they are not attached to a village,
+ * which is both false and unactionable.
+ *
+ * A second failure is left to propagate. The retry drops the one column that is
+ * known to be missing; if the name cannot be read either, the database is down
+ * and a report assembled anyway would be a document with no incidents in it,
+ * which is worse than an error page.
+ *
+ * Fold this back into a plain `findUnique` once the migration has been applied.
+ */
+export async function getVillageController(
+  villageId: string,
+): Promise<{ name: string; parishCouncil: string | null } | null> {
+  try {
+    return await prisma.village.findUnique({
+      where: { id: villageId },
+      select: { name: true, parishCouncil: true },
+    });
+  } catch (cause) {
+    console.error(
+      "Could not read parish_council for village %s — falling back to the deployment-wide data controller. Has 20260727180000_village_activation been applied?",
+      villageId,
+      cause,
+    );
+
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      select: { name: true },
+    });
+
+    return village ? { name: village.name, parishCouncil: null } : null;
+  }
+}
+
+/**
  * The village settings an administrator owns.
  *
  * `parishCouncil` is the data controller, which is a platform-level fact about

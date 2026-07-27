@@ -18,6 +18,7 @@ import { NoVillage } from "@/components/no-village";
 import { ShareSummary } from "@/components/share-summary";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getVillageController } from "@/lib/village";
 import {
   formatIncidentSummary,
   reportController,
@@ -201,12 +202,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
     what makes the document answerable to somebody outside the village.
   */
   const village =
-    isCoordinator && isPublic
-      ? await prisma.village.findUnique({
-          where: { id: villageId },
-          select: { name: true, parishCouncil: true },
-        })
-      : null;
+    isCoordinator && isPublic ? await getVillageController(villageId) : null;
 
   const summary = village
     ? formatIncidentSummary({
