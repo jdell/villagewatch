@@ -849,6 +849,20 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    value: "village.parish_council_changed",
+    label: "Parish council changed",
+    description:
+      "A coordinator changed the body named as data controller for the village",
+    // Sensitive, and the third configuration change in this list, though for a
+    // different reason from the other two. It widens nothing and removes
+    // nobody — what it changes is the organisation named as data controller on
+    // the foot of every document that leaves the village for the police or the
+    // council, and in the notice a resident reads before exercising a UK GDPR
+    // right. Named wrongly, a subject access request goes to a body with no
+    // authority to answer it and no record that it was asked.
+    tone: "sensitive",
+  },
+  {
     value: "village.activated",
     label: "Village activated",
     description:

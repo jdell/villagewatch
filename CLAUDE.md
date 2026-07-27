@@ -127,9 +127,9 @@ src/
       incidents/[id]/actions.ts  Moderate / edit / withdraw server actions
       incidents/new/          Report wizard host (village lookup, server-side)
       dashboard/              Stats, breakdowns, hotspots, moderation queue
-      dashboard/actions.ts    Moderate, audited raw-text reveal, and the two
-                              village settings — auto-approve and the WhatsApp
-                              Channel
+      dashboard/actions.ts    Moderate, audited raw-text reveal, and the three
+                              village settings — the parish council,
+                              auto-approve and the WhatsApp Channel
       dashboard/audit/        Audit trail viewer — coordinator only, filterable
       reports/                Community safety report for police or the council
                               — date range as a GET form, coordinator only
@@ -912,6 +912,47 @@ adding one, and it is read in exactly one place that matters:
   redirect.** Everyone else still gets the toast and `/incidents` — there is
   nothing for them to act on. See The WhatsApp Channel.
 
+## The parish council
+
+`Village.parishCouncil`, set by a coordinator on `/dashboard`. The third village
+setting, and the only one that changes nothing about how a report flows.
+
+- **What it decides is a name on a document.** It is the data controller printed
+  at the foot of both things `/reports` produces — the period report a
+  coordinator sends to a PCSO and the single-incident summary that leaves
+  through the share sheet — and, once `/privacy` reads it, the body a resident
+  is told to take a UK GDPR complaint to. Named wrongly, a subject access
+  request goes somewhere with no authority to answer it.
+- **The coordinator sets it because the coordinator is who knows.** The column
+  already existed and `saveVillageAdminSettings` already wrote it, but that is
+  platform-admin only, so a village whose coordinator could answer the question
+  had to ask somebody who could not. `requireCoordinator()` and the village from
+  the session profile, same as the other two settings (domain rule 4).
+- **Empty stores `null`, never `""`.** `reportController` falls back to
+  `DATA_CONTROLLER` on a truthiness check, so an empty string would count as a
+  controller being named and print a blank where a police report says who is
+  answerable. The transform on `villageParishCouncilFormSchema` is what
+  guarantees that, and it is asserted.
+- **No format validation beyond a length cap.** These are the legal names of
+  real bodies and they are not uniform — "Cyngor Cymuned Llanddewi", "The Parish
+  Meeting of Croxton", "Bishop's Stortford Town Council". A pattern would reject
+  somebody's actual council.
+- **`village.parish_council_changed` is audited and toned `sensitive`**, next to
+  the other two village settings but for a different reason. It widens no
+  audience and removes no reviewer; it is a statement of legal accountability
+  leaving the village on paper.
+- **The form is disabled outright when the column does not exist.**
+  `parish_council` arrives with `20260727180000_village_activation`, which has
+  never been applied anywhere, so on the deployed database a write to it fails.
+  `getVillageParishCouncil` returns whether the column is there as well as what
+  is in it, because a plain null cannot tell "no council named" apart from "no
+  column to name one in" — the first is the coordinator's to fix and the second
+  is not. Typing a council name into a box that then refuses it teaches nobody
+  anything, so the field is replaced by a note saying what has to happen and who
+  has to do it. `setVillageParishCouncil` returns the same distinction rather
+  than throwing, so the action never tells somebody to "try again" at something
+  that cannot work until a migration runs.
+
 ## Push notifications
 
 `src/lib/notifications.ts` is the only place that sends anything. Everything
@@ -1142,7 +1183,8 @@ together. Two documents: one incident, and everything published over a period.
 - **`Village.parishCouncil` names the data controller in the footer**, falling
   back to `DATA_CONTROLLER` in `constants.ts` — which is still placeholders, so
   `/reports` shows a warning when the footer would read "[Parish Council name]".
-  That is the first thing in the app to actually read the column.
+  That is the first thing in the app to actually read the column, and the
+  dashboard's parish council field is what fills it — see The parish council.
 - **`/privacy` §6 changed in the same commit**, for the reason the legal-pages
   section gives. It named one route to the police — a formal request the council
   decides on — and this adds a routine one a coordinator drives. The notice now
@@ -1436,7 +1478,12 @@ open:
   RLS off, and the column grants are enumerated at run time.
 - **`DATA_CONTROLLER` in `src/lib/constants.ts` is placeholders.** The privacy
   policy and terms both name it. Fill it in, register with the ICO, and have
-  the council review both documents before launch.
+  the council review both documents before launch. A coordinator can now name
+  their own council on `/dashboard`, which covers the `/reports` footers — but
+  that is per village and `/privacy` still reads the constant, so this is
+  narrowed rather than closed. **The dashboard field cannot be saved until
+  `20260727180000_village_activation` is applied**, and it says so on screen
+  rather than failing on Save.
 - **Slack is disclosed rather than covered by its own agreement, and `/privacy`
   §6 now says so in as many words.** The blanket claim that every processor acts
   under a written data processing agreement was untrue for Slack, and a false

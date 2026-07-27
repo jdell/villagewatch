@@ -21,11 +21,13 @@ import type { QueuedIncident } from "@/components/dashboard/moderation-card";
 import { ModerationQueue } from "@/components/dashboard/moderation-queue";
 import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
 import { ExportCsvButton } from "@/components/dashboard/export-csv-button";
+import { ParishCouncilForm } from "@/components/dashboard/parish-council-form";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { WhatsAppChannelForm } from "@/components/dashboard/whatsapp-channel-form";
 import { NoVillage } from "@/components/no-village";
 import { requireCoordinator } from "@/lib/auth";
 import { getVillageAutoApprove } from "@/lib/moderation";
+import { getVillageParishCouncil } from "@/lib/village";
 import { prisma } from "@/lib/prisma";
 import {
   getVillageChannel,
@@ -93,6 +95,7 @@ export default async function DashboardPage() {
     channel,
     followLink,
     autoApprove,
+    parishCouncil,
   ] = await Promise.all([
     prisma.incident.count({
       where: { ...published, occurredAt: { gte: weekStart } },
@@ -166,6 +169,10 @@ export default async function DashboardPage() {
     // value and never the raw column.
     getVillageChannel(villageId),
     getVillageAutoApprove(villageId),
+    // Reports whether the column exists as well as what is in it — the form
+    // renders a different thing for each, because "no council named" is the
+    // coordinator's to fix and "no column to name one in" is not.
+    getVillageParishCouncil(villageId),
   ]);
 
   const typeRows: BreakdownRow[] = byType
@@ -430,6 +437,17 @@ export default async function DashboardPage() {
         <p className="mt-1 text-sm text-slate-500">
           These apply to everyone in your village, not just to you.
         </p>
+
+        {/*
+          The council first, because it is the one setting here that changes
+          nothing about how reports flow — it is a name on a document. Putting
+          it above the other two also keeps them adjacent, which is the point
+          of the ordering below.
+        */}
+        <ParishCouncilForm
+          value={parishCouncil.value}
+          available={parishCouncil.available}
+        />
 
         {/*
           Review first, the channel second, in the order of how much they

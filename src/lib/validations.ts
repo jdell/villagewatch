@@ -763,6 +763,27 @@ export const villageAutoApproveFormSchema = z.object({
     .transform((value) => value === "on"),
 });
 
+/**
+ * The village's data controller, as a coordinator types it.
+ *
+ * Empty becomes `null` rather than `""`, which is what lets `reportController`
+ * fall back to the deployment-wide `DATA_CONTROLLER` on a single truthiness
+ * check. An empty string stored in the column would satisfy "a value is set"
+ * and put a blank where a police report names the body answerable for the data.
+ *
+ * No format validation beyond a length cap, deliberately. This is the legal
+ * name of a real parish, town or community council, and they are not uniform —
+ * "Bourn Parish Council", "Cyngor Cymuned Llanddewi", "The Parish Meeting of
+ * Croxton". A pattern here would reject somebody's actual council.
+ */
+export const villageParishCouncilFormSchema = z.object({
+  parishCouncil: z
+    .string()
+    .trim()
+    .max(120, "Keep the council name under 120 characters")
+    .transform((value) => value || null),
+});
+
 // ---------------------------------------------------------------------------
 // Moderation and editing
 // ---------------------------------------------------------------------------

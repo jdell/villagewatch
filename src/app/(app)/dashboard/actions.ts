@@ -14,10 +14,15 @@ import {
   saveVillageChannel,
 } from "@/lib/whatsapp-channel";
 import {
+  getVillageParishCouncil,
+  setVillageParishCouncil,
+} from "@/lib/village";
+import {
   fieldErrors,
   incidentModerationSchema,
   villageAutoApproveFormSchema,
   villageChannelFormSchema,
+  villageParishCouncilFormSchema,
 } from "@/lib/validations";
 
 /**
@@ -224,6 +229,123 @@ export async function saveAutoApproveAction(
     message: autoApprove
       ? "Auto-approve is on. New reports go live the moment they are filed."
       : "Auto-approve is off. New reports wait for a coordinator.",
+  };
+}
+
+export type ParishCouncilState = {
+  ok: boolean;
+  message: string;
+  fieldErrors?: Record<string, string>;
+};
+
+/**
+ * Names the parish, town or community council answerable for the village's data.
+ *
+ * `requireCoordinator()` and the village from the session profile, for the same
+ * reason the other two settings here use them: this is a coordinator describing
+ * their own village, and a `villageId` in the payload would be a way to rename
+ * the data controller on somebody else's (domain rule 4).
+ *
+ * ## What this column actually does
+ *
+ * `Village.parishCouncil` is the name in the footer of every document `/reports`
+ * produces — the period report a coordinator sends to a PCSO, and the
+ * single-incident summary that goes out through the share sheet. Until now the
+ * only way to set it was `saveVillageAdminSettings`, which is platform-admin
+ * only, so a village whose coordinator knew the answer had to ask somebody who
+ * did not. Empty, `reportController` falls back to `DATA_CONTROLLER` in
+ * `constants.ts` — still placeholders — and `/reports` renders an amber warning
+ * about it. This is the field that clears that warning.
+ *
+ * **Audited**, and toned `sensitive` alongside the other two village settings.
+ * Not because it widens an audience but because it is a statement of legal
+ * accountability leaving the village on paper: a resident reading "data
+ * controller: X" on a report is being told who to complain to.
+ *
+ * The audit write is allowed to fail silently and the save is not, which is the
+ * ordering every settings action here uses — the column is already written by
+ * the time the row is attempted, and telling a coordinator their save failed
+ * when it succeeded would be false.
+ */
+export async function saveParishCouncilAction(
+  _previous: ParishCouncilState,
+  formData: FormData,
+): Promise<ParishCouncilState> {
+  const session = await requireCoordinator("/dashboard");
+  const villageId = session.profile?.villageId;
+
+  if (!villageId || !process.env.DATABASE_URL) {
+    return { ok: false, message: "You are not attached to a village." };
+  }
+
+  const parsed = villageParishCouncilFormSchema.safeParse({
+    parishCouncil: formData.get("parishCouncil") ?? "",
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Check the highlighted field.",
+      fieldErrors: fieldErrors(parsed.error),
+    };
+  }
+
+  const { parishCouncil } = parsed.data;
+  // Read before the write, so the trail records what actually changed rather
+  // than what was submitted.
+  const before = await getVillageParishCouncil(villageId);
+
+  const written = await setVillageParishCouncil(villageId, parishCouncil);
+
+  if (!written.ok) {
+    return {
+      ok: false,
+      // Two failures, two messages. "Try again" is a lie when the column does
+      // not exist: the coordinator can press Save all afternoon and it will
+      // never work, so the message names the fix and whose job it is.
+      message:
+        written.reason === "unmigrated"
+          ? "This village's database has not been updated for this setting yet. Ask an administrator to apply the pending migration."
+          : "Could not save the council name. Try again.",
+    };
+  }
+
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorId: session.user.id,
+        actorEmail: session.user.email ?? null,
+        actorRole: session.profile?.role ?? null,
+        villageId,
+        action: "village.parish_council_changed",
+        entityType: "village",
+        entityId: villageId,
+        // The name of a public body, printed on documents this village already
+        // sends outside it — nothing here is personal data, and every
+        // coordinator can read both values on the screen this posts from.
+        before: { parishCouncil: before.value },
+        after: { parishCouncil },
+      },
+    });
+  } catch (cause) {
+    console.error(
+      "Could not audit the parish council change for %s",
+      villageId,
+      cause,
+    );
+  }
+
+  // `/reports` prints it in both documents' footers and warns while it is
+  // unset; `/incidents/[id]` takes the same read for a coordinator's share
+  // panel on a published report.
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+
+  return {
+    ok: true,
+    message: parishCouncil
+      ? `Reports will name ${parishCouncil} as the data controller.`
+      : "Council name cleared. Reports fall back to the deployment-wide controller.",
   };
 }
 

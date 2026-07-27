@@ -622,6 +622,114 @@ export async function getVillageController(
   }
 }
 
+// ---------------------------------------------------------------------------
+// The parish council, as the village's own coordinator sets it
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether `villages.parish_council` exists in this database, and what is in it.
+ *
+ * The distinction is the whole reason this is not a `string | null`. The column
+ * arrives with `20260727180000_village_activation`, which has never been applied
+ * anywhere (see `getVillageController` below for why), and a plain null cannot
+ * tell "no council has been named" apart from "this database has no column to
+ * name one in". The first is a form waiting to be filled in; the second is a
+ * form that will throw the moment somebody presses Save. The dashboard renders
+ * them differently because they are different problems with different fixes,
+ * and only one of them belongs to the coordinator.
+ */
+export type ParishCouncilSetting =
+  | { available: true; value: string | null }
+  | { available: false; value: null };
+
+/**
+ * Postgres `42703` — undefined column — however Prisma happens to surface it.
+ *
+ * Three shapes, because the column is in `schema.prisma` and missing from the
+ * database, which is a state Prisma reports differently depending on how the
+ * statement was built. `P2022` is its own typed code for exactly this; the
+ * driver adapter can also pass the raw SQLSTATE straight through; and the
+ * message is the last resort. Matching narrowly on purpose — a broad catch here
+ * would swallow a genuinely broken database and tell a coordinator to go and
+ * find an administrator about a migration when the real problem is that nothing
+ * can reach Postgres at all.
+ */
+function isMissingParishCouncilColumn(cause: unknown): boolean {
+  if (typeof cause !== "object" || cause === null) return false;
+
+  const code = (cause as { code?: unknown }).code;
+  if (code === "P2022" || code === "42703") return true;
+
+  const message = (cause as { message?: unknown }).message;
+  return typeof message === "string" && message.includes("parish_council");
+}
+
+/** What the dashboard's parish council field should show. */
+export async function getVillageParishCouncil(
+  villageId: string,
+): Promise<ParishCouncilSetting> {
+  try {
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      select: { parishCouncil: true },
+    });
+
+    return { available: true, value: village?.parishCouncil ?? null };
+  } catch (cause) {
+    if (!isMissingParishCouncilColumn(cause)) throw cause;
+
+    console.error(
+      "villages.parish_council is missing — has 20260727180000_village_activation been applied?",
+      cause,
+    );
+
+    return { available: false, value: null };
+  }
+}
+
+export type ParishCouncilWrite =
+  | { ok: true }
+  | { ok: false; reason: "unmigrated" | "failed" };
+
+/**
+ * Writes the village's data controller.
+ *
+ * Returns rather than throws, and distinguishes the two failures, because they
+ * read completely differently on screen. "Try again" is a lie when the column
+ * does not exist — the coordinator can press that button until the migration is
+ * applied and it will never work — so the action turns `unmigrated` into a
+ * message naming what has to happen and who has to do it.
+ */
+export async function setVillageParishCouncil(
+  villageId: string,
+  parishCouncil: string | null,
+): Promise<ParishCouncilWrite> {
+  try {
+    await prisma.village.update({
+      where: { id: villageId },
+      data: { parishCouncil },
+    });
+
+    return { ok: true };
+  } catch (cause) {
+    if (isMissingParishCouncilColumn(cause)) {
+      console.error(
+        "Could not save parish_council for village %s — the column does not exist. Apply 20260727180000_village_activation.",
+        villageId,
+        cause,
+      );
+      return { ok: false, reason: "unmigrated" };
+    }
+
+    console.error(
+      "Could not save the parish council for village %s",
+      villageId,
+      cause,
+    );
+    return { ok: false, reason: "failed" };
+  }
+}
+
 /**
  * The village settings an administrator owns.
  *

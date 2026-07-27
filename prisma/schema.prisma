@@ -169,9 +169,11 @@ model Village {
   /// `DATA_CONTROLLER` in `src/lib/constants.ts` names one controller for the
   /// whole deployment, which was true while a deployment served one parish and
   /// stops being true the moment the directory is activated village by village.
-  /// Set by a platform administrator on `/admin/villages/[id]`; nothing renders
-  /// it yet beyond that screen — wiring it into `/privacy` is the follow-up, and
-  /// until then the constant is still what that page shows.
+  /// The data controller named in the footer of everything `/reports` produces.
+  /// Set by the village's own coordinator on `/dashboard`, or by a platform
+  /// administrator on `/admin/villages/[id]`. Null falls back to
+  /// `DATA_CONTROLLER` in `constants.ts`; wiring it into `/privacy` is the
+  /// follow-up, and until then the constant is still what that page shows.
   parishCouncil String? @map("parish_council")
 
   /// Minimum severity that triggers a broadcast push to every resident.

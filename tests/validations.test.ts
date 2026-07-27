@@ -7,6 +7,7 @@ import {
   loginSchema,
   registerSchema,
   structuredIncidentSchema,
+  villageParishCouncilFormSchema,
 } from "@/lib/validations";
 
 /**
@@ -341,5 +342,48 @@ describe("incidentEditSchema", () => {
         severity: "HIGH",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("villageParishCouncilFormSchema", () => {
+  /** The value the column would actually receive, or undefined on a rejection. */
+  function stored(input: string): string | null | undefined {
+    const parsed = villageParishCouncilFormSchema.safeParse({
+      parishCouncil: input,
+    });
+
+    return parsed.success ? parsed.data.parishCouncil : undefined;
+  }
+
+  it("accepts a council name and trims it", () => {
+    expect(stored("  Bourn Parish Council  ")).toBe("Bourn Parish Council");
+  });
+
+  it("stores null rather than an empty string when the field is cleared", () => {
+    // This is the rule with a consequence behind it. `reportController` falls
+    // back to DATA_CONTROLLER on a truthiness check, so an empty string stored
+    // in the column would count as "a controller is named" and print a blank
+    // where a police report says who is answerable for the data.
+    expect(stored("")).toBeNull();
+    expect(stored("   ")).toBeNull();
+  });
+
+  it("accepts the names real councils actually have", () => {
+    // No format validation on purpose — a pattern here would reject somebody's
+    // actual council. Welsh communities, meetings rather than councils, and
+    // apostrophes are all ordinary.
+    for (const name of [
+      "Cyngor Cymuned Llanddewi",
+      "The Parish Meeting of Croxton",
+      "St. Neots Town Council",
+      "Bishop's Stortford Town Council",
+    ]) {
+      expect(stored(name)).toBe(name);
+    }
+  });
+
+  it("rejects a name too long for the report footer", () => {
+    expect(stored("A".repeat(121))).toBeUndefined();
+    expect(stored("A".repeat(120))).toBe("A".repeat(120));
   });
 });
