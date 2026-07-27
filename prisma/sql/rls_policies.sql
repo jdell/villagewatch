@@ -206,6 +206,7 @@ ALTER TABLE public.incident_tags            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pattern_alerts           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.coordinator_requests     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rate_limit               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."_PatternAlertIncidents" ENABLE ROW LEVEL SECURITY;
 
@@ -343,6 +344,16 @@ CREATE POLICY users_insert_self
  * holder. Enforced for `authenticated` only — the Prisma connection runs as the
  * owner and is the server code this is protecting them from.
  *
+ * `deleted_at` is guarded with them, and it is the one on the list that a
+ * resident does have a right to set — just not here. Closing an account is
+ * `deleteAccountAction`, which erases the reports and the media first; setting
+ * this column alone through PostgREST would produce an account that reads as
+ * closed with every report still on the map, which is the opposite of what the
+ * resident asked for. The direction that actually matters is the other one:
+ * without this clause a closed account could sign in to Supabase Auth directly
+ * with the anon key, `UPDATE users SET deleted_at = NULL`, and let itself back
+ * in past both sign-in gates.
+ *
  * SECURITY INVOKER, deliberately. Inside a SECURITY DEFINER function
  * `current_user` is the function's owner, so the check below would compare the
  * owner's name and never fire. As an invoker function it sees the role
@@ -359,9 +370,10 @@ BEGIN
     IF NEW.role IS DISTINCT FROM OLD.role
        OR NEW.village_id IS DISTINCT FROM OLD.village_id
        OR NEW.verified_at IS DISTINCT FROM OLD.verified_at
-       OR NEW.verified_by_id IS DISTINCT FROM OLD.verified_by_id THEN
+       OR NEW.verified_by_id IS DISTINCT FROM OLD.verified_by_id
+       OR NEW.deleted_at IS DISTINCT FROM OLD.deleted_at THEN
       RAISE EXCEPTION
-        'role, village and verification are set by the server, not by the account holder';
+        'role, village, verification and account closure are set by the server, not by the account holder';
     END IF;
   END IF;
 
@@ -432,12 +444,34 @@ CREATE POLICY incidents_select_public
                    'RESOLVED'::public.incident_status)
   );
 
-/** A reporter always sees their own, including drafts and rejections. */
+-- `REMOVED` is excluded from both policies below and from nothing above it,
+-- because `incidents_select_public` is already narrowed to the two statuses a
+-- resident may see. These two are the wide ones — "my own, whatever the status"
+-- and "everything in my village" — and both would otherwise return a report its
+-- reporter has erased (UK GDPR Article 17, `src/lib/erasure.ts`).
+--
+-- The row survives an erasure so the audit trail's `entity_id` still resolves
+-- and the reference is never reissued. Its contents do not: `removeIncident()`
+-- overwrites the text, the landmark and the coordinates with a tombstone in the
+-- same write that sets the status, so a leak here would disclose a placeholder
+-- rather than a resident's words.
+--
+-- These clauses are still worth having, for the same reason the app filters the
+-- status rather than trusting the tombstone. What a `REMOVED` row still carries
+-- is `reference`, `type`, `severity` and `occurred_at` — enough to tell a
+-- coordinator that a report was filed on a date and then withdrawn, which is
+-- exactly the inference a resident exercising Article 17 is entitled not to
+-- hand over. Defence in depth on a row that has already been emptied.
+
+/** A reporter sees their own, including drafts and rejections — but not erased. */
 DROP POLICY IF EXISTS incidents_select_own ON public.incidents;
 CREATE POLICY incidents_select_own
   ON public.incidents FOR SELECT
   TO authenticated
-  USING (reporter_id = (SELECT auth.uid()));
+  USING (
+    reporter_id = (SELECT auth.uid())
+    AND status <> 'REMOVED'::public.incident_status
+  );
 
 /** The moderation queue — everything in the coordinator's own village. */
 DROP POLICY IF EXISTS incidents_select_coordinator ON public.incidents;
@@ -447,6 +481,7 @@ CREATE POLICY incidents_select_coordinator
   USING (
     public.vw_is_coordinator()
     AND village_id = public.vw_current_village_id()
+    AND status <> 'REMOVED'::public.incident_status
   );
 
 /**
@@ -486,7 +521,20 @@ CREATE POLICY incidents_update_own
                    'PENDING_REVIEW'::public.incident_status)
   );
 
-/** Moderation. Any status, any report, inside the coordinator's own village. */
+/**
+ * Moderation. Any status, any report, inside the coordinator's own village —
+ * except that neither end may be `REMOVED`.
+ *
+ * USING excludes it because an erased report is not in the queue and moderating
+ * one would attach a decision to something nobody can read. WITH CHECK excludes
+ * it for a different and larger reason: `REMOVED` is not a moderation outcome at
+ * all. It is written by `removeIncident()`, which deletes the photographs from
+ * the bucket and the tags from the database *before* it sets the status, and the
+ * status is the only part of that a client could reproduce. A coordinator who
+ * could write it here would produce a report that looks erased on every screen
+ * while its media sits in storage — erasure as an appearance rather than an act,
+ * which is the exact failure this whole feature exists to avoid.
+ */
 DROP POLICY IF EXISTS incidents_update_coordinator ON public.incidents;
 CREATE POLICY incidents_update_coordinator
   ON public.incidents FOR UPDATE
@@ -494,14 +542,22 @@ CREATE POLICY incidents_update_coordinator
   USING (
     public.vw_is_coordinator()
     AND village_id = public.vw_current_village_id()
+    AND status <> 'REMOVED'::public.incident_status
   )
   WITH CHECK (
     public.vw_is_coordinator()
     AND village_id = public.vw_current_village_id()
+    AND status <> 'REMOVED'::public.incident_status
   );
 
--- No DELETE policy. Withdrawing a report is `deleteIncidentAction`, which
--- writes the audit row first (domain rule 7) — a direct DELETE would not.
+-- No DELETE policy, and erasure deliberately does not need one. A resident
+-- deleting their own report goes through `removeIncident()` in
+-- `src/lib/erasure.ts`, which writes the audit row first (domain rule 7),
+-- removes the objects from storage before the rows that point at them, and
+-- leaves the incident as `REMOVED` rather than dropping it — a direct DELETE
+-- would do none of those, and would leave the trail naming an id that resolves
+-- to nothing. `incidents_update_own` above cannot reach `REMOVED` either: its
+-- WITH CHECK pins the status to the two queue values.
 
 -- ---------------------------------------------------------------------------
 -- incident_media
@@ -776,6 +832,39 @@ CREATE POLICY coordinator_requests_update_admin
 -- by editing the row would leave the administrator's decision attached to text
 -- they never read. The absence of a WITHDRAWN status in the enum is the same
 -- decision seen from the other side.
+
+-- ---------------------------------------------------------------------------
+-- rate_limit
+-- ---------------------------------------------------------------------------
+--
+-- **Server-only, and the only table in this file with no policies at all.**
+--
+-- That is the point rather than an omission. RLS is enabled and `authenticated`
+-- holds no grant, so every read and write from PostgREST is refused before a
+-- policy would be consulted. `src/lib/rate-limit.ts` is the sole caller and it
+-- runs through Prisma as the table owner, which bypasses all of this.
+--
+-- A policy here would have to be "your own rows", and own-rows is exactly wrong
+-- for a counter:
+--
+--   SELECT  tells a caller how much quota is left before they spend it, which
+--           turns a limit into a schedule.
+--   UPDATE  lets them set `count` back to zero, which is not a limit at all.
+--   DELETE  is the same thing with an extra step.
+--   INSERT  lets them pre-create a window at `count = 0` and, worse, write rows
+--           under somebody else's `user_id` — the column is TEXT with no foreign
+--           key, so nothing at the database would object.
+--
+-- There is no read a client legitimately makes: what a resident needs to know
+-- about their quota is in the `X-RateLimit-*` headers the route already sends.
+--
+-- The explicit REVOKE is belt and braces. `REVOKE ALL ON ALL TABLES` above
+-- already covers it, and the default-privileges revoke means a table created
+-- after this file first ran arrives closed — but this table is the one where a
+-- grant issued by accident is silently a hole rather than a visible bug, so it
+-- says so in its own right.
+
+REVOKE ALL ON public.rate_limit FROM anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- _PatternAlertIncidents (implicit m2m join table)

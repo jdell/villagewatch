@@ -53,6 +53,28 @@ export async function POST(request: NextRequest) {
   }
 
   if (process.env.DATABASE_URL) {
+    // A closed account still has an `auth.users` row, so the password above is
+    // still correct and Supabase is right to have accepted it. What decides
+    // whether it opens anything is `deletedAt` — see `eraseAccount()`. The
+    // session is torn down again before returning, or the browser would hold
+    // cookies for an account that cannot go anywhere.
+    const profile = await prisma.user.findUnique({
+      where: { id: data.user.id },
+      select: { deletedAt: true },
+    });
+
+    if (profile?.deletedAt) {
+      await supabase.auth.signOut();
+
+      return NextResponse.json(
+        {
+          error:
+            "This account has been closed. Contact your village coordinator if you need it back.",
+        },
+        { status: 403 },
+      );
+    }
+
     await prisma.user.updateMany({
       where: { id: data.user.id },
       data: { lastActiveAt: new Date() },

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { cronUnauthorised, isCronAuthorised } from "@/lib/cron";
+import { deleteExpiredRateLimits } from "@/lib/rate-limit";
 import {
   STORAGE_BUCKET,
   createAdminClient,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/supabase/admin";
 import {
   PUBLIC_INCIDENT_STATUSES,
+  RATE_LIMIT_RETENTION_DAYS,
   RETENTION,
   RETENTION_MEDIA_BATCH,
   RETENTION_STORAGE_CHUNK,
@@ -107,6 +109,23 @@ async function runRetention(request: NextRequest) {
 
   await recordSweep({ villages, now, mediaCutoff, archiveCutoff });
 
+  // Last, because it is the one part of this job that is not about privacy and
+  // the one whose failure costs nothing. A `rate_limit` row holds an auth user
+  // id, an action name and a count; nothing in `/privacy` states a period for
+  // it and `RATE_LIMIT_RETENTION_DAYS` is deliberately not in `RETENTION`
+  // alongside the four that are. It rides here because this is the only job
+  // that runs nightly, and the table is the only one in the schema with no
+  // natural ceiling. A failure is logged and swallowed — the sweep above has
+  // already deleted files, and throwing now would make a completed run look
+  // failed and invite a retry that deletes a second batch of media.
+  let rateLimitsDeleted: number | null = null;
+
+  try {
+    rateLimitsDeleted = await deleteExpiredRateLimits(now);
+  } catch (cause) {
+    console.error("Retention: could not sweep the rate limit table", cause);
+  }
+
   return NextResponse.json({
     ranAt: now.toISOString(),
     archive: {
@@ -120,6 +139,12 @@ async function runRetention(request: NextRequest) {
       rowsDeleted: media.outcome.rowsDeleted,
       more: media.outcome.more,
       skipped: media.outcome.skipped,
+    },
+    rateLimits: {
+      keepDays: RATE_LIMIT_RETENTION_DAYS,
+      // Null when the sweep threw. Distinct from 0, which is a clean run with
+      // nothing old enough to drop.
+      deleted: rateLimitsDeleted,
     },
     villages,
   });

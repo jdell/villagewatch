@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
   // Counted after the body validates, not before: a malformed request costs
   // nothing to reject, and burning a slot on one would let a client-side bug
   // spend a reporter's hourly quota without a single call reaching Claude.
-  const quota = rateLimit(RATE_LIMITS.aiProcess, session.user.id);
+  const quota = await rateLimit(RATE_LIMITS.aiProcess, session.user.id);
 
   if (!quota.ok) {
     return tooManyRequests(

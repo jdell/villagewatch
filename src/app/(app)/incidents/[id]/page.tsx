@@ -17,6 +17,7 @@ import { NoVillage } from "@/components/no-village";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PUBLIC_INCIDENT_STATUSES, isCoordinatorRole } from "@/lib/constants";
+import { canReporterErase } from "@/lib/erasure";
 import { PUBLIC_INCIDENT_SELECT, toMapIncident } from "@/lib/incidents";
 import { signedMediaUrls } from "@/lib/media/storage";
 import { formatDateTime } from "@/lib/format";
@@ -56,6 +57,7 @@ export async function generateMetadata({
     where: {
       id,
       villageId,
+      status: { not: "REMOVED" },
       OR: [
         { status: { in: [...PUBLIC_INCIDENT_STATUSES] } },
         { reporterId: session.user.id },
@@ -88,6 +90,11 @@ export default async function IncidentDetailPage({ params }: PageProps) {
       // (domain rule 4).
       id,
       villageId,
+      // An erased report is gone for everyone, including the reporter who
+      // erased it and the coordinator who could otherwise see every status in
+      // their village. It falls through to `notFound()` below, which is where
+      // CLAUDE.md has always said a withdrawn report lands.
+      status: { not: "REMOVED" },
       OR: [
         // Published and resolved reports are the public surface (domain rule 6).
         { status: { in: [...PUBLIC_INCIDENT_STATUSES] } },
@@ -139,6 +146,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const isReporter = incident.reporterId === session.user.id;
   const inQueue =
     incident.status === "DRAFT" || incident.status === "PENDING_REVIEW";
+  const deletable = canReporterErase(incident.status);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
@@ -305,6 +313,12 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         incidentId={incident.id}
         status={incident.status}
         canEdit={isReporter && inQueue}
+        // Wider than `canEdit` on purpose. Editing a published report is a
+        // coordinator's call, because the village has already been alerted to
+        // what it said; erasing it is the reporter's right and not conditional
+        // on the queue (UK GDPR Article 17). `removeIncident` re-checks both the
+        // ownership and the status — this only decides whether a button exists.
+        canDelete={isReporter && deletable}
         canModerate={isCoordinator}
       />
     </div>

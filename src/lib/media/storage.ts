@@ -24,6 +24,13 @@ import {
 /** Long enough to load a page and look at it, short enough not to be a link. */
 const SIGNED_URL_SECONDS = 60 * 60;
 
+/**
+ * Paths per `storage.remove()` call. The API takes an array; this bounds it.
+ * Matches `RETENTION_STORAGE_CHUNK`, which does the same job on the nightly
+ * sweep — kept as its own constant so the two can diverge if one ever needs to.
+ */
+const STORAGE_REMOVE_CHUNK = 100;
+
 /** Refuse to send more than this to the model. Blurred stills are far smaller. */
 const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -80,6 +87,72 @@ export async function signedMediaUrls(
   }
 
   return result;
+}
+
+/**
+ * Deletes stored objects, in chunks, and says how many went.
+ *
+ * Used by erasure (`src/lib/erasure.ts`), where the deletion is the whole point:
+ * a resident asking for their report to be erased is asking for the photographs
+ * too, and a tombstone row pointing at a file still sitting in the bucket would
+ * be an erasure that erased nothing.
+ *
+ * Returns `null` when storage is unconfigured — distinct from a zero count,
+ * which means "configured, and there was nothing to delete". The caller has to
+ * tell those apart: dropping the `IncidentMedia` rows in the first case would
+ * leave the objects in the bucket with nothing pointing at them, unreachable and
+ * still resident data. Same reasoning as the retention job's
+ * `storage_not_configured`.
+ *
+ * `failed` is the other half of that, and is why this does not simply return a
+ * number. `deleted` cannot be compared against `paths.length` to detect trouble:
+ * Supabase omits an already-missing object from the response, and the callers
+ * pass speculative paths — a still has no `-thumb.jpg`, and `storagePath` and
+ * `redactedPath` are the same object for media that was blurred on-device. So a
+ * short count is the normal case and only `failed` means anything went wrong.
+ *
+ * Never throws. A failed chunk is logged and reported, because the caller's next
+ * step is a database write it should still be allowed to make — it just needs to
+ * know whether to keep the rows that point at what is still there.
+ */
+export type DeleteStoredObjectsResult = {
+  /** Objects the bucket confirmed it removed. */
+  deleted: number;
+  /** Objects in chunks whose `remove()` call errored. Zero on a clean run. */
+  failed: number;
+};
+
+export async function deleteStoredObjects(
+  paths: readonly string[],
+): Promise<DeleteStoredObjectsResult | null> {
+  const unique = [...new Set(paths.filter(Boolean))];
+
+  if (!isStorageConfigured) return null;
+  if (unique.length === 0) return { deleted: 0, failed: 0 };
+
+  const storage = createAdminClient().storage.from(STORAGE_BUCKET);
+  let deleted = 0;
+  let failed = 0;
+
+  for (let index = 0; index < unique.length; index += STORAGE_REMOVE_CHUNK) {
+    const chunk = unique.slice(index, index + STORAGE_REMOVE_CHUNK);
+    const { data, error } = await storage.remove(chunk);
+
+    if (error) {
+      console.error(
+        "Could not delete %d object(s) from %s",
+        chunk.length,
+        STORAGE_BUCKET,
+        error,
+      );
+      failed += chunk.length;
+      continue;
+    }
+
+    deleted += data?.length ?? 0;
+  }
+
+  return { deleted, failed };
 }
 
 /**

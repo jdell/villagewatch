@@ -94,11 +94,22 @@ export async function GET(request: NextRequest) {
 
   const profile = await prisma.user.findUnique({
     where: { id: data.user.id },
-    select: { id: true },
+    select: { id: true, deletedAt: true },
   });
 
   const url = request.nextUrl.clone();
   url.search = "";
+
+  // The same gate `POST /api/auth/login` applies, for the same reason: Google
+  // is happy to vouch for the identity, and `deletedAt` is what says the account
+  // it belongs to is closed. Checked before the `!profile` branch below, or a
+  // closed account would be sent to `/welcome` and could rejoin a village by
+  // filling the form in again.
+  if (profile?.deletedAt) {
+    await supabase.auth.signOut();
+    url.pathname = "/account-closed";
+    return NextResponse.redirect(url);
+  }
 
   if (!profile) {
     // First time through. `/welcome` collects the village, the join code and

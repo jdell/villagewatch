@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { applyModeration } from "@/lib/moderation";
+import { removeIncident } from "@/lib/erasure";
 import { isCoordinatorRole } from "@/lib/constants";
 import {
   fieldErrors,
@@ -18,9 +19,10 @@ import {
  * Two different callers with two different rights, and the split is enforced
  * here rather than by which buttons the page happened to render:
  *
- * - **The reporter** may edit or delete their own report while it is still in
- *   the queue. Once published it belongs to the village, and withdrawing it is
- *   a coordinator's call.
+ * - **The reporter** may edit their own report while it is still in the queue,
+ *   and may erase it right up to the point a coordinator closes it — see
+ *   `deleteIncidentAction`, which is the right to erasure rather than an edit
+ *   and is therefore not bounded by the edit window.
  * - **A coordinator** may publish, reject or archive anything in their village,
  *   through the same `applyModeration` path the dashboard uses — so the audit
  *   row and the village alert cannot be skipped by coming in from here.
@@ -167,14 +169,20 @@ export async function editIncidentAction(
 }
 
 /**
- * The reporter withdrawing their own report.
+ * The reporter erasing their own report — UK GDPR Article 17.
  *
- * A hard delete, because a report that never got past the queue was never part
- * of the village record and leaving a tombstone would keep the reporter's
- * verbatim words on file after they asked for them to go. Media and tags
- * cascade; the `AuditLog` row does not, because `entityId` is a plain string
- * with no foreign key — which is exactly what makes the trail append-only
- * (domain rule 7).
+ * This used to be "Withdraw": a hard delete, and only from the queue statuses.
+ * Both halves changed, and in opposite directions:
+ *
+ * - **Wider.** Every status can be erased now (`canReporterErase`), published
+ *   and rejected included.
+ *   "Once published it belongs to the village" is a reasonable product
+ *   instinct and not a lawful basis to refuse an erasure request.
+ * - **Softer.** The row survives as `REMOVED` rather than being deleted, because
+ *   `AuditLog.entityId` points at it and the trail is append-only (domain rule
+ *   7). What is actually destroyed — the media in the bucket, the tags — is
+ *   destroyed by `removeIncident`, which is the same code `DELETE
+ *   /api/incidents/[id]` runs. Two entry points, one erasure.
  */
 export async function deleteIncidentAction(
   _previous: IncidentActionState,
@@ -188,46 +196,15 @@ export async function deleteIncidentAction(
     return { ok: false, message: "That report could not be found." };
   }
 
-  const incident = await prisma.incident.findFirst({
-    where: {
-      id: incidentId,
-      villageId,
-      reporterId: session.user.id,
-      status: { in: [...REPORTER_EDITABLE] },
-    },
-    select: { id: true, reference: true, type: true, status: true },
-  });
+  const result = await removeIncident({ session, villageId, incidentId });
 
-  if (!incident) {
-    return {
-      ok: false,
-      message: "This report can no longer be withdrawn — it has been reviewed.",
-    };
-  }
-
-  // Audited before the delete, so the row describing what went is written while
-  // there is still something to describe.
-  await prisma.auditLog.create({
-    data: {
-      actorId: session.user.id,
-      actorEmail: session.user.email,
-      actorRole: session.profile?.role,
-      villageId,
-      action: "incident.delete",
-      entityType: "Incident",
-      entityId: incident.id,
-      before: {
-        reference: incident.reference,
-        type: incident.type,
-        status: incident.status,
-      },
-    },
-  });
-
-  await prisma.incident.delete({ where: { id: incident.id } });
+  if (!result.ok) return { ok: false, message: result.error };
 
   revalidatePath("/incidents");
   revalidatePath("/dashboard");
+  revalidatePath("/map");
 
-  redirect("/incidents");
+  // The toast travels in the query string because this never returns — see
+  // `FlashToast`. The list page announces it and strips nothing else.
+  redirect("/incidents?deleted=1");
 }

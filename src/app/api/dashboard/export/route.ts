@@ -96,7 +96,14 @@ export async function GET(request: NextRequest) {
   const since = new Date(Date.now() - EXPORT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   const rows = await prisma.incident.findMany({
-    where: { villageId, occurredAt: { gte: since } },
+    // `REMOVED` is excluded, and this is the one query where saying so matters.
+    // Every other read is already narrowed to a status list; this one is
+    // deliberately wide, because a coordinator exporting their village's reports
+    // wants the rejected and archived ones too. An erased report is the
+    // exception: a spreadsheet gets emailed and forwarded, so a report a
+    // resident asked to have deleted must not leave in one the day after they
+    // asked (UK GDPR Article 17).
+    where: { villageId, status: { not: "REMOVED" }, occurredAt: { gte: since } },
     select: {
       reference: true,
       type: true,

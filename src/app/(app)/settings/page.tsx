@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CoordinatorApplication } from "@/components/coordinator-application";
+import { DeleteAccount } from "@/components/delete-account";
 import { FlashToast } from "@/components/flash-toast";
 import { SettingsForm } from "@/components/settings-form";
 import { requireSession } from "@/lib/auth";
@@ -103,6 +104,14 @@ export default async function SettingsPage({
           <CoordinatorApplication request={coordinatorRequest} />
         </div>
       )}
+
+      {/*
+        Last on the page, and the only thing below the save button that is not
+        an outcome of it. Rendered for everyone with an email — which is
+        everyone, since it is the sign-in address — because the right to erasure
+        does not depend on having joined a village yet.
+      */}
+      {session.user.email && <DeleteAccount email={session.user.email} />}
 
       {/*
         Sits outside SettingsForm because HTML forbids nested forms — the button

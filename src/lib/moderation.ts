@@ -71,7 +71,11 @@ export async function applyModeration(input: {
   }
 
   const incident = await prisma.incident.findFirst({
-    where: { id: incidentId, villageId },
+    // `REMOVED` is excluded here rather than left to `ALLOWED_FROM` below, which
+    // would also reject it but with "an erased report cannot be published" — a
+    // sentence that tells a coordinator a report they can no longer see still
+    // exists. Not found is the honest answer (`src/lib/erasure.ts`).
+    where: { id: incidentId, villageId, status: { not: "REMOVED" } },
     select: {
       id: true,
       reference: true,
@@ -203,7 +207,13 @@ export async function readRawDescription(input: {
   }
 
   const incident = await prisma.incident.findFirst({
-    where: { id: incidentId, villageId },
+    // An erased report is not reachable through the audited reveal either.
+    // `removeIncident` overwrites `rawDescription` with a tombstone, so there is
+    // nothing left to disclose — but a reveal that returned the placeholder
+    // would still write an `incident.raw_viewed` row against a report that no
+    // longer has a reporter, which reads as a coordinator having looked at
+    // somebody's words. Not found is the truthful answer.
+    where: { id: incidentId, villageId, status: { not: "REMOVED" } },
     select: { id: true, reference: true, rawDescription: true },
   });
 

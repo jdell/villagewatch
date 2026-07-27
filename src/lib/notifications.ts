@@ -244,6 +244,9 @@ async function residentsToNotify(
   const candidates = await prisma.user.findMany({
     where: {
       villageId: incident.villageId,
+      // A closed account keeps its row so the audit trail and `reporterId` still
+      // resolve (see `eraseAccount()`), but it is nobody's phone any more.
+      deletedAt: null,
       notifyPush: true,
       notifyMinSeverity: {
         in: Object.values(SEVERITY_META)
@@ -430,6 +433,7 @@ export async function notifyAdminsOfCoordinatorRequest(input: {
   // would otherwise be silently missing from every alert.
   const admins = await prisma.user.findMany({
     where: {
+      deletedAt: null,
       OR: emails.map((email) => ({
         email: { equals: email, mode: "insensitive" as const },
       })),
@@ -506,7 +510,11 @@ export async function notifyCoordinatorsOfDigest(input: {
   }
 
   const coordinators = await prisma.user.findMany({
-    where: { villageId: input.villageId, role: { in: [...COORDINATOR_ROLES] } },
+    where: {
+      villageId: input.villageId,
+      deletedAt: null,
+      role: { in: [...COORDINATOR_ROLES] },
+    },
     select: { id: true },
   });
 

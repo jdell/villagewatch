@@ -28,6 +28,11 @@ type IncidentActionsProps = {
   status: IncidentStatus;
   /** Viewer is the reporter and the report has not been reviewed. */
   canEdit: boolean;
+  /**
+   * Viewer is the reporter and the report is still theirs to erase — which
+   * includes a published one, unlike `canEdit`. See `canReporterErase`.
+   */
+  canDelete: boolean;
   /** Viewer is a coordinator, moderator or admin in this village. */
   canModerate: boolean;
 };
@@ -77,7 +82,7 @@ function DeleteButton() {
       ) : (
         <Trash2 className="size-4" aria-hidden />
       )}
-      Withdraw report
+      Yes, delete it
     </button>
   );
 }
@@ -86,6 +91,7 @@ export function IncidentActions({
   incidentId,
   status,
   canEdit,
+  canDelete,
   canModerate,
 }: IncidentActionsProps) {
   const [moderation, moderate] = useActionState(moderateFromDetailAction, IDLE);
@@ -99,66 +105,82 @@ export function IncidentActions({
   }, [moderation]);
 
   useEffect(() => {
-    // A successful withdrawal redirects, so only the failure path lands here.
+    // A successful deletion redirects and toasts from the list page, so only
+    // the failure path lands here.
     if (removal.message && !removal.ok) toast.error(removal.message);
   }, [removal]);
 
   const inQueue = status === "DRAFT" || status === "PENDING_REVIEW";
   const archivable = status === "PUBLISHED" || status === "RESOLVED";
+  const reporterSection = (canEdit && inQueue) || canDelete;
 
-  if (!canEdit && !canModerate) return null;
+  if (!reporterSection && !canModerate) return null;
 
   return (
     <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
       <h2 className="text-sm font-semibold text-slate-900">Actions</h2>
 
-      {canEdit && inQueue && (
+      {reporterSection && (
         <div className="mt-3">
           <p className="text-xs text-slate-500">
-            Your report is still with your coordinator, so you can still change
-            it or take it back.
+            {canEdit && inQueue
+              ? "Your report is still with your coordinator, so you can still change it or take it back."
+              : "This is your report. You can delete it at any time, whatever has happened to it since."}
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Link
-              href={`/incidents/${incidentId}/edit`}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              <Pencil className="size-4" aria-hidden />
-              Edit
-            </Link>
-
-            {confirming ? (
-              <form action={remove} className="flex items-center gap-2">
-                <input type="hidden" name="incidentId" value={incidentId} />
-                <span className="text-sm text-slate-600">Delete for good?</span>
-                <DeleteButton />
-                <button
-                  type="button"
-                  onClick={() => setConfirming(false)}
-                  className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-medium text-slate-500 transition hover:text-slate-700"
-                >
-                  Keep it
-                </button>
-              </form>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirming(true)}
+            {canEdit && inQueue && (
+              <Link
+                href={`/incidents/${incidentId}/edit`}
                 className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
-                <Trash2 className="size-4" aria-hidden />
-                Withdraw
-              </button>
+                <Pencil className="size-4" aria-hidden />
+                Edit
+              </Link>
             )}
+
+            {canDelete &&
+              (confirming ? (
+                <form action={remove} className="flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="incidentId" value={incidentId} />
+                  <span className="text-sm font-medium text-slate-700">
+                    Are you sure? This cannot be undone.
+                  </span>
+                  <DeleteButton />
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(false)}
+                    className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                  >
+                    Keep it
+                  </button>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirming(true)}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                  Delete report
+                </button>
+              ))}
           </div>
+
+          {canDelete && (
+            <p className="mt-2.5 text-xs leading-relaxed text-slate-500">
+              What you wrote and any photos are deleted, and the report comes off
+              the map. The record that a coordinator reviewed it stays in the
+              village&rsquo;s audit trail.
+            </p>
+          )}
         </div>
       )}
 
       {canModerate && (inQueue || archivable) && (
         <form
           action={moderate}
-          className={`${canEdit && inQueue ? "mt-5 border-t border-slate-100 pt-5" : "mt-3"}`}
+          className={`${reporterSection ? "mt-5 border-t border-slate-100 pt-5" : "mt-3"}`}
         >
           <input type="hidden" name="incidentId" value={incidentId} />
 

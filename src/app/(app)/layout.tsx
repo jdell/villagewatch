@@ -32,6 +32,17 @@ export default async function AppLayout({
   // proper has nothing to show them — every query is scoped by `villageId` and
   // they do not have one — so finish the job instead of rendering an empty
   // shell. `/welcome` sits outside this group, so this cannot loop.
+  // A closed account (UK GDPR Article 17 — see `src/lib/erasure.ts`). The two
+  // sign-in routes refuse it, so reaching here means a session that was already
+  // open when the resident closed the account, most likely the very tab they
+  // closed it from. `/account-closed` sits outside this group and signs them
+  // out; sending them to `/welcome` instead would offer them a village to
+  // rejoin, and `/login` would invite them to sign in to the one thing they
+  // cannot.
+  if (session.profile?.deletedAt) {
+    redirect("/account-closed");
+  }
+
   if (process.env.DATABASE_URL && !session.profile) {
     redirect("/welcome");
   }

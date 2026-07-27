@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
   // that would actually have written a row consume a slot — a rejected payload
   // costs a Zod parse, and the thing worth limiting is what lands in the
   // coordinator's queue.
-  const quota = rateLimit(RATE_LIMITS.incidentCreate, session.user.id);
+  const quota = await rateLimit(RATE_LIMITS.incidentCreate, session.user.id);
 
   if (!quota.ok) {
     return tooManyRequests(

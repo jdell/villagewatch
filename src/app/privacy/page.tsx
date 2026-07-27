@@ -365,6 +365,14 @@ export default function PrivacyPage() {
             details removed. Reports already published stay up, detached from
             the account.
           </Definition>
+          <Definition term="Accounts you close yourself — immediately">
+            Closing your own account from Settings does not wait for any of the
+            periods above. Every report you filed is deleted there and then, the
+            photos are removed from storage, and your name, address, phone
+            number and approximate home location are erased from your profile.
+            Your email address is kept, because it is what stops the closed
+            account being signed into again.
+          </Definition>
         </DefinitionList>
       </LegalSection>
 
@@ -381,18 +389,25 @@ export default function PrivacyPage() {
             them.
           </Definition>
           <Definition term="Rectification">
-            Have inaccurate details corrected. You can edit or withdraw your own
-            report yourself, in the app, at any point before a coordinator has
-            reviewed it.
+            Have inaccurate details corrected. You can edit your own report
+            yourself, in the app, at any point before a coordinator has reviewed
+            it.
           </Definition>
           <Definition term="Erasure">
-            Ask for your data to be deleted. We will always delete your account
-            details and your original report wording. A published report that
-            other residents have relied on may be kept in its anonymised form
-            where there is an overriding public-task reason, and we will tell you
-            if that applies and why. Audit records cannot be deleted — they are
-            the accountability trail, and a trail that can be erased on request
-            is not one.
+            Ask for your data to be deleted — and you do not have to ask us. Any
+            report you have filed has a <strong>Delete</strong> button on its own
+            page, whatever stage it has reached, published included; and{" "}
+            <strong>Settings</strong> has a <strong>Delete my account</strong>{" "}
+            option that does the same to every report you have ever filed and
+            closes the account. Both act immediately. Deleting a report removes
+            its wording, its location and any photos or video, and takes it off
+            the map; the photos are deleted from our storage, not merely hidden.
+            What is left is the reference, the category, how serious it was and
+            the date — a report the village can still count without a word of
+            what you wrote. Audit records cannot be deleted: they are the
+            accountability trail, and a trail that can be erased on request is
+            not one. They record what a coordinator decided about a report, not
+            what the report said.
           </Definition>
           <Definition term="Portability">
             Receive the data you gave us in a structured, machine-readable

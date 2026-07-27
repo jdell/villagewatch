@@ -270,6 +270,7 @@ export const INCIDENT_STATUS_LABELS = {
   RESOLVED: "Resolved",
   REJECTED: "Rejected",
   ARCHIVED: "Archived",
+  REMOVED: "Erased",
 } satisfies Record<IncidentStatus, string>;
 
 /** Statuses a resident is allowed to see on the map and public list. */
@@ -277,6 +278,18 @@ export const PUBLIC_INCIDENT_STATUSES = [
   "PUBLISHED",
   "RESOLVED",
 ] as const satisfies readonly IncidentStatus[];
+
+/**
+ * The status an erased report holds. See `src/lib/erasure.ts`.
+ *
+ * Most reads are narrowed to `PUBLIC_INCIDENT_STATUSES` and exclude it for free.
+ * The four that are deliberately wider — the detail page, its metadata, the CSV
+ * export and the two moderation lookups — say `status: { not: "REMOVED" }`
+ * instead, which is short enough to read in the predicate it sits in. This
+ * constant is here so the value has one definition to grep for and one place
+ * that explains it, not to be threaded through those five queries.
+ */
+export const ERASED_INCIDENT_STATUS = "REMOVED" as const satisfies IncidentStatus;
 
 export const USER_ROLE_LABELS = {
   RESIDENT: "Resident",
@@ -656,10 +669,34 @@ export const AUDIT_ACTIONS = [
     tone: "neutral",
   },
   {
+    value: "incident.deleted",
+    label: "Deleted by the reporter",
+    description:
+      "A resident erased their own report — media and tags destroyed, the row kept as REMOVED",
+    tone: "negative",
+  },
+  {
+    /**
+     * The action `deleteIncidentAction` wrote before erasure replaced the
+     * withdrawal (`incident.deleted` above). Kept because the trail is
+     * append-only (domain rule 7): rows written by the older build are still in
+     * it, and dropping the entry here would render them as a raw string in the
+     * viewer and lose them from the filter.
+     */
     value: "incident.delete",
     label: "Withdrawn",
-    description: "The reporter deleted their own report",
+    description: "The reporter withdrew their own report (before erasure)",
     tone: "negative",
+  },
+  {
+    value: "account.deleted",
+    label: "Account closed",
+    description:
+      "A resident closed their own account — every report they filed was erased",
+    // Sensitive: it is the one action in this list that erases a batch of a
+    // village's reports at once, and the only one whose subject is a person
+    // rather than a report.
+    tone: "sensitive",
   },
   {
     value: "incident.raw_viewed",
@@ -910,6 +947,21 @@ export const RETENTION_MEDIA_BATCH = 500;
 
 /** Paths per `storage.remove()` call. The API takes an array; this bounds it. */
 export const RETENTION_STORAGE_CHUNK = 100;
+
+/**
+ * How long a closed rate-limit window is kept before the nightly sweep drops it.
+ *
+ * Not a privacy figure and deliberately not in `RETENTION` above — nothing in
+ * `/privacy` states it, because a `rate_limit` row holds an auth user id, an
+ * action name and a count, and says nothing about what was reported. It is here
+ * because the table would otherwise grow one row per resident per rule per
+ * window forever, and the only job that runs nightly is the retention cron.
+ *
+ * Longer than the longest window (`RATE_LIMITS.incidentCreate`, a day) so a
+ * sweep can never delete a window that is still open and hand somebody a fresh
+ * quota mid-day.
+ */
+export const RATE_LIMIT_RETENTION_DAYS = 7;
 
 /** Minimum age to hold an account. Reports about under-16s are still welcome. */
 export const MINIMUM_AGE = 16;

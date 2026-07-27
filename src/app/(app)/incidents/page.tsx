@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ClipboardList, Filter, Plus } from "lucide-react";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
+import { FlashToast } from "@/components/flash-toast";
 import { IncidentCard } from "@/components/incident-card";
 import { NoVillage } from "@/components/no-village";
 import { requireSession } from "@/lib/auth";
@@ -32,7 +33,7 @@ export const metadata: Metadata = { title: "Incidents" };
 export default async function IncidentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; severity?: string }>;
+  searchParams: Promise<{ type?: string; severity?: string; deleted?: string }>;
 }) {
   const session = await requireSession("/incidents");
   const villageId = session.profile?.villageId;
@@ -91,6 +92,9 @@ export default async function IncidentsPage({
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
+      {/* Set by the redirect at the end of `deleteIncidentAction`. */}
+      {params.deleted === "1" && <FlashToast message="Report deleted" />}
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">

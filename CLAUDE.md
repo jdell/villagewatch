@@ -113,6 +113,8 @@ src/
                               sign-up — outside (app), or it would loop
     privacy/                  UK GDPR privacy notice
     terms/                    Terms of use + community guidelines
+    account-closed/           Where a closed account lands — public, outside
+                              (app) and outside AUTH_ROUTES, or it would loop
     (app)/                    Authenticated shell (sidebar); force-dynamic
       layout.tsx              requireSession() — the real auth boundary
       admin/coordinators/     Platform-admin queue — the only page not scoped
@@ -140,6 +142,7 @@ src/
     api/coordinator-requests/   POST apply (resident), GET list (admin only)
     api/coordinator-requests/[id]/  PATCH approve or reject — admin only
     api/incidents/            POST create report (writes AI fields + tags)
+    api/incidents/[id]/       DELETE the reporter's own report — 204/403/404
     api/incidents/process/    POST run a draft through Claude; writes nothing
     api/incidents/media/      POST blurred upload, DELETE abandoned attachment
     api/notifications/        POST re-send a published incident's alert
@@ -170,6 +173,7 @@ src/
     incident-actions.tsx      Detail-page actions — reporter and coordinator
     incident-edit-form.tsx    Five-field edit, no wizard, no re-anonymisation
     settings-form.tsx         Profile + notification preferences, one action
+    delete-account.tsx        The danger zone — type your email to confirm
     push-registration.tsx     OneSignal init, login(userId), consent banner
     onboarding-tour.tsx       Four-step first-run tour; useSyncExternalStore
     service-worker.tsx        Registers /sw.js in production only
@@ -188,6 +192,8 @@ src/
     admin.ts                  ADMIN_EMAILS — the platform admin allow-list
     slack.ts                  Staff webhook, fire-and-forget, server only
     moderation.ts             applyModeration + audited readRawDescription
+    erasure.ts                removeIncident + eraseAccount — Article 17,
+                              tombstones the row and deletes the media
     coordinator-requests.ts   Apply, approve, reject — the only place a role
                               is ever raised to COORDINATOR
     notifications.ts          OneSignal dispatch, audience rules — server only
@@ -198,7 +204,8 @@ src/
                               coordinator-decision
     ai/weekly-digest.ts       Claude weekly summary, structured, typed failures
     geo.ts                    fuzzCoordinates — server only, uses node:crypto
-    rate-limit.ts             In-memory fixed-window limiter — server only
+    rate-limit.ts             Fixed windows counted in `rate_limit` — server only
+    erasure.ts                Article 17 — tombstone a report, close an account
     format.ts                 Time-ago, dates, sizes — en-GB
     incidents.ts              PUBLIC_INCIDENT_SELECT (no rawDescription), mappers
     ai/client.ts              Anthropic client + isAiConfigured — server only
@@ -406,9 +413,9 @@ separately by everything else.
 
 ## Rate limiting
 
-`src/lib/rate-limit.ts`. Fixed windows, in memory, keyed by Supabase auth user
-id — never by IP, because a village shares a broadband line often enough that
-an IP limit would silence a household.
+`src/lib/rate-limit.ts`. Fixed windows counted in the `rate_limit` table, keyed
+by Supabase auth user id — never by IP, because a village shares a broadband
+line often enough that an IP limit would silence a household.
 
 | Route                      | Limit          |
 | -------------------------- | -------------- |
@@ -419,15 +426,87 @@ an IP limit would silence a household.
   malformed request costs a Zod parse; burning a slot on one would let a
   client-side bug spend a reporter's quota without a single call reaching
   Claude or a single row reaching the queue.
-- The counters live in the process, so on Vercel they are **per lambda
-  instance** and reset on a cold start. That stops a retry loop or one resident
-  hammering "Reprocess"; it does not stop a distributed attacker. When shared
-  state arrives, replace the `Map` and leave every call site alone.
+- **It was a `Map` in the process until now, and that meant the limits were not
+  limits.** On Vercel the counters were per lambda instance and reset on every
+  cold start, so an idle deployment handed a fresh quota to whoever woke it up
+  — precisely the caller worth limiting. The table is the shared state that
+  comment always said was the fix, and the only change at the two call sites
+  was an `await`.
+- **One statement per check.** `INSERT ... ON CONFLICT (user_id, action,
+  window_start) DO UPDATE SET count = count + 1 RETURNING count`, through
+  `$queryRaw`. Not `prisma.upsert`, which is a read and a write that two
+  concurrent requests can interleave between — the exact race a limiter exists
+  to lose gracefully.
+- **`windowStart` is aligned to a multiple of the rule's length**, not set from
+  the first call. That is what lets every instance compute the same key from
+  the clock alone, with nothing to agree on and no read before the write.
+- **It fails open.** A database error is logged and the request is allowed. A
+  limiter that failed closed would turn a blip into "you cannot file a report",
+  and both limited routes need the database for their real work anyway.
 - A 429 carries `Retry-After` and an `error` string. The wizard already treats
   any non-200 from the AI route as "no rewrite this time" and falls back to the
   reporter's own wording — **being rate limited must never block filing**.
+- **The table is server-only.** `rls_policies.sql` enables RLS and writes no
+  policy at all: own-rows SELECT would tell a caller how much quota is left
+  before spending it, and own-rows UPDATE or DELETE would let them reset it.
+  `userId` is `TEXT` with no foreign key, so a closed account cannot clear its
+  counters by re-registering.
+- Old windows are swept nightly by `/api/cron/retention` at
+  `RATE_LIMIT_RETENTION_DAYS` (7). Longer than the longest window, so a sweep
+  can never reopen one that is still counting.
 - `POST /api/notifications` is coordinator-only and already audited, so it has
   no user-facing limit.
+
+## The right to erasure
+
+`src/lib/erasure.ts`, UK GDPR Article 17. A resident can delete a report they
+filed and can close their account. Two entry points, one implementation:
+`DELETE /api/incidents/[id]` and the "Delete report" button both call
+`removeIncident`; `/settings` calls `eraseAccount`.
+
+- **The row survives as `REMOVED`; its contents do not.** `AuditLog.entityId`
+  points at the incident and the trail is append-only (domain rule 7), so a hard
+  delete would leave the trail naming an id that resolves to nothing. What makes
+  keeping the row acceptable is that the `TOMBSTONE` object in that file clears
+  everything personal — `rawDescription` included. A status flip alone would be
+  erasure in the interface and nothing at all in the database.
+- **`reporterId` is severed.** It is the last link between the row and a person.
+  The consequence is worth knowing rather than discovering: the reporter cannot
+  see their own tombstone afterwards, because every reporter-scoped query keys
+  on that column.
+- **Clearing `lat`/`lng` clears the PostGIS point for free** — the trigger in
+  `postgis.sql` nulls `location_point` whenever either coordinate is null.
+- **Objects before rows**, the same order the retention job uses. Deleting the
+  `IncidentMedia` row first would drop the only record of the storage path and
+  orphan the file forever. If storage is unconfigured or a `remove()` errors,
+  the rows stay and tonight's retention sweep finds them again.
+- **The audit row is written before anything goes**, so it exists while there is
+  still something to describe. `incident.deleted` and `account.deleted`;
+  `incident.delete` stays in `AUDIT_ACTIONS` because rows written by the older
+  withdraw button are still in the trail.
+- **Every status except `REMOVED` can be erased** (`canReporterErase`). The old
+  withdraw button covered the queue only, on the reasoning that a published
+  report belongs to the village — a fair account of *editing* and none at all of
+  erasure. It was also inconsistent: it allowed erasing a `PUBLISHED` report but
+  not a `REJECTED` one, which is the report most likely to be full of a
+  resident's unedited words.
+- **The CSV export excludes `REMOVED`** and is the one query where that had to be
+  added by hand — every other read is already narrowed to a status list, and a
+  spreadsheet gets emailed and forwarded.
+- **Closing an account does not delete the `User` row.** `deletedAt` is what
+  closes it, and three gates read it: `POST /api/auth/login`,
+  `/api/auth/callback` and `(app)/layout.tsx`, all of which land on
+  `/account-closed`. `residentsToNotify` reads it too. It is deliberately **not**
+  enforced in `getSession()` — that returns null for "signed out",
+  `requireSession()` sends null to `/login`, and `proxy.ts` bounces a signed-in
+  browser off `/login`, so a closed account would ricochet between the two.
+- **`deleted_at` is in the privilege-column trigger** alongside `role`,
+  `village_id` and `verified_at`. Without that clause a closed account could sign
+  in to Supabase Auth directly with the anon key, null the column, and let itself
+  back in past both sign-in gates.
+- The Supabase `auth.users` row is still not deleted — that is an admin API call
+  with no undo and it wants its own reviewed route, the same open item
+  `RETENTION.inactiveAccountMonths` has.
 
 ## The legal pages
 
@@ -910,12 +989,22 @@ open:
   `incident-media` bucket exists, private. What has **not** happened: no
   production deployment, no Vercel environment variables, no cron has ever
   fired.
-- **`20260727113000_coordinator_requests` has not been applied anywhere**, and
-  neither has the `coordinator_requests` section of `rls_policies.sql`. The
-  migration is hand-written, like the WhatsApp one before it, and has never met
-  a database. Apply it, then re-run the whole RLS file — a new table arrives
-  with row-level security off, so until that second step an application sitting
-  in the queue is readable through PostgREST by anyone with a key.
+- **Two migrations have not been applied anywhere.**
+  `20260727113000_coordinator_requests` and
+  `20260727150000_erasure_and_rate_limits` are both hand-written, like the
+  WhatsApp one before them, and neither has met a database. Apply them in order,
+  then re-run the whole RLS file — a new table arrives with row-level security
+  off, so until that second step an application sitting in the queue is readable
+  through PostgREST by anyone with a key, and every resident's remaining quota
+  is readable and resettable.
+  The erasure migration is the one to watch. It carries
+  `ALTER TYPE "incident_status" ADD VALUE 'REMOVED'`, which is only safe inside
+  Prisma's migration transaction because nothing else in that file uses the new
+  value — a statement in the same transaction that referenced it would fail with
+  "unsafe use of new value of enum type". Keep it that way if you edit the file.
+  The RLS file also gained `deleted_at` in `users_guard_privilege_columns`;
+  until it is re-run, a closed account can null its own column through PostgREST
+  and sign back in.
 - **Only Cambridgeshire is seeded.** The 270 parishes from
   `data/cambridgeshire-villages.json` are in the real database as `PENDING`,
   seeded from the committed snapshot rather than the CSV (`--file`, because
@@ -1024,8 +1113,13 @@ open:
 - The incident list shows the most recent `INCIDENT_PAGE_SIZE` and does not
   paginate; the map draws up to `MAX_MAP_INCIDENTS` pins with no clustering;
   the moderation queue shows `MODERATION_QUEUE_SIZE` with no paging or filter.
-- Rate limiting is per-process and resets on a cold start — see the section
-  above. Shared state is the fix, and it is not here.
+- **Erasure has never run against real data.** `removeIncident` and
+  `eraseAccount` both delete files from the bucket and neither has been tried
+  against one. Watch the first deletion and check the object is gone, the same
+  caution the retention job carries and for the same reason.
+- Closing an account leaves its Supabase `auth.users` row in place — see The
+  right to erasure. The address is therefore still held by Supabase Auth after
+  the profile has been scrubbed, which `/privacy` should say before launch.
 - No Content-Security-Policy. It needs a per-request nonce from `src/proxy.ts`;
   the other security headers are in `next.config.ts`. Note that a CSP now has
   three script origins to account for, not two: the App Router bootstrap, the

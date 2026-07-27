@@ -70,6 +70,13 @@ enum IncidentStatus {
   RESOLVED
   REJECTED
   ARCHIVED
+  /// Erased at the reporter's request (UK GDPR Article 17). The row survives
+  /// because the audit trail references it (domain rule 7) and because a
+  /// coordinator's decisions on it are a record of something that happened; the
+  /// media, the tags and every public surface do not. Never in
+  /// `PUBLIC_INCIDENT_STATUSES`, and deliberately not reachable by moderation —
+  /// only the reporter puts a report here. See `src/lib/erasure.ts`.
+  REMOVED
 
   @@map("incident_status")
 }
@@ -229,6 +236,20 @@ model User {
 
   onboardedAt  DateTime? @map("onboarded_at")
   lastActiveAt DateTime? @map("last_active_at")
+
+  /// Set when the resident closes their own account (UK GDPR Article 17).
+  ///
+  /// The row stays. `AuditLog.actorId` points at it, `Incident.reporterId`
+  /// points at it, and both are the record of who did what — deleting the row
+  /// would sever a trail that is meant to be append-only (domain rule 7).
+  /// What closure actually does is in `src/lib/erasure.ts`: every report the
+  /// resident filed goes to `REMOVED`, their media is deleted from storage, and
+  /// this timestamp is what stops the account being used again.
+  ///
+  /// The Supabase `auth.users` row is deliberately **not** deleted here. That is
+  /// an admin API call with no undo, and the sign-in gates below are what make
+  /// this column mean something in the meantime.
+  deletedAt DateTime? @map("deleted_at")
 
   reportedIncidents  Incident[]     @relation("IncidentReporter")
   moderatedIncidents Incident[]     @relation("IncidentModerator")
@@ -534,6 +555,55 @@ model CoordinatorRequest {
   @@index([userId, createdAt(sort: Desc)])
   @@index([villageId, status])
   @@map("coordinator_requests")
+}
+
+/// One fixed rate-limit window for one subject and one action.
+///
+/// This table exists because the previous limiter kept its counters in a `Map`
+/// in the process. On Vercel that is per lambda instance and resets on every
+/// cold start, so the stated limits were not limits — a caller who could trigger
+/// scale-out got a multiple of them, and an idle deployment handed out a fresh
+/// quota to whoever woke it up. Shared state is the fix, and Postgres is already
+/// here.
+///
+/// **Server-only.** `prisma/sql/rls_policies.sql` grants `authenticated` nothing
+/// at all on this table: a client that could read it would learn how much quota
+/// is left before spending it, and one that could write it could clear its own
+/// counter. `src/lib/rate-limit.ts` is the only thing that touches it.
+model RateLimit {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// The Supabase auth user id — text, and deliberately **not** a foreign key.
+  ///
+  /// A rate limit is about a caller, not about a resident. Keying it to `users`
+  /// would mean a closed account's counters cascaded away, which is a way to
+  /// reset a limit by re-registering, and it would make the limiter depend on a
+  /// profile row existing at all. Old rows are swept by the retention cron
+  /// instead — see `RATE_LIMIT_RETENTION_DAYS`.
+  userId String @map("user_id")
+
+  /// `RateLimitRule.name` — "ai-process", "incident-create".
+  action String
+
+  /// Start of the fixed window, aligned to a multiple of the rule's window
+  /// length so that every caller in the same window computes the same value and
+  /// the unique constraint below can carry the upsert.
+  windowStart DateTime @map("window_start") @db.Timestamptz(3)
+
+  /// Calls counted in this window. Incremented past the limit rather than
+  /// clamped: the comparison is `count <= limit`, and a rejected call still
+  /// consumes, so hammering a closed window does not buy a free probe.
+  count Int @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  /// What makes the counter atomic. `INSERT ... ON CONFLICT (user_id, action,
+  /// window_start) DO UPDATE SET count = count + 1` is one statement, so two
+  /// concurrent requests cannot both read 4 and both write 5.
+  @@unique([userId, action, windowStart])
+  /// For the nightly sweep, which deletes by age and by nothing else.
+  @@index([windowStart])
+  @@map("rate_limit")
 }
 
 /// Append-only trail of privileged actions — moderation, role changes, and
