@@ -35,6 +35,14 @@ name: Database
 #   * A `DIRECT_URL` secret: the Supabase **session pooler**, port 5432, user
 #     `postgres.<ref>`. Not the pooled 6543 URL — migrations cannot run through
 #     pgBouncer — and not `db.<ref>.supabase.co`, which is IPv6-only.
+#   * **It currently lives on the `Production` environment, not at the
+#     repository level**, which is why both jobs below name that environment. An
+#     environment secret is invisible to a job that does not name one: the
+#     expression resolves to an empty string rather than failing, so the only
+#     symptom is a workflow that reports success and applies nothing. If it is
+#     moved to Settings → Secrets and variables → Actions, `preflight` no longer
+#     needs the environment — but `migrate` should keep it, because that is what
+#     a required reviewer would attach to.
 #   * Nothing else. Both SQL files are re-runnable by construction: every policy
 #     and trigger is dropped before it is created, indexes are IF NOT EXISTS and
 #     functions are CREATE OR REPLACE.
@@ -50,9 +58,14 @@ name: Database
 # The gate is a separate job rather than an `if:` on each step because the
 # `secrets` context is not available to a job-level `if`, and because a job
 # reported as *skipped* says "there was nothing to do" far more clearly than a
-# green job whose every step was skipped. It also means a manual run against an
-# unconfigured repository never asks a reviewer to approve a deployment that
-# would do nothing.
+# green job whose every step was skipped.
+#
+# This used to claim a third benefit — that a run against an unconfigured
+# repository never asks a reviewer to approve a deployment that would do nothing.
+# That is no longer true and cannot be while the secret is an environment secret:
+# reading it means entering the environment, so `preflight` names it too and a
+# required reviewer would gate the check as well as the migration. Moving
+# DIRECT_URL to the repository level would buy the property back.
 #
 # It is deliberately loud about it: a `::notice::` and a line in the job summary,
 # so somebody who clicked Run workflow and expected a migration finds out why
@@ -60,10 +73,11 @@ name: Database
 #
 # ## Making it ask first
 #
-# The job names a `production` environment. Add a required reviewer to it under
-# Settings → Environments → production and every run waits for a human to
+# Both jobs name the `Production` environment. Add a required reviewer to it
+# under Settings → Environments → Production and every run waits for a human to
 # approve it, which is the closest thing to the review beat that reading a
-# hand-written migration used to provide.
+# hand-written migration used to provide. Expect to approve twice per run while
+# the secret lives there — once for `preflight` and once for `migrate`.
 
 on:
   push:
@@ -91,8 +105,17 @@ jobs:
   # Is there a database to migrate at all? No checkout and no install — this
   # exists only to turn "the secret is set" into something the job below can be
   # gated on, because `secrets` is not in scope for a job-level `if:`.
+  #
+  # It names the same environment as `migrate`, and it has to. DIRECT_URL is an
+  # *environment* secret on Production, and a job that does not name an
+  # environment is not given one — `secrets.DIRECT_URL` is simply empty there,
+  # with no warning and no error. This job read that empty string, reported
+  # `configured=false`, and skipped the migration on every run for as long as it
+  # has existed. If the secret is ever moved to the repository level, this line
+  # can come off again; while it lives on the environment, it cannot.
   preflight:
     runs-on: ubuntu-latest
+    environment: Production
     outputs:
       configured: ${{ steps.check.outputs.configured }}
 
@@ -115,7 +138,11 @@ jobs:
             echo
             echo "No \`DIRECT_URL\` secret is set, so there is nothing to migrate against and this run applied nothing."
             echo
-            echo "To enable it, add \`DIRECT_URL\` under **Settings → Secrets and variables → Actions**."
+            echo "To enable it, add \`DIRECT_URL\` under **Settings → Secrets and variables → Actions**,"
+            echo "either at the repository level or on the \`Production\` environment — this job names"
+            echo "that environment, so it can read either. A secret on a *different* environment is"
+            echo "invisible here and looks exactly like no secret at all."
+            echo
             echo "It must be the Supabase **session pooler** on port 5432 (user \`postgres.<ref>\`) —"
             echo "not the pooled 6543 URL, which is pgBouncer and cannot run migrations,"
             echo "and not \`db.<ref>.supabase.co\`, which is IPv6-only."
@@ -125,7 +152,7 @@ jobs:
     needs: preflight
     if: needs.preflight.outputs.configured == 'true'
     runs-on: ubuntu-latest
-    environment: production
+    environment: Production
 
     env:
       DIRECT_URL: ${{ secrets.DIRECT_URL }}

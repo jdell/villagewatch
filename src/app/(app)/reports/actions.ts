@@ -4,6 +4,7 @@ import { requireCoordinator } from "@/lib/auth";
 import { generateReportNarrative } from "@/lib/ai/report-narrative";
 import type { ReportNarrative } from "@/lib/community-report";
 import { prisma } from "@/lib/prisma";
+import { getVillageController } from "@/lib/village";
 import { RATE_LIMITS, formatRetryAfter, rateLimit } from "@/lib/rate-limit";
 import {
   collectVillageReport,
@@ -75,10 +76,7 @@ export async function generateNarrativeAction(
     to: String(formData.get("to") ?? ""),
   });
 
-  const village = await prisma.village.findUnique({
-    where: { id: villageId },
-    select: { name: true, parishCouncil: true },
-  });
+  const village = await getVillageController(villageId);
 
   if (!village) {
     return {
