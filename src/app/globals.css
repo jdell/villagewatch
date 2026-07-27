@@ -116,6 +116,40 @@ body {
 }
 
 /*
+ * The mobile drawer's entrance.
+ *
+ * `app-shell.tsx` mounts the drawer on a state flip, so without this it simply
+ * exists — indistinguishable, on a phone over a full-screen map, from the page
+ * having navigated somewhere. 180ms of travel says where it came from and that
+ * the map is still behind it, which is the whole point of a drawer.
+ *
+ * Two keyframes rather than one on a shared parent: the panel travels and the
+ * backdrop only fades. Animating the wrapper would drag the backdrop in from
+ * off-screen with the panel and dim the page from the left edge inward.
+ *
+ * The panel's `transform` makes it a containing block for any fixed-position
+ * descendant. It has none today, and anything fixed added inside the drawer
+ * would anchor to the panel rather than the viewport — put it in the wrapper.
+ */
+@keyframes vw-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes vw-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/*
  * Onboarding tour highlight.
  *
  * The tour writes `data-tour-step` onto <body> and each highlightable element

@@ -69,7 +69,14 @@ export function MapView({
     // `map-surface` isolates Leaflet's z-index scale from the rest of the page
     // — see the note in globals.css. Without it the zoom control at 1000 sits
     // over the app shell's mobile drawer.
-    <div className="map-surface relative h-[calc(100vh-3.5rem)] w-full lg:h-screen">
+    // `dvh`, not `vh`: `100vh` is the *large* viewport, the height the window
+    // would have with the browser chrome retracted. On a phone with the address
+    // bar showing, `100vh - 3.5rem` is therefore taller than what is on screen,
+    // so the severity legend and the OpenStreetMap attribution sit underneath
+    // Safari's toolbar and the page acquires a scroll it should not have. The
+    // 3.5rem is the mobile top bar in `app-shell.tsx` — same height, and the two
+    // have to keep matching.
+    <div className="map-surface relative h-[calc(100dvh-3.5rem)] w-full lg:h-dvh">
       <IncidentMap
         incidents={visible}
         center={center}

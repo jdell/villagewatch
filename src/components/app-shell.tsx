@@ -104,6 +104,19 @@ export function AppShell({
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
+  /*
+    `py-2.5` stays, on the phone as well as the desktop column, and the drawer's
+    compactness is bought from the space *between* sections instead — see the
+    band below.
+
+    Dropping to `py-2` was tried and reverted: it takes the row from 40px to
+    36px, and 40px is already under the 44px touch target both Apple and the
+    WCAG 2.5.5 guidance ask for. This is an app somebody opens one-handed to
+    report something happening outside their window, in a village whose watch
+    scheme skews older than the average phone user. Four pixels of whitespace is
+    not worth a mis-tap there, and the reachability problem was the panel not
+    scrolling, not the rows being tall.
+  */
   function linkClass(href: string) {
     return `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
       isActive(href)
@@ -154,7 +167,7 @@ export function AppShell({
         `overscroll-contain` so a flick that reaches the end of this list does not
         chain into the page — or into the Leaflet map — behind the drawer.
       */}
-      <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain lg:mt-6 lg:gap-6">
+      <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain lg:mt-6 lg:gap-6">
         <Link
           href="/incidents/new"
           data-tour="report"
@@ -277,9 +290,14 @@ export function AppShell({
             type="button"
             aria-label="Close navigation"
             onClick={() => setMobileOpen(false)}
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            className="absolute inset-0 animate-[vw-backdrop-in_180ms_ease-out] bg-slate-900/60 backdrop-blur-sm motion-reduce:animate-none"
           />
-          <aside className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-brand-950 shadow-xl">
+          {/*
+            The travel is what makes this read as a drawer over the map rather
+            than a new page — see the keyframes in globals.css, which also say
+            why the panel and the backdrop animate separately.
+          */}
+          <aside className="absolute inset-y-0 left-0 w-72 max-w-[85vw] animate-[vw-drawer-in_180ms_ease-out] bg-brand-950 shadow-xl motion-reduce:animate-none">
             {sidebar}
           </aside>
         </div>
