@@ -54,7 +54,7 @@ const FEATURES = [
   {
     icon: EyeOff,
     title: 'AI anonymisation',
-    body: 'The original text is kept under lock and key for coordinators. What neighbours read is a rewritten version with identifying details removed, and photos with faces and plates blurred.',
+    body: 'The original text is kept under lock and key for coordinators. What neighbours read is a rewritten version with identifying details removed, and photos with every face blacked out.',
   },
   {
     icon: Radar,
@@ -99,7 +99,7 @@ const PIN_COLOR = Object.fromEntries(SEVERITIES.map((s) => [s.value, s.pin]));
 const FAQS = [
   {
     question: 'Is my data safe?',
-    answer: `Reports are held in a UK-region database and the app is served from London. Your exact location is never stored — coordinates are moved by about a hundred metres before they are written down, so the pin lands on the right street and not on your door. Photographs are blurred on your own phone before they are uploaded, which also strips the GPS tag cameras write into every picture. Reports are archived after ${RETENTION.incidentArchiveMonths} months and photographs are deleted after ${RETENTION.mediaDeleteMonths}.`,
+    answer: `Reports are held in a UK-region database and the app is served from London. Your exact location is never stored — coordinates are moved by about a hundred metres before they are written down, so the pin lands on the right street and not on your door. Faces in a photograph are covered on your own phone before it is uploaded — a black box by default, or heavy pixelation if you prefer — which also strips the GPS tag cameras write into every picture. Reports are archived after ${RETENTION.incidentArchiveMonths} months and photographs are deleted after ${RETENTION.mediaDeleteMonths}.`,
   },
   {
     question: 'Who can see what I report?',

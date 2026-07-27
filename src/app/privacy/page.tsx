@@ -33,11 +33,14 @@ export const metadata: Metadata = {
  * they have to keep matching it. If any of them changes, this page changes in
  * the same commit:
  *
- *   - Faces are blurred on the device and only the re-encoded canvas output is
+ *   - Faces are covered on the device and only the re-encoded canvas output is
  *     uploaded (domain rule 3, `src/lib/media/face-blur.ts`). The claim that an
- *     unblurred original never leaves the phone is the strongest promise on
- *     this page, and it is true because `POST /api/incidents/media` has no
- *     server-side blur fallback.
+ *     original with a face in it never leaves the phone is the strongest promise
+ *     on this page, and it is true because `POST /api/incidents/media` has no
+ *     server-side fallback. The reporter chooses between a black box (the
+ *     default) and heavy pixelation; both run in the same place, so the promise
+ *     holds either way and the notice names both rather than only the one that
+ *     used to exist.
  *   - Coordinates are jittered by `LOCATION_FUZZ_METERS` before they are stored
  *     (domain rule 2, `src/lib/geo.ts`).
  *   - Report text is sent to Anthropic for anonymisation
@@ -171,15 +174,16 @@ export default function PrivacyPage() {
       </LegalSection>
 
       <LegalSection id="not-collected" title="3. What we do not collect">
-        <Callout title="Unblurred photos never leave your device">
+        <Callout title="Photos with faces in them never leave your device">
           <p>
-            Face detection and blurring run in your browser, on your phone or
-            computer, before anything is sent. What gets uploaded is a
-            re-encoded copy of the blurred image — which also strips the EXIF
-            block, including the GPS tag that would otherwise say exactly where
-            the photo was taken. There is no server-side fallback that accepts
-            an unblurred original. If the blur cannot run, the upload does not
-            happen.
+            Face detection runs in your browser, on your phone or computer,
+            before anything is sent. Every face found is covered there and then
+            — by default with a solid black box, or with heavy pixelation if you
+            choose that instead. What gets uploaded is a re-encoded copy of the
+            covered image, which also strips the EXIF block, including the GPS
+            tag that would otherwise say exactly where the photo was taken.
+            There is no server-side fallback that accepts the original. If the
+            faces cannot be covered, the upload does not happen.
           </p>
         </Callout>
         <P>We also do not collect any of the following:</P>
@@ -242,7 +246,8 @@ export default function PrivacyPage() {
       <LegalSection id="ai" title="5. Automated processing with AI">
         <P>
           When you file a report, the text you wrote — and a still frame from a
-          photo, if you attached one and it has already been blurred — is sent to{" "}
+          photo, if you attached one and its faces have already been covered — is
+          sent to{" "}
           <strong>Anthropic</strong>, the company behind the Claude AI models, and
           processed on their servers. Claude rewrites the report with identifying
           details removed, suggests a category and a severity, and pulls out a

@@ -1,12 +1,17 @@
 /**
- * Client-side face blurring.
+ * Client-side face redaction.
  *
  * The privacy claim this module has to hold up: **the original file never
  * leaves the device**. Detection runs in the browser through MediaPipe's WASM
- * build, the blur is painted onto a canvas, and only the re-encoded canvas
+ * build, the cover is painted onto a canvas, and only the re-encoded canvas
  * output is ever handed to the uploader. Nothing here touches the network
  * except the one-off fetch of the WASM runtime and the ~2MB detector model,
  * both of which are static assets and carry no user data.
+ *
+ * There are two ways to cover a face — see `FaceRedactionMode`. The default is
+ * a solid black box; pixelation is the option, not the baseline. The functions
+ * are still named `blurFaces*` because that is what every caller and every
+ * screen calls the step, and renaming them would churn more than it explains.
  *
  * Re-encoding through a canvas has a second benefit that domain rule 3 depends
  * on: it drops every EXIF block, GPS tags included. There is no separate
@@ -80,11 +85,51 @@ const DETECT_FPS = 6;
 /** Extra padding on cached boxes, as a fraction of the box's longest edge. */
 const MOTION_MARGIN = 0.25;
 
-/** Approximate width of one mosaic cell, in output pixels. */
-const MOSAIC_CELL_PX = 12;
+/**
+ * Cells across the longest edge of a covered region, in `blur` mode.
+ *
+ * A *count*, not a pixel size. The old constant was a 12px cell, which meant the
+ * destruction scaled with the photo: a face 400px across survived as a 33-cell
+ * mosaic — enough structure that a jawline, a hairline and a pair of eye sockets
+ * are still there to be read. Pinning the count instead means every face is
+ * reduced to the same handful of blocks whatever its size on the sensor.
+ *
+ * Six is deliberately brutal. There is no amount of a person's face worth
+ * keeping in a report about their neighbour's shed.
+ */
+const MOSAIC_CELLS = 6;
 
-/** Gaussian radius laid over the mosaic, as a fraction of the box's longest edge. */
-const BLUR_RADIUS_RATIO = 0.12;
+/**
+ * Gaussian radius laid over the mosaic, as a fraction of the region's longest
+ * edge.
+ *
+ * Was 0.12, which the comment below described as cosmetic and which was — a
+ * smudge over a mosaic that was doing all the work. At 0.45 the pass is no
+ * longer cosmetic: it spreads each of the six cells across most of the region,
+ * so even the block boundaries stop carrying shape.
+ */
+const BLUR_RADIUS_RATIO = 0.45;
+
+/**
+ * How a detected face is taken out of the frame.
+ *
+ * - `redact` — a solid black rectangle. Nothing survives, nothing can be
+ *   argued about, and it is obvious to everyone who sees the photo that a
+ *   person was removed on purpose. The default.
+ * - `blur` — heavy pixelation plus a heavy Gaussian. Keeps the composition
+ *   readable (how many people, roughly where they stood, which way they faced),
+ *   which is occasionally what makes a report legible to a PCSO.
+ *
+ * `redact` is the default because the failure modes are not symmetrical. A
+ * redaction that was not needed costs a black rectangle in a photo of a hedge;
+ * a blur that was not heavy enough costs a resident their anonymity, in a file
+ * that has already been published to the village and cannot be recalled.
+ * Pixelation has a long history of being undone — the search space for a face
+ * behind a known mosaic is small enough to brute-force.
+ */
+export type FaceRedactionMode = "redact" | "blur";
+
+export const DEFAULT_REDACTION_MODE: FaceRedactionMode = "redact";
 
 const VIDEO_MIME_CANDIDATES = [
   "video/mp4;codecs=avc1.42E01E",
@@ -130,6 +175,8 @@ export type BlurProgress = {
 export type BlurOptions = {
   onProgress?: (progress: BlurProgress) => void;
   signal?: AbortSignal;
+  /** How faces are covered. Defaults to `DEFAULT_REDACTION_MODE`. */
+  mode?: FaceRedactionMode;
 };
 
 export type BlurredMedia = {
@@ -150,6 +197,13 @@ export type BlurredMedia = {
   framesScanned: number;
   /** True when the clip was cut at `MAX_VIDEO_SECONDS`. */
   truncated: boolean;
+  /**
+   * How the faces were covered. Recorded per file rather than read back off the
+   * control, because the control can be changed after a file is processed and
+   * this output cannot — telling a reporter their photo was redacted when it was
+   * blurred is the one label here that would matter.
+   */
+  mode: FaceRedactionMode;
 };
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -331,19 +385,30 @@ function padBox(box: Box, padding: number, width: number, height: number): Box {
 }
 
 /**
- * Obliterates one region of `ctx` in two passes.
+ * Takes one region of `ctx` out of the picture.
  *
- * The mosaic pass is the one that actually destroys the identity: the region is
- * resampled down to a handful of cells, so the original pixels no longer exist
- * anywhere in the output. The Gaussian pass on top is cosmetic — a bare mosaic
- * reads as a glitch, whereas a blur reads as "this was done on purpose". Doing
- * it in that order also means the result is safe on browsers where
- * `ctx.filter` is unsupported and silently ignored.
+ * ## `redact`
+ *
+ * A solid black rectangle, and nothing else. No source pixels are read, so
+ * there is no filter to be unsupported, no browser on which this degrades, and
+ * nothing left in the output to reconstruct from. Square corners on purpose:
+ * rounded ones read as styling, and the corners of the padded box are exactly
+ * where a jaw and an ear sit.
+ *
+ * ## `blur`
+ *
+ * Two passes. The mosaic is the one that destroys the identity — the region is
+ * resampled down to `MOSAIC_CELLS` across, so the original pixels no longer
+ * exist anywhere in the output and the Gaussian has nothing to sharpen back up.
+ * That ordering also means the result is still safe on a browser where
+ * `ctx.filter` is unsupported and silently ignored: the worst case is a visible
+ * six-cell mosaic rather than a recognisable face.
  */
 function obscureRegion(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   region: Box,
+  mode: FaceRedactionMode,
 ) {
   const x = Math.floor(region.x);
   const y = Math.floor(region.y);
@@ -352,8 +417,24 @@ function obscureRegion(
 
   if (w < 2 || h < 2) return;
 
-  const cellsX = Math.max(2, Math.round(w / MOSAIC_CELL_PX));
-  const cellsY = Math.max(2, Math.round(h / MOSAIC_CELL_PX));
+  if (mode === "redact") {
+    ctx.save();
+    // Reset anything a previous pass left on the context. A stale `filter`
+    // would soften the edges of the box and leave a readable gradient at them.
+    ctx.filter = "none";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+    return;
+  }
+
+  // Cells are derived from the region's aspect so a wide box does not end up
+  // with square-ish blocks stretched across it, but neither axis is ever
+  // allowed more than `MOSAIC_CELLS`.
+  const longest = Math.max(w, h);
+  const cellsX = Math.max(2, Math.round((w / longest) * MOSAIC_CELLS));
+  const cellsY = Math.max(2, Math.round((h / longest) * MOSAIC_CELLS));
 
   mosaicCanvas ??= document.createElement("canvas");
   mosaicCanvas.width = cellsX;
@@ -365,22 +446,30 @@ function obscureRegion(
 
   ctx.save();
   ctx.beginPath();
-
-  // Softened corners so the patch reads as a deliberate redaction. The radius
-  // stays small: the whole padded rectangle must be covered, and a full ellipse
-  // would leave slivers of jaw and ear at the corners.
-  const radius = Math.min(w, h) * 0.18;
-  if (typeof ctx.roundRect === "function") {
-    ctx.roundRect(x, y, w, h, radius);
-  } else {
-    ctx.rect(x, y, w, h);
-  }
+  ctx.rect(x, y, w, h);
   ctx.clip();
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.filter = `blur(${Math.max(2, Math.round(Math.max(w, h) * BLUR_RADIUS_RATIO))}px)`;
-  ctx.drawImage(mosaicCanvas, 0, 0, cellsX, cellsY, x, y, w, h);
+  ctx.filter = `blur(${Math.max(4, Math.round(longest * BLUR_RADIUS_RATIO))}px)`;
+
+  // Drawn overscanned. A Gaussian this wide samples transparent pixels from
+  // beyond the region's edge and drags them inwards, which would leave a
+  // translucent border showing the unblurred frame through it. Bleeding the
+  // source out by a blur radius on every side and clipping back to the region
+  // means every sampled pixel is real.
+  const bleed = Math.round(longest * BLUR_RADIUS_RATIO);
+  ctx.drawImage(
+    mosaicCanvas,
+    0,
+    0,
+    cellsX,
+    cellsY,
+    x - bleed,
+    y - bleed,
+    w + bleed * 2,
+    h + bleed * 2,
+  );
 
   ctx.restore();
 }
@@ -404,9 +493,15 @@ function blurBoxes(
   canvas: HTMLCanvasElement,
   boxes: readonly Box[],
   padding: number,
+  mode: FaceRedactionMode,
 ) {
   for (const box of boxes) {
-    obscureRegion(ctx, canvas, padBox(box, padding, canvas.width, canvas.height));
+    obscureRegion(
+      ctx,
+      canvas,
+      padBox(box, padding, canvas.width, canvas.height),
+      mode,
+    );
   }
 }
 
@@ -416,7 +511,7 @@ function blurBoxes(
 
 export async function blurFacesInImage(
   file: File,
-  { onProgress, signal }: BlurOptions = {},
+  { onProgress, signal, mode = DEFAULT_REDACTION_MODE }: BlurOptions = {},
 ): Promise<BlurredMedia> {
   onProgress?.({ stage: "loading-detector", ratio: 0 });
   const detector = await loadDetector("IMAGE");
@@ -459,7 +554,7 @@ export async function blurFacesInImage(
     // Detection runs against the resized canvas, so box coordinates are already
     // in output space — no rescaling, no chance of a half-pixel miss.
     const boxes = boxesFrom(detector.detect(canvas).detections);
-    blurBoxes(ctx, canvas, boxes, FACE_PADDING);
+    blurBoxes(ctx, canvas, boxes, FACE_PADDING, mode);
 
     onProgress?.({ stage: "encoding", ratio: 0 });
     throwIfAborted(signal);
@@ -481,6 +576,7 @@ export async function blurFacesInImage(
       facesDetected: boxes.length,
       framesScanned: 1,
       truncated: false,
+      mode,
     };
   } finally {
     bitmap.close();
@@ -538,7 +634,7 @@ function onceEvent(target: EventTarget, event: string, errorEvent = "error") {
  */
 export async function blurFacesInVideo(
   file: File,
-  { onProgress, signal }: BlurOptions = {},
+  { onProgress, signal, mode = DEFAULT_REDACTION_MODE }: BlurOptions = {},
 ): Promise<BlurredMedia> {
   if (!isVideoBlurSupported()) {
     throw new FaceBlurError(
@@ -672,7 +768,7 @@ export async function blurFacesInVideo(
 
           // Between detections the last known boxes are grown, so a face that
           // moves during the gap stays inside the covered area.
-          blurBoxes(ctx, canvas, cachedBoxes, FACE_PADDING + MOTION_MARGIN);
+          blurBoxes(ctx, canvas, cachedBoxes, FACE_PADDING + MOTION_MARGIN, mode);
 
           if (!thumbnailCanvas && video.currentTime >= thumbnailAt) {
             thumbnailCanvas = document.createElement("canvas");
@@ -735,6 +831,7 @@ export async function blurFacesInVideo(
       facesDetected: peakFaces,
       framesScanned,
       truncated,
+      mode,
     };
   } finally {
     // On the error paths the recorder is still running and still holding the

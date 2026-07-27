@@ -13,10 +13,15 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { BlurStage, BlurredMedia } from "@/lib/media/face-blur";
+import type {
+  BlurStage,
+  BlurredMedia,
+  FaceRedactionMode,
+} from "@/lib/media/face-blur";
 import {
   ACCEPTED_IMAGE_TYPES,
   ACCEPTED_VIDEO_TYPES,
+  DEFAULT_REDACTION_MODE,
   MAX_VIDEO_SECONDS,
 } from "@/lib/media/face-blur";
 import { formatDuration, formatFileSize } from "@/lib/format";
@@ -51,6 +56,11 @@ export type AttachedMedia = {
   facesDetected: number;
   fileSize: number;
   truncated: boolean;
+  /**
+   * How this file's faces were covered. Per file, not per uploader: the control
+   * can be changed after a file has been processed, and the file cannot.
+   */
+  mode: FaceRedactionMode;
   /** Supabase Storage path of the blurred file. */
   storagePath: string;
   thumbnailPath: string;
@@ -77,11 +87,42 @@ const ACCEPT = [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_VIDEO_TYPES].join(",");
 const STAGE_LABELS: Record<PendingItem["stage"], string> = {
   "loading-detector": "Starting face detection…",
   decoding: "Opening the file…",
-  detecting: "Finding and blurring faces…",
-  encoding: "Saving the blurred copy…",
-  done: "Blurred",
-  uploading: "Uploading the blurred copy…",
+  detecting: "Finding and covering faces…",
+  encoding: "Saving the redacted copy…",
+  done: "Done",
+  uploading: "Uploading the redacted copy…",
   failed: "Failed",
+};
+
+/**
+ * The two ways to cover a face, as the reporter chooses between them.
+ *
+ * `redact` is recommended in the label rather than merely defaulted, because a
+ * reporter who reads the options is being asked to make a privacy decision
+ * about somebody who is not in the room and did not choose to be photographed.
+ */
+const MODE_OPTIONS: {
+  value: FaceRedactionMode;
+  label: string;
+  detail: string;
+}[] = [
+  {
+    value: "redact",
+    label: "Redact faces (recommended)",
+    detail: "A solid black box. Nothing of the face survives in the upload.",
+  },
+  {
+    value: "blur",
+    label: "Blur faces",
+    detail:
+      "Heavy pixelation. Keeps how many people were there and where they stood.",
+  },
+];
+
+/** Past tense for one file, for the count shown back to the reporter. */
+const MODE_VERB: Record<FaceRedactionMode, string> = {
+  redact: "redacted",
+  blur: "blurred",
 };
 
 let nextId = 0;
@@ -132,7 +173,15 @@ export function MediaUploader({
 }: MediaUploaderProps) {
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [supported, setSupported] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<FaceRedactionMode>(DEFAULT_REDACTION_MODE);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Read inside the async processing loop, for the same reason `value` is: the
+  // loop must not close over the mode as it was when `processFile` was created.
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   // `value` is read inside the async processing loop; a ref keeps that loop
   // from closing over a stale array when several files land at once. Synced in
@@ -182,6 +231,7 @@ export function MediaUploader({
         const { blurFaces } = await import("@/lib/media/face-blur");
 
         const blurred = await blurFaces(file, {
+          mode: modeRef.current,
           onProgress: ({ stage, ratio }) => patch({ stage, ratio }),
         });
 
@@ -201,6 +251,7 @@ export function MediaUploader({
           facesDetected: blurred.facesDetected,
           fileSize: blurred.blob.size,
           truncated: blurred.truncated,
+          mode: blurred.mode,
           storagePath,
           thumbnailPath,
         };
@@ -274,9 +325,9 @@ export function MediaUploader({
           <div className="text-sm text-amber-900">
             <p className="font-medium">Photos and video cannot be attached here</p>
             <p className="mt-1 text-amber-800">
-              This browser cannot blur faces on-device, and VillageWatch never
-              uploads unblurred media. File the report as text only, or try
-              again from a recent Chrome, Safari or Firefox.
+              This browser cannot cover faces on-device, and VillageWatch never
+              uploads media with faces still in it. File the report as text
+              only, or try again from a recent Chrome, Safari or Firefox.
             </p>
           </div>
         </div>
@@ -290,12 +341,56 @@ export function MediaUploader({
         <div className="flex gap-3">
           <ShieldCheck className="size-5 shrink-0 text-brand-600" aria-hidden />
           <p className="text-sm leading-relaxed text-brand-900">
-            Faces are found and blurred <strong>on your device</strong>. Only the
-            blurred copy is uploaded — the original photo or video never leaves
+            Faces are found and covered <strong>on your device</strong>. Only the
+            covered copy is uploaded — the original photo or video never leaves
             your phone, and its location tag is stripped along the way.
           </p>
         </div>
       </div>
+
+      <fieldset className="rounded-2xl border border-slate-200 bg-white p-4">
+        <legend className="px-1 text-sm font-medium text-slate-700">
+          How to cover faces
+        </legend>
+
+        <div className="mt-1 space-y-2">
+          {MODE_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
+                mode === option.value
+                  ? "border-brand-400 bg-brand-50/60"
+                  : "border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              <input
+                type="radio"
+                name="redaction-mode"
+                value={option.value}
+                checked={mode === option.value}
+                disabled={disabled || busy}
+                onChange={() => setMode(option.value)}
+                className="mt-0.5 size-4 shrink-0 border-slate-300 text-brand-600 focus:ring-brand-500 disabled:opacity-50"
+              />
+              <span className="text-sm">
+                <span className="block font-medium text-slate-800">
+                  {option.label}
+                </span>
+                <span className="mt-0.5 block text-slate-500">
+                  {option.detail}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        {value.length > 0 && (
+          <p className="mt-2.5 text-xs text-slate-500">
+            This applies to files you add from now on. Anything already attached
+            keeps the setting it was processed with, shown on each one below.
+          </p>
+        )}
+      </fieldset>
 
       <input
         ref={inputRef}
@@ -439,7 +534,7 @@ export function MediaUploader({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={media.previewUrl}
-                    alt="Blurred copy of the media you attached"
+                    alt="Redacted copy of the media you attached"
                     className="size-full object-contain"
                   />
                 )}
@@ -460,7 +555,7 @@ export function MediaUploader({
                     {media.facesDetected > 0
                       ? `${media.facesDetected} ${
                           media.facesDetected === 1 ? "face" : "faces"
-                        } blurred`
+                        } ${MODE_VERB[media.mode]}`
                       : "No faces detected"}
                   </p>
 
