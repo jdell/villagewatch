@@ -29,7 +29,10 @@ export function IncidentLocationMap({ incident }: { incident: MapIncident }) {
   const [now] = useState(() => Date.now());
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200">
+    // `map-surface` keeps Leaflet's z-index scale out of the page's — see
+    // globals.css. `overflow-hidden` clips the corners; it does not contain a
+    // z-index.
+    <div className="map-surface overflow-hidden rounded-2xl border border-slate-200">
       <IncidentMap
         incidents={[incident]}
         center={{ lat: incident.lat, lng: incident.lng }}

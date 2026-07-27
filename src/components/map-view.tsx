@@ -66,7 +66,10 @@ export function MapView({
   }, [incidents, days, now]);
 
   return (
-    <div className="relative h-[calc(100vh-3.5rem)] w-full lg:h-screen">
+    // `map-surface` isolates Leaflet's z-index scale from the rest of the page
+    // — see the note in globals.css. Without it the zoom control at 1000 sits
+    // over the app shell's mobile drawer.
+    <div className="map-surface relative h-[calc(100vh-3.5rem)] w-full lg:h-screen">
       <IncidentMap
         incidents={visible}
         center={center}

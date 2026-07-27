@@ -90,6 +90,32 @@ body {
 }
 
 /*
+ * Containment for anything with a Leaflet map inside it.
+ *
+ * Leaflet's stylesheet numbers its own layers from 200 to 1000 — panes at
+ * 400-700, the zoom and attribution controls at 1000 — and `.leaflet-container`
+ * carries no `z-index` of its own. Leaflet sets `position: relative` on it from
+ * JavaScript, and relative + `z-index: auto` creates no stacking context, so
+ * every one of those values competes in the *root* stacking context against the
+ * app shell. A mobile drawer would need to beat 1000 to be seen, and no sane
+ * number on a sidebar is chosen with a tile layer in mind.
+ *
+ * `isolation: isolate` makes the wrapper a stacking context, which is what the
+ * container should have been. The whole 200-1000 scale collapses to one layer
+ * in the page, and Leaflet's internal ordering is untouched inside it.
+ *
+ * It goes on the *wrapper*, never on `.leaflet-container` itself: `map-view.tsx`
+ * puts its own overlays (the village card, the range toggle, the legend) beside
+ * the container and deliberately numbers them against Leaflet's scale. Isolating
+ * the container would strand those siblings above the zoom control and bury the
+ * zoom buttons under a white card. Isolating the wrapper keeps map chrome and
+ * map overlays in the order they were written.
+ */
+.map-surface {
+  isolation: isolate;
+}
+
+/*
  * Onboarding tour highlight.
  *
  * The tour writes `data-tour-step` onto <body> and each highlightable element

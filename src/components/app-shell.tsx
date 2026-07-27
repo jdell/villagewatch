@@ -216,9 +216,23 @@ export function AppShell({
         <div className="sticky top-0 h-screen">{sidebar}</div>
       </aside>
 
-      {/* Mobile drawer */}
+      {/*
+        Mobile drawer.
+
+        `z-[1100]` rather than `z-50`, and the number is chosen against Leaflet
+        rather than against anything in this file. Map wrappers carry
+        `map-surface`, which contains their 200-1000 scale (see globals.css), so
+        this only has to beat the rest of the shell — but a map that ever escapes
+        that containment tops out at 1000, and a navigation drawer buried under a
+        tile layer is a dead end on a phone. It also puts the drawer over the
+        onboarding tour and the push prompt, both fixed at `z-50` and both later
+        in the DOM, which previously drew on top of an open drawer.
+
+        The backdrop is a child of this wrapper, so it inherits the layer and
+        cannot be separated from the panel it dims.
+      */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-[1100] lg:hidden">
           <button
             type="button"
             aria-label="Close navigation"
@@ -232,8 +246,13 @@ export function AppShell({
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile top bar */}
-        <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:hidden">
+        {/*
+          Mobile top bar — the only way to open the drawer, so it has the same
+          problem and sits one layer below it. `/map` renders full-bleed
+          underneath this bar, and its zoom control used to cover the hamburger
+          button outright.
+        */}
+        <header className="sticky top-0 z-[1000] flex h-14 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:hidden">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}

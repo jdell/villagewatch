@@ -120,7 +120,8 @@ export function LocationPicker({
 
   return (
     <div className={`space-y-3 ${className}`}>
-      <div className="overflow-hidden rounded-2xl border border-slate-200">
+      {/* `map-surface` isolates Leaflet's z-index scale — see globals.css. */}
+      <div className="map-surface overflow-hidden rounded-2xl border border-slate-200">
         <MapContainer
           center={[center.lat, center.lng]}
           zoom={zoom}
