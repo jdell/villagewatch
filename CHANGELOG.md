@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.4](https://github.com/jdell/villagewatch/compare/v0.1.3...v0.1.4) (2026-07-27)
+
+
+### Features
+
+* **whatsapp:** derive the channel code from the invite link ([aa0df37](https://github.com/jdell/villagewatch/commit/aa0df3714576048267ce47e045b10a6a4496b222))
+
 ### [0.1.3](https://github.com/jdell/villagewatch/compare/v0.1.2...v0.1.3) (2026-07-27)
 
 
