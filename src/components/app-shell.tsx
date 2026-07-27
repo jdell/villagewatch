@@ -112,9 +112,27 @@ export function AppShell({
     }`;
   }
 
+  /*
+    Three bands, not one column: a fixed header, a scrolling middle, and a fixed
+    footer. The whole thing used to be a single `gap-6` column with nothing
+    scrollable, which was fine on a laptop and unusable on a phone — the panel
+    runs to around 600px of content, so a landscape handset, a small screen, a
+    long village name or the administrator's extra section put the village, the
+    account and **Sign out** below the fold with no way to reach them.
+
+    Pinning the header and footer rather than scrolling all of it is what keeps
+    the close button and the sign-out button reachable from any scroll position;
+    only the navigation in between moves. `min-h-0` on that middle band is what
+    makes it scroll at all — a flex child's default `min-height: auto` refuses to
+    shrink below its content, so without it the band grows to fit and the
+    overflow moves back out to the panel, which cannot scroll.
+
+    The bottom padding clears the iOS home indicator, which otherwise sits over
+    the sign-out button in a standalone PWA window (see `manifest.json`).
+  */
   const sidebar = (
-    <div className="flex h-full flex-col gap-6 p-4">
-      <div className="flex items-center justify-between">
+    <div className="flex h-full flex-col p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className="flex shrink-0 items-center justify-between">
         <Link
           href="/map"
           className="text-white"
@@ -125,65 +143,74 @@ export function AppShell({
         <button
           type="button"
           onClick={() => setMobileOpen(false)}
-          className="rounded-lg p-2 text-brand-200 transition hover:bg-white/10 hover:text-white lg:hidden"
+          className="-mr-2 rounded-lg p-2 text-brand-200 transition hover:bg-white/10 hover:text-white lg:hidden"
           aria-label="Close navigation"
         >
           <X className="size-5" aria-hidden />
         </button>
       </div>
 
-      <Link
-        href="/incidents/new"
-        data-tour="report"
-        onClick={() => setMobileOpen(false)}
-        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-safe-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-safe-400"
-      >
-        <Plus className="size-4" aria-hidden />
-        Report an incident
-      </Link>
-
-      <nav aria-label="Sections" className="flex-1">
-        <ul className="space-y-1">
-          {visibleItems.map((item) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                data-tour={"tour" in item ? item.tour : undefined}
-                onClick={() => setMobileOpen(false)}
-                aria-current={isActive(item.href) ? "page" : undefined}
-                className={linkClass(item.href)}
-              >
-                <item.icon className="size-5 shrink-0" aria-hidden />
-                {item.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
       {/*
-        Its own <nav> below a rule, rather than a fifth item in the list above.
-        The separation is the point: everything in that list is this resident's
-        village, and this one link is the whole platform.
+        `overscroll-contain` so a flick that reaches the end of this list does not
+        chain into the page — or into the Leaflet map — behind the drawer.
       */}
-      {user.isAdmin && (
-        <nav aria-label="Administration" className="border-t border-white/10 pt-4">
-          <p className="px-3 pb-2 text-xs font-medium uppercase tracking-wider text-brand-300">
-            Platform
-          </p>
-          <Link
-            href={ADMIN_ITEM.href}
-            onClick={() => setMobileOpen(false)}
-            aria-current={isActive(ADMIN_ITEM.href) ? "page" : undefined}
-            className={linkClass(ADMIN_ITEM.href)}
-          >
-            <ADMIN_ITEM.icon className="size-5 shrink-0" aria-hidden />
-            {ADMIN_ITEM.label}
-          </Link>
-        </nav>
-      )}
+      <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain lg:mt-6 lg:gap-6">
+        <Link
+          href="/incidents/new"
+          data-tour="report"
+          onClick={() => setMobileOpen(false)}
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-safe-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-safe-400"
+        >
+          <Plus className="size-4" aria-hidden />
+          Report an incident
+        </Link>
 
-      <div className="border-t border-white/10 pt-4">
+        <nav aria-label="Sections" className="flex-1">
+          <ul className="space-y-1">
+            {visibleItems.map((item) => (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  data-tour={"tour" in item ? item.tour : undefined}
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={isActive(item.href) ? "page" : undefined}
+                  className={linkClass(item.href)}
+                >
+                  <item.icon className="size-5 shrink-0" aria-hidden />
+                  {item.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        {/*
+          Its own <nav> below a rule, rather than a fifth item in the list above.
+          The separation is the point: everything in that list is this resident's
+          village, and this one link is the whole platform.
+        */}
+        {user.isAdmin && (
+          <nav
+            aria-label="Administration"
+            className="shrink-0 border-t border-white/10 pt-4"
+          >
+            <p className="px-3 pb-2 text-xs font-medium uppercase tracking-wider text-brand-300">
+              Platform
+            </p>
+            <Link
+              href={ADMIN_ITEM.href}
+              onClick={() => setMobileOpen(false)}
+              aria-current={isActive(ADMIN_ITEM.href) ? "page" : undefined}
+              className={linkClass(ADMIN_ITEM.href)}
+            >
+              <ADMIN_ITEM.icon className="size-5 shrink-0" aria-hidden />
+              {ADMIN_ITEM.label}
+            </Link>
+          </nav>
+        )}
+      </div>
+
+      <div className="mt-4 shrink-0 border-t border-white/10 pt-4">
         {user.villageName && (
           <p className="px-3 text-xs font-medium uppercase tracking-wider text-brand-300">
             {user.villageName}
@@ -213,7 +240,13 @@ export function AppShell({
     <div className="flex min-h-full flex-1 bg-slate-50">
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 bg-brand-950 lg:block">
-        <div className="sticky top-0 h-screen">{sidebar}</div>
+        {/*
+          `h-dvh`, not `h-screen`. `100vh` is the *large* viewport — the height the
+          window would have with the browser chrome retracted — so in a short
+          window the foot of the panel sits below what is on screen and the sticky
+          column has no way to bring it back.
+        */}
+        <div className="sticky top-0 h-dvh">{sidebar}</div>
       </aside>
 
       {/*
@@ -230,9 +263,16 @@ export function AppShell({
 
         The backdrop is a child of this wrapper, so it inherits the layer and
         cannot be separated from the panel it dims.
+
+        `h-dvh` pins the wrapper to the *dynamic* viewport — what is actually on
+        screen, with the address bar wherever it currently is. `inset-0` alone
+        resolves against the large viewport in some mobile browsers, which puts the
+        foot of the drawer behind the browser chrome; `height` wins over `bottom`
+        when both are set, so the two together are a `top-0` anchor and a height
+        that tracks the chrome. Everything inside is `h-full` off this.
       */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-[1100] lg:hidden">
+        <div className="fixed inset-0 z-[1100] h-dvh lg:hidden">
           <button
             type="button"
             aria-label="Close navigation"
