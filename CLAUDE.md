@@ -1084,29 +1084,28 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates, the onboarding tour and the ONS village directory pipeline. Still
 open:
 
-- The Supabase project exists (eu-west-2), the first migration is applied, and
-  `postgis.sql` and `rls_policies.sql` have both been run against it. The
+- The Supabase project exists (eu-west-2), **all five migrations are applied**,
+  and `postgis.sql` and `rls_policies.sql` have both been re-run after them. The
   `incident-media` bucket exists, private. What has **not** happened: no
-  production deployment, no Vercel environment variables, no cron has ever
-  fired.
-- **Three migrations have not been applied anywhere.**
-  `20260727113000_coordinator_requests`,
-  `20260727150000_erasure_and_rate_limits` and
-  `20260727161500_village_auto_approve` are all hand-written, like the WhatsApp
-  one before them, and none has met a database. Apply them in order,
-  then re-run the whole RLS file — a new table arrives with row-level security
-  off, so until that second step an application sitting in the queue is readable
-  through PostgREST by anyone with a key, and every resident's remaining quota
-  is readable and resettable. The `villages` SELECT grant is enumerated per
-  column, so `auto_approve` is also unreadable through PostgREST until that
-  re-run; the app is unaffected either way, because Prisma is the owner.
-  The erasure migration is the one to watch. It carries
+  production deployment and no cron has ever fired.
+- **Migrations are applied by `.github/workflows/database.yml`**, on a push to
+  main touching `prisma/**` or from the Run workflow button: `migrate deploy`,
+  then `postgis.sql`, then `rls_policies.sql`, in that order. It is not in the
+  Vercel build command because Vercel builds every preview and there is no
+  staging project, and because `migrate deploy` alone would leave a new table
+  with RLS off — the header of that file has the full reasoning. With no
+  `DIRECT_URL` secret the `migrate` job is skipped rather than failed, so a fork
+  or a fresh clone goes green. **The workflow has never applied a migration** —
+  the five were applied by hand and it has only ever run as a no-op. The first
+  real run is still ahead.
+  A note kept for whoever writes the next hand-written migration: the erasure
+  one carries
   `ALTER TYPE "incident_status" ADD VALUE 'REMOVED'`, which is only safe inside
   Prisma's migration transaction because nothing else in that file uses the new
   value — a statement in the same transaction that referenced it would fail with
   "unsafe use of new value of enum type". Keep it that way if you edit the file.
   The RLS file also gained `deleted_at` in `users_guard_privilege_columns`;
-  until it is re-run, a closed account can null its own column through PostgREST
+  until it is re-run, a closed account could null its own column through PostgREST
   and sign back in.
 - **Only Cambridgeshire is seeded.** The 270 parishes from
   `data/cambridgeshire-villages.json` are in the real database as `PENDING`,
@@ -1168,11 +1167,17 @@ open:
   closes dormant accounts. The privacy policy states all four.
 - The community guidelines in `/terms` §5 are the common village-watch set,
   not any particular parish's. Swap in the group's own wording if it has any.
-- No OneSignal app exists. `NEXT_PUBLIC_ONESIGNAL_APP_ID`, `ONESIGNAL_APP_ID`
-  and `ONESIGNAL_REST_API_KEY` are unset, so every dispatch logs and reports
-  `skipped: "not_configured"` — which is a supported state, not a bug. When one
-  is created, its dashboard service worker path **must** be set to
-  `/onesignal/` — see PWA and the two service workers.
+- **The OneSignal app exists**, so `skipped: "not_configured"` is no longer the
+  expected outcome of a dispatch and reading it in a log now means a missing key
+  rather than a deployment that never had one. Two things still to confirm
+  against it, both of which fail *silently*: the dashboard's service worker path
+  must be `/onesignal/` (a 404 there reports a healthy init that never delivers
+  — see PWA and the two service workers), and all three of
+  `NEXT_PUBLIC_ONESIGNAL_APP_ID`, `ONESIGNAL_APP_ID` and
+  `ONESIGNAL_REST_API_KEY` have to reach Vercel, not just `.env.local`. **No
+  push has been delivered to a real device yet.** `notifyCoordinatorsOfPendingReport`
+  is the newest dispatch and the one most likely to surprise: it now fires on
+  every report filed into a queue.
 - **No billing.** `PRICING` in `src/lib/constants.ts` renders a Pro tier on the
   landing page marked "Planned", and the section says in as many words that
   nothing takes payment. There is no provider, no plan column and no enforcement
