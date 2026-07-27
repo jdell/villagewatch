@@ -259,7 +259,17 @@ scripts/
   generate-icons.mjs          Authoring tool — renders the icons, run by hand
   download-ons-places.ts      Finds + fetches the newest IPN release, unzips it
   convert-grid-refs.ts        OSGB36 → WGS84 via geodesy; library + CLI
+tests/                        Vitest, unit only — see The test suite
+  rate-limit.test.ts          Quotas, independence, fail-open, the 429
+  auth.test.ts                requireSession / requireAdmin / isPlatformAdmin
+  structure-incident.test.ts  Every typed failure of the AI pass, none thrown
+  validations.test.ts         The Zod schemas, both directions
+  channel-code.test.ts        extractChannelCode + the dashboard's channel form
+  format-alert.test.ts        The WhatsApp alert — severity, place, the link
+vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
+  ci.yml                      lint → typecheck → test → build, PRs and main
+  database.yml                migrate deploy → postgis.sql → rls_policies.sql
   version.yml                 standard-version bump on a releasable push to main
 SETUP.md                      Thirteen-step first-run guide + troubleshooting
 ```
@@ -647,6 +657,48 @@ every caller keeps handing it the same objects.
 - Completion is device-local on purpose. `User.onboardedAt` exists and is unused;
   it is the column for a cross-device version if one is ever wanted.
 
+## The test suite
+
+`tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
+between the typecheck and the build. Six files, ~90 assertions, covering the
+paths where being wrong is expensive: the rate limiter, the two auth guards, the
+AI pass's failure modes, the Zod schemas, the WhatsApp channel code, and the
+alert format.
+
+- **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
+  are mocked at their module boundaries, so the suite runs on a fresh clone with
+  no `.env.local` — the same property the lint, typecheck and build steps rely
+  on, and the reason CI needs no environment at all. A test that wanted a
+  database would be a test CI could not run.
+- **The mocks stop at the boundary, not before it.** `rate-limit.test.ts` mocks
+  `$queryRaw` with a counter keyed `(userId, action, windowStart)` — the unique
+  constraint the real SQL relies on — so "each action has its own quota" is
+  exercised against the key rather than against a stub returning a number
+  somebody chose. A mock that just returns `[{ count: 6 }]` would pass whatever
+  the module did with the rule name.
+- **A redirect is the refusal.** `next/navigation`'s `redirect()` throws, so the
+  auth tests assert on the thrown target: a guard that failed to redirect would
+  return a session and the page would render. `/login` for signed-out,
+  `/map` for signed-in-but-not-allowed, and `requireAdmin` refusing a
+  coordinator is asserted explicitly — it is not a superset of
+  `requireCoordinator`.
+- **`ADMIN_EMAILS` is read at module load**, so those tests `vi.resetModules()`
+  and re-import with the environment they want. The fail-closed case — an empty
+  allow-list admitting nobody, including a `role: "ADMIN"` profile — is the one
+  worth reading.
+- **Every failure code of the AI pass is asserted, and none of them throws.**
+  That is the contract the wizard depends on: being rate limited, timing out or
+  having no key must never block filing a report. Anonymisation itself is the
+  model's behaviour and cannot be unit tested, so what is asserted at that
+  boundary is the instruction sent (the system prompt forbidding names, which
+  `/privacy` makes a claim about) and that nothing identifying comes back in the
+  record.
+- **What is deliberately not covered**: no route handler, no server action, no
+  React component, no RLS policy. Those need a database, a request context or a
+  browser, and a suite that needed any of them would stop being the thing CI can
+  run on every push. The gap that matters most is named in Not built yet —
+  nothing asserts that a `PENDING_REVIEW` village still queues.
+
 ## Deployment guardrails
 
 - **Never push directly to `main`.** `main` auto-deploys to production.
@@ -680,6 +732,8 @@ npm run dev              # Dev server (Turbopack)
 npm run build            # Production build — run before every PR
 npx tsc --noEmit         # Typecheck
 npx eslint .             # Lint
+npm run test             # Vitest, once — what CI runs
+npm run test:watch       # Vitest, watching
 npx prisma generate      # Regenerate client after schema changes
 npx prisma migrate dev   # Create + apply a migration locally
 npm run db:seed          # Seed one village — set SEED_ADMIN_USER_ID first
@@ -1289,11 +1343,22 @@ open:
 - **`DATA_CONTROLLER` in `src/lib/constants.ts` is placeholders.** The privacy
   policy and terms both name it. Fill it in, register with the ICO, and have
   the council review both documents before launch.
-- **No data processing agreement with Slack.** `/privacy` §6 now says every
-  processor acts under a written one, and for Slack there is not yet a signed
-  agreement — that sentence has to become true before a real resident registers,
-  or the alert has to go somewhere that is. It is the same class of debt as
-  `DATA_CONTROLLER`: the code is right and the paperwork is not.
+- **Slack is disclosed rather than covered by its own agreement, and `/privacy`
+  §6 now says so in as many words.** The blanket claim that every processor acts
+  under a written data processing agreement was untrue for Slack, and a false
+  sentence in a privacy notice is worse debt than a missing one. There is now a
+  named entry for Slack (Salesforce) beside the processor list: administrative
+  notifications only, to a private channel nobody outside the people running the
+  service can read, carrying an anonymised incident summary or the fact of a
+  registration, an application or an appointment — plus the resident's name, and
+  their email on registration, because those two alerts exist to say who. That
+  is a proportionate answer for a disclosure with no resident-facing dependency
+  on it, and it is the accurate one. **The entry states what `src/lib/slack.ts`
+  sends**, so it is a statement about how the code behaves in the same sense the
+  other five are: change what a message carries and that paragraph changes in
+  the same commit. What is still open is the paperwork rather than the notice —
+  a signed agreement, or moving the alert somewhere covered by one, before the
+  service grows past a single parish.
 - **Two of the four retention figures are still unenforced.** The nightly job
   archives at 12 months and deletes media at 6; nothing expires audit rows at 24
   months (the append-only trigger forbids it from application code) and nothing
@@ -1338,11 +1403,12 @@ open:
   first report filed with it on: check the status, the push, the audit rows and —
   if the village also has channel posting on — what actually lands in the
   channel, which is the one surface an unauthenticated stranger can read.
-- No test suite. `.github/workflows/ci.yml` runs `lint`, `typecheck` and `build`
-  on every pull request and every push to `main`, which is the floor rather than
-  the goal — there is still nothing asserting behaviour. This change lands with
-  no test asserting that a `PENDING_REVIEW` village still queues, which is the
-  regression worth having one for.
+- **There is a test suite now, and it covers six modules rather than the app.**
+  `npm run test` runs Vitest over `tests/`, and `.github/workflows/ci.yml` runs
+  it between the typecheck and the build. See The test suite below for what is
+  asserted and what is deliberately not. Nothing yet asserts that a
+  `PENDING_REVIEW` village still queues — that needs a route test with a
+  database behind it, and it is still the regression worth having one for.
 - The README's screenshots are placeholder text. Capture them after the first
   seeded deploy.
 - `aiSummary` is still unused; the AI pass fills `aiModel`, `aiConfidence`,
@@ -1390,7 +1456,8 @@ open:
 - Password recovery exists but **no email has ever been sent through it**.
   Supabase's own recovery template is what arrives, and its redirect URL must be
   on the project's allow list or the link dead-ends — see The password reset.
-- No test suite and no staging environment. CI and auto-versioning both exist.
+- No staging environment. CI, unit tests and auto-versioning all exist; there is
+  still nowhere to run a migration before production sees it.
 - Light theme only. Add a dark palette deliberately — `prefers-color-scheme`
   would half-apply to the map and severity badges.
 

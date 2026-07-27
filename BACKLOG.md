@@ -1,6 +1,6 @@
 # VillageWatch — Backlog & Improvements Tracker
 
-**Last updated:** 27 July 2026
+**Last updated:** 27 July 2026 (T3, T4, T7 closed)
 **Repo:** https://github.com/jdell/villagewatch
 
 ---
@@ -77,11 +77,11 @@ launch date slips for reasons nobody can defend to a parish clerk.
 |---|------|----------|---------|
 | T1 | CLAUDE.md push rule | Low | Still blocking automation. Change to allow direct push. |
 | T2 | Stale CLAUDE.md entries | Low | Update false statements about OneSignal and migrations. |
-| T3 | No automated tests | Medium | Zero test coverage. |
-| T4 | No CI quality gate | Medium | Add GitHub Actions CI. |
+| T3 | ~~No automated tests~~ | Done | Vitest over `tests/` — rate limiter, auth guards, AI failure modes, Zod schemas, channel code, alert format. `npm run test`. Unit only: no route, action, component or RLS coverage yet. |
+| T4 | ~~No CI quality gate~~ | Done | `.github/workflows/ci.yml` runs lint → typecheck → test → build on every PR and every push to main. |
 | T5 | Retention cron untested | Low | Never run against real data. |
 | T6 | Audit log expiry | Low | Stated but not enforceable. |
-| T7 | Slack DPA | Low | Need data processing agreement before real users. |
+| T7 | ~~Slack DPA~~ | Done (as a disclosure) | `/privacy` §6 now names Slack (Salesforce) separately: admin-only notifications to a private channel, no resident-facing dependency, and it says plainly that there is no separate agreement beyond Slack's standard terms. The blanket "every processor under a written DPA" claim was untrue and is gone. A signed agreement is still the answer past a single parish. |
 | T8 | homeLat/homeLng not captured | Medium | Radius filtering needs home location in registration. |
 
 ---
@@ -117,6 +117,7 @@ launch date slips for reasons nobody can defend to a parish clerk.
 | 27 Jul | Coordinator approval flow, per-village channels, admin sidebar |
 | 27 Jul | Slack webhooks, right to erasure, persistent rate limiting |
 | 27 Jul | Auto-extract channel code, auto-approve setting, z-index fix |
+| 27 Jul | Vitest suite (T3), CI test gate (T4), Slack disclosure in /privacy (T7) |
 
 ---
 
