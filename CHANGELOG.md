@@ -3,6 +3,34 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.11](https://github.com/jdell/villagewatch/compare/v0.1.10...v0.1.11) (2026-07-27)
+
+
+### Features
+
+* **media:** redact faces with a black box by default ([09f429d](https://github.com/jdell/villagewatch/commit/09f429d01b83c1528b3e772980ddf082477b5079))
+
+
+### CI
+
+* run the test suite between the typecheck and the build ([ef3edef](https://github.com/jdell/villagewatch/commit/ef3edefc000dd535d5d8bf0ed8542e85d6c9f399))
+
+
+### Documentation
+
+* **privacy:** disclose the Slack staff channel instead of claiming a DPA ([e7a83f8](https://github.com/jdell/villagewatch/commit/e7a83f8bfd3b86d455cad31cf64ad5e00655ae79))
+* record the test suite, the CI gate and the Slack disclosure ([6fab2de](https://github.com/jdell/villagewatch/commit/6fab2de02ccd9e4448fd1019049f9e6ab567fb45))
+
+
+### Fixes
+
+* **dashboard:** make the CSV export report its own failures ([7cc979b](https://github.com/jdell/villagewatch/commit/7cc979b6b9e99822edff1f7a6bec4042998a9a4a))
+
+
+### Refactoring
+
+* **auth:** share the home location step and name its jitter ([344041c](https://github.com/jdell/villagewatch/commit/344041c9646e823574a490affa0120561c5c998f))
+
 ### [0.1.10](https://github.com/jdell/villagewatch/compare/v0.1.9...v0.1.10) (2026-07-27)
 
 
