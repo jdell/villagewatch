@@ -351,8 +351,25 @@ export default function PrivacyPage() {
             Supabase (database, authentication and file storage, in the UK or
             EU), Vercel (hosting), Anthropic (the AI pass described above),
             OneSignal (push notification delivery), and Slack (the staff channel
-            above). Each acts only on our instructions under a written data
-            processing agreement.
+            above). Each acts only on our instructions, under a written data
+            processing agreement in every case but Slack — see below.
+          </Definition>
+          <Definition term="Slack (Salesforce), and why it is listed separately">
+            Administrative notifications only, to a private channel that only
+            the people who run {APP_NAME} can read. It is never used to deliver
+            anything to a resident and no part of this service depends on it.
+            What a message carries is an anonymised incident summary — the same
+            headline, severity and approximate area published to your village —
+            or the fact that somebody has registered, applied to coordinate, or
+            been given coordinator access. Never your original wording, never
+            your address, never coordinates, and never a photograph. It does
+            carry your name, and on registration your email address, so that
+            abuse can be spotted; nothing else about you is sent. We have no
+            separate data processing agreement with Salesforce beyond Slack&rsquo;s
+            standard terms, which is why this is set out here rather than left
+            inside the list above. If you would rather this disclosure did not
+            happen at all, tell us using the contact details in section 13 and
+            we will act on it.
           </Definition>
         </DefinitionList>
         <P>
