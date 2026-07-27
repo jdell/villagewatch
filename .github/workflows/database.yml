@@ -39,6 +39,25 @@ name: Database
 #     and trigger is dropped before it is created, indexes are IF NOT EXISTS and
 #     functions are CREATE OR REPLACE.
 #
+# ## With no secret set it is a no-op, not a failure
+#
+# A fork, a clone, or this repository before anybody has configured a database
+# has no DIRECT_URL, and there is nothing for this workflow to do. `preflight`
+# looks for the secret and `migrate` is gated on it, so the run goes green with
+# the work skipped rather than red — a red X on every push would train everyone
+# to ignore this workflow, which is the last one that should be ignored.
+#
+# The gate is a separate job rather than an `if:` on each step because the
+# `secrets` context is not available to a job-level `if`, and because a job
+# reported as *skipped* says "there was nothing to do" far more clearly than a
+# green job whose every step was skipped. It also means a manual run against an
+# unconfigured repository never asks a reviewer to approve a deployment that
+# would do nothing.
+#
+# It is deliberately loud about it: a `::notice::` and a line in the job summary,
+# so somebody who clicked Run workflow and expected a migration finds out why
+# they did not get one.
+#
 # ## Making it ask first
 #
 # The job names a `production` environment. Add a required reviewer to it under
@@ -69,7 +88,42 @@ permissions:
   contents: read
 
 jobs:
+  # Is there a database to migrate at all? No checkout and no install — this
+  # exists only to turn "the secret is set" into something the job below can be
+  # gated on, because `secrets` is not in scope for a job-level `if:`.
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+
+    steps:
+      - name: Look for DIRECT_URL
+        id: check
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          if [ -n "$DIRECT_URL" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "DIRECT_URL is set — migrations will be applied." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "configured=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::DIRECT_URL is not set, so there is no database to migrate and this run did nothing."
+          {
+            echo "### Skipped — no database configured"
+            echo
+            echo "No \`DIRECT_URL\` secret is set, so there is nothing to migrate against and this run applied nothing."
+            echo
+            echo "To enable it, add \`DIRECT_URL\` under **Settings → Secrets and variables → Actions**."
+            echo "It must be the Supabase **session pooler** on port 5432 (user \`postgres.<ref>\`) —"
+            echo "not the pooled 6543 URL, which is pgBouncer and cannot run migrations,"
+            echo "and not \`db.<ref>.supabase.co\`, which is IPv6-only."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   migrate:
+    needs: preflight
+    if: needs.preflight.outputs.configured == 'true'
     runs-on: ubuntu-latest
     environment: production
 
@@ -79,15 +133,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-
-      # Fails here, with a sentence, rather than forty lines into a psql
-      # connection error. An unset secret is the likeliest way this breaks.
-      - name: Check the secret is set
-        run: |
-          if [ -z "$DIRECT_URL" ]; then
-            echo "::error::DIRECT_URL is not set. Add it under Settings → Secrets and variables → Actions. It must be the Supabase session pooler on port 5432, not the pooled 6543 URL."
-            exit 1
-          fi
 
       - uses: actions/setup-node@v5
         with:
