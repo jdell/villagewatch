@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.3](https://github.com/jdell/villagewatch/compare/v0.1.2...v0.1.3) (2026-07-27)
+
+
+### Features
+
+* right to erasure and persistent rate limiting ([752e6cf](https://github.com/jdell/villagewatch/commit/752e6cf4128449d9c3354ca71dd7d1934b274eab))
+
 ### [0.1.2](https://github.com/jdell/villagewatch/compare/v0.1.1...v0.1.2) (2026-07-27)
 
 
