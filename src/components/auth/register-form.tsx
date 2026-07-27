@@ -1,29 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, MapPinHouse, UserPlus } from "lucide-react";
+import { Loader2, UserPlus } from "lucide-react";
 import type { LocationValue } from "@/components/location-picker";
+import { HomeLocationField } from "@/components/auth/home-location-field";
 import {
   VillageAttribution,
   VillagePicker,
 } from "@/components/auth/village-picker";
 import { fieldErrors as toFieldErrors, registerSchema } from "@/lib/validations";
-
-// Leaflet dereferences `window` on import, so the picker can never be part of
-// the server render. `ssr: false` is only legal from a Client Component.
-const LocationPicker = dynamic(
-  () => import("@/components/location-picker").then((m) => m.LocationPicker),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-72 w-full animate-pulse rounded-2xl bg-slate-100 sm:h-96" />
-    ),
-  },
-);
 
 export type VillageOption = {
   id: string;
@@ -269,55 +257,16 @@ export function RegisterForm({ villages }: RegisterFormProps) {
       {/*
         Optional, and worth the space it takes: without a home location every
         resident falls into the village-wide audience, so the notification
-        radius Day 4 built has nothing to measure from.
+        radius Day 4 built has nothing to measure from. Shared with /welcome —
+        both screens write the same two columns and must make the same promise
+        about them.
       */}
-      <div>
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700 ring-1 ring-brand-100">
-            <MapPinHouse className="size-5" aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-slate-700">
-              Pin your approximate area{" "}
-              <span className="font-normal text-slate-400">— optional</span>
-            </p>
-            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-              Used to work out which incidents are near enough to be worth
-              alerting you about. Drop it on your street rather than your
-              doorstep — we shift it again before saving, and it is never shown
-              to anyone.
-            </p>
-          </div>
-        </div>
-
-        {village ? (
-          <div className="mt-3">
-            <LocationPicker
-              value={home}
-              onChange={setHome}
-              center={{ lat: village.centerLat, lng: village.centerLng }}
-              zoom={village.defaultZoom}
-            />
-            {home && (
-              <button
-                type="button"
-                onClick={() => setHome(null)}
-                className="mt-2 text-sm font-medium text-slate-500 underline underline-offset-2 transition hover:text-slate-700"
-              >
-                Remove pin
-              </button>
-            )}
-          </div>
-        ) : (
-          <p className="mt-3 rounded-lg bg-slate-50 px-3.5 py-3 text-sm text-slate-500 ring-1 ring-slate-200">
-            Choose your village above and a map will appear here.
-          </p>
-        )}
-
-        {errors.homeLat && (
-          <p className="mt-1.5 text-sm text-red-600">{errors.homeLat}</p>
-        )}
-      </div>
+      <HomeLocationField
+        village={village}
+        value={home}
+        onChange={setHome}
+        error={errors.homeLat}
+      />
 
       <div>
         <label className="flex items-start gap-3">

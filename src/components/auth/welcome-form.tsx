@@ -3,25 +3,19 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { toast } from "sonner";
-import { Loader2, MapPinHouse, UserPlus } from "lucide-react";
+import { Loader2, UserPlus } from "lucide-react";
 import {
   completeProfileSchema,
   fieldErrors as toFieldErrors,
 } from "@/lib/validations";
 import type { LocationValue } from "@/components/location-picker";
 import type { VillageOption } from "@/components/auth/register-form";
+import { HomeLocationField } from "@/components/auth/home-location-field";
 import {
   VillageAttribution,
   VillagePicker,
 } from "@/components/auth/village-picker";
-
-/** Leaflet touches `window` on import — never let it reach the server bundle. */
-const LocationPicker = dynamic(
-  () => import("@/components/location-picker").then((m) => m.LocationPicker),
-  { ssr: false },
-);
 
 type WelcomeFormProps = {
   villages: VillageOption[];
@@ -217,53 +211,13 @@ export function WelcomeForm({
         />
       </Field>
 
-      <div>
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700 ring-1 ring-brand-100">
-            <MapPinHouse className="size-5" aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-slate-700">
-              Pin your approximate area{" "}
-              <span className="font-normal text-slate-400">— optional</span>
-            </p>
-            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-              Used to work out which incidents are near enough to be worth
-              alerting you about. Drop it on your street rather than your
-              doorstep — we shift it again before saving, and it is never shown
-              to anyone.
-            </p>
-          </div>
-        </div>
-
-        {village ? (
-          <div className="mt-3">
-            <LocationPicker
-              value={home}
-              onChange={setHome}
-              center={{ lat: village.centerLat, lng: village.centerLng }}
-              zoom={village.defaultZoom}
-            />
-            {home && (
-              <button
-                type="button"
-                onClick={() => setHome(null)}
-                className="mt-2 text-sm font-medium text-slate-500 underline underline-offset-2 transition hover:text-slate-700"
-              >
-                Remove pin
-              </button>
-            )}
-          </div>
-        ) : (
-          <p className="mt-3 rounded-lg bg-slate-50 px-3.5 py-3 text-sm text-slate-500 ring-1 ring-slate-200">
-            Choose your village above and a map will appear here.
-          </p>
-        )}
-
-        {errors.homeLat && (
-          <p className="mt-1.5 text-sm text-red-600">{errors.homeLat}</p>
-        )}
-      </div>
+      {/* Shared with /register — see the note on the component. */}
+      <HomeLocationField
+        village={village}
+        value={home}
+        onChange={setHome}
+        error={errors.homeLat}
+      />
 
       <div>
         <label className="flex items-start gap-3">

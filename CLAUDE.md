@@ -291,12 +291,13 @@ These are not style preferences. Breaking them leaks residents' personal data.
    `LOCATION_FUZZ_METERS` on the way in. The exact reported point is never
    persisted, so it cannot leak later.
 3. **Media is redacted and EXIF-stripped before it is *uploaded*.** Faces are
-   detected and blurred on-device by `src/lib/media/face-blur.ts`, and only the
+   detected and covered on-device by `src/lib/media/face-blur.ts`, and only the
    re-encoded canvas output is sent — which also drops the EXIF block, GPS tag
-   included. `POST /api/incidents/media` has no server-side blur fallback on
-   purpose: a fallback would mean accepting an unblurred original. Serve
+   included. `POST /api/incidents/media` has no server-side fallback on
+   purpose: a fallback would mean accepting an original with a face in it. Serve
    `redactedPath` once `redactedAt` is set. Photo GPS EXIF has re-identified
-   people before.
+   people before. **There are two ways to cover a face and the default is the
+   black box** — see Covering faces.
 4. **The village is the tenant boundary.** Every incident query must be scoped
    by `villageId`. Use `getCurrentVillageId()` — never trust a village id that
    arrived in a request body.
@@ -660,10 +661,10 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Six files, ~90 assertions, covering the
+between the typecheck and the build. Seven files, ~135 assertions, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
-AI pass's failure modes, the Zod schemas, the WhatsApp channel code, and the
-alert format.
+AI pass's failure modes, the Zod schemas, the WhatsApp channel code, the alert
+format, and the CSV export's escaping and formula-injection guard.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -693,6 +694,12 @@ alert format.
   boundary is the instruction sent (the system prompt forbidding names, which
   `/privacy` makes a claim about) and that nothing identifying comes back in the
   record.
+- **The CSV tests are the reason `incident-csv.ts` exists.** They parse the
+  output back rather than string-matching it, so "one record is always
+  `CSV_COLUMNS.length` fields" is asserted against a description containing a
+  comma, a quote and a CRLF — the three things that break a naive reader. The
+  formula payloads are a table, each one behind the whitespace and control-
+  character prefixes that used to launder it.
 - **What is deliberately not covered**: no route handler, no server action, no
   React component, no RLS policy. Those need a database, a request context or a
   browser, and a suite that needed any of them would stop being the thing CI can
@@ -751,6 +758,55 @@ psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql  # Row-level security
 section. Several of them fail unhelpfully if the one before was skipped.
 
 ---
+
+## Covering faces
+
+`src/lib/media/face-blur.ts`. Detection is MediaPipe's BlazeFace short-range
+running in the browser; what happens to the box it returns is now a choice, and
+`FaceRedactionMode` is that choice.
+
+- **`redact` is the default: a solid black rectangle.** No source pixels are
+  read, so there is nothing left in the output to reconstruct from, no
+  `ctx.filter` to be unsupported, and no browser on which it quietly degrades.
+  Square corners on purpose — the rounded ones the blur used to draw read as
+  styling, and the corners of the padded box are exactly where a jaw and an ear
+  sit.
+- **`blur` is the option, and it is pixelation rather than a smudge.** The
+  mosaic is what destroys the identity: the region is resampled to
+  `MOSAIC_CELLS` (6) across, so the original pixels no longer exist anywhere in
+  the output and the Gaussian on top has nothing to sharpen back up. That
+  ordering is also what makes it safe where `ctx.filter` is ignored — the worst
+  case is a visible six-cell mosaic, not a recognisable face.
+- **The old constants were the bug.** `MOSAIC_CELL_PX = 12` was a cell *size*,
+  so destruction scaled with the photo — a face 400px across survived as a
+  33-cell mosaic, with a jawline, a hairline and two eye sockets still in it.
+  A count fixes every face at the same handful of blocks whatever its size on
+  the sensor. `BLUR_RADIUS_RATIO` went 0.12 → 0.45, which is the difference
+  between a pass its own comment called cosmetic and one that carries weight.
+- **The blur draws overscanned.** A Gaussian that wide samples transparent
+  pixels beyond the region's edge and drags them inwards, which left a
+  translucent border showing the unblurred frame through it. The source is bled
+  out by a blur radius on every side and clipped back, so every sampled pixel is
+  real.
+- **`redact` is the default because the failure modes are not symmetrical.** A
+  redaction that was not needed costs a black rectangle in a photo of a hedge; a
+  blur that was not heavy enough costs a resident their anonymity, in a file
+  already published to the village and not recallable. Pixelation also has a
+  long history of being undone — the search space behind a known mosaic is small
+  enough to brute-force.
+- **The mode is recorded per file, not read off the control.** `BlurredMedia`
+  and `AttachedMedia` both carry it, because the radio can be changed after a
+  file is processed and the file cannot. Telling a reporter their photo was
+  redacted when it was blurred is the one label here that would matter.
+- **The toggle lives in `MediaUploader`**, which is the wizard's step 0, so the
+  control sits next to the thing it governs. It applies to files added after it
+  is changed; anything already attached keeps what it was processed with, and
+  the panel says so once there is something to say it about.
+- **`/privacy`, `/terms` and the landing FAQ changed in the same commit**, for
+  the reason the legal-pages section gives. All three said photos were blurred;
+  the notice now names both modes and which is the default. The promise that
+  matters is unchanged and still structural — there is no server-side fallback,
+  so an original with a face in it cannot be uploaded either way.
 
 ## The AI pass
 
@@ -1259,6 +1315,44 @@ report's verbatim words with a trail behind each read; a spreadsheet gets
 emailed and forwarded, and a name in it is not recallable. `/api/dashboard/export`
 carries the anonymised column only.
 
+## The CSV export
+
+`GET /api/dashboard/export` holds the request — the gate, the query and the
+audit row. `src/lib/incident-csv.ts` holds the formatting, and is what
+`tests/incident-csv.test.ts` asserts against.
+
+- **The split is what made it testable.** Everything with a rule in it used to
+  live inside the route, so reaching it needed a session and a database, and
+  nothing anywhere asserted what a correct export looks like. The builder is now
+  pure: no Prisma, no secret, and `ExportIncident` has no field for
+  `rawDescription`, `lat` or `lng` — the structural guard `AlertIncident` and
+  `ReportIncident` use, here in its sharpest form.
+- **Quoting is not formula protection.** Excel strips the surrounding quotes
+  while parsing and *then* evaluates, so `"=1+1"` is a formula. The leading
+  apostrophe is what makes it text, and both are applied.
+- **The guard had two holes and both are now tested.** Leading whitespace
+  laundered the trigger — Excel discards it, so `" =1+1"` arrived as `=1+1` and
+  evaluated straight past a regex anchored at the trigger character, which is
+  the first thing anybody tries. And `\n` was not treated as a start character
+  though `\t` and `\r` were, for no reason. `isFormulaBait` covers both, and the
+  test asserts the ordinary-prose cases too: a guard that fired on `3 - 4 people`
+  or `email@example.test` would put a stray apostrophe in front of half the file.
+- **Every exit from the route is JSON, and that is what fixed the button.** The
+  dashboard reached it with a bare `<a href download>`, which saves whatever
+  arrives under the export's name — a 401, a 403, a 503 or an unhandled 500 all
+  became a file called `export` full of JSON or HTML, sitting in Downloads
+  looking like a corrupt spreadsheet with nothing on screen to say why.
+  `ExportCsvButton` fetches, checks the status, and raises the route's own
+  `error` string as a toast; only a 200 becomes a download. The `try/catch` in
+  the route is what guarantees there is an `error` string to raise rather than
+  Next's HTML error page.
+- **The audit row is written before the response and is still allowed to fail
+  the request.** Everywhere else an audit write that follows a completed act is
+  swallowed, because telling somebody their action failed when it succeeded
+  would be false. This one precedes the act: nothing has left the building yet,
+  and a bulk read of a village's reports that no trail records is the one
+  outcome worse than a download that did not work.
+
 ## Not built yet
 
 Days 1–7 delivered the scaffold, schema, landing page, the on-device blur and
@@ -1420,11 +1514,19 @@ open:
   weekly digest, incident notification and the coordinator decision; nothing
   sends them, `notifyEmail` is absent from the settings screen, and no dispatch
   honours it. SMS has neither templates nor transport.
-- Home location is captured at registration only, and it is optional. Anyone
-  who registered before Day 5, or who skipped the map, still has no
-  `homeLat`/`homeLng` and falls into the village-wide audience — which is the
-  intended degradation, not a bug. There is no way to set or change it
-  afterwards; `/settings` does not offer it yet.
+- Home location is captured at registration only, and it is optional. Both
+  halves of registration ask for it through one shared
+  `HomeLocationField` — `/register` and `/welcome` write the same two columns,
+  so a promise about what happens to the pin cannot be true on one screen and
+  stale on the other. The exact point tapped is sent and
+  `HOME_LOCATION_FUZZ_METERS` is applied server-side by `fuzzCoordinates` in
+  both routes; the field names that figure by interpolating the constant, so
+  the number on screen cannot drift from the one applied. Anyone who registered
+  before Day 5, or who skipped the map, still has no `homeLat`/`homeLng` and
+  falls into the village-wide audience — which is the intended degradation, not
+  a bug, and what the Skip copy tells a resident rather than leaving them to
+  infer it. **There is still no way to set or change it afterwards**;
+  `/settings` does not offer it yet, which is the half of this that is missing.
 - **Storage policies are not configured.** `POST /api/incidents/media` and
   `src/lib/media/storage.ts` both use the service-role client
   (`src/lib/supabase/admin.ts`) and do their own session, village and

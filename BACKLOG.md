@@ -20,9 +20,9 @@
 | # | Issue | Severity | Details |
 |---|-------|----------|---------|
 | B1 | Mobile menu unreachable | High | Sidebar opens behind Leaflet map. Needs z-index 1100+, fixed positioning, backdrop overlay, slide-from-left, 100dvh, compact items. |
-| B2 | Face blurring too weak | Medium | MediaPipe client-side blur is not blurring faces enough. Increase Gaussian blur radius/sigma significantly. Faces should be completely unrecognisable. |
+| B2 | ~~Face blurring too weak~~ | Done | Landed with I2 — the mosaic is a cell *count* (6 across) rather than a 12px cell size, so destruction no longer scales with the photo, and the Gaussian went 0.12 → 0.45 of the region's longest edge. |
 | B3 | OneSignal not sending push notifications | High | Verify: (1) OneSignal app ID correct, (2) service worker at /onesignal/OneSignalSDKWorker.js, (3) all 3 env vars set in Vercel, (4) browser permission granted, (5) user registered with OneSignal via OneSignal.login(userId). |
-| B4 | CSV download not working | Medium | Export CSV button on coordinator dashboard fails. Debug: check export route, verify data query, test response headers. |
+| B4 | ~~CSV download not working~~ | Done | The route and its headers were correct; the `<a href download>` was not. It saved every 401/403/503/500 under the export's name, so a failure looked like a corrupt spreadsheet. Now a fetch that checks the status and toasts the error, every exit from the route is JSON, formatting moved to `src/lib/incident-csv.ts`, and `tests/incident-csv.test.ts` covers it. |
 | B5 | Test data / stubs present | Medium | Audit codebase for remaining test data, placeholder content, or stubs. |
 
 ---
@@ -32,7 +32,7 @@
 | # | Feature | Priority | Details |
 |---|---------|----------|---------|
 | I1 | Share summary with police/council | High | Generate formatted incident summary (PDF or email) for police/parish council. Include incident details, map, pattern analysis, anonymised description. One-click share button. |
-| I2 | Stronger face blurring | High | Increase blur to heavy pixelation or solid block. Default to redact (black box) for maximum safety. |
+| I2 | ~~Stronger face blurring~~ | Done | `FaceRedactionMode` — `redact` (solid black box, the default) or `blur` (six-cell mosaic under a heavy Gaussian). Chosen in the wizard's upload step, recorded per file. `/privacy`, `/terms` and the landing FAQ updated in the same commit. |
 | I3 | Coordinator share invite link | High | Share join URL via copy/WhatsApp/QR code from coordinator dashboard. Public /join/[slug] page pre-fills registration. |
 
 ---
@@ -59,10 +59,10 @@ launch date slips for reasons nobody can defend to a parish clerk.
 | Item | Why it can wait |
 |------|-----------------|
 | Heatmap overlay | Pins on the map already answer "where is this happening". Density is a nicer way to read the same data, not a missing one. |
-| CSV export | Coordinator convenience for a council meeting. The dashboard and the reports page both show the same figures on screen. (B4 says the button is broken — fix or hide it, but neither blocks launch.) |
+| CSV export | Coordinator convenience for a council meeting. The dashboard and the reports page both show the same figures on screen. (B4 is fixed, so the button works — it still does not block launch.) |
 | Email digest | Push-only is fine. Push works, has no transport dependency, and the digest already reaches coordinators through it. Email needs a provider, a DPA and a sender domain. |
 | WhatsApp Channel | Extra reach, not core. A village with no channel loses nothing it had — residents are alerted in the app, and the coordinator can paste an alert anywhere. |
-| Notification radius filtering | Village-wide is fine at 200 people. A radius is a way to hear *less*; at parish scale there is not enough to filter. Most residents have no home location captured anyway (T8). |
+| Notification radius filtering | Village-wide is fine at 200 people. A radius is a way to hear *less*; at parish scale there is not enough to filter. T8 now asks every new resident for a home location, but it is optional and anyone without one is included by design. |
 | Severity filter | Same reasoning. Every report in a village of 200 is worth a resident's attention. |
 | Time-range filters | The list shows the most recent 30 and the map the last 500. That is the whole history for a village in its first months. |
 | Full WCAG audit | The obvious things are in place — labels, focus rings, 44px targets, `aria-current`, reduced motion. A formal AA audit is a launch-plus-one, not a launch gate. |
@@ -82,7 +82,7 @@ launch date slips for reasons nobody can defend to a parish clerk.
 | T5 | Retention cron untested | Low | Never run against real data. |
 | T6 | Audit log expiry | Low | Stated but not enforceable. |
 | T7 | ~~Slack DPA~~ | Done (as a disclosure) | `/privacy` §6 now names Slack (Salesforce) separately: admin-only notifications to a private channel, no resident-facing dependency, and it says plainly that there is no separate agreement beyond Slack's standard terms. The blanket "every processor under a written DPA" claim was untrue and is gone. A signed agreement is still the answer past a single parish. |
-| T8 | homeLat/homeLng not captured | Medium | Radius filtering needs home location in registration. |
+| T8 | ~~homeLat/homeLng not captured~~ | Done | Both halves of registration already captured it; it is now one shared `HomeLocationField` across `/register` and `/welcome`, the jitter is named with its actual figure (`HOME_LOCATION_FUZZ_METERS`, 75m) rather than described vaguely, and Skip says what skipping costs. Setting it *after* registration is still missing — `/settings` does not offer it. |
 
 ---
 
