@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.8](https://github.com/jdell/villagewatch/compare/v0.1.7...v0.1.8) (2026-07-27)
+
+
+### Fixes
+
+* **ui:** size the map to the dynamic viewport, animate the drawer in ([8a4cad7](https://github.com/jdell/villagewatch/commit/8a4cad7c8618fde880a3cb306af403929486756b))
+
 ### [0.1.7](https://github.com/jdell/villagewatch/compare/v0.1.6...v0.1.7) (2026-07-27)
 
 
