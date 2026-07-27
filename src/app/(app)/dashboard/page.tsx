@@ -5,6 +5,7 @@ import {
   Inbox,
   MapPin,
   ScrollText,
+  ShieldAlert,
   ShieldCheck,
   Zap,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { StatCard } from "@/components/dashboard/stat-card";
 import { WhatsAppChannelForm } from "@/components/dashboard/whatsapp-channel-form";
 import { NoVillage } from "@/components/no-village";
 import { requireCoordinator } from "@/lib/auth";
+import { getVillageCompliance } from "@/lib/compliance";
 import { getVillageAutoApprove } from "@/lib/moderation";
 import { getVillageParishCouncil } from "@/lib/village";
 import { prisma } from "@/lib/prisma";
@@ -96,6 +98,7 @@ export default async function DashboardPage() {
     followLink,
     autoApprove,
     parishCouncil,
+    compliance,
   ] = await Promise.all([
     prisma.incident.count({
       where: { ...published, occurredAt: { gte: weekStart } },
@@ -173,6 +176,10 @@ export default async function DashboardPage() {
     // renders a different thing for each, because "no council named" is the
     // coordinator's to fix and "no column to name one in" is not.
     getVillageParishCouncil(villageId),
+    // Same shape and the same reason: the banner is shown for "not accepted"
+    // and suppressed for "no columns to accept into", which is somebody else's
+    // problem entirely.
+    getVillageCompliance(villageId),
   ]);
 
   const typeRows: BreakdownRow[] = byType
@@ -255,6 +262,43 @@ export default async function DashboardPage() {
           <ExportCsvButton />
         </div>
       </div>
+
+      {/*
+        Above the figures, because it is the only thing on this page that stops
+        the village working. Not dismissible: a village with no Appropriate
+        Policy Document has no lawful authorisation to process the criminal
+        offence data its reports contain (DPA 2018 Schedule 1 paragraph 5), so
+        this is a state to leave rather than a notice to acknowledge.
+
+        `compliance.available` gates it because an unapplied migration means the
+        gate is not being enforced either — telling a coordinator to go and fix
+        something that has no effect, on a page they cannot complete, would send
+        them looking for a problem that is not theirs.
+      */}
+      {compliance.available && !compliance.complete && (
+        <div
+          role="status"
+          className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl bg-amber-50 p-4 ring-1 ring-inset ring-amber-600/20"
+        >
+          <ShieldAlert className="size-5 shrink-0 text-amber-600" aria-hidden />
+          <div className="min-w-0 flex-1 text-sm leading-relaxed text-amber-900">
+            <p className="font-medium">
+              Complete compliance setup to enable incident reporting
+            </p>
+            <p className="mt-1">
+              Your village cannot accept reports until the Data Protection Impact
+              Assessment and the Appropriate Policy Document have been accepted.
+              Residents who open the report form are being told to contact you.
+            </p>
+          </div>
+          <Link
+            href="/dashboard/compliance"
+            className="inline-flex h-10 shrink-0 items-center rounded-lg bg-amber-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700"
+          >
+            Review and accept
+          </Link>
+        </div>
+      )}
 
       <section className="mt-6 grid gap-3 sm:grid-cols-2">
         <StatCard

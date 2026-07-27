@@ -764,6 +764,33 @@ export const villageAutoApproveFormSchema = z.object({
 });
 
 /**
+ * Accepting the two compliance documents.
+ *
+ * Two checkboxes rather than one, and the schema does **not** require both: the
+ * action decides that, so it can say which box is missing rather than rejecting
+ * the whole form with "invalid". `refine` here would turn "you have not ticked
+ * the APD" into a validation error with nowhere useful to attach it.
+ *
+ * The same unchecked-checkbox handling as `villageAutoApproveFormSchema` — an
+ * unticked box is absent from the payload entirely, so "missing" has to mean
+ * false rather than "leave unchanged". There is no leave-unchanged here anyway:
+ * acceptance is one-way (see `acceptCompliance`).
+ *
+ * No `villageId`. It comes from the caller's session — a village id in this form
+ * would be a way to accept a neighbouring parish's legal documents for them.
+ */
+export const complianceAcceptFormSchema = z.object({
+  dpia: z
+    .union([z.literal("on"), z.literal("")])
+    .optional()
+    .transform((value) => value === "on"),
+  apd: z
+    .union([z.literal("on"), z.literal("")])
+    .optional()
+    .transform((value) => value === "on"),
+});
+
+/**
  * The village's data controller, as a coordinator types it.
  *
  * Empty becomes `null` rather than `""`, which is what lets `reportController`

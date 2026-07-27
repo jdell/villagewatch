@@ -9,6 +9,10 @@ import {
   findNearbyIncidents,
 } from "@/lib/ai/detect-patterns";
 import { structureIncident } from "@/lib/ai/structure-incident";
+import {
+  COMPLIANCE_BLOCKED_MESSAGE,
+  canVillageAcceptIncidents,
+} from "@/lib/compliance";
 import { inlineImageFromStorage } from "@/lib/media/storage";
 import { RATE_LIMITS, rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { fieldErrors, incidentProcessSchema } from "@/lib/validations";
@@ -58,6 +62,19 @@ export async function POST(request: NextRequest) {
   if (!villageId) {
     return NextResponse.json(
       { error: "Join a village before filing a report" },
+      { status: 403 },
+    );
+  }
+
+  // The same gate `POST /api/incidents` applies, and for a second reason on top
+  // of the first: this route sends a resident's verbatim words to Anthropic, and
+  // doing that for a report the village cannot lawfully accept would be a
+  // disclosure with no basis behind it — and would spend Anthropic credit on a
+  // draft that has nowhere to go. Checked before the body is read, before the
+  // rate-limit slot, and before the history lookup.
+  if (!(await canVillageAcceptIncidents(villageId))) {
+    return NextResponse.json(
+      { error: COMPLIANCE_BLOCKED_MESSAGE, code: "compliance_incomplete" },
       { status: 403 },
     );
   }

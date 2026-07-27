@@ -781,6 +781,27 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    value: "compliance.dpia_accepted",
+    label: "DPIA accepted",
+    description:
+      "A coordinator accepted the Data Protection Impact Assessment on the council's behalf",
+    /*
+      Sensitive, and not because it discloses anything — it discloses nothing.
+      It is the row a regulator asks for by name. Article 35 requires the
+      assessment before the processing starts, and this is the only record of
+      when a particular council adopted it and who signed. Losing it in a wall
+      of neutral moderation entries would defeat the point of writing it.
+    */
+    tone: "sensitive",
+  },
+  {
+    value: "compliance.apd_accepted",
+    label: "Appropriate Policy Document accepted",
+    description:
+      "A coordinator accepted the Appropriate Policy Document, which is what authorises processing criminal offence data at all",
+    tone: "sensitive",
+  },
+  {
     value: "incident.notify",
     label: "Alert re-sent",
     description: "A village-wide push was sent again",

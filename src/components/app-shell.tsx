@@ -14,6 +14,7 @@ import {
   Plus,
   Settings,
   Shield,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -57,6 +58,20 @@ const NAV_ITEMS = [
     href: "/reports",
     label: "Reports",
     icon: FileText,
+    requires: "coordinator",
+  },
+  /*
+    Last of the coordinator items, and the first one that matters: until this is
+    done the village accepts no reports at all, so there is nothing for the three
+    above it to show. It sits at the bottom rather than the top because it is a
+    once-per-village act — the dashboard's amber banner is what puts it in front
+    of somebody who has not done it, and a permanent top-of-list entry for a
+    thing you do once would push the daily work down forever.
+  */
+  {
+    href: "/dashboard/compliance",
+    label: "Compliance",
+    icon: ShieldCheck,
     requires: "coordinator",
   },
   { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },

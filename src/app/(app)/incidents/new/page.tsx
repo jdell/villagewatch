@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MapPinOff } from "lucide-react";
+import { MapPinOff, ShieldAlert } from "lucide-react";
 import { IncidentForm } from "@/components/incident-form";
 import { requireSession } from "@/lib/auth";
+import {
+  COMPLIANCE_BLOCKED_MESSAGE,
+  getVillageCompliance,
+} from "@/lib/compliance";
 import { prisma } from "@/lib/prisma";
 import { getVillageChannel } from "@/lib/whatsapp-channel";
 import { MAP_DEFAULTS, isCoordinatorRole } from "@/lib/constants";
@@ -64,11 +68,71 @@ export default async function NewIncidentPage() {
     );
   }
 
+  const canPostAlert = isCoordinatorRole(session.profile?.role);
+
+  /*
+    The compliance gate, rendered rather than enforced — `POST /api/incidents`
+    is what actually refuses (see `src/lib/compliance.ts`). Showing this here is
+    what stops a resident filling in a five-step wizard, attaching a photo,
+    waiting for the rewrite and only then being told their village cannot accept
+    it.
+
+    A coordinator gets a way through to fix it; a resident gets the sentence and
+    a way back, because there is nothing they can do and pointing them at a page
+    that would refuse them would be worse than saying so.
+  */
+  const compliance = await getVillageCompliance(village.id);
+
+  if (!compliance.complete) {
+    return (
+      <div className="mx-auto w-full max-w-2xl px-4 py-14 sm:px-6">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-8">
+          <span className="mx-auto grid size-12 place-items-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-100">
+            <ShieldAlert className="size-6" aria-hidden />
+          </span>
+          <h1 className="mt-4 text-xl font-semibold text-slate-900">
+            Reporting is not open yet
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            {COMPLIANCE_BLOCKED_MESSAGE}
+          </p>
+
+          {canPostAlert ? (
+            <>
+              <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                That is you. {village.name} needs its Data Protection Impact
+                Assessment and Appropriate Policy Document accepted before it can
+                take a single report.
+              </p>
+              <Link
+                href="/dashboard/compliance"
+                className="mt-5 inline-flex h-11 items-center rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white transition hover:bg-brand-700"
+              >
+                Complete compliance setup
+              </Link>
+            </>
+          ) : (
+            <Link
+              href="/map"
+              className="mt-5 inline-flex h-11 items-center rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white transition hover:bg-brand-700"
+            >
+              Back to the map
+            </Link>
+          )}
+
+          <p className="mt-5 text-xs leading-relaxed text-slate-500">
+            If this is an emergency, call 999. For non-urgent police matters,
+            call 101.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Only ever used by the success screen's "Open WhatsApp" button, which only a
   // coordinator filing into an auto-approving village ever sees — so it is read
   // only for them. `getVillageChannel` is the `https:`-checked view, because
   // this ends up in an `href`.
-  const canPostAlert = isCoordinatorRole(session.profile?.role);
   const channel = canPostAlert ? await getVillageChannel(village.id) : null;
 
   return (

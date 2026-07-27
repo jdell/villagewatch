@@ -4,6 +4,10 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { fuzzCoordinates } from "@/lib/geo";
 import { isAiConfigured } from "@/lib/ai/client";
+import {
+  COMPLIANCE_BLOCKED_MESSAGE,
+  canVillageAcceptIncidents,
+} from "@/lib/compliance";
 import { getVillageAutoApprove } from "@/lib/moderation";
 import {
   notifyCoordinatorsOfPendingReport,
@@ -54,6 +58,12 @@ import { fieldErrors, incidentReportSchema } from "@/lib/validations";
  *
  * The village, the reporter and the status all come from the session. Nothing
  * in the request body can influence them.
+ *
+ * In front of all three sits the compliance gate: a village whose coordinator
+ * has not accepted the DPIA and the Appropriate Policy Document accepts no
+ * report at all. See `src/lib/compliance.ts` — that is a lawfulness question
+ * rather than a configuration one, which is why it is checked before the body is
+ * even read.
  */
 
 /** Sequence room per year before references start colliding. */
@@ -198,6 +208,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "The database is not configured on this deployment." },
       { status: 503 },
+    );
+  }
+
+  // The legal gate, and it is checked here — before the body is parsed and well
+  // before a rate-limit slot is spent — because it is a fact about the village
+  // rather than about this request. A report filed into a village with no
+  // Appropriate Policy Document in place is processing of criminal offence data
+  // with no lawful authorisation behind it (DPA 2018 Schedule 1 paragraph 5),
+  // and the row must not be written at all.
+  //
+  // 403 rather than 503: nothing is broken and retrying will not help. The
+  // message names the person who can fix it, because the resident cannot.
+  if (!(await canVillageAcceptIncidents(villageId))) {
+    return NextResponse.json(
+      { error: COMPLIANCE_BLOCKED_MESSAGE, code: "compliance_incomplete" },
+      { status: 403 },
     );
   }
 
