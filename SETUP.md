@@ -120,17 +120,96 @@ alerts are written to the server console, which is what local development wants.
 
 ---
 
-## 4. Create the schema
+## 4. Apply the schema
+
+`prisma/migrations/` is committed and holds **six** migrations. On a fresh
+database you apply all of them; on an existing one you apply whatever is
+outstanding. Either way the command is the same and it is **not**
+`migrate dev` — that is for authoring a migration, and it will offer to reset a
+database that has drifted.
 
 ```bash
-npx prisma migrate dev --name init
+npx prisma migrate deploy
 ```
 
-This creates `prisma/migrations/` — the first migration this project has ever
-had. Commit it.
+### The order, and what each one is for
 
-It also applies the Day 4 schema change (`User.notifyRadiusMeters`), which has
-been generated but never migrated.
+They apply in filename order. This is also the order to read them in if you are
+working out what a database is missing.
+
+| # | Migration | What it adds |
+|---|-----------|--------------|
+| 1 | `20260726161847_init` | Every table and enum. **`villages.join_code` is here**, with its `@unique` and its index — it has existed since the first migration and no later one touches it. |
+| 2 | `20260727060612_whatsapp_channel` | The four `villages.whatsapp_*` columns. |
+| 3 | `20260727113000_coordinator_requests` | `coordinator_requests` and its enum. |
+| 4 | `20260727150000_erasure_and_rate_limits` | `incident_status.REMOVED`, `users.deleted_at`, the `rate_limit` table. |
+| 5 | `20260727161500_village_auto_approve` | `villages.auto_approve`. |
+| 6 | `20260727180000_village_activation` | `villages.parish_council`. |
+
+**As of 27 July 2026, migrations 1–5 are applied to the Supabase project and
+migration 6 is not.** It has never been applied anywhere. Until it runs:
+
+- The parish council field on `/dashboard` renders as a note explaining that a
+  migration has to run first, rather than failing on Save — `getVillageParishCouncil`
+  reports whether the column exists as well as what is in it, precisely so the
+  screen can tell "no council named" apart from "nowhere to name one".
+- `/reports` falls back to the deployment-wide `DATA_CONTROLLER` constant in
+  its footers.
+
+### Village activation needs no new migration
+
+Activating a village writes `status` and `join_code`. Both columns have existed
+since migration 1. What changed in this release is *who* writes the code —
+`activateVillage()` in `src/lib/village.ts`, never a human in psql — and what it
+means at registration, where it is now required whenever a village has one.
+Neither is a schema change, so there is nothing to migrate for it. The only
+Village column that arrived with the activation work is `parish_council`, and
+that is migration 6 above.
+
+### After it runs
+
+**Both SQL files, in this order, every time:**
+
+```bash
+psql "$DIRECT_URL" -f prisma/sql/postgis.sql        # step 5
+psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql  # step 6
+```
+
+`migrate deploy` alone leaves a new table with RLS **off** and every row
+readable by the anon key, and it cannot recreate the GiST indexes on the
+geography columns because Prisma cannot see them. Steps 5 and 6 are not
+optional follow-ups; they are part of applying a migration.
+
+### In CI
+
+`.github/workflows/database.yml` does all three in order on a push to `main`
+touching `prisma/**`, or from the Run workflow button. It has only ever run as a
+no-op — the five applied migrations were applied by hand — so migration 6 will
+be the first one it actually applies. Watch that run.
+
+With no `DIRECT_URL` secret the migrate job is **skipped rather than failed**,
+so a fork or a fresh clone still goes green.
+
+### Authoring a new migration
+
+```bash
+npx prisma migrate dev --name <what_it_does>
+```
+
+Then read the generated SQL before committing it. Every migration in this
+repository is hand-written or hand-checked for one reason: `migrate diff`
+against this database also proposes
+
+```sql
+DROP INDEX "incidents_location_point_idx";
+DROP INDEX "pattern_alerts_centroid_point_idx";
+DROP INDEX "villages_boundary_idx";
+```
+
+Those are the GiST indexes created by `prisma/sql/postgis.sql`. They sit on
+`Unsupported("geography(...)")` columns, so Prisma cannot see them, reads them
+as drift, and offers to remove them — which would take out every radius query
+the app makes. **Delete those three lines from any generated migration.**
 
 If Supabase refuses to create a shadow database, point `SHADOW_DATABASE_URL` at
 a scratch database and try again.
@@ -162,10 +241,14 @@ psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql
 Order matters: after step 5, not before.
 
 This is the file that stops a leaked anon key reading every village's reports.
-It has never been executed against a real database, so this is the first time
-anyone finds out whether it is right.
+It has been applied and tested against the real database — 43 assertions from
+two villages, which found and closed two holes: the `public` schema had lost its
+role grants to a `prisma migrate` reset, leaving every policy dormant, and
+`raw_description` and `join_code` were readable through PostgREST until they
+were put behind per-column grants.
 
-**Test it before you put real data in.** Create two villages and a user in each,
+**Re-test it after every migration**, and before you put real data in. Create
+two villages and a user in each,
 then with the *anon* key try to read the other village's incidents. You should
 get nothing back. Also confirm:
 
@@ -558,8 +641,17 @@ None of these are optional, and none of them are code.
 - [ ] **Have the council read `/privacy` and `/terms`.** The community
       guidelines in §5 are the common village-watch set, not any particular
       parish's.
-- [ ] **Test the RLS policies with the anon key, from two villages.** See step 6.
-      They have never been run.
+- [ ] **Complete and sign the DPIA.** `docs/DPIA.md` is written and is a
+      template — the council is the data controller and Article 35 puts the duty
+      on the controller, not on us. Its §9 carries five blockers that are
+      documents the council must produce: an Appropriate Policy Document for
+      criminal offence data, an Article 28 agreement with the processor,
+      coordinator moderation guidance, the real controller details, and a breach
+      notification procedure.
+- [ ] **Re-test the RLS policies with the anon key after migration 6.** They
+      have been applied and tested from two villages — 43 assertions, two holes
+      found and closed — but the `villages` SELECT grant is enumerated per
+      column, so every new column needs the file re-run. See step 6.
 - [ ] **Confirm the retention job.** Watch `/api/cron/retention` run once and
       check the numbers in the response. It deletes files.
 - [ ] **Decide on HSTS preload.** `next.config.ts` sends
