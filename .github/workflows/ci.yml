@@ -1,6 +1,6 @@
 name: CI
 
-# Lint, typecheck and build every pull request, and every push to main.
+# Lint, typecheck, test and build every pull request, and every push to main.
 #
 # Until this existed, nothing mechanical ran before a merge — `npm run build`
 # was a line in CONTRIBUTING that a human had to remember, and main
@@ -23,6 +23,11 @@ name: CI
 # So a CI run here proves the build is sound, not that the deployment is
 # configured. Those are different questions and Vercel already answers the
 # second one.
+#
+# The test step holds to the same rule. `vitest.config.ts` runs unit tests
+# only, with Prisma, Supabase and Anthropic mocked at their module boundaries,
+# so nothing here needs a database or an API key either. A test that wanted a
+# secret would be a test this workflow could not run.
 #
 # A commit carrying `[skip ci]` — which is every `chore(release):` commit from
 # version.yml — is skipped by GitHub Actions natively. No `if:` needed.
@@ -71,6 +76,11 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      # Before the build rather than after: the build is the slowest step, and a
+      # failing assertion is worth reporting in seconds rather than minutes.
+      - name: Test
+        run: npm run test
 
       - name: Build
         run: npm run build
