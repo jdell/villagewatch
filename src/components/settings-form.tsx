@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
+import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
 import { ExternalLink, Loader2, MessageCircle } from "lucide-react";
@@ -35,13 +36,17 @@ export type SettingsFormValues = {
 /**
  * The village's WhatsApp Channel, if it runs one.
  *
- * Not a form value — there is nothing to save. Following a channel happens in
- * WhatsApp, not here, so this is a link and a warning and no state at all.
+ * Not a form value — there is nothing to save here. The channel belongs to the
+ * village and is configured by a coordinator on `/dashboard`; following one
+ * happens in WhatsApp. So this is a link, a warning, and no state at all.
+ *
+ * `null` where the resident has no village, which is the one case with nothing
+ * to say either way.
  */
 export type SettingsChannel = {
   /** Public invite link. Already checked to be `https:` server-side. */
   url: string | null;
-  /** Whether to show the "set one up" prompt — coordinators only. */
+  /** Whether to point at the dashboard form — coordinators only. */
   canSetUp: boolean;
 };
 
@@ -78,8 +83,9 @@ function FieldError({ message }: { message?: string }) {
  * to anyone with the link, and a resident deciding whether to follow it should
  * know that before they tap, not after they have forwarded it to a group chat.
  */
-function ChannelSection({ channel }: { channel: SettingsChannel }) {
-  if (!channel.url && !channel.canSetUp) return null;
+function ChannelSection({ channel }: { channel: SettingsChannel | null }) {
+  // No village, no channel to have an opinion about.
+  if (!channel) return null;
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
@@ -114,19 +120,38 @@ function ChannelSection({ channel }: { channel: SettingsChannel }) {
           </p>
         </>
       ) : (
-        <p className="mt-1 text-sm text-slate-500">
-          Your village does not run one yet. A channel gives residents who are
-          not in the app a way to see the serious alerts.{" "}
-          <a
-            href={WHATSAPP_CHANNELS_HELP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
-          >
-            How channels work
-          </a>
-          .
-        </p>
+        <>
+          <p className="mt-1 text-sm font-medium text-slate-700">
+            WhatsApp Channel not set up yet
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            A channel gives residents who are not in the app a way to see the
+            serious alerts. Each village runs its own.{" "}
+            <a
+              href={WHATSAPP_CHANNELS_HELP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+            >
+              How channels work
+            </a>
+            .
+          </p>
+
+          {/*
+            Only a coordinator can act on this, and only from the dashboard —
+            it is a village setting, so it is not a field on this form. A
+            resident gets the explanation and no dead end to click.
+          */}
+          {channel.canSetUp && (
+            <Link
+              href="/dashboard"
+              className="mt-4 inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Set one up on the dashboard
+            </Link>
+          )}
+        </>
       )}
     </section>
   );
@@ -137,7 +162,7 @@ export function SettingsForm({
   channel,
 }: {
   values: SettingsFormValues;
-  channel: SettingsChannel;
+  channel: SettingsChannel | null;
 }) {
   const [state, save] = useActionState(saveSettingsAction, IDLE);
 

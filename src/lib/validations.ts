@@ -577,6 +577,76 @@ export const settingsFormSchema = z.object({
 export type SettingsFormInput = z.output<typeof settingsFormSchema>;
 
 // ---------------------------------------------------------------------------
+// The village's WhatsApp Channel
+// ---------------------------------------------------------------------------
+
+/**
+ * `https:` and nothing else.
+ *
+ * The same test `safeChannelUrl` in `src/lib/whatsapp-channel.ts` applies when
+ * the column is read. Both are wanted: this one gives the coordinator an error
+ * message under the field, that one still has to run because rows set by hand in
+ * the database predate this form and a `javascript:` URL rendered into
+ * `/settings` is stored XSS against the whole village.
+ *
+ * Any origin is accepted. WhatsApp has used both `whatsapp.com` and
+ * `chat.whatsapp.com` for invite links, and pinning one breaks the day they add
+ * a third.
+ */
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The coordinator's WhatsApp Channel settings, posted from the dashboard.
+ *
+ * A `<form>`, so the same two shape problems `settingsFormSchema` has: an empty
+ * text field arrives as `""` rather than absent, and an unchecked box does not
+ * arrive at all.
+ *
+ * Both channel fields are per-village and neither is an env var. Only the API
+ * token the relay authenticates with is platform-level — one deployment, one
+ * relay account, many channels.
+ *
+ * The refine at the end is the one rule worth enforcing: `whatsappEnabled` with
+ * no `whatsappChannelId` behind it is a switch that reads as on and posts
+ * nothing, because `postIncidentToChannel` skips with `no_channel`. A
+ * coordinator who thinks the village is mirroring alerts and is not would find
+ * out weeks later, from nobody.
+ */
+export const villageChannelFormSchema = z
+  .object({
+    whatsappChannelUrl: z
+      .string()
+      .trim()
+      .max(500, "Keep the invite link under 500 characters")
+      .transform((value) => (value === "" ? null : value))
+      .refine((value) => value === null || isHttpsUrl(value), {
+        error: "Paste the https:// invite link WhatsApp gives you",
+      }),
+    whatsappChannelId: z
+      .string()
+      .trim()
+      .max(200, "Keep the channel id under 200 characters")
+      .transform((value) => (value === "" ? null : value)),
+    whatsappEnabled: z
+      .union([z.literal("on"), z.literal("")])
+      .optional()
+      .transform((value) => value === "on"),
+    whatsappMinSeverity: z.enum(SEVERITY_VALUES),
+  })
+  .refine((v) => !v.whatsappEnabled || Boolean(v.whatsappChannelId), {
+    error: "Add the channel id, or posting will silently do nothing",
+    path: ["whatsappChannelId"],
+  });
+
+export type VillageChannelFormInput = z.output<typeof villageChannelFormSchema>;
+
+// ---------------------------------------------------------------------------
 // Moderation and editing
 // ---------------------------------------------------------------------------
 

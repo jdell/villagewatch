@@ -78,12 +78,18 @@ export default async function SettingsPage({
           notifyMinSeverity: profile?.notifyMinSeverity ?? "LOW",
           notifyRadiusMeters: profile?.notifyRadiusMeters ?? null,
         }}
-        channel={{
-          url: channel?.url ?? null,
-          // Residents with no channel to follow see nothing; a coordinator sees
-          // the prompt, because they are the one who can go and create one.
-          canSetUp: isCoordinatorRole(profile?.role),
-        }}
+        channel={
+          // `null` only where the resident has no village at all. Everyone else
+          // sees the section — with the follow link if their village runs a
+          // channel, and "not set up yet" if it does not. A coordinator also
+          // gets the way through to the dashboard form that sets one up.
+          profile?.villageId
+            ? {
+                url: channel?.url ?? null,
+                canSetUp: isCoordinatorRole(profile?.role),
+              }
+            : null
+        }
       />
 
       {/*

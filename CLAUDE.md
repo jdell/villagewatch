@@ -125,7 +125,8 @@ src/
       incidents/[id]/actions.ts  Moderate / edit / withdraw server actions
       incidents/new/          Report wizard host (village lookup, server-side)
       dashboard/              Stats, breakdowns, hotspots, moderation queue
-      dashboard/actions.ts    Moderate + audited raw-text reveal
+      dashboard/actions.ts    Moderate, audited raw-text reveal, and the
+                              village's WhatsApp Channel settings
       dashboard/audit/        Audit trail viewer — coordinator only, filterable
       settings/               Profile and notification preferences
       settings/actions.ts     saveSettingsAction — never touches role/village
@@ -169,6 +170,8 @@ src/
     dashboard/stat-card.tsx   One figure with its trend against last period
     dashboard/breakdown-bar.tsx  CSS bars — no charting dependency
     dashboard/moderation-card.tsx  Queue row; audited raw-text reveal
+    dashboard/whatsapp-channel-form.tsx  The village's own channel — link, id,
+                              posting switch, severity floor
     severity-badge.tsx        green / amber / red / purple pill
     incident-type-icon.tsx    Enum icon name → lucide component
     no-village.tsx            Shown wherever a resident has no village yet
@@ -634,9 +637,28 @@ the app that discloses outside the village.
   provider-agnostic `POST {channelId, text}` to `WHATSAPP_CHANNEL_API_URL` and
   takes no view on who answers. Change providers in `post()`; every call site
   stays the same.
-- **The follow link needs none of that.** Set `Village.whatsappChannelUrl` and
-  `/settings` renders "Follow on WhatsApp". That half is officially supported,
-  needs no credentials, and is what most villages will actually use.
+- **The channel is the village's; the relay account is the platform's.** Both
+  halves of a channel's identity — the public invite link and the id a relay
+  writes to — are columns on `Village`, set by that village's coordinator on
+  `/dashboard`. **No environment variable names a channel**, and none should: a
+  deployment serves many villages and each runs its own. `WHATSAPP_CHANNEL_API_URL`
+  and `WHATSAPP_CHANNEL_API_TOKEN` are the one shared thing, because they are one
+  relay account rather than one feed.
+- **The follow link needs none of that.** A coordinator pastes the invite link
+  into the dashboard form and `/settings` renders "Follow on WhatsApp" for every
+  resident of that village; a village without one shows "WhatsApp Channel not set
+  up yet". That half is officially supported, needs no credentials, and is what
+  most villages will actually use.
+- **`getVillageChannel` filters, `getVillageChannelSettings` does not.** The
+  first is the read path and puts `url` through `safeChannelUrl`, because it
+  feeds an `href`. The second is for the form that edits the column, where a bad
+  link has to be visible to be correctable — it goes into a text input and never
+  into an anchor.
+- **Changing the settings is audited; the posts are not.** `village.channel_update`
+  is the only configuration change in `AUDIT_ACTIONS` and is toned `sensitive`,
+  because turning posting on widens the audience for every alert published
+  afterwards past the tenant boundary. Who did that, and when, is exactly what
+  the trail is for. A post itself still writes nothing — see below.
 - **A channel is public**, so the rules are stricter than anywhere else:
   `whatsappEnabled` defaults false, `whatsappMinSeverity` defaults **HIGH** (push
   defaults to LOW), and `ChannelIncident` has no field that could carry
@@ -655,9 +677,12 @@ the app that discloses outside the village.
   channel has no known recipients. **No `AuditLog` row** either: the post is a
   deterministic consequence of `incident.publish` plus the village's own
   configuration, both already in the trail.
-- `getVillageChannel()` refuses to return a `url` that is not `https:`. Nothing
-  validates that column on the way in, and a `javascript:` URL rendered into
-  `/settings` would be stored XSS against the whole village.
+- `getVillageChannel()` refuses to return a `url` that is not `https:`. The
+  dashboard form validates on the way in now, but the read-time guard stays:
+  the column predates that screen and was set by hand for as long as it has
+  existed, so nothing guarantees a stored value ever met a validator. A
+  `javascript:` URL rendered into `/settings` would be stored XSS against the
+  whole village.
 - **`/privacy` §6 names this disclosure and the landing-page FAQ carves it out.**
   Both are statements about how the code behaves — change what a post contains
   and they change in the same commit.
@@ -906,15 +931,14 @@ open:
   villages" figure. Set it when somebody can point at the list, and not before:
   a made-up number there is a false statement to a parish clerk deciding whether
   to hand over their residents' reports.
-- **The WhatsApp Channel has no UI and no relay.** The four `Village` columns
-  are set by hand in the database — there is no coordinator village-settings
-  screen to set the invite link, flip `whatsappEnabled` or choose
-  `whatsappMinSeverity`, and no validation schema for them because nothing
-  submits them. `WHATSAPP_CHANNEL_API_URL` is unset, so every post logs and
-  reports `skipped: "not_configured"` — a supported state, like OneSignal.
-  Nothing has ever been posted to a real channel. **Before turning one on for a
-  live village, post to a test channel first and read what actually lands** —
-  this is the one feature whose output an unauthenticated stranger can read.
+- **The WhatsApp Channel has a UI now but still no relay.** All four `Village`
+  columns are set by a coordinator on `/dashboard`, validated by
+  `villageChannelFormSchema`. What is still missing is the other end:
+  `WHATSAPP_CHANNEL_API_URL` is unset, so every post logs and reports
+  `skipped: "not_configured"` — a supported state, like OneSignal. Nothing has
+  ever been posted to a real channel. **Before turning one on for a live
+  village, post to a test channel first and read what actually lands** — this is
+  the one feature whose output an unauthenticated stranger can read.
 - **No CI beyond the version bump.** `.github/workflows/version.yml` is the only
   workflow; nothing runs `npm run build`, `tsc` or `eslint` on a pull request.
 - The README's screenshots are placeholder text. Capture them after the first

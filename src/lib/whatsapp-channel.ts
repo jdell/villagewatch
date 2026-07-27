@@ -28,10 +28,22 @@ import {
  * names, and takes no view on who is on the other end.
  *
  * **The follow link needs none of this.** `Village.whatsappChannelUrl` is a
- * public invite link a coordinator pastes in; `/settings` renders it and
- * residents follow the channel in the app. That half is officially supported,
- * works with zero configuration, and is what a village gets if it never sets up
- * a relay at all. Posting is the optional half.
+ * public invite link a coordinator pastes in on `/dashboard`; `/settings`
+ * renders it and residents follow the channel in the app. That half is
+ * officially supported, works with zero configuration, and is what a village
+ * gets if it never sets up a relay at all. Posting is the optional half.
+ *
+ * ## The channel is the village's, the relay account is the platform's
+ *
+ * Both halves of a channel's identity — the public invite link and the id a
+ * relay posts to — live on the `Village` row and are set by its own coordinator
+ * from the dashboard. Nothing about *which* channel is an environment variable,
+ * because a deployment serves many villages and each one runs its own.
+ *
+ * What is platform-level is the relay itself: `WHATSAPP_CHANNEL_API_URL` and
+ * `WHATSAPP_CHANNEL_API_TOKEN` are one account with one endpoint, shared by
+ * every village that has switched posting on. A coordinator never sees them and
+ * cannot set them.
  *
  * ## A channel is public, and that changes the rules
  *
@@ -148,15 +160,93 @@ export async function getVillageChannel(
 }
 
 /**
+ * The raw column values, for the screen that edits them.
+ *
+ * Distinct from `getVillageChannel` in one way that matters: `url` is **not**
+ * put through `safeChannelUrl`. A coordinator whose village has a bad link in
+ * that column needs to see the bad link in the field in order to correct it —
+ * blanking it would tell them the setting is empty and lose what is stored on
+ * the next save. Rendering it into a text input is safe; rendering it into an
+ * `href` is what `safeChannelUrl` guards, and that path still goes through
+ * `getVillageChannel`.
+ */
+export async function getVillageChannelSettings(
+  villageId: string,
+): Promise<VillageChannel | null> {
+  if (!process.env.DATABASE_URL) return null;
+
+  try {
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      select: {
+        whatsappChannelUrl: true,
+        whatsappChannelId: true,
+        whatsappEnabled: true,
+        whatsappMinSeverity: true,
+      },
+    });
+
+    if (!village) return null;
+
+    return {
+      url: village.whatsappChannelUrl,
+      id: village.whatsappChannelId,
+      enabled: village.whatsappEnabled,
+      minSeverity: village.whatsappMinSeverity,
+    };
+  } catch (cause) {
+    console.error(
+      "Could not read the channel settings for village %s",
+      villageId,
+      cause,
+    );
+    return null;
+  }
+}
+
+/**
+ * Writes one village's channel settings.
+ *
+ * The only place these four columns are set from the application. It takes a
+ * `villageId` and never reads one — the caller resolves it from the session
+ * profile (domain rule 4), because a village id in a form post is a way to
+ * configure somebody else's channel.
+ *
+ * Unlike everything else in this module it **does** throw on a database error:
+ * a save that silently failed would leave the coordinator looking at the values
+ * they typed and believing them. The call site turns it into a message.
+ */
+export async function saveVillageChannel(
+  villageId: string,
+  settings: {
+    url: string | null;
+    id: string | null;
+    enabled: boolean;
+    minSeverity: Severity;
+  },
+): Promise<void> {
+  await prisma.village.update({
+    where: { id: villageId },
+    data: {
+      whatsappChannelUrl: settings.url,
+      whatsappChannelId: settings.id,
+      whatsappEnabled: settings.enabled,
+      whatsappMinSeverity: settings.minSeverity,
+    },
+  });
+}
+
+/**
  * Only lets an `https:` URL through to an `href`.
  *
- * There is no screen that writes this column — a coordinator pastes the invite
- * link and somebody puts it in the database by hand — so nothing has validated
- * it by the time `/settings` renders it into an anchor. A `javascript:` URL in
- * that position is stored XSS against every resident of the village, and the
- * check costs one `URL` parse. Any origin is accepted: WhatsApp has used both
- * `whatsapp.com` and `chat.whatsapp.com` for invite links and pinning one would
- * break the day they add a third.
+ * The dashboard form validates this on the way in, but the check stays: the
+ * four columns predate that screen and were set by hand in the database for as
+ * long as they have existed, so nothing guarantees a stored value has ever met
+ * a validator. A `javascript:` URL rendered into an anchor on `/settings` is
+ * stored XSS against every resident of the village, and the check costs one
+ * `URL` parse. Any origin is accepted: WhatsApp has used both `whatsapp.com`
+ * and `chat.whatsapp.com` for invite links and pinning one would break the day
+ * they add a third.
  */
 function safeChannelUrl(value: string | null): string | null {
   if (!value) return null;

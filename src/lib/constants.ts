@@ -701,6 +701,17 @@ export const AUDIT_ACTIONS = [
     tone: "negative",
   },
   {
+    value: "village.channel_update",
+    label: "WhatsApp Channel changed",
+    description:
+      "A coordinator changed where the village's public channel posts go",
+    // Sensitive, and it is the only configuration change in this list. Turning
+    // the channel on widens the audience for every alert published afterwards
+    // from "signed-in residents of this village" to anyone holding the link —
+    // the one setting in the app that reaches past the tenant boundary.
+    tone: "sensitive",
+  },
+  {
     value: "retention.sweep",
     label: "Retention sweep",
     description:

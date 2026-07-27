@@ -277,6 +277,84 @@ ONESIGNAL_REST_API_KEY="..."         # SERVER ONLY
 
 ---
 
+## 8b. WhatsApp Channel (optional, one per village)
+
+**Every village gets its own channel.** This is not a deployment-wide setting
+and there is no environment variable naming a channel — one VillageWatch
+instance serves many villages, each with its own residents, its own invite link
+and its own feed. A coordinator sets theirs up on **/dashboard → Village
+settings → WhatsApp Channel**, and it is stored on that village's row
+(`whatsapp_channel_url`, `whatsapp_channel_id`, `whatsapp_enabled`,
+`whatsapp_min_severity`). A neighbouring parish on the same deployment sets up
+its own, separately, and neither can see or change the other's.
+
+Skip the whole section and everything still works. This is the only surface in
+VillageWatch that discloses outside the village, so it is off until somebody
+turns it on.
+
+### The half that needs nothing (most villages want only this)
+
+1. In WhatsApp: **Updates → + → New channel**. Name it after the village.
+2. **Copy link** on the channel gives a public invite link.
+3. Sign in as that village's coordinator → **/dashboard** → **WhatsApp
+   Channel** → paste it into **Invite link** → save.
+
+Every resident of that village now sees a **Follow on WhatsApp** button on
+their `/settings` page. Villages that have not set one up see *"WhatsApp
+Channel not set up yet"* instead, and their coordinator sees a way through to
+the form. No credentials, no API, nothing to break. The coordinator posts to
+the channel by hand from WhatsApp.
+
+### The half that needs a relay (posting automatically)
+
+**Read this before wiring anything up.** Meta's WhatsApp Cloud API sends
+messages to phone numbers. It has **no endpoint that posts to a Channel** —
+Channels are a broadcast surface Meta expects a human to post to from the app.
+Third-party relays (Whapi and similar) do offer channel posting, by driving the
+WhatsApp Web protocol. They work, and they can breach WhatsApp's terms and get
+the number behind them banned. That is a decision for whoever runs the
+deployment.
+
+If you go ahead, the relay account is **platform-level** — one endpoint and one
+token for the whole deployment, shared by every village that switches posting
+on. A coordinator never sees these and cannot set them:
+
+```bash
+WHATSAPP_CHANNEL_API_URL="https://your-relay.example/messages"
+WHATSAPP_CHANNEL_API_TOKEN="..."     # SERVER ONLY
+```
+
+The app POSTs `{ channelId, text }` with `Authorization: Bearer <token>`. If
+your provider wants a different envelope, adapt `post()` in
+`src/lib/whatsapp-channel.ts` — every call site stays the same.
+
+Then, per village, the coordinator fills in the other two fields on the same
+dashboard form:
+
+- **Channel id** — the identifier the relay posts to. Never shown to residents;
+  treat it as a credential.
+- **Post published alerts to the channel** — off by default. This is the switch
+  that widens the audience for every alert published afterwards from "signed-in
+  residents of this village" to anyone holding the link.
+- **Post anything at or above** — defaults to **High**, deliberately stricter
+  than the push default of Low. A missing cat does not belong on a public feed.
+
+Enabling posting with no channel id is rejected by the form: it would read as
+on and post nothing.
+
+Leave `WHATSAPP_CHANNEL_API_URL` blank and posts are written to the server
+console instead of sent — `skipped: "not_configured"`, a supported state, same
+as OneSignal. The dashboard form says so when a coordinator switches posting on.
+
+**Post to a test channel first and read what actually lands.** This is the one
+feature whose output an unauthenticated stranger can read. A post carries a
+headline, the area, the time and a link back into the app — never the
+reporter's name, their original wording, or the exact coordinates. Changing
+what a post contains changes `/privacy` §6 and the landing-page FAQ in the same
+commit.
+
+---
+
 ## 9. Add the Anthropic API key
 
 <https://console.anthropic.com> → API keys.
@@ -464,6 +542,9 @@ None of these are optional, and none of them are code.
       `Strict-Transport-Security` with `preload`. Submitting the domain to the
       preload list is a months-long commitment for every subdomain. Drop the
       directive if anything on a subdomain may ever need plain HTTP.
+- [ ] **Post to a test WhatsApp Channel first** if any village has switched
+      posting on in step 8b, and read what lands. It is the only output an
+      unauthenticated stranger can read, and a post cannot be un-forwarded.
 - [ ] **Change the seeded join code** if you ran step 12, and delete the sample
       incidents.
 - [ ] **Show the ONS attribution** if you ran step 13 and anything renders the

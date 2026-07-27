@@ -15,9 +15,14 @@ import {
   type QueuedIncident,
 } from "@/components/dashboard/moderation-card";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { WhatsAppChannelForm } from "@/components/dashboard/whatsapp-channel-form";
 import { NoVillage } from "@/components/no-village";
 import { requireCoordinator } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  getVillageChannelSettings,
+  isWhatsAppRelayConfigured,
+} from "@/lib/whatsapp-channel";
 import {
   HOTSPOT_COUNT,
   INCIDENT_TYPE_LABELS,
@@ -77,6 +82,7 @@ export default async function DashboardPage() {
     hotspotRows,
     queue,
     pendingCount,
+    channel,
   ] = await Promise.all([
     prisma.incident.count({
       where: { ...published, occurredAt: { gte: weekStart } },
@@ -141,6 +147,10 @@ export default async function DashboardPage() {
       take: MODERATION_QUEUE_SIZE,
     }),
     prisma.incident.count({ where: { villageId, status: "PENDING_REVIEW" } }),
+    // The raw column values rather than `getVillageChannel`'s filtered view —
+    // this is the screen that edits them, so a stored link that failed the
+    // `https:` check has to appear in the field to be correctable.
+    getVillageChannelSettings(villageId),
   ]);
 
   const typeRows: BreakdownRow[] = byType
@@ -340,6 +350,33 @@ export default async function DashboardPage() {
             see the rest.
           </p>
         )}
+      </section>
+
+      {/*
+        Below the queue on purpose: this is configuration, and the queue is the
+        thing that is actually waiting on a coordinator. Rendered even when the
+        village has never had a channel — an empty form is how the first one
+        gets set up, and there is nowhere else in the app to do it.
+      */}
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold text-slate-900">
+          Village settings
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          These apply to everyone in your village, not just to you.
+        </p>
+
+        <WhatsAppChannelForm
+          values={{
+            url: channel?.url ?? null,
+            id: channel?.id ?? null,
+            enabled: channel?.enabled ?? false,
+            // The column default, and deliberately higher than the push
+            // default — a public feed is not the place for a missing cat.
+            minSeverity: channel?.minSeverity ?? "HIGH",
+          }}
+          relayConfigured={isWhatsAppRelayConfigured}
+        />
       </section>
     </div>
   );
