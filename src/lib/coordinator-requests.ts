@@ -1,10 +1,11 @@
 import type { CoordinatorRequestStatus } from "@/generated/prisma/enums";
-import type { Session } from "@/lib/auth";
+import { isPlatformAdmin, type Session } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   notifyAdminsOfCoordinatorRequest,
   notifyApplicantOfCoordinatorDecision,
 } from "@/lib/notifications";
+import { notifySlack } from "@/lib/slack";
 import { canApplyForCoordinator } from "@/lib/constants";
 import type { CoordinatorRequestInput } from "@/lib/validations";
 
@@ -173,11 +174,25 @@ export async function submitCoordinatorRequest(input: {
     },
   });
 
-  await notifyAdminsOfCoordinatorRequest({
+  const alerted = await notifyAdminsOfCoordinatorRequest({
     villageId: village.id,
     villageName: village.name,
     applicantName: profile.fullName,
   });
+
+  // Loud, because the failure it describes is invisible from inside the app: an
+  // application accepted with nobody configured to review it looks identical to
+  // a healthy one until somebody notices it has sat there for a fortnight.
+  if (alerted.matched === 0) {
+    console.warn(
+      "Coordinator request %s has no administrator to review it — is ADMIN_EMAILS set, and does that account have a profile?",
+      request.id,
+    );
+  }
+
+  await notifySlack(
+    `📋 Coordinator request: ${profile.fullName} wants coordinator access for ${village.name}`,
+  );
 
   return { ok: true, requestId: request.id };
 }
@@ -202,7 +217,7 @@ export async function decideCoordinatorRequest(input: {
     return { ok: false, error: "The database is not configured." };
   }
 
-  if (session.profile?.role !== "ADMIN") {
+  if (!isPlatformAdmin(session)) {
     return {
       ok: false,
       error: "Only a platform administrator can decide an application.",
@@ -280,7 +295,19 @@ export async function decideCoordinatorRequest(input: {
     data: {
       actorId: session.user.id,
       actorEmail: session.user.email,
-      actorRole: session.profile.role,
+      /**
+       * `"PLATFORM_ADMIN"` rather than the actor's `User.role`, and it is the
+       * one row in the trail that does not carry a `UserRole`.
+       *
+       * The authority for this action is membership of `ADMIN_EMAILS`, not the
+       * role column — an administrator's profile may say `RESIDENT`, or they
+       * may have no profile row at all. Writing `RESIDENT` here would put "a
+       * resident promoted somebody to coordinator" in the audit trail, which
+       * reads as the exact privilege escalation this record exists to rule out.
+       * The viewer renders an unrecognised value verbatim, and `actorEmail`
+       * beside it is the credential that was actually used.
+       */
+      actorRole: "PLATFORM_ADMIN",
       villageId: request.villageId,
       action: approved
         ? "coordinator_request.approved"
@@ -307,6 +334,15 @@ export async function decideCoordinatorRequest(input: {
     approved,
     note,
   });
+
+  // The reviewer's note is deliberately not in the Slack line. It is written by
+  // one person to another about why they were turned down, and a staff channel
+  // is not where that conversation belongs — the decision is the news.
+  await notifySlack(
+    approved
+      ? `✅ ${request.user.fullName} approved as coordinator for ${request.village.name}`
+      : `❌ ${request.user.fullName} rejected for ${request.village.name}`,
+  );
 
   return {
     ok: true,

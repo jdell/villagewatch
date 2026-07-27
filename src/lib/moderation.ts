@@ -5,6 +5,8 @@ import {
   notifyIncidentPublished,
   notifyReporterOfDecision,
 } from "@/lib/notifications";
+import { notifySlack } from "@/lib/slack";
+import { SEVERITY_META } from "@/lib/constants";
 
 /**
  * Coordinator actions on a report, and the audit trail they owe.
@@ -81,6 +83,9 @@ export async function applyModeration(input: {
       lng: true,
       occurredAt: true,
       reporterId: true,
+      // For the staff Slack line only. `rawDescription` is deliberately absent
+      // from this select and always has been (domain rule 1).
+      village: { select: { name: true } },
     },
   });
 
@@ -148,6 +153,16 @@ export async function applyModeration(input: {
     });
 
     notified = broadcast.sent;
+
+    // The staff channel gets what the village got: the anonymised title, the
+    // severity and the landmark. Never the coordinates, never the reporter's
+    // wording — the same rule the WhatsApp Channel post follows, for the same
+    // reason. Cannot throw, so it cannot fail a publish.
+    await notifySlack(
+      `🚨 New incident in ${incident.village.name}: ${SEVERITY_META[incident.severity].label} — ${incident.title}${
+        incident.locationText ? ` — ${incident.locationText}` : ""
+      }`,
+    );
   }
 
   if (action === "PUBLISH" || action === "REJECT") {

@@ -105,7 +105,18 @@ Also set:
 ```bash
 NEXT_PUBLIC_APP_URL="http://localhost:3000"   # your real domain in production
 CRON_SECRET="$(openssl rand -base64 32)"      # see step 11
+ADMIN_EMAILS="you@example.com"                # your own sign-in address
 ```
+
+`ADMIN_EMAILS` is the entire definition of "platform administrator" — the people
+who can approve a resident's application to become a village coordinator, at
+`/admin/coordinators`. Put **your own** sign-in address in it now. Leave it blank
+and nobody is an administrator: the gate fails closed, and coordinator
+applications will be accepted and sit unreviewed with nobody able to open the
+queue.
+
+`SLACK_WEBHOOK_URL` is optional and can stay blank. With no webhook the staff
+alerts are written to the server console, which is what local development wants.
 
 ---
 
@@ -314,7 +325,7 @@ deploy is blocked.
 ## 11. Add the environment variables to Vercel
 
 **Project → Settings → Environment Variables.** Everything from `.env.local`,
-with two changes:
+with three changes:
 
 - `NEXT_PUBLIC_APP_URL` becomes the real domain. Push deep links and email links
   are built from it; left as `localhost` every notification points at a machine
@@ -323,6 +334,10 @@ with two changes:
   every request without it** — deliberately, because one spends Anthropic credit
   and pushes to coordinators' phones and the other deletes files and takes
   reports off the map.
+- `ADMIN_EMAILS` becomes the real administrators, not your local test address.
+  It is a credential in everything but name: anyone on that list can grant
+  somebody the ability to read the original, un-anonymised wording of every
+  report their village files. Changing it takes effect on the next deploy.
 
 Vercel sends it as `Authorization: Bearer $CRON_SECRET`, and both routes compare
 it in constant time (`src/lib/cron.ts`).

@@ -6,6 +6,7 @@ import type { User } from "@/generated/prisma/client";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { prisma } from "@/lib/prisma";
+import { isAdminEmail } from "@/lib/admin";
 import { COORDINATOR_ROLES } from "@/lib/constants";
 
 export type Session = {
@@ -85,15 +86,45 @@ export function requireCoordinator(nextPath?: string) {
 }
 
 /**
+ * Whether this session belongs to a platform administrator.
+ *
+ * Decided by the **verified email on the auth user**, against `ADMIN_EMAILS` —
+ * not by `User.role`. See `src/lib/admin.ts` for why, and for the one thing
+ * that does still read the role (`vw_is_admin()` in the RLS policies).
+ *
+ * `session.user.email` rather than `session.profile.email`: the former comes
+ * from the Supabase JWT that `getUser()` has just revalidated, the latter from
+ * a row the profile write put there. They agree today, and if they ever stop
+ * agreeing, the one to trust for an authorisation decision is the one the
+ * identity provider signed. It also means an administrator is an administrator
+ * before they have a profile row at all.
+ */
+export function isPlatformAdmin(session: Session | null): boolean {
+  return isAdminEmail(session?.user.email);
+}
+
+/**
  * Platform administrator guard, for the `/admin` routes.
  *
  * Narrower than `requireCoordinator()` and not a superset of it: a coordinator
  * moderates one village's reports, an administrator decides who gets to. The
  * only screen behind this today is the coordinator request queue, which is
  * deliberately not village-scoped — see `src/lib/coordinator-requests.ts`.
+ *
+ * Fails closed. With `ADMIN_EMAILS` unset nobody matches, so this refuses
+ * everyone rather than admitting anyone — an empty allow-list is an empty
+ * allow-list, not a disabled check.
  */
-export function requireAdmin(nextPath?: string) {
-  return requireRole(["ADMIN"], nextPath);
+export async function requireAdmin(nextPath?: string): Promise<Session> {
+  const session = await requireSession(nextPath);
+
+  if (!isPlatformAdmin(session)) {
+    // Same destination as `requireRole`: they are signed in, just not allowed,
+    // and bouncing them to /login would invite them to try another account.
+    redirect("/map");
+  }
+
+  return session;
 }
 
 /**

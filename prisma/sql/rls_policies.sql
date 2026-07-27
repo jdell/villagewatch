@@ -146,6 +146,22 @@ AS $$
              'ADMIN'::public.user_role);
 $$;
 
+/**
+ * NOTE: this is no longer what the application means by "administrator".
+ *
+ * The app gates `/admin` on the signed-in email against the `ADMIN_EMAILS`
+ * environment variable (`src/lib/admin.ts`), because nothing ever set
+ * `users.role = 'ADMIN'` and the first administrator therefore had to be
+ * created by hand in a SQL console. `UserRole.ADMIN` survives for these
+ * policies and only for these policies.
+ *
+ * That divergence is harmless today and is worth saying out loud: these
+ * policies gate the `authenticated` / PostgREST path, the app connects as the
+ * table owner and bypasses them, so the two definitions never meet. They would
+ * meet the moment the runtime moved onto a request-scoped role, and at that
+ * point this function has to learn about the allow-list — probably as a table
+ * the environment variable seeds, since a policy cannot read `process.env`.
+ */
 CREATE OR REPLACE FUNCTION public.vw_is_admin()
 RETURNS boolean
 LANGUAGE sql

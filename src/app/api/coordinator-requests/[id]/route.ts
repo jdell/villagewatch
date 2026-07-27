@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getSession } from "@/lib/auth";
+import { getSession, isPlatformAdmin } from "@/lib/auth";
 import { decideCoordinatorRequest } from "@/lib/coordinator-requests";
 import {
   coordinatorRequestDecisionSchema,
@@ -30,7 +30,7 @@ export async function PATCH(
   // Checked here and again inside `decideCoordinatorRequest`. This one gives
   // the caller a 403 instead of a 409; that one is the check that actually
   // guards the write.
-  if (session.profile?.role !== "ADMIN") {
+  if (!isPlatformAdmin(session)) {
     return NextResponse.json(
       { error: "Only a platform administrator can decide an application" },
       { status: 403 },

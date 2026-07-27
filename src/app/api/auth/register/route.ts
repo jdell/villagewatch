@@ -5,6 +5,7 @@ import { fieldErrors, registerSchema } from "@/lib/validations";
 import { fuzzCoordinates } from "@/lib/geo";
 import { HOME_LOCATION_FUZZ_METERS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { notifySlack } from "@/lib/slack";
 
 /**
  * POST /api/auth/register
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
 
   const village = await prisma.village.findFirst({
     where: { id: villageId, status: "ACTIVE" },
-    select: { id: true, joinCode: true },
+    select: { id: true, name: true, joinCode: true },
   });
 
   if (!village) {
@@ -157,6 +158,12 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  // Staff channel, after the profile row is safely written — an alert about a
+  // registration that then failed would be worse than none. Cannot throw.
+  await notifySlack(
+    `🆕 New user: ${fullName} (${email}) joined ${village.name}`,
+  );
 
   // With email confirmation enabled, signUp returns a user but no session.
   const needsEmailConfirmation = data.session === null;

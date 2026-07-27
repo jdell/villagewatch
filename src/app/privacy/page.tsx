@@ -310,11 +310,22 @@ export default function PrivacyPage() {
             in the investigation of a crime. Your parish council decides this,
             not {APP_NAME}, and the disclosure is logged.
           </Definition>
+          <Definition term="The people who run this service">
+            We keep an internal staff channel on Slack that is told when
+            somebody registers, when a report is published, and when somebody
+            applies to become a coordinator. It carries your name, and on
+            registration your email address, so that the people running{" "}
+            {APP_NAME} can see the service is working and spot abuse. For a
+            published report it carries the same headline, severity and
+            approximate area your neighbours see — never your original wording,
+            never your address, never coordinates, and never a photograph.
+          </Definition>
           <Definition term="Our processors">
             Supabase (database, authentication and file storage, in the UK or
-            EU), Vercel (hosting), Anthropic (the AI pass described above), and
-            OneSignal (push notification delivery). Each acts only on our
-            instructions under a written data processing agreement.
+            EU), Vercel (hosting), Anthropic (the AI pass described above),
+            OneSignal (push notification delivery), and Slack (the staff channel
+            above). Each acts only on our instructions under a written data
+            processing agreement.
           </Definition>
         </DefinitionList>
         <P>

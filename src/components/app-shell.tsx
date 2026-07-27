@@ -30,10 +30,11 @@ import { COORDINATOR_ROLES, USER_ROLE_LABELS } from "@/lib/constants";
  * `requireAdmin()` on the server, and an absent link has never been an
  * authorisation check.
  *
- * Note `"admin"` is not a superset of `"coordinator"` — an `ADMIN` is in
- * `COORDINATOR_ROLES` and so sees both, but the admin item is deliberately
- * narrower than the dashboard rather than a rung above it. A coordinator runs
- * one village's reports; an administrator decides who gets to.
+ * Note `"admin"` is not a superset of `"coordinator"`, and the two are decided
+ * by different things entirely: coordinator comes from `User.role`, platform
+ * administrator from the signed-in email against `ADMIN_EMAILS`. An
+ * administrator who is not also a coordinator sees this item and not the
+ * dashboard, which is correct — they decide who moderates, they do not moderate.
  */
 const NAV_ITEMS = [
   { href: "/map", label: "Map", icon: Map, tour: "map" },
@@ -62,6 +63,14 @@ export type AppShellUser = {
   id: string;
   /** The resident's `notifyPush` preference. */
   notifyPush: boolean;
+  /**
+   * Whether to show the admin section. Computed on the server and passed in,
+   * because it is decided by `ADMIN_EMAILS` — a server-only variable with no
+   * `NEXT_PUBLIC_` prefix, which this Client Component therefore cannot read.
+   * Shipping the list of administrators to every browser to decide whether to
+   * draw one link would be the wrong trade twice over.
+   */
+  isAdmin: boolean;
 };
 
 export function AppShell({
@@ -77,11 +86,10 @@ export function AppShell({
   const isCoordinator =
     user.role !== null &&
     (COORDINATOR_ROLES as readonly UserRole[]).includes(user.role);
-  const isAdmin = user.role === "ADMIN";
 
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (!("requires" in item)) return true;
-    return item.requires === "admin" ? isAdmin : isCoordinator;
+    return item.requires === "admin" ? user.isAdmin : isCoordinator;
   });
 
   function isActive(href: string) {

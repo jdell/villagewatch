@@ -176,6 +176,8 @@ src/
     prisma.ts                 Singleton + pg driver adapter
     auth.ts                   getSession / requireSession / requireRole /
                               requireCoordinator / requireAdmin
+    admin.ts                  ADMIN_EMAILS — the platform admin allow-list
+    slack.ts                  Staff webhook, fire-and-forget, server only
     moderation.ts             applyModeration + audited readRawDescription
     coordinator-requests.ts   Apply, approve, reject — the only place a role
                               is ever raised to COORDINATOR
@@ -390,10 +392,11 @@ linked from `SiteFooter` and the registration form.
 - `DATA_CONTROLLER` in `src/lib/constants.ts` is **placeholders**. A privacy
   notice that does not name a controller does not satisfy Article 13 — fill it
   in before a single real resident registers.
-- The privacy notice makes three claims that are statements about how the code
+- The privacy notice makes four claims that are statements about how the code
   behaves: on-device blur with no server-side fallback (domain rule 3),
-  coordinate jitter (domain rule 2), and report text going to Anthropic. If any
-  of those changes, `/privacy` changes in the same commit.
+  coordinate jitter (domain rule 2), report text going to Anthropic, and what
+  the Slack staff channel is told. If any of those changes, `/privacy` changes
+  in the same commit.
 - `RETENTION` describes the schedule the policy states, and
   `/api/cron/retention` now enforces the first two figures nightly. The other
   two — audit log expiry and dormant account closure — are still schedule-only;
@@ -593,6 +596,32 @@ else calls into it.
 - Only public columns reach a payload. A lock screen is the least private
   surface there is.
 
+## Staff alerts on Slack
+
+`src/lib/slack.ts`. One webhook URL, one function, a plain `fetch` POST — no
+SDK, because an incoming webhook is a URL you post JSON to. Optional: with
+`SLACK_WEBHOOK_URL` blank every alert is written to the server console instead,
+the same supported state OneSignal and the WhatsApp relay have.
+
+- **It is a staff channel, not a product surface.** Residents never see it and
+  nothing in the app depends on it. Four events: a registration (both the
+  password and Google paths), a publish, a coordinator application, and a
+  decision on one.
+- **Nothing throws**, same contract as `notifications.ts`. A resident's
+  registration must not fail because a staff channel was unreachable.
+- **Callers `await` it, which is what fire-and-forget has to mean here.** On
+  Vercel the function instance is frozen when the response returns, so a
+  detached promise is not "sent later", it is "sometimes never sent". The call
+  cannot throw and cannot exceed a 3s timeout, so awaiting buys delivery for a
+  bounded cost.
+- **What goes in a message is a privacy claim.** Slack is a third party outside
+  the UK and a channel is retained indefinitely, so `/privacy` §6 names this
+  disclosure — change what a message carries and that section changes in the
+  same commit. Never `rawDescription` (domain rule 1 does not stop at the
+  village boundary), never coordinates. A resident's name and email appear on
+  registration and an application; that is the point of those two alerts and the
+  notice says so.
+
 ## The WhatsApp Channel
 
 `src/lib/whatsapp-channel.ts`. Optional, off by default, and the only surface in
@@ -718,6 +747,23 @@ what writes `role: "COORDINATOR"`. This module is the only place in the codebase
 that raises a role, which is why the rules live here rather than at the two call
 sites — the API route and the admin page's server action both go through it.
 
+- **An administrator is an email address, not a role.** `ADMIN_EMAILS` is a
+  comma-separated server-only variable; `isPlatformAdmin()` in `src/lib/auth.ts`
+  tests the address on the revalidated JWT against it, case-insensitively. That
+  is the whole gate. `UserRole.ADMIN` stays in the schema because
+  `vw_is_admin()` in the RLS policies is defined against it, and **no longer
+  opens `/admin`** — the two definitions are currently two, which matters only
+  if the runtime ever moves onto a request-scoped role. The reason for the
+  change is the bootstrap: nothing in the app ever set that role, so the first
+  administrator was an `UPDATE` typed into a SQL console.
+- **It fails closed.** No `ADMIN_EMAILS`, nobody is an administrator, and
+  `/admin/coordinators` refuses everyone. Applications are still accepted and
+  `submitCoordinatorRequest` logs a warning each time it finds nobody to tell,
+  because an unreviewable queue looks exactly like an empty one.
+- `AppShell` is a Client Component and cannot read the variable, so
+  `(app)/layout.tsx` computes `isAdmin` and passes it in. The push audience in
+  `notifyAdminsOfCoordinatorRequest` is resolved from the same list rather than
+  from `role`, so the people alerted are the people who can act.
 - **The reviewer is platform-wide, and it is the one thing in the app that is.**
   Every other authenticated surface renders one village (domain rule 4). This
   one cannot: `seed-villages.ts` seeds 10,670 parishes with nobody in them, so a
@@ -761,12 +807,10 @@ sites — the API route and the admin page's server action both go through it.
 - `src/lib/email/coordinator-decision.ts` renders the same decision as an email.
   Nothing sends it — there is still no transport — so push is what actually
   runs.
-- **The flow needs at least one `ADMIN` to exist, and nothing creates one.**
-  With none, applications are accepted and queue up correctly, the notification
-  dispatch reports `no_recipients`, and there is nobody who can open
-  `/admin/coordinators` to find them. The first administrator is an `UPDATE
-  users SET role = 'ADMIN'` by hand, the same as it was before this existed —
-  bootstrapping is deliberately not self-service.
+- The administrator still needs a `User` row to receive the **push**: the
+  audience is resolved by looking their email up in the database. The gate
+  itself does not — somebody in `ADMIN_EMAILS` who has never joined a village
+  can open the queue and decide, they just will not be notified about it.
 
 ## Reading `rawDescription`
 
@@ -838,6 +882,11 @@ open:
 - **`DATA_CONTROLLER` in `src/lib/constants.ts` is placeholders.** The privacy
   policy and terms both name it. Fill it in, register with the ICO, and have
   the council review both documents before launch.
+- **No data processing agreement with Slack.** `/privacy` §6 now says every
+  processor acts under a written one, and for Slack there is not yet a signed
+  agreement — that sentence has to become true before a real resident registers,
+  or the alert has to go somewhere that is. It is the same class of debt as
+  `DATA_CONTROLLER`: the code is right and the paperwork is not.
 - **Two of the four retention figures are still unenforced.** The nightly job
   archives at 12 months and deletes media at 6; nothing expires audit rows at 24
   months (the append-only trigger forbids it from application code) and nothing

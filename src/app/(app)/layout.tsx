@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { requireSession } from "@/lib/auth";
+import { isPlatformAdmin, requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -58,6 +58,9 @@ export default async function AppLayout({
         // yet, matching the schema default — the prompt is the thing that asks,
         // and it still cannot fire without a browser permission.
         notifyPush: profile?.notifyPush ?? true,
+        // Decided here rather than in the shell: `ADMIN_EMAILS` is server-only
+        // and a Client Component cannot read it.
+        isAdmin: isPlatformAdmin(session),
       }}
     >
       {children}

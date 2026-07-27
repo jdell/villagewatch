@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getSession } from "@/lib/auth";
+import { getSession, isPlatformAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { submitCoordinatorRequest } from "@/lib/coordinator-requests";
 import { COORDINATOR_REQUEST_PAGE_SIZE } from "@/lib/constants";
@@ -86,10 +86,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Sign in first" }, { status: 401 });
   }
 
-  // Administrators only. A coordinator cannot read this: an application holds
-  // one named resident's answer to "why do you want to read your neighbours'
-  // reports", and the audience for that is the person deciding it.
-  if (session.profile?.role !== "ADMIN") {
+  // Administrators only, by verified email against `ADMIN_EMAILS`. A
+  // coordinator cannot read this: an application holds one named resident's
+  // answer to "why do you want to read your neighbours' reports", and the
+  // audience for that is the person deciding it.
+  if (!isPlatformAdmin(session)) {
     return NextResponse.json(
       { error: "Only a platform administrator can review applications" },
       { status: 403 },

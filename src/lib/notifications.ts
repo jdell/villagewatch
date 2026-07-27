@@ -5,6 +5,7 @@ import {
 } from "@onesignal/node-onesignal";
 import type { Severity } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
+import { adminEmails } from "@/lib/admin";
 import { distanceMeters } from "@/lib/geo";
 import { formatTimeAgo } from "@/lib/format";
 import {
@@ -400,6 +401,12 @@ export async function notifyReporterOfDecision(input: {
  * The applicant's name is in the body. That is their own name, attached to
  * their own application, going to the people who have to decide it; none of the
  * personal data rules that govern an incident payload are in play.
+ *
+ * The audience is resolved from `ADMIN_EMAILS`, matching the gate on
+ * `/admin/coordinators` — pushing to `role: "ADMIN"` would alert people who
+ * cannot open the queue and skip the people who can. An administrator with no
+ * profile row is simply not found here and gets nothing, which is the same
+ * degradation as any other resident who has not finished signing up.
  */
 export async function notifyAdminsOfCoordinatorRequest(input: {
   villageId: string;
@@ -410,8 +417,23 @@ export async function notifyAdminsOfCoordinatorRequest(input: {
     return { matched: 0, sent: 0, skipped: "no_recipients" };
   }
 
+  const emails = adminEmails();
+
+  if (emails.length === 0) {
+    return { matched: 0, sent: 0, skipped: "no_recipients" };
+  }
+
+  // Case-insensitively, and therefore as an OR of `equals` rather than one
+  // `in`: Prisma's `in` takes no `mode`, and `User.email` is stored as the
+  // registrant typed it while `ADMIN_EMAILS` is normalised to lower case. An
+  // administrator who signed up as `Info@…` and was configured as `info@…`
+  // would otherwise be silently missing from every alert.
   const admins = await prisma.user.findMany({
-    where: { role: "ADMIN" },
+    where: {
+      OR: emails.map((email) => ({
+        email: { equals: email, mode: "insensitive" as const },
+      })),
+    },
     select: { id: true },
   });
 

@@ -5,6 +5,7 @@ import { completeProfileSchema, fieldErrors } from "@/lib/validations";
 import { fuzzCoordinates } from "@/lib/geo";
 import { HOME_LOCATION_FUZZ_METERS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { notifySlack } from "@/lib/slack";
 
 /**
  * POST /api/auth/complete-profile
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
 
   const village = await prisma.village.findFirst({
     where: { id: villageId, status: "ACTIVE" },
-    select: { id: true, joinCode: true },
+    select: { id: true, name: true, joinCode: true },
   });
 
   if (!village) {
@@ -139,6 +140,13 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  // The provider half of the same event the register route announces. Both
+  // paths create a resident, so both tell the staff channel — an alert that
+  // fired only for password sign-ups would quietly under-count the village.
+  await notifySlack(
+    `🆕 New user: ${fullName} (${email}) joined ${village.name}`,
+  );
 
   return NextResponse.json({ ok: true, redirectTo: "/map" }, { status: 201 });
 }

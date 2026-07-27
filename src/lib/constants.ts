@@ -841,7 +841,7 @@ export const PRICING = [
  * document's substance changes — a policy with a stale date is worse than one
  * with no date, because it claims a review that did not happen.
  */
-export const LEGAL_LAST_UPDATED = "2026-07-25";
+export const LEGAL_LAST_UPDATED = "2026-07-27";
 
 /**
  * The data controller under UK GDPR.
