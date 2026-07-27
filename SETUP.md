@@ -218,10 +218,31 @@ type *Web application*.
 **Supabase dashboard** → Authentication → Providers → Google: paste the client
 id and secret, enable it.
 
-**Supabase dashboard** → Authentication → URL Configuration → Redirect URLs: add
-`http://localhost:3000/api/auth/callback` and the production equivalent. A URL
-that is not on this list is rejected after the resident has already consented,
-which is the most confusing possible place to fail.
+**Supabase dashboard** → Authentication → URL Configuration. Both fields matter,
+and getting the second one wrong produces a failure that looks like a bug in
+this app:
+
+- **Site URL** — the fallback. Set it to the production origin. Leave it at
+  `http://localhost:3000` and every resident who signs in from the deployed site
+  is sent to their own machine after consenting.
+- **Redirect URLs** — the allow list. Add every origin the button can be pressed
+  from:
+
+  ```
+  http://localhost:3000/**
+  https://your-production-domain/**
+  https://villagewatch-*-<your-vercel-scope>.vercel.app/**
+  ```
+
+  Vercel mints a new hostname for every preview deployment, so a preview needs
+  the wildcard form or it will never be on the list.
+
+`redirect_to` is **not** checked when the flow starts. `/auth/v1/authorize`
+returns a 302 to Google for any origin at all, including one that is obviously
+not yours — the check happens on the way back, and a URL that is not on the list
+is silently swapped for the Site URL rather than refused. So the symptom is not
+an error message: it is landing somewhere else entirely, usually `localhost`,
+with a valid `?code=` in the address bar.
 
 Then, locally and in Vercel:
 
@@ -654,6 +675,25 @@ The redirect URI registered in the Google console must be Supabase's
 Either the provider is off in the Supabase dashboard — check with the `curl` in
 step 7b — or `/api/auth/callback` is missing from Authentication → URL
 Configuration → Redirect URLs for that environment.
+
+**Google sign-in sends me to localhost from the deployed site**
+The origin you signed in from is not on the Redirect URLs allow list, so
+Supabase fell back to the **Site URL** — and that is still
+`http://localhost:3000`. Nothing is wrong with the app: the button builds its
+callback from `window.location.origin`, so it asked for the right one.
+
+The confusing part is that nothing rejects it up front. `redirect_to` is not
+validated when the flow starts — this returns 302 to Google for an origin that
+could not possibly be yours:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/authorize?provider=google&redirect_to=https://definitely-not-allowed.example.com/api/auth/callback"
+```
+
+Fix both fields in step 7b: point Site URL at production, and add every origin —
+including a wildcard for Vercel preview hostnames, which change on every
+deployment.
 
 **A resident is stuck on /welcome**
 `/welcome` writes the profile row, and it needs an `ACTIVE` village to put them
