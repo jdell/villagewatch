@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from 'next/link';
 import {
   ArrowRight,
   BellRing,
@@ -13,63 +13,63 @@ import {
   ShieldCheck,
   Sparkles,
   Users,
-} from "lucide-react";
-import { Logo } from "@/components/logo";
-import { SiteFooter } from "@/components/site-footer";
+} from 'lucide-react';
+import { Logo } from '@/components/logo';
+import { SiteFooter } from '@/components/site-footer';
 import {
   APP_NAME,
   PRICING,
   RETENTION,
   SEVERITIES,
   VILLAGES_LIVE,
-} from "@/lib/constants";
+} from '@/lib/constants';
 
 const STEPS = [
   {
     icon: MessageSquarePlus,
-    title: "Report",
-    lede: "Under a minute, from the pavement",
-    body: "Pick what happened, drop a pin, add a photo if you have one. Say it in your own words — no forms to decode, no jargon to learn.",
+    title: 'Report',
+    lede: 'Under a minute, from the pavement',
+    body: 'Pick what happened, drop a pin, add a photo if you have one. Say it in your own words — no forms to decode, no jargon to learn.',
   },
   {
     icon: Sparkles,
-    title: "AI processes",
-    lede: "Personal details never make it public",
-    body: "Names, number plates and faces are stripped out. The report is categorised, given a severity, and placed on the map with your location blurred.",
+    title: 'AI processes',
+    lede: 'Personal details never make it public',
+    body: 'Names, number plates and faces are stripped out. The report is categorised, given a severity, and placed on the map with your location blurred.',
   },
   {
     icon: BellRing,
-    title: "Community alerted",
-    lede: "The right people, straight away",
-    body: "Neighbours nearby get a push notification. Your coordinator sees the full context in their queue and can escalate to the police.",
+    title: 'Community alerted',
+    lede: 'The right people, straight away',
+    body: 'Neighbours nearby get a push notification. Your coordinator sees the full context in their queue and can escalate to the police.',
   },
 ] as const;
 
 const FEATURES = [
   {
     icon: Map,
-    title: "Live incident map",
-    body: "Every published report, colour-coded by severity, filterable by type and date. See at a glance whether the trouble is on your street or three villages over.",
+    title: 'Live incident map',
+    body: 'Every published report, colour-coded by severity, filterable by type and date. See at a glance whether the trouble is on your street or three villages over.',
   },
   {
     icon: EyeOff,
-    title: "AI anonymisation",
-    body: "The original text is kept under lock and key for coordinators. What neighbours read is a rewritten version with identifying details removed, and photos with faces and plates blurred.",
+    title: 'AI anonymisation',
+    body: 'The original text is kept under lock and key for coordinators. What neighbours read is a rewritten version with identifying details removed, and photos with faces and plates blurred.',
   },
   {
     icon: Radar,
-    title: "Pattern detection",
-    body: "Six vehicle break-ins within 400 metres over four nights is a pattern, not a coincidence. VillageWatch spots the cluster and names it before anyone has to join the dots by hand.",
+    title: 'Pattern detection',
+    body: 'Six vehicle break-ins within 400 metres over four nights is a pattern, not a coincidence. VillageWatch spots the cluster and names it before anyone has to join the dots by hand.',
   },
   {
     icon: BellRing,
-    title: "Push alerts that respect you",
-    body: "Choose the minimum severity worth waking you. Critical incidents reach everyone; a missing cat reaches the people who asked to hear about missing cats.",
+    title: 'Push alerts that respect you',
+    body: 'Choose the minimum severity worth waking you. Critical incidents reach everyone; a missing cat reaches the people who asked to hear about missing cats.',
   },
   {
     icon: MessageCircle,
-    title: "WhatsApp Channel",
-    body: "Your village can mirror its serious alerts to a WhatsApp Channel, so neighbours who never install anything still see them. It is a one-way feed: a headline, an area and a link, with no phone numbers shared in either direction.",
+    title: 'WhatsApp Channel',
+    body: 'Your village can mirror its serious alerts to a WhatsApp Channel, so neighbours who never install anything still see them. It is a one-way feed: a headline, an area and a link, with no phone numbers shared in either direction.',
   },
 ] as const;
 
@@ -79,11 +79,11 @@ const FEATURES = [
  * below that breakpoint the copy fills the width and the pins are hidden.
  */
 const HERO_PINS = [
-  { top: "16%", left: "78%", severity: "LOW" },
-  { top: "30%", left: "90%", severity: "MEDIUM" },
-  { top: "47%", left: "74%", severity: "HIGH" },
-  { top: "64%", left: "86%", severity: "CRITICAL" },
-  { top: "80%", left: "76%", severity: "MEDIUM" },
+  { top: '16%', left: '78%', severity: 'LOW' },
+  { top: '30%', left: '90%', severity: 'MEDIUM' },
+  { top: '47%', left: '74%', severity: 'HIGH' },
+  { top: '64%', left: '86%', severity: 'CRITICAL' },
+  { top: '80%', left: '76%', severity: 'MEDIUM' },
 ] as const;
 
 const PIN_COLOR = Object.fromEntries(SEVERITIES.map((s) => [s.value, s.pin]));
@@ -98,28 +98,28 @@ const PIN_COLOR = Object.fromEntries(SEVERITIES.map((s) => [s.value, s.pin]));
  */
 const FAQS = [
   {
-    question: "Is my data safe?",
+    question: 'Is my data safe?',
     answer: `Reports are held in a UK-region database and the app is served from London. Your exact location is never stored — coordinates are moved by about a hundred metres before they are written down, so the pin lands on the right street and not on your door. Photographs are blurred on your own phone before they are uploaded, which also strips the GPS tag cameras write into every picture. Reports are archived after ${RETENTION.incidentArchiveMonths} months and photographs are deleted after ${RETENTION.mediaDeleteMonths}.`,
   },
   {
-    question: "Who can see what I report?",
+    question: 'Who can see what I report?',
     answer:
-      "Your neighbours see a rewritten version with names, registrations and house numbers taken out. Your village coordinator can see your original wording, and every time they do it is written to an audit trail with their name against it. Nobody outside your village sees any of it — not another village, not us. The one exception is a WhatsApp Channel, which is public and which your coordinator has to switch on: when it is on, serious reports are posted there as a headline, an area and a link, and nothing else.",
+      'Your neighbours see a rewritten version with names, registrations and house numbers taken out. Your village coordinator can see your original wording, and every time they do it is written to an audit trail with their name against it. Nobody outside your village sees any of it — not another village, not us. The one exception is a WhatsApp Channel, which is public and which your coordinator has to switch on: when it is on, serious reports are posted there as a headline, an area and a link, and nothing else.',
   },
   {
-    question: "How does the AI work?",
+    question: 'How does the AI work?',
     answer:
-      "When you submit a report, the text goes to Claude, which rewrites it without the identifying details, sorts it into a category and suggests how serious it is. You see the result and can edit it before anything is saved. If the AI is unavailable your report still files in your own words — it simply waits for your coordinator, exactly as it would otherwise.",
+      'When you submit a report, the text goes to Claude, which rewrites it without the identifying details, sorts it into a category and suggests how serious it is. You see the result and can edit it before anything is saved. If the AI is unavailable your report still files in your own words — it simply waits for your coordinator, exactly as it would otherwise.',
   },
   {
-    question: "How do I become a coordinator?",
+    question: 'How do I become a coordinator?',
     answer:
-      "Register as a resident, then apply from Settings. You are asked how you are involved in the village — Neighbourhood Watch, the parish council, something else — and why you want the access. A platform administrator reviews the application by hand and you hear back either way. It is not self-service on purpose: a coordinator can read the original wording of every report their village files, so somebody has to decide that rather than a form.",
+      'Register as a resident, then apply from Settings. You are asked how you are involved in the village — Neighbourhood Watch, the parish council, something else — and why you want the access. A platform administrator reviews the application by hand and you hear back either way. It is not self-service on purpose: a coordinator can read the original wording of every report their village files, so somebody has to decide that rather than a form.',
   },
   {
-    question: "Is it free?",
+    question: 'Is it free?',
     answer:
-      "Free for one village, for residents and coordinators alike, with no card and no trial period. A paid tier for groups of parishes is planned and does not exist yet — nothing on this site can charge anybody anything today.",
+      'Free for one village, for residents and coordinators alike, with no card and no trial period. A paid tier for groups of parishes is planned and does not exist yet — nothing on this site can charge anybody anything today.',
   },
 ] as const;
 
@@ -216,7 +216,7 @@ export default function LandingPage() {
             <div className="max-w-2xl animate-rise">
               <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-brand-100 sm:text-sm">
                 <ShieldCheck className="size-4 text-safe-400" aria-hidden />
-                Neighbourhood Watch, without the WhatsApp group
+                Neighbourhood Watch
               </span>
 
               <h1 className="mt-6 text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
@@ -290,10 +290,10 @@ export default function LandingPage() {
               {VILLAGES_LIVE !== null ? (
                 <>
                   <span className="font-semibold text-slate-900">
-                    Trusted by {VILLAGES_LIVE.toLocaleString("en-GB")} villages
-                  </span>{" "}
-                  across England · Open source · UK data, London region ·
-                  Built for parish councils
+                    Trusted by {VILLAGES_LIVE.toLocaleString('en-GB')} villages
+                  </span>{' '}
+                  across England · Open source · UK data, London region · Built
+                  for parish councils
                 </>
               ) : (
                 <>
@@ -433,10 +433,10 @@ export default function LandingPage() {
 
               <ul className="mt-7 space-y-3">
                 {[
-                  "Full audit trail on every publish, edit and rejection",
-                  "Original report text stays restricted to your team",
-                  "Pattern alerts flag clusters before you notice them",
-                  "Verify residents so only real neighbours can post",
+                  'Full audit trail on every publish, edit and rejection',
+                  'Original report text stays restricted to your team',
+                  'Pattern alerts flag clusters before you notice them',
+                  'Verify residents so only real neighbours can post',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-3">
                     <ShieldCheck
@@ -463,22 +463,22 @@ export default function LandingPage() {
               <div className="mt-4 space-y-3">
                 {[
                   {
-                    ref: "VW-2026-0184",
-                    title: "Van circling Mill Lane after dark",
-                    severity: "MEDIUM" as const,
-                    when: "12 minutes ago",
+                    ref: 'VW-2026-0184',
+                    title: 'Van circling Mill Lane after dark',
+                    severity: 'MEDIUM' as const,
+                    when: '12 minutes ago',
                   },
                   {
-                    ref: "VW-2026-0183",
-                    title: "Shed forced open on Church Row",
-                    severity: "HIGH" as const,
-                    when: "1 hour ago",
+                    ref: 'VW-2026-0183',
+                    title: 'Shed forced open on Church Row',
+                    severity: 'HIGH' as const,
+                    when: '1 hour ago',
                   },
                   {
-                    ref: "VW-2026-0182",
-                    title: "Fly-tipping at the recreation ground",
-                    severity: "LOW" as const,
-                    when: "Yesterday",
+                    ref: 'VW-2026-0182',
+                    title: 'Fly-tipping at the recreation ground',
+                    severity: 'LOW' as const,
+                    when: 'Yesterday',
                   },
                 ].map((row) => (
                   <div
@@ -538,8 +538,8 @@ export default function LandingPage() {
                   key={tier.name}
                   className={`flex flex-col rounded-2xl border p-7 sm:p-8 ${
                     tier.featured
-                      ? "border-brand-200 bg-white shadow-lg shadow-brand-900/5 ring-1 ring-brand-100"
-                      : "border-slate-200 bg-white/60"
+                      ? 'border-brand-200 bg-white shadow-lg shadow-brand-900/5 ring-1 ring-brand-100'
+                      : 'border-slate-200 bg-white/60'
                   }`}
                 >
                   <div className="flex items-baseline justify-between gap-4">
@@ -575,7 +575,7 @@ export default function LandingPage() {
                       <li key={feature} className="flex items-start gap-3">
                         <Check
                           className={`mt-0.5 size-5 shrink-0 ${
-                            tier.featured ? "text-safe-600" : "text-slate-400"
+                            tier.featured ? 'text-safe-600' : 'text-slate-400'
                           }`}
                           aria-hidden
                         />
@@ -590,8 +590,8 @@ export default function LandingPage() {
                     href={tier.cta.href}
                     className={`mt-8 inline-flex h-12 items-center justify-center gap-2 rounded-xl px-6 text-base font-semibold transition ${
                       tier.featured
-                        ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
-                        : "border border-slate-300 text-slate-700 hover:bg-slate-100"
+                        ? 'bg-brand-600 text-white shadow-sm hover:bg-brand-700'
+                        : 'border border-slate-300 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
                     {tier.cta.label}
@@ -635,13 +635,13 @@ export default function LandingPage() {
                 The four everyone asks
               </h2>
               <p className="mt-4 text-base leading-relaxed text-slate-600">
-                If yours is not here, the{" "}
+                If yours is not here, the{' '}
                 <Link
                   href="/privacy"
                   className="font-medium text-brand-700 underline underline-offset-4 hover:text-brand-800"
                 >
                   privacy notice
-                </Link>{" "}
+                </Link>{' '}
                 goes into considerably more detail.
               </p>
             </div>
