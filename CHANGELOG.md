@@ -3,6 +3,14 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.17](https://github.com/jdell/villagewatch/compare/v0.1.16...v0.1.17) (2026-07-28)
+
+
+### Features
+
+* **docs:** a practical guide for the person running a village ([05c180b](https://github.com/jdell/villagewatch/commit/05c180b4ef339afe35964825450967dd7651bfaf))
+* **scripts:** empty one village and re-open its compliance gate ([c80065b](https://github.com/jdell/villagewatch/commit/c80065b08ebb187b7c26397f29c3cde91da56e15))
+
 ### [0.1.16](https://github.com/jdell/villagewatch/compare/v0.1.15...v0.1.16) (2026-07-28)
 
 
