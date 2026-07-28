@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/icons/icon-192.png" alt="" width="88" height="88">
+<img src="public/android-chrome-192x192.png" alt="" width="88" height="88">
 
 # VillageWatch
 

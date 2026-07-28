@@ -56,13 +56,26 @@ export const metadata: Metadata = {
    */
   manifest: "/manifest.json",
 
+  /**
+   * Rendered by `scripts/generate-icons.mjs` from the same shield the header
+   * mark uses. `sizes: "any"` on the `.ico` is what stops a browser preferring
+   * it over the PNGs — without it, Chrome treats an unsized `.ico` as a better
+   * match than a declared 32×32 and shows the lower-fidelity one.
+   *
+   * There is deliberately no `src/app/favicon.ico`. Next's file convention would
+   * serve that at the same path and conflict with the one in `public/`, and the
+   * file that was there was Create Next App's own — the actual bug this set
+   * replaces.
+   */
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
-      { url: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
-      { url: "/icons/icon-512.png", type: "image/png", sizes: "512x512" },
+      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+      { url: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
+      { url: "/android-chrome-192x192.png", type: "image/png", sizes: "192x192" },
+      { url: "/android-chrome-512x512.png", type: "image/png", sizes: "512x512" },
     ],
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
 
   /**

@@ -34,20 +34,24 @@
  * need to control the page to receive a push event, so OneSignal is the one that
  * moved.
  *
- * Bump `CACHE_VERSION` whenever `offline.html` changes. `activate` deletes every
- * cache that is not the current one.
+ * Bump `CACHE_VERSION` whenever `offline.html` changes, or whenever an entry
+ * leaves `PRECACHE` — a renamed icon would otherwise sit in an installed
+ * client's cache under its old URL forever, since nothing evicts a single entry.
+ * `activate` deletes every cache that is not the current one.
  */
 
-const CACHE_VERSION = "villagewatch-v1";
+const CACHE_VERSION = "villagewatch-v2";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE = [
   OFFLINE_URL,
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
+  "/favicon-16x16.png",
+  "/favicon-32x32.png",
+  "/apple-touch-icon.png",
+  "/android-chrome-192x192.png",
+  "/android-chrome-512x512.png",
   "/icons/icon-maskable-192.png",
   "/icons/icon-maskable-512.png",
-  "/icons/apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (event) => {
