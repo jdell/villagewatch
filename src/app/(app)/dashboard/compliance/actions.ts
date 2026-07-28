@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCoordinator } from "@/lib/auth";
-import { acceptCompliance } from "@/lib/compliance";
+import { acceptCompliance, getVillageCompliance } from "@/lib/compliance";
 import { complianceAcceptFormSchema } from "@/lib/validations";
 
 /**
@@ -18,11 +18,15 @@ import { complianceAcceptFormSchema } from "@/lib/validations";
  *    an authorisation check.
  * 2. **The village comes from the session profile** (domain rule 4). The form
  *    posts three checkboxes and nothing else.
- * 3. **All three boxes are required**, and that rule lives here rather than in
- *    the schema so the message can name the one that is missing. The button is
- *    disabled until all three are ticked, so reaching this is either a direct
- *    POST or a browser with JavaScript off — and in both cases a sentence beats
- *    a validation error.
+ * 3. **Every document still outstanding needs its box ticked**, and that rule
+ *    lives here rather than in the schema so the message can name the one that
+ *    is missing. It is checked against the village's recorded acceptances and
+ *    not against the three names on their own: a document already accepted
+ *    renders as a record rather than a checkbox, so it is *absent* from the
+ *    payload by design, and requiring it unconditionally demanded a box that is
+ *    not on the screen. The button is disabled until every outstanding box is
+ *    ticked, so reaching this is either a direct POST or a browser with
+ *    JavaScript off — and in both cases a sentence beats a validation error.
  */
 
 export type ComplianceState = {
@@ -56,12 +60,27 @@ export async function acceptComplianceAction(
 
   const { dpia, apd, dpa } = parsed.data;
 
-  if (!dpia || !apd || !dpa) {
+  // Which documents this village has still to accept. `acceptCompliance` reads
+  // this again for its own reasons — it is the one that decides what to write,
+  // and it must not take a caller's word for what is already recorded — so this
+  // is a second read of three columns on one row, which is worth it to be able
+  // to name the box that is actually missing.
+  //
+  // An unmigrated database reports all three as outstanding, which leaves that
+  // path exactly as it was: all three boxes required, and `acceptCompliance`
+  // returning the message that names the migrations once they are ticked.
+  const current = await getVillageCompliance(villageId);
+
+  const needsDpia = current.dpia === null && !dpia;
+  const needsApd = current.apd === null && !apd;
+  const needsDpa = current.dpa === null && !dpa;
+
+  if (needsDpia || needsApd || needsDpa) {
     return {
       ok: false,
-      message: !dpia
+      message: needsDpia
         ? "Tick the box confirming you accept the DPIA."
-        : !apd
+        : needsApd
           ? "Tick the box confirming you accept the Appropriate Policy Document."
           : "Tick the box confirming you accept the Data Processing Agreement.",
     };

@@ -254,8 +254,14 @@ export function ComplianceForm({
                 I have read and accept the Data Processing Agreement
               </span>
               <span className="mt-0.5 block text-sm text-slate-600">
-                UK GDPR Article 28(3). The contract between {parishCouncil} and
-                Yakasista Ltd, who runs the service on the council&rsquo;s
+                {/*
+                  The space after the council's name is `{" "}` rather than a
+                  plain one: the JSX transform drops the leading space of a text
+                  chunk that follows an expression at the end of a line, and the
+                  built output read "…Parish Counciland Yakasista Ltd".
+                */}
+                UK GDPR Article 28(3). The contract between {parishCouncil}{" "}
+                and Yakasista Ltd, who runs the service on the council&rsquo;s
                 behalf. A controller may only use a processor under a written
                 agreement.
               </span>
