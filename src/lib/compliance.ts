@@ -4,9 +4,10 @@ import { prisma } from "@/lib/prisma";
 /**
  * The legal compliance gate. **Server only.**
  *
- * A village accepts no report until its coordinator has read and accepted two
- * documents: the Data Protection Impact Assessment (`docs/DPIA.md`) and the
- * Appropriate Policy Document (`docs/APD_TEMPLATE.md`).
+ * A village accepts no report until its coordinator has read and accepted three
+ * documents: the Data Protection Impact Assessment (`docs/DPIA.md`), the
+ * Appropriate Policy Document (`docs/APD_TEMPLATE.md`) and the data processing
+ * agreement with the processor (`docs/DATA_PROCESSING_AGREEMENT.md`).
  *
  * ## Why this is a gate and not a checklist item
  *
@@ -22,19 +23,34 @@ import { prisma } from "@/lib/prisma";
  * authorisation. That is why this blocks filing rather than showing a reminder,
  * and why nothing here is dismissible.
  *
- * ## Two documents, two acceptances, two audit rows
+ * The processing agreement is here for the same shape of reason rather than as a
+ * third piece of paperwork. Article 28(3) permits a controller to use a
+ * processor **only** under a written contract and says what it must cover, so a
+ * council with none is in breach from the first report filed — an authorisation
+ * that has to exist before the processing, not a record made after it.
  *
- * They could have been one checkbox. They are not, because they answer to two
- * different instruments — Article 35 and Schedule 1 paragraph 5 — and a
- * regulator asking "when did the controller adopt its APD" is entitled to an
- * answer that is not "at the same time as something else". Each acceptance
+ * ## Three documents, three acceptances, three audit rows
+ *
+ * They could have been one checkbox. They are not, because they answer to three
+ * different instruments — Article 35, Schedule 1 paragraph 5 and Article 28(3) —
+ * and a regulator asking "when did the controller adopt its APD" is entitled to
+ * an answer that is not "at the same time as something else". Each acceptance
  * records who and when, and writes its own `AuditLog` row.
+ *
+ * The third one records **half** of something. The DPIA and the APD are the
+ * council's own documents and the council adopts them alone; the processing
+ * agreement is a contract, and is not in force until Yakasista Ltd has signed
+ * the paper document too. Nothing here can evidence the processor's signature,
+ * and this deliberately does not pretend to — what `dpaAcceptedAt` records is
+ * the council's acceptance of the terms, which is the half a coordinator can
+ * give on a screen.
  *
  * ## The three states, and why "unavailable" is one of them
  *
- * The columns arrive with `20260728090000_village_compliance_gate`. Until that
- * migration runs, a query naming them throws — and this check sits in front of
- * every report filed in the app.
+ * Four of the columns arrive with `20260728090000_village_compliance_gate` and
+ * the last two with `20260728150000_village_dpa_gate`. Until those migrations
+ * run, a query naming them throws — and this check sits in front of every report
+ * filed in the app.
  *
  * So it distinguishes "not accepted" from "no column to accept into", the same
  * way `getVillageParishCouncil` does, and the two fail in **opposite
@@ -67,17 +83,21 @@ export type ComplianceStatus =
       available: true;
       dpia: DocumentAcceptance | null;
       apd: DocumentAcceptance | null;
-      /** Both accepted — the village may accept reports. */
+      /** The council's half of the Article 28(3) agreement. See the header. */
+      dpa: DocumentAcceptance | null;
+      /** All three accepted — the village may accept reports. */
       complete: boolean;
     }
   | {
       /**
-       * `20260728090000_village_compliance_gate` has not been applied here.
-       * Nothing can be accepted and nothing is blocked; see the header.
+       * `20260728090000_village_compliance_gate` or
+       * `20260728150000_village_dpa_gate` has not been applied here. Nothing can
+       * be accepted and nothing is blocked; see the header.
        */
       available: false;
       dpia: null;
       apd: null;
+      dpa: null;
       complete: boolean;
     };
 
@@ -100,7 +120,13 @@ function isMissingComplianceColumn(cause: unknown): boolean {
   const message = (cause as { message?: unknown }).message;
   return (
     typeof message === "string" &&
-    (message.includes("dpia_accepted") || message.includes("apd_accepted"))
+    // `dpa_accepted` is its own test rather than a prefix of the first: the
+    // strings are `dpia_accepted_at` and `dpa_accepted_at`, and neither
+    // contains the other. Miss it and a database with migration 7 but not 8
+    // takes every village offline on the message-only shape.
+    (message.includes("dpia_accepted") ||
+      message.includes("apd_accepted") ||
+      message.includes("dpa_accepted"))
   );
 }
 
@@ -108,9 +134,19 @@ const UNAVAILABLE: ComplianceStatus = {
   available: false,
   dpia: null,
   apd: null,
+  dpa: null,
   // True, and this is the load-bearing line in the module. See the header: an
   // unapplied migration must not take every village's reporting offline.
   complete: true,
+};
+
+/** The blocked answer, for the two places that reach it. */
+const BLOCKED: ComplianceStatus = {
+  available: true,
+  dpia: null,
+  apd: null,
+  dpa: null,
+  complete: false,
 };
 
 /** What `/dashboard/compliance` renders and what the gate is decided from. */
@@ -125,10 +161,14 @@ export async function getVillageCompliance(
       select: {
         dpiaAcceptedAt: true,
         apdAcceptedAt: true,
+        dpaAcceptedAt: true,
         dpiaAcceptedBy: {
           select: { id: true, fullName: true, email: true },
         },
         apdAcceptedBy: {
+          select: { id: true, fullName: true, email: true },
+        },
+        dpaAcceptedBy: {
           select: { id: true, fullName: true, email: true },
         },
       },
@@ -138,7 +178,7 @@ export async function getVillageCompliance(
       // No village is not the same as no columns. A caller holding a village id
       // that resolves to nothing has a bigger problem than compliance, and it
       // must not read as "accepted".
-      return { available: true, dpia: null, apd: null, complete: false };
+      return BLOCKED;
     }
 
     const dpia = village.dpiaAcceptedAt
@@ -149,18 +189,24 @@ export async function getVillageCompliance(
       ? { acceptedAt: village.apdAcceptedAt, acceptedBy: village.apdAcceptedBy }
       : null;
 
+    const dpa = village.dpaAcceptedAt
+      ? { acceptedAt: village.dpaAcceptedAt, acceptedBy: village.dpaAcceptedBy }
+      : null;
+
     return {
       available: true,
       dpia,
       apd,
-      complete: dpia !== null && apd !== null,
+      dpa,
+      complete: dpia !== null && apd !== null && dpa !== null,
     };
   } catch (cause) {
     if (isMissingComplianceColumn(cause)) {
       console.error(
-        "villages.dpia_accepted_at / apd_accepted_at are missing, so the " +
-          "compliance gate cannot be enforced and reporting is being allowed. " +
-          "Has 20260728090000_village_compliance_gate been applied?",
+        "villages.dpia_accepted_at / apd_accepted_at / dpa_accepted_at are " +
+          "missing, so the compliance gate cannot be enforced and reporting is " +
+          "being allowed. Have 20260728090000_village_compliance_gate and " +
+          "20260728150000_village_dpa_gate been applied?",
         cause,
       );
 
@@ -173,7 +219,7 @@ export async function getVillageCompliance(
       cause,
     );
 
-    return { available: true, dpia: null, apd: null, complete: false };
+    return BLOCKED;
   }
 }
 
@@ -209,6 +255,8 @@ export type ComplianceAcceptance = {
   dpia: boolean;
   /** Accept the Appropriate Policy Document. */
   apd: boolean;
+  /** Accept the data processing agreement, on the council's side of it. */
+  dpa: boolean;
 };
 
 export type ComplianceWrite =
@@ -216,7 +264,7 @@ export type ComplianceWrite =
   | { ok: false; reason: "unmigrated" | "nothing_selected" | "failed"; error: string };
 
 /**
- * Records a coordinator's acceptance of one or both documents.
+ * Records a coordinator's acceptance of one, two or all three documents.
  *
  * Three rules, and the first two are what stop this being a toggle:
  *
@@ -247,11 +295,11 @@ export async function acceptCompliance(input: {
 }): Promise<ComplianceWrite> {
   const { session, villageId, accept } = input;
 
-  if (!accept.dpia && !accept.apd) {
+  if (!accept.dpia && !accept.apd && !accept.dpa) {
     return {
       ok: false,
       reason: "nothing_selected",
-      error: "Tick both boxes to accept the documents.",
+      error: "Tick all three boxes to accept the documents.",
     };
   }
 
@@ -271,8 +319,9 @@ export async function acceptCompliance(input: {
       reason: "unmigrated",
       error:
         "This deployment's database does not have the compliance columns yet. " +
-        "An administrator needs to apply the migration " +
-        "20260728090000_village_compliance_gate before acceptance can be recorded.",
+        "An administrator needs to apply the migrations " +
+        "20260728090000_village_compliance_gate and " +
+        "20260728150000_village_dpa_gate before acceptance can be recorded.",
     };
   }
 
@@ -282,8 +331,9 @@ export async function acceptCompliance(input: {
   // an existing acceptance is a fact about a date, not a field to refresh.
   const writeDpia = accept.dpia && current.dpia === null;
   const writeApd = accept.apd && current.apd === null;
+  const writeDpa = accept.dpa && current.dpa === null;
 
-  if (writeDpia || writeApd) {
+  if (writeDpia || writeApd || writeDpa) {
     try {
       await prisma.village.update({
         where: { id: villageId },
@@ -293,6 +343,9 @@ export async function acceptCompliance(input: {
             : {}),
           ...(writeApd
             ? { apdAcceptedAt: now, apdAcceptedById: session.user.id }
+            : {}),
+          ...(writeDpa
+            ? { dpaAcceptedAt: now, dpaAcceptedById: session.user.id }
             : {}),
         },
       });
@@ -350,6 +403,29 @@ export async function acceptCompliance(input: {
                 },
               ]
             : []),
+          ...(writeDpa
+            ? [
+                {
+                  actorId: session.user.id,
+                  actorEmail: session.user.email,
+                  actorRole: session.profile?.role,
+                  villageId,
+                  action: "compliance.dpa_accepted",
+                  entityType: "Village",
+                  entityId: villageId,
+                  after: {
+                    acceptedAt: now.toISOString(),
+                    document: "Data Processing Agreement",
+                    // The council's half only. The agreement is a contract and
+                    // is not in force until the processor has signed the paper
+                    // document too; this row must not read as evidence that it
+                    // has. See the module header.
+                    party: "controller",
+                    processor: "Yakasista Ltd",
+                  },
+                },
+              ]
+            : []),
         ],
       });
     } catch (cause) {
@@ -368,6 +444,8 @@ export async function acceptCompliance(input: {
     // than re-reading: the caller revalidates the page, and the answer here is
     // what decides whether the success message says the village is now open.
     complete:
-      (current.dpia !== null || writeDpia) && (current.apd !== null || writeApd),
+      (current.dpia !== null || writeDpia) &&
+      (current.apd !== null || writeApd) &&
+      (current.dpa !== null || writeDpa),
   };
 }

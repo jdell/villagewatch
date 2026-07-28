@@ -243,13 +243,13 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM authenticated;
 --   whatsapp_channel_id  the address a relay posts to. Anyone holding it can
 --                        write to a village's public channel.
 --
--- Two more are withheld for a different reason. `dpia_accepted_by_id` and
--- `apd_accepted_by_id` are `users.id` values, and a user id read from another
--- village is a cross-village read of a person even though it is not a credential
--- — so the two *timestamps* are granted, which is what a resident could
--- legitimately want to know about their own village, and the two *identities*
--- are not. `/dashboard/compliance` renders the name through Prisma, which owns
--- the table and bypasses every policy in this file.
+-- Three more are withheld for a different reason. `dpia_accepted_by_id`,
+-- `apd_accepted_by_id` and `dpa_accepted_by_id` are `users.id` values, and a
+-- user id read from another village is a cross-village read of a person even
+-- though it is not a credential — so the three *timestamps* are granted, which
+-- is what a resident could legitimately want to know about their own village,
+-- and the three *identities* are not. `/dashboard/compliance` renders the name
+-- through Prisma, which owns the table and bypasses every policy in this file.
 --
 -- Everything else stays readable. Listing the safe columns rather than revoking
 -- the unsafe ones is deliberate: a column added later is withheld by default and
@@ -272,7 +272,7 @@ GRANT SELECT (
   region, postcode, country, timezone, population,
   alert_threshold, contact_email, contact_phone, auto_approve,
   parish_council, privacy_level,
-  dpia_accepted_at, apd_accepted_at,
+  dpia_accepted_at, apd_accepted_at, dpa_accepted_at,
   whatsapp_channel_url, whatsapp_enabled, whatsapp_min_severity,
   created_at, updated_at
 ) ON public.villages TO authenticated;

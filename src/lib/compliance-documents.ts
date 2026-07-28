@@ -3,7 +3,7 @@ import path from "node:path";
 import { type Block, parseMarkdown, tableOfContents } from "@/lib/markdown";
 
 /**
- * The two documents `/dashboard/compliance` asks a coordinator to accept.
+ * The three documents `/dashboard/compliance` asks a coordinator to accept.
  * **Server only** — `node:fs` is imported at the top of this module, so a Client
  * Component that reaches for anything here breaks the build.
  *
@@ -27,7 +27,7 @@ import { type Block, parseMarkdown, tableOfContents } from "@/lib/markdown";
  * acceptance form must not appear next to a document that did not load.
  */
 
-export type ComplianceDocumentId = "dpia" | "apd";
+export type ComplianceDocumentId = "dpia" | "apd" | "dpa";
 
 /**
  * The directory, as a literal.
@@ -71,6 +71,15 @@ export const COMPLIANCE_DOCUMENTS: readonly DocumentSource[] = [
     summary:
       "The safeguards that authorise processing criminal offence data at all. Without it there is no lawful basis for the reports this service exists to collect.",
     basis: "Data Protection Act 2018, Schedule 1, paragraph 5",
+  },
+  {
+    id: "dpa",
+    fileName: "DATA_PROCESSING_AGREEMENT.md",
+    label: "Data Processing Agreement",
+    shortLabel: "DPA",
+    summary:
+      "The contract between the council and Yakasista Ltd. A controller may only use a processor under a written agreement, so a village with none is in breach from the first report filed.",
+    basis: "UK GDPR Article 28(3)",
   },
 ] as const;
 

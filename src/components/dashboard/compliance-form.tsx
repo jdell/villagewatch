@@ -10,7 +10,8 @@ import {
 } from "@/app/(app)/dashboard/compliance/actions";
 
 /**
- * The acceptance itself — two checkboxes and the button that opens the village.
+ * The acceptance itself — three checkboxes and the button that opens the
+ * village.
  *
  * **There is no way to un-tick this.** Once a document is accepted the checkbox
  * renders as a recorded fact with the date and the person on it, not as a
@@ -19,9 +20,15 @@ import {
  * record worthless to the only audience it has. `acceptCompliance` enforces the
  * same thing server-side; this is the half that stops it looking like a setting.
  *
- * The button is disabled until both boxes are ticked. The action checks again
- * and names the box that is missing, because a disabled button is a courtesy and
- * not a constraint.
+ * The button is disabled until all three boxes are ticked. The action checks
+ * again and names the box that is missing, because a disabled button is a
+ * courtesy and not a constraint.
+ *
+ * The third one carries a sentence the other two do not need: the processing
+ * agreement is a **contract**, so ticking it is the council's half and the
+ * document is not in force until Yakasista Ltd has signed the paper copy too.
+ * Leaving that out would let a coordinator finish this screen believing an
+ * agreement exists when one does not.
  */
 
 const IDLE: ComplianceState = { ok: true, message: "" };
@@ -72,6 +79,7 @@ export function ComplianceForm({
   parishCouncil,
   dpiaAccepted,
   apdAccepted,
+  dpaAccepted,
   /** False when the migration adding the columns has not been applied. */
   available,
 }: {
@@ -79,11 +87,13 @@ export function ComplianceForm({
   parishCouncil: string;
   dpiaAccepted: AcceptedDocument | null;
   apdAccepted: AcceptedDocument | null;
+  dpaAccepted: AcceptedDocument | null;
   available: boolean;
 }) {
   const [state, accept] = useActionState(acceptComplianceAction, IDLE);
   const [dpia, setDpia] = useState(false);
   const [apd, setApd] = useState(false);
+  const [dpa, setDpa] = useState(false);
 
   useEffect(() => {
     if (!state.message) return;
@@ -91,7 +101,8 @@ export function ComplianceForm({
     else toast.error(state.message);
   }, [state]);
 
-  const complete = dpiaAccepted !== null && apdAccepted !== null;
+  const complete =
+    dpiaAccepted !== null && apdAccepted !== null && dpaAccepted !== null;
 
   if (complete) {
     return (
@@ -108,7 +119,22 @@ export function ComplianceForm({
         <div className="mt-4 space-y-3">
           <Recorded label="Data Protection Impact Assessment" accepted={dpiaAccepted} />
           <Recorded label="Appropriate Policy Document" accepted={apdAccepted} />
+          <Recorded label="Data Processing Agreement" accepted={dpaAccepted} />
         </div>
+
+        {/*
+          The one thing this screen cannot record. The other two documents the
+          council adopts on its own; this one is a contract and takes two
+          signatures, and a coordinator who has just seen three green panels
+          would otherwise reasonably conclude the agreement is in force.
+        */}
+        <p className="mt-4 text-xs leading-relaxed text-slate-500">
+          The Data Processing Agreement is a contract and takes two signatures.
+          What is recorded above is the council&rsquo;s acceptance of the terms —
+          it is not in force until Yakasista Ltd has signed the document as well.
+          Send the signed copy to info@yakasista.com and keep the countersigned
+          version with the council&rsquo;s records.
+        </p>
       </section>
     );
   }
@@ -132,9 +158,13 @@ export function ComplianceForm({
             yet, so there is nowhere to record your acceptance.
           </p>
           <p className="mt-2">
-            An administrator needs to apply the migration{" "}
+            An administrator needs to apply the migrations{" "}
             <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-xs">
               20260728090000_village_compliance_gate
+            </code>{" "}
+            and{" "}
+            <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-xs">
+              20260728150000_village_dpa_gate
             </code>
             . Reporting is not blocked in the meantime — the gate cannot be
             enforced until the columns exist, and taking every village offline
@@ -152,7 +182,7 @@ export function ComplianceForm({
         Accept on behalf of {parishCouncil}
       </h2>
       <p className="mt-0.5 text-xs text-slate-500">
-        Read both documents above first. Your name and the date are recorded
+        Read all three documents above first. Your name and the date are recorded
         against your village and written to the audit trail, and an acceptance
         cannot be undone from this screen.
       </p>
@@ -208,8 +238,42 @@ export function ComplianceForm({
           </label>
         )}
 
+        {dpaAccepted ? (
+          <Recorded label="Data Processing Agreement" accepted={dpaAccepted} />
+        ) : (
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-slate-50 p-3.5 ring-1 ring-inset ring-slate-200">
+            <input
+              name="dpa"
+              type="checkbox"
+              checked={dpa}
+              onChange={(event) => setDpa(event.target.checked)}
+              className="mt-0.5 size-5 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-2 focus:ring-brand-500/20"
+            />
+            <span>
+              <span className="block text-sm font-medium text-slate-900">
+                I have read and accept the Data Processing Agreement
+              </span>
+              <span className="mt-0.5 block text-sm text-slate-600">
+                UK GDPR Article 28(3). The contract between {parishCouncil} and
+                Yakasista Ltd, who runs the service on the council&rsquo;s
+                behalf. A controller may only use a processor under a written
+                agreement.
+              </span>
+              <span className="mt-1.5 block text-sm text-slate-600">
+                This one takes two signatures. Ticking it records the
+                council&rsquo;s acceptance of the terms; the agreement is in
+                force once Yakasista Ltd has signed the document too.
+              </span>
+            </span>
+          </label>
+        )}
+
         <AcceptButton
-          ready={(dpia || dpiaAccepted !== null) && (apd || apdAccepted !== null)}
+          ready={
+            (dpia || dpiaAccepted !== null) &&
+            (apd || apdAccepted !== null) &&
+            (dpa || dpaAccepted !== null)
+          }
         />
       </form>
     </section>

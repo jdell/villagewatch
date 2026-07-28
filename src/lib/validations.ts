@@ -765,12 +765,12 @@ export const villageAutoApproveFormSchema = z.object({
 });
 
 /**
- * Accepting the two compliance documents.
+ * Accepting the three compliance documents.
  *
- * Two checkboxes rather than one, and the schema does **not** require both: the
- * action decides that, so it can say which box is missing rather than rejecting
- * the whole form with "invalid". `refine` here would turn "you have not ticked
- * the APD" into a validation error with nowhere useful to attach it.
+ * Three checkboxes rather than one, and the schema does **not** require all of
+ * them: the action decides that, so it can say which box is missing rather than
+ * rejecting the whole form with "invalid". `refine` here would turn "you have
+ * not ticked the APD" into a validation error with nowhere useful to attach it.
  *
  * The same unchecked-checkbox handling as `villageAutoApproveFormSchema` — an
  * unticked box is absent from the payload entirely, so "missing" has to mean
@@ -786,6 +786,10 @@ export const complianceAcceptFormSchema = z.object({
     .optional()
     .transform((value) => value === "on"),
   apd: z
+    .union([z.literal("on"), z.literal("")])
+    .optional()
+    .transform((value) => value === "on"),
+  dpa: z
     .union([z.literal("on"), z.literal("")])
     .optional()
     .transform((value) => value === "on"),

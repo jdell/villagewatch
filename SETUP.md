@@ -146,9 +146,12 @@ working out what a database is missing.
 | 5 | `20260727161500_village_auto_approve` | `villages.auto_approve`. |
 | 6 | `20260727180000_village_activation` | `villages.parish_council`. |
 | 7 | `20260728090000_village_compliance_gate` | The four `villages.[dpia\|apd]_accepted_*` columns behind step 8c. |
+| 8 | `20260728120000_village_privacy_level` | `villages.privacy_level` — how heavily the village covers faces. |
+| 9 | `20260728150000_village_dpa_gate` | The two `villages.dpa_accepted_*` columns — the third document in step 8c. |
 
 **As of 28 July 2026, migrations 1–5 are applied to the Supabase project and
-migrations 6 and 7 are not.** Neither has been applied anywhere. Until 6 runs:
+migrations 6 to 9 are not.** None of them has been applied anywhere. Until 6
+runs:
 
 - The parish council field on `/dashboard` renders as a note explaining that a
   migration has to run first, rather than failing on Save — `getVillageParishCouncil`
@@ -157,15 +160,22 @@ migrations 6 and 7 are not.** Neither has been applied anywhere. Until 6 runs:
 - `/reports` falls back to the deployment-wide `DATA_CONTROLLER` constant in
   its footers.
 
-Until 7 runs, **the compliance gate is not enforced** — `getVillageCompliance`
-reports the columns as unavailable and allows reporting, on the reasoning that an
-unapplied migration is a deployment fault and taking every village's reporting
-offline over one would be a compliance feature causing the outage it exists to
-prevent. It is logged on every check and `/dashboard/compliance` says so on
-screen. **Applying migration 7 turns the gate on for every village at once**,
-including any that already has reports in it: the columns are nullable with no
-default, null means "not accepted", and a default that let existing villages
-carry on would be a gate that gates nothing. Read step 8c before running it.
+Until 7 **and** 9 run, **the compliance gate is not enforced** —
+`getVillageCompliance` reports the columns as unavailable and allows reporting,
+on the reasoning that an unapplied migration is a deployment fault and taking
+every village's reporting offline over one would be a compliance feature causing
+the outage it exists to prevent. It is logged on every check and
+`/dashboard/compliance` says so on screen. **Applying them turns the gate on for
+every village at once**, including any that already has reports in it: the
+columns are nullable with no default, null means "not accepted", and a default
+that let existing villages carry on would be a gate that gates nothing. Read step
+8c before running them.
+
+**Run 7 and 9 together.** They are two halves of one gate — 7 brings the DPIA and
+the Appropriate Policy Document, 9 brings the processing agreement. Applying 9 on
+its own, later, re-closes a village that had already been through the compliance
+page, and the coordinator has to go back and accept a third document to reopen
+it. Nothing is lost either way; it is a second interruption for no reason.
 
 ### Village activation needs no new migration
 
@@ -619,7 +629,7 @@ landing-page FAQ in the same commit.
 
 ## 8c. The compliance gate (not optional)
 
-**A village accepts no report until its coordinator has accepted two documents
+**A village accepts no report until its coordinator has accepted three documents
 on `/dashboard/compliance`.** This is the one gate in the app that is a
 lawfulness question rather than a configuration one, and it is why there is no
 switch to turn it off.
@@ -632,18 +642,35 @@ Schedule makes an Appropriate Policy Document a condition of relying on it**. A
 village processing reports without one is not a village with incomplete
 paperwork — it is a village whose processing has no lawful authorisation.
 
+The third document is there for the same shape of reason. **Article 28(3) permits
+a controller to use a processor only under a written contract**, so a council
+running the service with no agreement in place is in breach from the first report
+filed — not because anything went wrong with the data, but because the
+arrangement was never written down.
+
 ### What a coordinator does
 
 1. Sign in as a coordinator of the village → **Compliance** in the sidebar, or
    the amber banner on `/dashboard`.
-2. Read both documents. They are rendered in full on the page, from
-   `docs/DPIA.md` and `docs/APD_TEMPLATE.md` — the same files the council is
-   sent, not a summary of them.
-3. Tick both boxes and press **Accept and enable village**.
+2. Read all three documents. They are rendered in full on the page, from
+   `docs/DPIA.md`, `docs/APD_TEMPLATE.md` and
+   `docs/DATA_PROCESSING_AGREEMENT.md` — the same files the council is sent, not
+   a summary of them.
+3. Tick all three boxes and press **Accept and enable village**.
 
 The date and the coordinator's identity are written to `villages`, and
-`compliance.dpia_accepted` and `compliance.apd_accepted` go to the audit trail.
-Both are visible in `/dashboard/audit`.
+`compliance.dpia_accepted`, `compliance.apd_accepted` and
+`compliance.dpa_accepted` go to the audit trail. All three are visible in
+`/dashboard/audit`.
+
+**The processing agreement takes two signatures and the screen only records
+one.** The DPIA and the Appropriate Policy Document are the council's own
+documents and the council adopts them alone. The agreement is a contract between
+the council and Yakasista Ltd, so accepting it on screen records the council's
+half; it is in force once Yakasista Ltd has signed the document too. Send the
+signed copy to info@yakasista.com and keep the countersigned version with the
+council's records. The audit row says which party it stands for, and the page
+says so beside the checkbox and again once all three are accepted.
 
 **Acceptance is one-way.** There is no un-accept and re-accepting never moves an
 existing timestamp onto today or replaces the name against it. A council that

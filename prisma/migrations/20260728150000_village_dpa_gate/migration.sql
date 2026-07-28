@@ -1,0 +1,71 @@
+-- The third document in the compliance gate: the Article 28(3) UK GDPR data
+-- processing agreement between the parish council (controller) and Yakasista
+-- Ltd (processor), at `docs/DATA_PROCESSING_AGREEMENT.md`.
+--
+-- Hand-written, like the seven migrations before it. `prisma migrate diff`
+-- against this database also proposes:
+--
+--   DROP INDEX "incidents_location_point_idx";
+--   DROP INDEX "pattern_alerts_centroid_point_idx";
+--   DROP INDEX "villages_boundary_idx";
+--
+-- Those are the GiST indexes created by `prisma/sql/postgis.sql`. They sit on
+-- `Unsupported("geography(...)")` columns, so Prisma cannot see them, reads
+-- them as drift, and offers to remove them — which would take out every radius
+-- query (`ST_DWithin`) the app makes. They are deliberately not in this file.
+-- Check any future generated migration for the same three lines.
+--
+-- ## Why this one is a gate condition rather than a link on a page
+--
+-- Article 28(3) permits a controller to use a processor only under a written
+-- contract, and lists what it has to cover. A council with no such contract is
+-- in breach from the first report filed. That is the same shape as the APD —
+-- an authorisation that has to exist *before* the processing, not a record made
+-- afterwards — so it belongs in the same gate rather than beside it.
+--
+-- Two columns, nullable, no default. Null means "not accepted", so **any
+-- village that has already accepted the DPIA and the APD stops accepting
+-- reports again** until a coordinator returns to /dashboard/compliance and
+-- accepts the third document. That is the intended direction and it is the
+-- same reasoning `20260728090000_village_compliance_gate` gives: a default that
+-- let existing villages carry on would be a gate that gates nothing. In
+-- practice nothing is disturbed today, because migration 7 has never been
+-- applied anywhere and so no village has ever accepted anything — but the
+-- ordering matters if that changes before this runs.
+--
+-- ## The one thing this column does not record
+--
+-- The DPIA and the APD are the council's own documents and the council signs
+-- them alone. This one is a **contract**, so it is not in force until Yakasista
+-- Ltd has signed the paper document too. What `dpa_accepted_at` records is the
+-- council's half — the same thing the other two record, and deliberately not
+-- more. Nothing in the software can evidence the processor's signature, and a
+-- column that implied it did would be worse than no column.
+--
+-- `ON DELETE SET NULL` on the foreign key, matching `dpia_accepted_by_id`,
+-- `apd_accepted_by_id`, `moderated_by_id` and `acknowledged_by_id`. A
+-- coordinator closing their account must not un-accept their village's
+-- documents — the acceptance was an act by the council, and the audit trail
+-- holds the denormalised actor email regardless. What is lost is the join back
+-- to a live profile, which is why `compliance.dpa_accepted` is written to
+-- `audit_logs` as well as here.
+--
+-- No index, for the reason migration 7 gives: the column is read one village at
+-- a time, by primary key, on a table with one row per parish.
+--
+-- Re-run `prisma/sql/rls_policies.sql` after this. The `villages` SELECT grant
+-- is enumerated per column, so `dpa_accepted_at` is unreadable through
+-- PostgREST until that file names it — which is the intended default for a new
+-- column, and it is named there now. `dpa_accepted_by_id` is deliberately left
+-- out alongside the other two `*_accepted_by_id` columns: they are `users.id`
+-- values, and a cross-village read of a user id is a thing to withhold rather
+-- than a thing to grant by habit.
+
+-- AlterTable
+ALTER TABLE "villages" ADD COLUMN     "dpa_accepted_at" TIMESTAMP(3),
+                       ADD COLUMN     "dpa_accepted_by_id" UUID;
+
+-- AddForeignKey
+ALTER TABLE "villages" ADD CONSTRAINT "villages_dpa_accepted_by_id_fkey"
+  FOREIGN KEY ("dpa_accepted_by_id") REFERENCES "users"("id")
+  ON DELETE SET NULL ON UPDATE CASCADE;

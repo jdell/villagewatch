@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * all, so what is worth asserting here is not that a boolean is stored but the
  * four properties that make it a gate:
  *
- *   * not accepted **blocks**, and both documents are required, not either;
+ *   * not accepted **blocks**, and all three documents are required, not any
+ *     one or two of them;
  *   * an unapplied migration **allows**, loudly — the opposite direction, and
  *     the one that stops a missing column taking every village's reporting
  *     offline;
@@ -17,7 +18,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * Prisma is mocked at the module boundary, as everywhere else in this suite. The
  * error shapes are the real ones Prisma raises for a missing column — `P2022`,
  * the raw SQLSTATE `42703`, and the message-only case — because the narrow match
- * on those three is the whole reason the allow branch is safe.
+ * on those three is the whole reason the allow branch is safe. The message-only
+ * case is asserted for all three columns rather than one: `dpia_accepted_at` and
+ * `dpa_accepted_at` differ by a letter and neither contains the other, so a
+ * matcher that tested only the first would take a database with migration 7 and
+ * not 8 offline.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -52,6 +57,19 @@ const ACCEPTOR = {
   email: "coordinator@example.uk",
 };
 
+/** A village row with nothing accepted. */
+const NOTHING_ACCEPTED = {
+  dpiaAcceptedAt: null,
+  apdAcceptedAt: null,
+  dpaAcceptedAt: null,
+  dpiaAcceptedBy: null,
+  apdAcceptedBy: null,
+  dpaAcceptedBy: null,
+};
+
+/** Every box ticked, which is what the form posts. */
+const ALL = { dpia: true, apd: true, dpa: true };
+
 beforeEach(() => {
   vi.stubEnv("DATABASE_URL", "postgres://test");
   mocks.update.mockResolvedValue({});
@@ -66,12 +84,16 @@ afterEach(() => {
 });
 
 /** A missing column, however Prisma happens to surface it. */
-function missingColumn(shape: "code" | "sqlstate" | "message"): Error {
-  const error = new Error(
-    shape === "message"
-      ? "The column `villages.dpia_accepted_at` does not exist"
-      : "boom",
-  );
+function missingColumn(
+  shape: "code" | "sqlstate" | "dpia" | "apd" | "dpa",
+): Error {
+  const messages: Record<string, string> = {
+    dpia: "The column `villages.dpia_accepted_at` does not exist",
+    apd: "The column `villages.apd_accepted_at` does not exist",
+    dpa: "The column `villages.dpa_accepted_at` does not exist",
+  };
+
+  const error = new Error(messages[shape] ?? "boom");
 
   if (shape === "code") Object.assign(error, { code: "P2022" });
   if (shape === "sqlstate") Object.assign(error, { code: "42703" });
@@ -80,13 +102,8 @@ function missingColumn(shape: "code" | "sqlstate" | "message"): Error {
 }
 
 describe("getVillageCompliance", () => {
-  it("blocks a village that has accepted neither document", async () => {
-    mocks.findUnique.mockResolvedValue({
-      dpiaAcceptedAt: null,
-      apdAcceptedAt: null,
-      dpiaAcceptedBy: null,
-      apdAcceptedBy: null,
-    });
+  it("blocks a village that has accepted nothing", async () => {
+    mocks.findUnique.mockResolvedValue(NOTHING_ACCEPTED);
 
     const status = await getVillageCompliance(VILLAGE);
 
@@ -95,57 +112,78 @@ describe("getVillageCompliance", () => {
     expect(await canVillageAcceptIncidents(VILLAGE)).toBe(false);
   });
 
-  it("requires both documents, not either", async () => {
-    // The DPIA alone. Article 35 is satisfied and Schedule 1 paragraph 5 is not,
-    // which is the half that makes the processing lawful in the first place.
-    mocks.findUnique.mockResolvedValue({
-      dpiaAcceptedAt: new Date("2026-07-01T09:00:00Z"),
-      apdAcceptedAt: null,
-      dpiaAcceptedBy: ACCEPTOR,
-      apdAcceptedBy: null,
-    });
+  it("requires all three documents, not any two of them", async () => {
+    const acceptedAt = new Date("2026-07-01T09:00:00Z");
 
-    const status = await getVillageCompliance(VILLAGE);
+    // Each case leaves exactly one document unaccepted. Every one of the three
+    // is a separate legal instrument — Article 35, Schedule 1 paragraph 5 and
+    // Article 28(3) — so no two of them substitute for the third.
+    const combinations = [
+      { missing: "dpia", dpia: null, apd: acceptedAt, dpa: acceptedAt },
+      { missing: "apd", dpia: acceptedAt, apd: null, dpa: acceptedAt },
+      { missing: "dpa", dpia: acceptedAt, apd: acceptedAt, dpa: null },
+    ] as const;
 
-    expect(status.dpia).not.toBeNull();
-    expect(status.apd).toBeNull();
-    expect(status.complete).toBe(false);
+    for (const combination of combinations) {
+      mocks.findUnique.mockResolvedValue({
+        dpiaAcceptedAt: combination.dpia,
+        apdAcceptedAt: combination.apd,
+        dpaAcceptedAt: combination.dpa,
+        dpiaAcceptedBy: combination.dpia ? ACCEPTOR : null,
+        apdAcceptedBy: combination.apd ? ACCEPTOR : null,
+        dpaAcceptedBy: combination.dpa ? ACCEPTOR : null,
+      });
+
+      const status = await getVillageCompliance(VILLAGE);
+
+      expect(status.complete, `missing ${combination.missing}`).toBe(false);
+      expect(status[combination.missing]).toBeNull();
+      expect(await canVillageAcceptIncidents(VILLAGE)).toBe(false);
+    }
   });
 
-  it("opens the village once both are accepted, and says who and when", async () => {
+  it("opens the village once all three are accepted, and says who and when", async () => {
     const acceptedAt = new Date("2026-07-01T09:00:00Z");
 
     mocks.findUnique.mockResolvedValue({
       dpiaAcceptedAt: acceptedAt,
       apdAcceptedAt: acceptedAt,
+      dpaAcceptedAt: acceptedAt,
       dpiaAcceptedBy: ACCEPTOR,
       apdAcceptedBy: ACCEPTOR,
+      dpaAcceptedBy: ACCEPTOR,
     });
 
     const status = await getVillageCompliance(VILLAGE);
 
     expect(status.complete).toBe(true);
     expect(status.dpia?.acceptedAt).toEqual(acceptedAt);
+    expect(status.dpa?.acceptedAt).toEqual(acceptedAt);
     expect(status.dpia?.acceptedBy?.fullName).toBe("A Coordinator");
   });
 
   it("still reports the acceptance when the accepting account has been closed", async () => {
     // `ON DELETE SET NULL` on the foreign key. The acceptance is a fact about a
     // date and must survive the coordinator closing their account.
+    const acceptedAt = new Date("2026-07-01T09:00:00Z");
+
     mocks.findUnique.mockResolvedValue({
-      dpiaAcceptedAt: new Date("2026-07-01T09:00:00Z"),
-      apdAcceptedAt: new Date("2026-07-01T09:00:00Z"),
+      dpiaAcceptedAt: acceptedAt,
+      apdAcceptedAt: acceptedAt,
+      dpaAcceptedAt: acceptedAt,
       dpiaAcceptedBy: null,
       apdAcceptedBy: null,
+      dpaAcceptedBy: null,
     });
 
     const status = await getVillageCompliance(VILLAGE);
 
     expect(status.complete).toBe(true);
     expect(status.dpia?.acceptedBy).toBeNull();
+    expect(status.dpa?.acceptedBy).toBeNull();
   });
 
-  it.each(["code", "sqlstate", "message"] as const)(
+  it.each(["code", "sqlstate", "dpia", "apd", "dpa"] as const)(
     "allows reporting when the migration has not run (%s)",
     async (shape) => {
       mocks.findUnique.mockRejectedValue(missingColumn(shape));
@@ -178,18 +216,13 @@ describe("getVillageCompliance", () => {
 });
 
 describe("acceptCompliance", () => {
-  it("records both documents with the coordinator who accepted", async () => {
-    mocks.findUnique.mockResolvedValue({
-      dpiaAcceptedAt: null,
-      apdAcceptedAt: null,
-      dpiaAcceptedBy: null,
-      apdAcceptedBy: null,
-    });
+  it("records all three documents with the coordinator who accepted", async () => {
+    mocks.findUnique.mockResolvedValue(NOTHING_ACCEPTED);
 
     const result = await acceptCompliance({
       session: SESSION,
       villageId: VILLAGE,
-      accept: { dpia: true, apd: true },
+      accept: ALL,
     });
 
     expect(result).toMatchObject({ ok: true, complete: true });
@@ -197,65 +230,90 @@ describe("acceptCompliance", () => {
     const data = mocks.update.mock.calls[0]?.[0]?.data;
     expect(data.dpiaAcceptedById).toBe("user-1");
     expect(data.apdAcceptedById).toBe("user-1");
+    expect(data.dpaAcceptedById).toBe("user-1");
     expect(data.dpiaAcceptedAt).toBeInstanceOf(Date);
+    expect(data.dpaAcceptedAt).toBeInstanceOf(Date);
   });
 
   it("writes one audit row per document accepted", async () => {
-    mocks.findUnique.mockResolvedValue({
-      dpiaAcceptedAt: null,
-      apdAcceptedAt: null,
-      dpiaAcceptedBy: null,
-      apdAcceptedBy: null,
-    });
+    mocks.findUnique.mockResolvedValue(NOTHING_ACCEPTED);
 
     await acceptCompliance({
       session: SESSION,
       villageId: VILLAGE,
-      accept: { dpia: true, apd: true },
+      accept: ALL,
     });
 
     const rows = mocks.createMany.mock.calls[0]?.[0]?.data ?? [];
     expect(rows.map((row: { action: string }) => row.action)).toEqual([
       "compliance.dpia_accepted",
       "compliance.apd_accepted",
+      "compliance.dpa_accepted",
     ]);
+  });
+
+  it("records the processing agreement as the controller's half only", async () => {
+    mocks.findUnique.mockResolvedValue(NOTHING_ACCEPTED);
+
+    await acceptCompliance({
+      session: SESSION,
+      villageId: VILLAGE,
+      accept: ALL,
+    });
+
+    const rows = mocks.createMany.mock.calls[0]?.[0]?.data ?? [];
+    const dpa = rows.find(
+      (row: { action: string }) => row.action === "compliance.dpa_accepted",
+    );
+
+    // The agreement is a contract and is not in force until Yakasista Ltd has
+    // signed the paper copy too. Nothing on this screen can evidence that, so
+    // the trail row says which party it stands for rather than implying both.
+    expect(dpa.after.party).toBe("controller");
+    expect(dpa.after.document).toBe("Data Processing Agreement");
   });
 
   it("never moves an acceptance that is already recorded", async () => {
     const original = new Date("2026-01-04T11:30:00Z");
 
     mocks.findUnique.mockResolvedValue({
+      ...NOTHING_ACCEPTED,
       dpiaAcceptedAt: original,
-      apdAcceptedAt: null,
       dpiaAcceptedBy: { id: "someone-else", fullName: "Prior Clerk", email: "x@y.uk" },
-      apdAcceptedBy: null,
     });
 
     const result = await acceptCompliance({
       session: SESSION,
       villageId: VILLAGE,
-      accept: { dpia: true, apd: true },
+      accept: ALL,
     });
 
     expect(result).toMatchObject({ ok: true, complete: true });
 
-    // Only the APD is written. Re-accepting the DPIA must not stamp today's date
-    // over the date the council actually adopted it, nor replace the name of the
-    // person who read it.
+    // Only the APD and the agreement are written. Re-accepting the DPIA must not
+    // stamp today's date over the date the council actually adopted it, nor
+    // replace the name of the person who read it.
     const data = mocks.update.mock.calls[0]?.[0]?.data;
     expect(data).not.toHaveProperty("dpiaAcceptedAt");
     expect(data).not.toHaveProperty("dpiaAcceptedById");
     expect(data.apdAcceptedAt).toBeInstanceOf(Date);
+    expect(data.dpaAcceptedAt).toBeInstanceOf(Date);
 
     const rows = mocks.createMany.mock.calls[0]?.[0]?.data ?? [];
-    expect(rows).toHaveLength(1);
-    expect(rows[0].action).toBe("compliance.apd_accepted");
+    expect(rows.map((row: { action: string }) => row.action)).toEqual([
+      "compliance.apd_accepted",
+      "compliance.dpa_accepted",
+    ]);
   });
 
-  it("writes nothing at all when both are already accepted", async () => {
+  it("records only the agreement for a village that predates it", async () => {
+    // The state every already-compliant village lands in when
+    // `20260728150000_village_dpa_gate` is applied: two documents accepted on a
+    // date that must not move, and a third that has never been seen.
     const original = new Date("2026-01-04T11:30:00Z");
 
     mocks.findUnique.mockResolvedValue({
+      ...NOTHING_ACCEPTED,
       dpiaAcceptedAt: original,
       apdAcceptedAt: original,
       dpiaAcceptedBy: ACCEPTOR,
@@ -265,7 +323,38 @@ describe("acceptCompliance", () => {
     const result = await acceptCompliance({
       session: SESSION,
       villageId: VILLAGE,
-      accept: { dpia: true, apd: true },
+      accept: ALL,
+    });
+
+    expect(result).toMatchObject({ ok: true, complete: true });
+
+    const data = mocks.update.mock.calls[0]?.[0]?.data;
+    expect(Object.keys(data).sort()).toEqual([
+      "dpaAcceptedAt",
+      "dpaAcceptedById",
+    ]);
+
+    const rows = mocks.createMany.mock.calls[0]?.[0]?.data ?? [];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].action).toBe("compliance.dpa_accepted");
+  });
+
+  it("writes nothing at all when all three are already accepted", async () => {
+    const original = new Date("2026-01-04T11:30:00Z");
+
+    mocks.findUnique.mockResolvedValue({
+      dpiaAcceptedAt: original,
+      apdAcceptedAt: original,
+      dpaAcceptedAt: original,
+      dpiaAcceptedBy: ACCEPTOR,
+      apdAcceptedBy: ACCEPTOR,
+      dpaAcceptedBy: ACCEPTOR,
+    });
+
+    const result = await acceptCompliance({
+      session: SESSION,
+      villageId: VILLAGE,
+      accept: ALL,
     });
 
     expect(result).toMatchObject({ ok: true, complete: true });
@@ -273,11 +362,28 @@ describe("acceptCompliance", () => {
     expect(mocks.createMany).not.toHaveBeenCalled();
   });
 
-  it("refuses when neither box was ticked", async () => {
+  it("does not report the village open when a document is left unticked", async () => {
+    mocks.findUnique.mockResolvedValue(NOTHING_ACCEPTED);
+
     const result = await acceptCompliance({
       session: SESSION,
       villageId: VILLAGE,
-      accept: { dpia: false, apd: false },
+      accept: { dpia: true, apd: true, dpa: false },
+    });
+
+    // Partial acceptance is recorded — the two that were read were read — but
+    // the gate stays shut, and the screen's success message reads from this.
+    expect(result).toMatchObject({ ok: true, complete: false });
+
+    const data = mocks.update.mock.calls[0]?.[0]?.data;
+    expect(data).not.toHaveProperty("dpaAcceptedAt");
+  });
+
+  it("refuses when no box was ticked", async () => {
+    const result = await acceptCompliance({
+      session: SESSION,
+      villageId: VILLAGE,
+      accept: { dpia: false, apd: false, dpa: false },
     });
 
     expect(result).toMatchObject({ ok: false, reason: "nothing_selected" });
@@ -290,7 +396,7 @@ describe("acceptCompliance", () => {
     const result = await acceptCompliance({
       session: SESSION,
       villageId: VILLAGE,
-      accept: { dpia: true, apd: true },
+      accept: ALL,
     });
 
     // "Try again" would be a lie the coordinator could act on indefinitely.
@@ -299,18 +405,13 @@ describe("acceptCompliance", () => {
   });
 
   it("still reports success when the audit write fails", async () => {
-    mocks.findUnique.mockResolvedValue({
-      dpiaAcceptedAt: null,
-      apdAcceptedAt: null,
-      dpiaAcceptedBy: null,
-      apdAcceptedBy: null,
-    });
+    mocks.findUnique.mockResolvedValue(NOTHING_ACCEPTED);
     mocks.createMany.mockRejectedValue(new Error("trail unavailable"));
 
     const result = await acceptCompliance({
       session: SESSION,
       villageId: VILLAGE,
-      accept: { dpia: true, apd: true },
+      accept: ALL,
     });
 
     // The acceptance is on the village row with a timestamp and a person, so the
@@ -320,18 +421,13 @@ describe("acceptCompliance", () => {
   });
 
   it("reports a failed write rather than claiming the village is open", async () => {
-    mocks.findUnique.mockResolvedValue({
-      dpiaAcceptedAt: null,
-      apdAcceptedAt: null,
-      dpiaAcceptedBy: null,
-      apdAcceptedBy: null,
-    });
+    mocks.findUnique.mockResolvedValue(NOTHING_ACCEPTED);
     mocks.update.mockRejectedValue(new Error("connection refused"));
 
     const result = await acceptCompliance({
       session: SESSION,
       villageId: VILLAGE,
-      accept: { dpia: true, apd: true },
+      accept: ALL,
     });
 
     expect(result).toMatchObject({ ok: false, reason: "failed" });

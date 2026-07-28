@@ -18,14 +18,19 @@ export const metadata: Metadata = { title: "Compliance" };
  *
  * ## Why the whole document is on screen
  *
- * A coordinator is accepting the DPIA and the Appropriate Policy Document **on
- * their parish council's behalf**, and the council is the data controller. An
- * acceptance recorded against a summary would be worth less than no acceptance
- * at all — it would look like a controlled process in the audit trail while
- * standing for a document nobody was shown. So both files are read from `docs/`
- * and rendered in full, in order, expanded. There is no accordion: a collapsed
- * legal document is a document that was not read, and the point of this screen
- * is that it was.
+ * A coordinator is accepting the DPIA, the Appropriate Policy Document and the
+ * data processing agreement **on their parish council's behalf**, and the
+ * council is the data controller. An acceptance recorded against a summary would
+ * be worth less than no acceptance at all — it would look like a controlled
+ * process in the audit trail while standing for a document nobody was shown. So
+ * all three files are read from `docs/` and rendered in full, in order,
+ * expanded. There is no accordion: a collapsed legal document is a document that
+ * was not read, and the point of this screen is that it was.
+ *
+ * The order is deliberate and matches `COMPLIANCE_DOCUMENTS`: the assessment
+ * first, because it explains what the processing is; then the policy document
+ * that authorises the criminal offence data in it; then the contract, which is
+ * the promise about how the processing is carried out.
  *
  * ## Why it is not `force-dynamic`
  *
@@ -82,9 +87,9 @@ export default async function CompliancePage() {
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
           Reports filed through {village?.name ?? "your village"} describe
           suspected criminal activity, which is criminal offence data under UK
-          GDPR Article 10. Processing it lawfully needs two documents in place
-          before the first report — not after. Read both, then accept them on
-          behalf of {controller}.
+          GDPR Article 10. Processing it lawfully needs three documents in place
+          before the first report — not after. Read all three, then accept them
+          on behalf of {controller}.
         </p>
       </header>
 
@@ -99,16 +104,16 @@ export default async function CompliancePage() {
               This village cannot accept incident reports yet.
             </p>
             <p className="mt-1">
-              Residents who open the report form are told to contact you. Both
-              documents below have to be accepted before that changes.
+              Residents who open the report form are told to contact you. All
+              three documents below have to be accepted before that changes.
             </p>
           </div>
         </div>
       )}
 
       {/*
-        A jump list across both documents. They are long — the DPIA runs to ten
-        steps — and a coordinator who has been asked to read something before
+        A jump list across all three documents. They are long — the DPIA runs to
+        ten steps — and a coordinator who has been asked to read something before
         signing it needs to be able to get back to §7 without scrolling for it.
       */}
       <nav
@@ -204,16 +209,20 @@ export default async function CompliancePage() {
           parishCouncil={controller}
           dpiaAccepted={accepted(compliance.dpia)}
           apdAccepted={accepted(compliance.apd)}
+          dpaAccepted={accepted(compliance.dpa)}
           available={compliance.available}
         />
       </div>
 
       <p className="mt-4 text-xs leading-relaxed text-slate-500">
-        Both documents are templates prepared from the source code. They describe
-        what the software does accurately, and they are not a substitute for your
-        council&rsquo;s own review — the council is the data controller, and the
-        duty to carry out the assessment and maintain the policy document sits
-        with the controller rather than with the service.
+        All three documents are templates prepared from the source code. They
+        describe what the software does accurately, and they are not a substitute
+        for your council&rsquo;s own review — the council is the data controller,
+        and the duty to carry out the assessment and maintain the policy document
+        sits with the controller rather than with the service. The processing
+        agreement is a contract between two parties: take your own advice on the
+        terms before accepting it, and use the council&rsquo;s own standard
+        agreement instead if it has one.
       </p>
     </div>
   );

@@ -931,6 +931,20 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    value: "compliance.dpa_accepted",
+    label: "Data Processing Agreement accepted",
+    description:
+      "A coordinator accepted the Article 28(3) data processing agreement with Yakasista Ltd on the council's behalf",
+    /*
+      Sensitive for the same reason as the other two, and with one difference
+      worth knowing when reading the trail: this row is half of a contract. The
+      other two documents the council adopts alone; this one is not in force
+      until the processor has signed the paper copy as well, and no row here can
+      evidence that. What it records is the date the council agreed the terms.
+    */
+    tone: "sensitive",
+  },
+  {
     value: "incident.notify",
     label: "Alert re-sent",
     description: "A village-wide push was sent again",

@@ -132,10 +132,10 @@ src/
                               auto-approve, the WhatsApp Channel and the face
                               redaction level
       dashboard/audit/        Audit trail viewer — coordinator only, filterable
-      dashboard/compliance/   The legal gate — renders the DPIA and the APD in
-                              full and records the coordinator's acceptance.
-                              Until both are accepted the village accepts no
-                              report at all
+      dashboard/compliance/   The legal gate — renders the DPIA, the APD and the
+                              processing agreement in full and records the
+                              coordinator's acceptance. Until all three are
+                              accepted the village accepts no report at all
       reports/                Community safety report for police or the council
                               — date range as a GET form, coordinator only
       reports/actions.ts      generateNarrativeAction — the one Claude call,
@@ -215,8 +215,8 @@ src/
                               tombstones the row and deletes the media
     coordinator-requests.ts   Apply, approve, reject — the only place a role
                               is ever raised to COORDINATOR
-    compliance.ts             The DPIA/APD gate — three states, and the missing
-                              column is one of them. Server only
+    compliance.ts             The DPIA/APD/DPA gate — three states, and the
+                              missing column is one of them. Server only
     compliance-documents.ts   Reads docs/*.md at request time. Server only, and
                               needs outputFileTracingIncludes to ship
     markdown.ts               A small Markdown parser to a typed tree, so the
@@ -279,7 +279,10 @@ tests/                        Vitest, unit only — see The test suite
   validations.test.ts         The Zod schemas, both directions
   channel-code.test.ts        extractChannelCode + the dashboard's channel form
   format-alert.test.ts        The WhatsApp alert — severity, place, the link
-  compliance.test.ts          The gate's three states and its one-way write
+  compliance.test.ts          The gate's three states, its one-way write, and
+                              all three documents being required
+  compliance-documents.test.ts  The three docs/*.md load and parse; the DPA
+                              carries all eight Article 28(3) obligations
   markdown.test.ts            The parser, incl. leaving snake_case alone
   privacy-level.test.ts       The four levels, the free-text column's fallback
                               (including `toString`), and the write schema
@@ -678,18 +681,29 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Ten files, ~183 assertions, covering the
+between the typecheck and the build. Eleven files, ~191 assertions, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 AI pass's failure modes, the Zod schemas, the WhatsApp channel code, the alert
 format, the CSV export's escaping and formula-injection guard, the compliance
-gate's three states, the Markdown parser the compliance page renders the two
-legal documents through, and the per-village face redaction level.
+gate's three states, the three legal documents loading and parsing, the Markdown
+parser the compliance page renders them through, and the per-village face
+redaction level.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
   no `.env.local` — the same property the lint, typecheck and build steps rely
   on, and the reason CI needs no environment at all. A test that wanted a
   database would be a test CI could not run.
+- **`compliance-documents.test.ts` is the one that touches the disk**, and it
+  earns the exception: it reads three files out of the working tree, needs no
+  secret, and catches a failure that is otherwise invisible until a coordinator
+  opens the page — a renamed or unparseable document renders as a red panel
+  beside an acceptance form that still works, so a council would accept a
+  document it was not shown. It asserts loading, parsing, a non-empty table of
+  contents, and that the processing agreement still carries all eight Article
+  28(3) obligations as lettered headings. It deliberately asserts no wording:
+  these are documents under a council's review, and a test that failed whenever
+  somebody corrected a sentence would train people to edit the assertion.
 - **The mocks stop at the boundary, not before it.** `rate-limit.test.ts` mocks
   `$queryRaw` with a counter keyed `(userId, action, windowStart)` — the unique
   constraint the real SQL relies on — so "each action has its own quota" is
@@ -913,36 +927,61 @@ reporter reads and edits the result, and `POST /api/incidents` saves it.
 
 ## The compliance gate
 
-`src/lib/compliance.ts`, `/dashboard/compliance`, and four columns on `Village`.
+`src/lib/compliance.ts`, `/dashboard/compliance`, and six columns on `Village`.
 A village accepts **no** report until its coordinator has read and accepted the
-DPIA (`docs/DPIA.md`) and the Appropriate Policy Document
-(`docs/APD_TEMPLATE.md`). It is the only gate in the app with no switch to turn
-it off, and the reason is that it is a lawfulness question rather than a
-configuration one.
+DPIA (`docs/DPIA.md`), the Appropriate Policy Document (`docs/APD_TEMPLATE.md`)
+and the data processing agreement
+(`docs/DATA_PROCESSING_AGREEMENT.md`). It is the only gate in the app with no
+switch to turn it off, and the reason is that it is a lawfulness question rather
+than a configuration one.
 
 - **Why it blocks rather than reminds.** Reports describe suspected criminal
   activity, which is criminal offence data under Article 10. Article 10 allows
   it only where domestic law authorises it; the authorisation is DPA 2018
   s.10(5) with Schedule 1 paragraph 10, and **paragraph 5 of that Schedule makes
   an APD a condition of relying on it**. A village with no APD is not a village
-  with incomplete paperwork — its processing has no authorisation at all.
+  with incomplete paperwork — its processing has no authorisation at all. The
+  processing agreement is here for the same shape of reason: Article 28(3)
+  permits a controller to use a processor **only** under a written contract, so
+  a council with none is in breach from the first report filed. All three are
+  authorisations that have to exist before the processing, not records made
+  after it.
 - **Three states, and the third is the interesting one.** Not accepted **blocks**.
   Accepted **allows**. And the columns not existing — because
-  `20260728090000_village_compliance_gate` has not been applied — **allows**,
+  `20260728090000_village_compliance_gate` or `20260728150000_village_dpa_gate`
+  has not been applied — **allows**,
   loudly. That last one is the opposite direction to the gate's whole purpose
   and it is deliberate: an unapplied migration is a deployment fault, not a
   council's decision, and taking every village offline over one would be a
   compliance feature causing the outage it exists to prevent. It is logged on
-  every check and the dashboard names the migration. Any *other* database error
+  every check and the dashboard names the migrations. Any *other* database error
   blocks, on `getVillageAutoApprove`'s reasoning.
+- **`isMissingComplianceColumn` tests `dpa_accepted` separately from
+  `dpia_accepted`.** They differ by one letter and neither is a substring of the
+  other, so the obvious two-branch matcher would miss a database with migration
+  7 applied and 8 not — and missing it means blocking rather than allowing,
+  which is the direction that takes a village offline. Asserted per column in
+  `tests/compliance.test.ts`.
 - **Applying the migration closes every existing village at once.** Nullable,
   no default, null means not accepted. A default that let existing villages
-  carry on would be a gate that gates nothing.
-- **Two documents, two acceptances, two audit rows.** They answer to two
-  different instruments — Article 35 and Schedule 1 paragraph 5 — and a
-  regulator asking when a council adopted its APD is entitled to an answer that
-  is not "at the same time as something else". `compliance.dpia_accepted` and
-  `compliance.apd_accepted`, both toned `sensitive`.
+  carry on would be a gate that gates nothing. That applies to the DPA migration
+  too: a village that had already accepted the first two re-closes until
+  somebody accepts the third. Apply both together and nobody notices.
+- **Three documents, three acceptances, three audit rows.** They answer to three
+  different instruments — Article 35, Schedule 1 paragraph 5 and Article 28(3) —
+  and a regulator asking when a council adopted its APD is entitled to an answer
+  that is not "at the same time as something else". `compliance.dpia_accepted`,
+  `compliance.apd_accepted` and `compliance.dpa_accepted`, all toned
+  `sensitive`.
+- **The third one records half of something, and says so.** The DPIA and the APD
+  are the council's own documents and the council adopts them alone. The
+  processing agreement is a **contract**, and is not in force until Yakasista Ltd
+  has signed the paper copy too — nothing on a screen can evidence a second
+  party's signature. So `dpaAcceptedAt` is the council's acceptance of the terms
+  and nothing more; the audit row carries `party: "controller"`, the checkbox
+  says it, and the completed panel says it again. A coordinator finishing this
+  screen believing an agreement exists when one does not is the failure mode
+  that copy exists for.
 - **Acceptance is one-way, and re-accepting is a no-op.** Nothing here clears a
   timestamp or moves an existing one onto today, and nothing replaces the name
   against it — a council that adopted a document on a date did adopt it on that
@@ -957,19 +996,22 @@ configuration one.
   `MarkdownView` renders it as React, so there is no HTML string in the path and
   nothing to sanitise. It supports no `_underscore_` emphasis on purpose, so a
   snake_case identifier written outside backticks cannot have its middle eaten.
-- **Both documents are written for a parish councillor, not for a developer.**
-  They name no source file, no function and no column, and they explain what the
-  service does rather than how it does it — the council is the data controller
-  and this is the document it signs. Every statement in them is still a
-  statement about how the code behaves, so the rule the privacy notice is held
-  to applies here too: change the behaviour and change the document in the same
-  commit, in the same plain English.
+- **All three documents are written for a parish councillor, not for a
+  developer.** They name no source file, no function and no column, and they
+  explain what the service does rather than how it does it — the council is the
+  data controller and these are the documents it signs. Every statement in them
+  is still a statement about how the code behaves, so the rule the privacy
+  notice is held to applies here too: change the behaviour and change the
+  document in the same commit, in the same plain English. The processing
+  agreement's §6(c) is the sharpest case — it is a list of the security measures
+  actually in place, in a contract, so removing one of them is a breach rather
+  than a stale sentence.
 - **`docs/*.md` need `outputFileTracingIncludes`.** Nothing imports them, so
   Next's tracing would leave them out of the serverless bundle — it works in
-  `npm run dev` and fails **only in production**. `next.config.ts` names both.
-  Add a document and add it there in the same commit. Also keep the literal
-  `docs` segment in the `path.join`: a fully dynamic path makes Turbopack trace
-  the whole project into the bundle.
+  `npm run dev` and fails **only in production**. `next.config.ts` names all
+  three. Add a document and add it there in the same commit. Also keep the
+  literal `docs` segment in the `path.join`: a fully dynamic path makes Turbopack
+  trace the whole project into the bundle.
 - **Both routes are gated, not just the write.** `POST /api/incidents` refuses
   with 403 before the body is parsed and before a rate-limit slot is spent.
   `POST /api/incidents/process` refuses too — it sends a resident's verbatim
@@ -983,7 +1025,7 @@ configuration one.
   `DATA_CONTROLLER` — which is still placeholders. A coordinator accepting "on
   behalf of [Parish Council name]" has accepted on behalf of nobody, so fill
   that in first. See The parish council.
-- The two `*_accepted_by_id` columns are deliberately **absent** from the
+- The three `*_accepted_by_id` columns are deliberately **absent** from the
   `villages` SELECT grant in `rls_policies.sql`. They are `users.id` values; the
   timestamps are granted and the identities are not.
 
@@ -1557,18 +1599,21 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates, the onboarding tour and the ONS village directory pipeline. Still
 open:
 
-- The Supabase project exists (eu-west-2), **migrations 1–5 of the eight are
+- The Supabase project exists (eu-west-2), **migrations 1–5 of the nine are
   applied**, and `postgis.sql` and `rls_policies.sql` have both been re-run after
   them. `20260727180000_village_activation` (`parish_council`),
-  `20260728090000_village_compliance_gate` and
-  `20260728120000_village_privacy_level` have never been applied anywhere. The
+  `20260728090000_village_compliance_gate`,
+  `20260728120000_village_privacy_level` and `20260728150000_village_dpa_gate`
+  have never been applied anywhere. The
   `incident-media` bucket exists, private. What has **not** happened: no
   production deployment and no cron has ever fired.
-- **Applying migration 7 closes every village's reporting** until a coordinator
-  has been through `/dashboard/compliance`. That is the gate working as
-  designed — see The compliance gate — but it is the one migration in this
-  repository whose application is a visible change to what residents can do, so
-  do not run it without telling whoever coordinates the village.
+- **Applying migrations 7 and 9 closes every village's reporting** until a
+  coordinator has been through `/dashboard/compliance`. That is the gate working
+  as designed — see The compliance gate — but they are the only migrations in
+  this repository whose application is a visible change to what residents can
+  do, so do not run them without telling whoever coordinates the village. Run
+  them together: 9 alone re-closes a village that had already accepted the first
+  two documents.
 - **Migrations are applied by `.github/workflows/database.yml`**, on a push to
   main touching `prisma/**` or from the Run workflow button: `migrate deploy`,
   then `postgis.sql`, then `rls_policies.sql`, in that order. It is not in the
@@ -1712,11 +1757,22 @@ open:
   and never to leave a face readable, and only a real photograph settles the
   second half of that.
 - **The compliance gate has never been exercised against a database**, because
-  its migration has never run. Nothing has ever been blocked by it and no
-  acceptance has ever been recorded. Its unit tests cover the three states and
-  the one-way write; what they cannot cover is the 403 actually reaching a
-  resident, which wants the route test named below.
-- **There is a test suite now, and it covers nine modules rather than the app.**
+  neither of its migrations has run. Nothing has ever been blocked by it and no
+  acceptance has ever been recorded. Its unit tests cover the three states, the
+  one-way write and all three documents being required; what they cannot cover
+  is the 403 actually reaching a resident, which wants the route test named
+  below.
+- **The Article 28(3) processing agreement is drafted and signed by nobody.**
+  `docs/DATA_PROCESSING_AGREEMENT.md` is the third document in the gate and is
+  DPIA action A2. Unlike the other two it takes **two** signatures, so the
+  screen records the council's half and says so in three places. Two things in
+  it are still open on our side and are marked in the document itself: the
+  transfer mechanisms for Anthropic and OneSignal are `[verify]` (DPIA A9 and
+  A11), and the Slack position is a disclosure rather than an agreement (A3) —
+  §6(d) states that plainly rather than claiming cover it does not have. Its
+  §6(c) is a list of the security measures actually in place, in a contract:
+  removing one of them is a breach, not a stale sentence.
+- **There is a test suite now, and it covers eleven modules rather than the app.**
   `npm run test` runs Vitest over `tests/`, and `.github/workflows/ci.yml` runs
   it between the typecheck and the build. See The test suite below for what is
   asserted and what is deliberately not. Nothing yet asserts that a

@@ -56,15 +56,18 @@ software cannot reach them, in the judgement of the coordinators who review
 reports, and in the position of a person who is described in a report and does
 not know it exists.
 
-**What the council still has to do.** Accepting this document and the
-Appropriate Policy Document on the compliance page is what allows the village to
-begin accepting reports, and it is the coordinator's part. It is not the whole
-of the council's part. Five actions at §9 are marked **blocker** and belong to
-the council rather than to the software — chiefly a written contract with the
-processor, the council's real details and ICO registration in the privacy
-notice, written guidance for coordinators, and a procedure for a data breach.
-Four of the five are documents the council writes; no software can produce them.
-Section 9 sets out who owns each action, and §10.3 is where the council signs.
+**What the council still has to do.** Accepting this document, the Appropriate
+Policy Document and the data processing agreement on the compliance page is what
+allows the village to begin accepting reports, and it is the coordinator's part.
+It is not the whole of the council's part. Five actions at §9 are marked
+**blocker** and belong to the council rather than to the software — chiefly a
+written contract with the processor, the council's real details and ICO
+registration in the privacy notice, written guidance for coordinators, and a
+procedure for a data breach. Four of the five are documents the council writes;
+no software can produce them. The contract is now drafted and sits on the
+compliance page with the other two, but it takes two signatures rather than one
+and is not in force until both parties have signed it. Section 9 sets out who
+owns each action, and §10.3 is where the council signs.
 
 ---
 
@@ -388,7 +391,7 @@ both say so.
 | **Anthropic** | The AI rewrite (§5.1) | United States | **Yes** | Yes — commercial terms incl. UK IDTA *[verify]* |
 | **OneSignal** | Delivering notifications to phones | United States | **Yes** | *[Verify — DPA required before launch]* |
 | **Slack (Salesforce)** | Internal staff notifications | United States | **Yes** | **No separate agreement beyond Slack's standard terms — see below** |
-| **Yakasista Ltd** | Development, operation and support (processor to the council) | United Kingdom | No | **Required — see §9, action A2** |
+| **Yakasista Ltd** | Development, operation and support (processor to the council) | United Kingdom | No | **Drafted, not yet signed — see §9, action A2** |
 
 **Slack, and why it is listed differently.** A private staff channel is told when
 somebody registers, when a report is published, when a coordinator applies and
@@ -635,10 +638,16 @@ easy half.
 
 **What "blocker" means.** A blocker must be complete before the service
 processes real resident data. It is *not* a precondition of accepting this
-document on the compliance page: accepting the two documents is what allows a
+document on the compliance page: accepting the three documents is what allows a
 village to begin, and completing the blockers is what makes beginning lawful.
 The council should treat them as two halves of one decision rather than as two
 separate occasions.
+
+Action A2 now sits across that line. The processing agreement is one of the
+three documents on the compliance page, so a coordinator accepting the council's
+side of it is part of what opens the village — but the agreement is a contract,
+and a contract with one signature on it is not an agreement. A2 stays a blocker
+until both parties have signed.
 
 ### 9.1 Actions for the council, as data controller
 
@@ -649,7 +658,7 @@ waiting on the developer.
 | # | Action | Addresses | Priority | Due | Status |
 |---|---|---|---|---|---|
 | **A1** | Adopt an **Appropriate Policy Document** under Schedule 1 Part 4 DPA 2018 for criminal offence data, and identify the Schedule 1 condition relied on. The accompanying template is drafted and ready for the council to review and sign; adopting it is the council's act, and until it is signed the template is a draft | §4.3 | **Blocker** | Before launch | Template drafted, not yet adopted |
-| **A2** | Execute a **written data processing agreement** with Yakasista Ltd (processor), meeting Article 28(3). Jointly with the processor | §5.4 | **Blocker** | Before launch | Not started |
+| **A2** | Execute a **written data processing agreement** with Yakasista Ltd (processor), meeting Article 28(3). Jointly with the processor. The agreement is drafted and is the third document on the compliance page, so the council's acceptance is recorded there alongside this assessment and the Appropriate Policy Document. It is a contract rather than a policy, so it is **not in force until both parties have signed the paper copy** — accepting it on screen is the council's half | §5.4 | **Blocker** | Before launch | Template drafted, included in compliance flow |
 | **A4** | Write **coordinator terms and review guidance** — what to reject, how to handle a report about a child, what "obviously about one household" looks like, and the consequences of misusing access | R1, R8, R9, R11 | **Blocker** | Before launch | Not started |
 | **A5** | Replace the placeholder controller details in the privacy notice with the council's real name, address, contact and **ICO registration number**; register with the ICO if not already registered | §6 | **Blocker** | Before launch | Placeholders in place |
 | **A10** | Write a **personal data breach procedure** — detection, the 72-hour ICO notification, resident notification, and who decides | R10 | **Blocker** | Before launch | Not started |

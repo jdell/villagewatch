@@ -2,7 +2,8 @@
 
 **Last updated:** 28 July 2026 (B1, B2, B4, B5, I1, I2, T3, T4, T7, T8 closed;
 village activation landed; DPIA drafted; compliance gate and the per-village
-face redaction level added — B2/I2 are configurable rather than fixed now)
+face redaction level added — B2/I2 are configurable rather than fixed now;
+Article 28(3) processing agreement drafted and added to the gate as L8)
 **Repo:** https://github.com/jdell/villagewatch
 
 ---
@@ -43,12 +44,13 @@ face redaction level added — B2/I2 are configurable rather than fixed now)
 
 | # | Blocker | Status | Details |
 |---|---------|--------|---------|
-| L1 | DPIA | Drafted 27 Jul | `docs/DPIA.md` — 12 assessed risks, none high after mitigation, conclusion is "may proceed with mitigations". **Not signed.** Its §9 carries five blockers that are the council's to produce, not ours: an Appropriate Policy Document for criminal offence data (DPA 2018 Sch 1 Pt 4), an Article 28 processing agreement with Yakasista Ltd, coordinator terms and moderation guidance, real controller details plus ICO registration, and a breach notification procedure. |
+| L1 | DPIA | Drafted 27 Jul | `docs/DPIA.md` — 12 assessed risks, none high after mitigation, conclusion is "may proceed with mitigations". **Not signed.** Its §9 carries five blockers that are the council's to produce, not ours: an Appropriate Policy Document for criminal offence data (DPA 2018 Sch 1 Pt 4), an Article 28 processing agreement with Yakasista Ltd, coordinator terms and moderation guidance, real controller details plus ICO registration, and a breach notification procedure. Two of the five now have templates — the APD, and as of 28 Jul the processing agreement. |
+| L8 | Article 28(3) processing agreement | **Template drafted 28 Jul** | `docs/DATA_PROCESSING_AGREEMENT.md` — DPIA action A2, and the third document in the compliance gate. Covers all eight Article 28(3) obligations, names the five sub-processors with what each actually receives, 30-day notice and a 14-day objection window on adding one, 24-hour breach notification to the council, audit rights, and deletion within 30 days of termination with written confirmation. **Not signed by either party**, and unlike the other two documents it takes two signatures — accepting it on `/dashboard/compliance` records the council's half and nothing more, which the screen says in as many words. Needs `20260728150000_village_dpa_gate`. Open on our side: the transfer mechanisms for Anthropic and OneSignal are marked *[verify]* in it (DPIA A9 and A11), and the Slack position is disclosed rather than covered (T7 / DPIA A3). |
 | L2 | Privacy policy — real controller name | Not started | `DATA_CONTROLLER` in `src/lib/constants.ts` is still placeholders and `/privacy` still reads it. Narrowed but not closed: a coordinator can now name their own council on `/dashboard`, which fills the `/reports` footers — per village, and only once L6 has run. |
 | L3 | Village activation from cold | Done 27 Jul | `src/lib/village.ts` — activate, mint a join code before the status flips, suspend, reactivate, regenerate, and appoint the first coordinator, all guarded on the status just read and all audited. `/admin/villages` is the screen. The registration routes now require the code whenever a village has one. Sharing the invite is I3; applying the migration is L6. |
 | L4 | OneSignal push not working | Not started | See B3. No push has been delivered to a real device. |
 | L5 | Verify coordinator flow end-to-end | Not started | Confirm submit → PENDING_REVIEW → approve → PUBLISHED → notification. Nothing in the test suite asserts that a village with auto-approve off still queues. |
-| L6 | Apply pending migrations | **3 pending** | `20260727180000_village_activation`, `20260728090000_village_compliance_gate` and `20260728120000_village_privacy_level` have never run anywhere. Order and consequences are in SETUP.md §4. `migrate deploy`, then `postgis.sql`, then `rls_policies.sql`. **The compliance gate one is not routine**: applying it closes every existing village's reporting until a coordinator has been through `/dashboard/compliance`, so tell whoever coordinates the village before it runs. The other two are additive and change nothing until somebody uses the screen. |
+| L6 | Apply pending migrations | **4 pending** | `20260727180000_village_activation`, `20260728090000_village_compliance_gate`, `20260728120000_village_privacy_level` and `20260728150000_village_dpa_gate` have never run anywhere. Order and consequences are in SETUP.md §4. `migrate deploy`, then `postgis.sql`, then `rls_policies.sql`. **The two compliance ones are not routine**: applying them closes every existing village's reporting until a coordinator has been through `/dashboard/compliance`, so tell whoever coordinates the village before they run. Apply them together — the DPA one alone re-closes a village that had already accepted the first two. The other two are additive and change nothing until somebody uses the screen. |
 | L7 | Sample seed data in the live database | Not started | The only ACTIVE village is the one `prisma/seed.ts` created, with five invented incidents and the hardcoded join code `VILLAGE1`. Both are obviously placeholders by design, and both are in the database a resident would land in. Delete the seeded village, or rotate its code and clear its incidents, before the first real resident registers. |
 
 ---
@@ -136,6 +138,7 @@ launch date slips for reasons nobody can defend to a parish clerk.
 | 27 Jul | Village activation — activate, mint, suspend, regenerate, appoint (L3) |
 | 27 Jul | Test data and stub audit (B5) |
 | 27 Jul | DPIA drafted — `docs/DPIA.md` (L1) |
+| 28 Jul | Article 28(3) processing agreement drafted; third document in the compliance gate (L8, DPIA A2) |
 
 ---
 

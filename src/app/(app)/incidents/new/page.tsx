@@ -102,8 +102,8 @@ export default async function NewIncidentPage() {
             <>
               <p className="mt-3 text-sm leading-relaxed text-slate-600">
                 That is you. {village.name} needs its Data Protection Impact
-                Assessment and Appropriate Policy Document accepted before it can
-                take a single report.
+                Assessment, Appropriate Policy Document and Data Processing
+                Agreement accepted before it can take a single report.
               </p>
               <Link
                 href="/dashboard/compliance"

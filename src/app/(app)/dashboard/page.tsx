@@ -296,8 +296,9 @@ export default async function DashboardPage() {
             </p>
             <p className="mt-1">
               Your village cannot accept reports until the Data Protection Impact
-              Assessment and the Appropriate Policy Document have been accepted.
-              Residents who open the report form are being told to contact you.
+              Assessment, the Appropriate Policy Document and the Data Processing
+              Agreement have been accepted. Residents who open the report form
+              are being told to contact you.
             </p>
           </div>
           <Link

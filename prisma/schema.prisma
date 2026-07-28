@@ -178,17 +178,24 @@ model Village {
 
   // --- Legal compliance gate ------------------------------------------------
   // A village cannot accept a single report until its coordinator has read and
-  // accepted both documents. The DPIA is Article 35 and the APD is DPA 2018
-  // Schedule 1 paragraph 5 — and the APD is not paperwork: without one, the
-  // processing of criminal offence data has no lawful authorisation at all.
+  // accepted all three documents. The DPIA is Article 35, the APD is DPA 2018
+  // Schedule 1 paragraph 5, and the DPA is Article 28(3). None of the three is
+  // paperwork: without an APD the processing of criminal offence data has no
+  // lawful authorisation at all, and without a processing agreement the council
+  // is in breach from the first report filed — not because anything went wrong
+  // with the data, but because the arrangement was never written down.
   //
-  // Two pairs rather than one flag, because they are two documents with two
-  // different legal instruments behind them and an acceptance is a personal
-  // act. `[dpia|apd]AcceptedById` records who, `…At` records when, and both
-  // are what a regulator asks for. `ON DELETE SET NULL` matches every other
-  // person-reference on this schema: a coordinator closing their account must
-  // not un-accept their village's documents, and the audit trail holds the
+  // Three pairs rather than one flag, because they are three documents with
+  // three different legal instruments behind them and an acceptance is a
+  // personal act. `[dpia|apd|dpa]AcceptedById` records who, `…At` records when,
+  // and both are what a regulator asks for. `ON DELETE SET NULL` matches every
+  // other person-reference on this schema: a coordinator closing their account
+  // must not un-accept their village's documents, and the audit trail holds the
   // denormalised email regardless.
+  //
+  // `dpa` and `dpia` differ by one letter and mean different things — the
+  // agreement with the processor, and the impact assessment. Read the column
+  // twice before changing anything here.
 
   dpiaAcceptedAt   DateTime? @map("dpia_accepted_at")
   dpiaAcceptedById String?   @map("dpia_accepted_by_id") @db.Uuid
@@ -197,6 +204,13 @@ model Village {
   apdAcceptedAt   DateTime? @map("apd_accepted_at")
   apdAcceptedById String?   @map("apd_accepted_by_id") @db.Uuid
   apdAcceptedBy   User?     @relation("VillageApdAcceptor", fields: [apdAcceptedById], references: [id], onDelete: SetNull)
+
+  /// The Article 28(3) data processing agreement with Yakasista Ltd. Unlike the
+  /// other two this is a *contract*, so the village row records only the
+  /// council's half of it — the processor signs the paper document.
+  dpaAcceptedAt   DateTime? @map("dpa_accepted_at")
+  dpaAcceptedById String?   @map("dpa_accepted_by_id") @db.Uuid
+  dpaAcceptedBy   User?     @relation("VillageDpaAcceptor", fields: [dpaAcceptedById], references: [id], onDelete: SetNull)
 
   /// Minimum severity that triggers a broadcast push to every resident.
   alertThreshold Severity @default(HIGH) @map("alert_threshold")
@@ -333,6 +347,7 @@ model User {
   /// a list because nothing in the schema enforces that.
   dpiaAcceptedVillages Village[] @relation("VillageDpiaAcceptor")
   apdAcceptedVillages  Village[] @relation("VillageApdAcceptor")
+  dpaAcceptedVillages  Village[] @relation("VillageDpaAcceptor")
   notifications      Notification[]
   auditLogs          AuditLog[]
 

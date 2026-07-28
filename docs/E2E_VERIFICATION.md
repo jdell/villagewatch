@@ -5,15 +5,17 @@ has a complete code path; four gaps found, one fixed in this pass.
 
 > **Addendum, 28 July 2026 — the compliance gate.** A gate now sits in front of
 > flows (c), (d) and (e): a village accepts no report until its coordinator has
-> accepted the DPIA and the Appropriate Policy Document on
+> accepted the DPIA, the Appropriate Policy Document and the Article 28(3) data
+> processing agreement on
 > `/dashboard/compliance`. `POST /api/incidents` and `POST /api/incidents/process`
 > both return **403** before parsing a body or spending a rate-limit slot, and
 > `/incidents/new` renders the refusal rather than the wizard. Everything below
 > about those three flows still holds — it describes what happens *after* the
 > gate opens. See "The compliance gate" in CLAUDE.md.
 >
-> The gate is **not enforced on the deployed database**, because its migration
-> (`20260728090000_village_compliance_gate`) has not been applied there and the
+> The gate is **not enforced on the deployed database**, because its migrations
+> (`20260728090000_village_compliance_gate` and
+> `20260728150000_village_dpa_gate`) have not been applied there and the
 > missing-column state deliberately allows reporting. So this addendum adds a
 > sixth entry to "What this document cannot tell you": nothing has ever been
 > blocked by the gate, and no acceptance has ever been recorded.
