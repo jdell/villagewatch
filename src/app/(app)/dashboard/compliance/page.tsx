@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, FileWarning, ScrollText, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  FileWarning,
+  ScrollText,
+  ShieldCheck,
+} from "lucide-react";
 import { ComplianceForm } from "@/components/dashboard/compliance-form";
 import { MarkdownView } from "@/components/markdown-view";
 import { NoVillage } from "@/components/no-village";
@@ -213,6 +220,42 @@ export default async function CompliancePage() {
           available={compliance.available}
         />
       </div>
+
+      {/*
+        Only once all three are accepted, and deliberately not before: the guide
+        is about running a village, and a coordinator who has not finished this
+        screen has no village to run yet. Putting it here rather than only in the
+        sidebar catches somebody at the one moment they are certain to be looking
+        — they have just read three legal documents and are wondering what
+        happens next.
+
+        Informational, never a blocker. Nothing is recorded by following it and
+        nothing waits on it having been read.
+      */}
+      {compliance.complete && (
+        <div className="mt-5 flex gap-3 rounded-2xl border border-brand-200 bg-brand-50/60 p-4 sm:p-5">
+          <BookOpen className="size-5 shrink-0 text-brand-600" aria-hidden />
+          <div className="min-w-0 text-sm leading-relaxed text-slate-700">
+            <p className="font-medium text-slate-900">
+              Your village is open. Here is what to do next.
+            </p>
+            <p className="mt-1">
+              The Coordinator Guide covers the settings to choose before you
+              invite residents, how to work the moderation queue, what you can
+              share with the police, and what you are responsible for on the
+              council&rsquo;s behalf. It takes about twenty minutes and it is
+              worth reading once before the first report arrives.
+            </p>
+            <Link
+              href="/dashboard/guide"
+              className="mt-2.5 inline-flex items-center gap-2 text-sm font-semibold text-brand-700 underline-offset-2 hover:underline"
+            >
+              Read the Coordinator Guide
+              <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          </div>
+        </div>
+      )}
 
       <p className="mt-4 text-xs leading-relaxed text-slate-500">
         All three documents are templates prepared from the source code. They

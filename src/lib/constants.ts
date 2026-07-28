@@ -1282,6 +1282,18 @@ export const LEGAL_LAST_UPDATED = "2026-07-27";
  * before a single real resident registers: a privacy notice that does not name
  * a controller or give a working contact address does not satisfy Article 13.
  */
+/**
+ * Where a coordinator reaches the people running the service.
+ *
+ * Deliberately not `DATA_CONTROLLER.email` below, and the distinction is the
+ * whole point: the controller is the *council*, and a resident with a data
+ * protection question goes to them. This is the **processor** — the address a
+ * coordinator uses to report a fault, send the countersigned processing
+ * agreement, or ask for a resident to be appointed. Client-safe, so the screens
+ * that offer help can name it without restating it.
+ */
+export const SUPPORT_EMAIL = "info@yakasista.com";
+
 export const DATA_CONTROLLER = {
   name: "[Parish Council name]",
   addressLines: [

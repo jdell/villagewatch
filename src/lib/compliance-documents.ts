@@ -1,11 +1,9 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { type Block, parseMarkdown, tableOfContents } from "@/lib/markdown";
+import { loadDocument, type LoadedDocument } from "@/lib/docs";
 
 /**
  * The three documents `/dashboard/compliance` asks a coordinator to accept.
- * **Server only** — `node:fs` is imported at the top of this module, so a Client
- * Component that reaches for anything here breaks the build.
+ * **Server only** — `src/lib/docs.ts` imports `node:fs`, so a Client Component
+ * that reaches for anything here breaks the build.
  *
  * They are read from `docs/` at request time rather than being restated as JSX,
  * for the reason `legal-page.tsx` gives about legal text in a data structure: a
@@ -13,13 +11,11 @@ import { type Block, parseMarkdown, tableOfContents } from "@/lib/markdown";
  * nobody proofreads. The markdown file *is* the document — the same file a
  * council is sent, reviews and signs — and this renders it.
  *
- * ## The one deployment gotcha
- *
- * `docs/` is not code, so Next's file tracing does not know the serverless
- * function needs it. `outputFileTracingIncludes` in `next.config.ts` names both
- * files against this route; without that entry the page builds, deploys, and
- * fails at runtime on Vercel while working perfectly in `npm run dev`. Add a
- * document here and add it there in the same commit.
+ * The read itself is in `src/lib/docs.ts`, which is also where the file-tracing
+ * trap is written down: `outputFileTracingIncludes` in `next.config.ts` has to
+ * name every one of these files against this route, or the page builds, deploys
+ * and fails **only in production**. Add a document here and add it there in the
+ * same commit.
  *
  * A read failure is returned rather than thrown. The page renders the failure —
  * with the path it looked for — instead of a 500, because a coordinator who
@@ -29,20 +25,9 @@ import { type Block, parseMarkdown, tableOfContents } from "@/lib/markdown";
 
 export type ComplianceDocumentId = "dpia" | "apd" | "dpa";
 
-/**
- * The directory, as a literal.
- *
- * `path.join(process.cwd(), someVariable)` makes Turbopack trace the entire
- * project into the serverless bundle — it cannot see where a dynamic path
- * leads, so it assumes anywhere. Joining a literal segment before the variable
- * one is what keeps the trace scoped to this directory, and it is the fix the
- * build warning itself names. Keep the literal here and the filename separate.
- */
-const DOCUMENT_DIRECTORY = "docs";
-
 type DocumentSource = {
   id: ComplianceDocumentId;
-  /** Basename within `docs/`. Never a path — see `DOCUMENT_DIRECTORY`. */
+  /** Basename within `docs/`. Never a path — see `src/lib/docs.ts`. */
   fileName: string;
   /** What the tab and the acceptance checkbox call it. */
   label: string;
@@ -83,49 +68,10 @@ export const COMPLIANCE_DOCUMENTS: readonly DocumentSource[] = [
   },
 ] as const;
 
-export type ComplianceDocument = DocumentSource & {
-  /** Repository-relative, for the caption and the failure message. */
-  path: string;
-} & (
-    | {
-        ok: true;
-        blocks: Block[];
-        contents: { id: string; title: string; level: number }[];
-      }
-    | { ok: false; error: string }
-  );
+export type ComplianceDocument = DocumentSource & LoadedDocument;
 
 async function load(source: DocumentSource): Promise<ComplianceDocument> {
-  const repoPath = `${DOCUMENT_DIRECTORY}/${source.fileName}`;
-
-  try {
-    const raw = await readFile(
-      // The literal directory segment goes in first. See `DOCUMENT_DIRECTORY`.
-      path.join(process.cwd(), DOCUMENT_DIRECTORY, source.fileName),
-      "utf8",
-    );
-
-    const blocks = parseMarkdown(raw);
-
-    return {
-      ...source,
-      path: repoPath,
-      ok: true,
-      blocks,
-      contents: tableOfContents(blocks),
-    };
-  } catch (cause) {
-    console.error("Could not read %s", repoPath, cause);
-
-    return {
-      ...source,
-      path: repoPath,
-      ok: false,
-      error:
-        `${repoPath} could not be read on the server. On Vercel this means ` +
-        "the file is not in `outputFileTracingIncludes` in next.config.ts.",
-    };
-  }
+  return { ...source, ...(await loadDocument(source.fileName)) };
 }
 
 export async function loadComplianceDocuments(): Promise<ComplianceDocument[]> {

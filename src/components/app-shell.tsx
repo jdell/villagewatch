@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BookOpen,
   ClipboardList,
   FileText,
   LayoutDashboard,
@@ -72,6 +73,22 @@ const NAV_ITEMS = [
     href: "/dashboard/compliance",
     label: "Compliance",
     icon: ShieldCheck,
+    requires: "coordinator",
+  },
+  /*
+    Below compliance, and last of the coordinator items, because it is the one
+    that is never urgent. It is a reference document — read once on the way in,
+    then consulted when something unfamiliar turns up — so it belongs at the
+    bottom of the coordinator block rather than competing with the queue.
+
+    It sits in the sidebar at all, rather than only being linked from the
+    compliance page, because the moment somebody needs it is months after they
+    finished that screen and will not think to go back to it.
+  */
+  {
+    href: "/dashboard/guide",
+    label: "Coordinator Guide",
+    icon: BookOpen,
     requires: "coordinator",
   },
   { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },

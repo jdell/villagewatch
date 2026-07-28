@@ -3,6 +3,7 @@ import {
   COMPLIANCE_DOCUMENTS,
   loadComplianceDocuments,
 } from "@/lib/compliance-documents";
+import { COORDINATOR_GUIDE_FILE, loadDocument } from "@/lib/docs";
 
 /**
  * The three documents the compliance page renders in full.
@@ -75,5 +76,40 @@ describe("the compliance documents", () => {
         `Article 28(3)(${letter})`,
       ).toBe(true);
     }
+  });
+});
+
+/**
+ * The coordinator guide, read from disk by the same loader and carrying the same
+ * failure mode: renamed, moved or unparseable, it renders as a red panel on
+ * `/dashboard/guide` — and on Vercel the usual cause is a missing line in
+ * `outputFileTracingIncludes`, which nothing but a request would otherwise
+ * reveal.
+ *
+ * Nothing here asserts wording either, for the same reason as above. What it
+ * asserts is that there is a document, that it parses, and that it has enough
+ * headings to be navigable — the guide is long, and the contents list is how a
+ * coordinator gets back to the section they half remember.
+ */
+describe("the coordinator guide", () => {
+  it("reads and parses, with a contents list to navigate by", async () => {
+    const guide = await loadDocument(COORDINATOR_GUIDE_FILE);
+
+    expect(guide.ok, `${guide.path} failed to load`).toBe(true);
+    if (!guide.ok) return;
+
+    expect(guide.blocks.length).toBeGreaterThan(0);
+    expect(guide.contents.length).toBeGreaterThan(0);
+  });
+
+  it("reports a missing document rather than throwing", async () => {
+    // The page renders `error` in place of the guide. A throw here would be a
+    // 500 on a page whose only job is to be readable.
+    const missing = await loadDocument("NOT_A_DOCUMENT.md");
+
+    expect(missing.ok).toBe(false);
+    if (missing.ok) return;
+
+    expect(missing.error).toContain("docs/NOT_A_DOCUMENT.md");
   });
 });

@@ -135,6 +135,13 @@ const nextConfig: NextConfig = {
       "./docs/APD_TEMPLATE.md",
       "./docs/DATA_PROCESSING_AGREEMENT.md",
     ],
+    /**
+     * `/dashboard/guide` renders `docs/COORDINATOR_GUIDE.md` the same way, and
+     * needs the same line for the same reason. It is not a compliance document
+     * — nothing is accepted and nothing is gated on it — but the file is just as
+     * invisible to the tracer.
+     */
+    "/dashboard/guide": ["./docs/COORDINATOR_GUIDE.md"],
   },
 
   async headers() {
