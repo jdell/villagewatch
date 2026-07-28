@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.21](https://github.com/jdell/villagewatch/compare/v0.1.20...v0.1.21) (2026-07-28)
+
+
+### Fixes
+
+* **compliance:** require only the documents still outstanding, and a missing space ([0a79c9f](https://github.com/jdell/villagewatch/commit/0a79c9f7ea5c246a81f5dd164aeed6f8f50764f9))
+
 ### [0.1.20](https://github.com/jdell/villagewatch/compare/v0.1.19...v0.1.20) (2026-07-28)
 
 
