@@ -21,9 +21,9 @@ import type {
 import {
   ACCEPTED_IMAGE_TYPES,
   ACCEPTED_VIDEO_TYPES,
-  DEFAULT_REDACTION_MODE,
   MAX_VIDEO_SECONDS,
 } from "@/lib/media/face-blur";
+import { PRIVACY_LEVEL_META, type PrivacyLevel } from "@/lib/constants";
 import { formatDuration, formatFileSize } from "@/lib/format";
 
 /**
@@ -78,6 +78,15 @@ type PendingItem = {
 type MediaUploaderProps = {
   value: readonly AttachedMedia[];
   onChange: (media: AttachedMedia[]) => void;
+  /**
+   * The village's face redaction level, read from `Village.privacyLevel` on the
+   * server and narrowed by `resolvePrivacyLevel`.
+   *
+   * This decides the mode and the Gaussian radius handed to `blurFaces`. It is
+   * not a suggestion the browser can talk its way out of downwards — the only
+   * thing the reporter can change is to redact instead, which is stronger.
+   */
+  privacyLevel: PrivacyLevel;
   maxFiles?: number;
   disabled?: boolean;
 };
@@ -95,29 +104,20 @@ const STAGE_LABELS: Record<PendingItem["stage"], string> = {
 };
 
 /**
- * The two ways to cover a face, as the reporter chooses between them.
+ * How the reporter's one remaining choice is offered.
  *
- * `redact` is recommended in the label rather than merely defaulted, because a
- * reporter who reads the options is being asked to make a privacy decision
- * about somebody who is not in the room and did not choose to be photographed.
+ * The village decides how faces are covered — `Village.privacyLevel`, set by a
+ * coordinator on `/dashboard`. What is left to the reporter is the direction
+ * that cannot go wrong: redacting instead, which is the strongest option on the
+ * scale and always available. There is no control here that covers a face *less*
+ * than the village asked for.
+ *
+ * The choice disappears entirely in a village already set to `redact`, because
+ * there is nothing stronger to offer and a radio with one meaningful option is
+ * furniture.
  */
-const MODE_OPTIONS: {
-  value: FaceRedactionMode;
-  label: string;
-  detail: string;
-}[] = [
-  {
-    value: "redact",
-    label: "Redact faces (recommended)",
-    detail: "A solid black box. Nothing of the face survives in the upload.",
-  },
-  {
-    value: "blur",
-    label: "Blur faces",
-    detail:
-      "Heavy pixelation. Keeps how many people were there and where they stood.",
-  },
-];
+const REDACT_INSTEAD_DETAIL =
+  "A solid black box instead. No part of the face is read at all, so there is nothing left in the file to work back from.";
 
 /** Past tense for one file, for the count shown back to the reporter. */
 const MODE_VERB: Record<FaceRedactionMode, string> = {
@@ -168,20 +168,36 @@ async function uploadBlurred(media: BlurredMedia): Promise<{
 export function MediaUploader({
   value,
   onChange,
+  privacyLevel,
   maxFiles = 4,
   disabled = false,
 }: MediaUploaderProps) {
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [supported, setSupported] = useState<boolean | null>(null);
-  const [mode, setMode] = useState<FaceRedactionMode>(DEFAULT_REDACTION_MODE);
+  const [redactInstead, setRedactInstead] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const village = PRIVACY_LEVEL_META[privacyLevel];
+  /** The village already redacts, so there is nothing stronger to offer. */
+  const villageRedacts = village.mode === "redact";
+
+  // What actually gets applied. `redactInstead` can only ever move this to
+  // `redact`, which is the strongest cover on the scale — there is no path
+  // through this component that produces a weaker one than the village set.
+  const applied = {
+    mode: redactInstead ? ("redact" as FaceRedactionMode) : village.mode,
+    // Meaningless in `redact` mode, which reads no source pixels, and passed
+    // through anyway so the ref below has one shape.
+    blurRadius: village.radius,
+  };
+
   // Read inside the async processing loop, for the same reason `value` is: the
-  // loop must not close over the mode as it was when `processFile` was created.
-  const modeRef = useRef(mode);
+  // loop must not close over the settings as they were when `processFile` was
+  // created.
+  const appliedRef = useRef(applied);
   useEffect(() => {
-    modeRef.current = mode;
-  }, [mode]);
+    appliedRef.current = applied;
+  });
 
   // `value` is read inside the async processing loop; a ref keeps that loop
   // from closing over a stale array when several files land at once. Synced in
@@ -231,7 +247,8 @@ export function MediaUploader({
         const { blurFaces } = await import("@/lib/media/face-blur");
 
         const blurred = await blurFaces(file, {
-          mode: modeRef.current,
+          mode: appliedRef.current.mode,
+          blurRadius: appliedRef.current.blurRadius,
           onProgress: ({ stage, ratio }) => patch({ stage, ratio }),
         });
 
@@ -348,41 +365,47 @@ export function MediaUploader({
         </div>
       </div>
 
-      <fieldset className="rounded-2xl border border-slate-200 bg-white p-4">
-        <legend className="px-1 text-sm font-medium text-slate-700">
-          How to cover faces
-        </legend>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="text-sm font-medium text-slate-700">How faces are covered</p>
+        <p className="mt-1 text-sm text-slate-500">
+          Your village is set to{" "}
+          <span className="font-medium text-slate-700">
+            {village.label.toLowerCase()}
+          </span>
+          . {village.detail}
+        </p>
 
-        <div className="mt-1 space-y-2">
-          {MODE_OPTIONS.map((option) => (
-            <label
-              key={option.value}
-              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
-                mode === option.value
-                  ? "border-brand-400 bg-brand-50/60"
-                  : "border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              <input
-                type="radio"
-                name="redaction-mode"
-                value={option.value}
-                checked={mode === option.value}
-                disabled={disabled || busy}
-                onChange={() => setMode(option.value)}
-                className="mt-0.5 size-4 shrink-0 border-slate-300 text-brand-600 focus:ring-brand-500 disabled:opacity-50"
-              />
-              <span className="text-sm">
-                <span className="block font-medium text-slate-800">
-                  {option.label}
-                </span>
-                <span className="mt-0.5 block text-slate-500">
-                  {option.detail}
-                </span>
+        {/*
+          The reporter's one control, and it only points one way. The village's
+          coordinator sets the level; what a reporter can always do is cover a
+          face more thoroughly than that, never less. In a village already set
+          to redact there is nothing stronger to offer, so nothing is rendered.
+        */}
+        {!villageRedacts && (
+          <label
+            className={`mt-3 flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
+              redactInstead
+                ? "border-brand-400 bg-brand-50/60"
+                : "border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={redactInstead}
+              disabled={disabled || busy}
+              onChange={(event) => setRedactInstead(event.target.checked)}
+              className="mt-0.5 size-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500 disabled:opacity-50"
+            />
+            <span className="text-sm">
+              <span className="block font-medium text-slate-800">
+                Black out faces completely instead
               </span>
-            </label>
-          ))}
-        </div>
+              <span className="mt-0.5 block text-slate-500">
+                {REDACT_INSTEAD_DETAIL}
+              </span>
+            </span>
+          </label>
+        )}
 
         {value.length > 0 && (
           <p className="mt-2.5 text-xs text-slate-500">
@@ -390,7 +413,7 @@ export function MediaUploader({
             keeps the setting it was processed with, shown on each one below.
           </p>
         )}
-      </fieldset>
+      </div>
 
       <input
         ref={inputRef}

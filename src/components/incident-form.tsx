@@ -24,7 +24,11 @@ import { CopyAlert } from "@/components/copy-alert";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { MediaUploader, type AttachedMedia } from "@/components/media-uploader";
 import { SeverityBadge } from "@/components/severity-badge";
-import { INCIDENT_TYPES, SEVERITIES } from "@/lib/constants";
+import {
+  INCIDENT_TYPES,
+  SEVERITIES,
+  type PrivacyLevel,
+} from "@/lib/constants";
 import { toDateTimeLocalValue } from "@/lib/format";
 import {
   incidentFormSchema,
@@ -96,6 +100,17 @@ export type IncidentFormVillage = {
    * `https:`-checked server-side — it goes into an `href` on the success screen.
    */
   channelUrl: string | null;
+  /**
+   * How this village covers faces — `Village.privacyLevel`, narrowed.
+   *
+   * **Not display-only**, unlike `autoApprove` above. The blur runs in the
+   * browser, so this is the value `MediaUploader` actually hands to
+   * `blurFaces`. There is no server-side re-check behind it and there cannot be
+   * one: `POST /api/incidents/media` never sees the original (domain rule 3),
+   * only the covered copy. What makes that safe is that no level on the scale
+   * leaves a face readable — the six-cell mosaic is fixed for all of them.
+   */
+  privacyLevel: PrivacyLevel;
 };
 
 type IncidentFormProps = {
@@ -668,6 +683,7 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
               <MediaUploader
                 value={attachments}
                 onChange={handleAttachmentsChange}
+                privacyLevel={village.privacyLevel}
                 disabled={publishing}
               />
             )}

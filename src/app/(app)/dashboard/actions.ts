@@ -15,14 +15,18 @@ import {
 } from "@/lib/whatsapp-channel";
 import {
   getVillageParishCouncil,
+  getVillagePrivacyLevel,
   setVillageParishCouncil,
+  setVillagePrivacyLevel,
 } from "@/lib/village";
+import { PRIVACY_LEVEL_META } from "@/lib/constants";
 import {
   fieldErrors,
   incidentModerationSchema,
   villageAutoApproveFormSchema,
   villageChannelFormSchema,
   villageParishCouncilFormSchema,
+  villagePrivacyLevelFormSchema,
 } from "@/lib/validations";
 
 /**
@@ -346,6 +350,108 @@ export async function saveParishCouncilAction(
     message: parishCouncil
       ? `Reports will name ${parishCouncil} as the data controller.`
       : "Council name cleared. Reports fall back to the deployment-wide controller.",
+  };
+}
+
+export type PrivacyLevelState = {
+  ok: boolean;
+  message: string;
+};
+
+/**
+ * Sets how faces are covered in media uploaded to this village.
+ *
+ * `requireCoordinator()` and the village from the session profile, same as the
+ * other three settings on this screen: a `villageId` in this payload would be a
+ * way to turn a neighbouring parish's redaction down (domain rule 4).
+ *
+ * ## What this can and cannot do
+ *
+ * It picks a `FaceRedactionMode` and a Gaussian radius out of `PRIVACY_LEVELS`,
+ * and that is the whole reach of it. The mosaic every `blur` level runs first is
+ * fixed at `MOSAIC_CELLS` in `src/lib/media/face-blur.ts` and is deliberately
+ * not on this scale — so a coordinator choosing the lightest level is choosing
+ * how much of the scene around a face survives, not whether the face does.
+ * There is no value here, and no way to post one, that uploads an unredacted
+ * original: domain rule 3 is structural, and `POST /api/incidents/media` still
+ * has no server-side fallback.
+ *
+ * **Audited and toned `sensitive`**, alongside the other three village
+ * settings. The reason is its own: this is the only setting whose subject is
+ * neither the reporter nor the coordinator but whoever happened to be in shot,
+ * and moving down the scale changes what is left of them in every file
+ * published afterwards.
+ */
+export async function savePrivacyLevelAction(
+  _previous: PrivacyLevelState,
+  formData: FormData,
+): Promise<PrivacyLevelState> {
+  const session = await requireCoordinator("/dashboard");
+  const villageId = session.profile?.villageId;
+
+  if (!villageId || !process.env.DATABASE_URL) {
+    return { ok: false, message: "You are not attached to a village." };
+  }
+
+  const parsed = villagePrivacyLevelFormSchema.safeParse({
+    privacyLevel: formData.get("privacyLevel"),
+  });
+
+  if (!parsed.success) {
+    return { ok: false, message: "That privacy level is not valid." };
+  }
+
+  const { privacyLevel } = parsed.data;
+  // Read before the write, so the trail records what actually changed rather
+  // than what was submitted.
+  const before = await getVillagePrivacyLevel(villageId);
+
+  const written = await setVillagePrivacyLevel(villageId, privacyLevel);
+
+  if (!written.ok) {
+    return {
+      ok: false,
+      // Two failures, two messages — "try again" is a lie when the column does
+      // not exist. Same reasoning as the parish council field above.
+      message:
+        written.reason === "unmigrated"
+          ? "This village's database has not been updated for this setting yet. Ask an administrator to apply the pending migration."
+          : "Could not save the privacy level. Try again.",
+    };
+  }
+
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorId: session.user.id,
+        actorEmail: session.user.email ?? null,
+        actorRole: session.profile?.role ?? null,
+        villageId,
+        action: "village.privacy_level_changed",
+        entityType: "village",
+        entityId: villageId,
+        before: { privacyLevel: before.value },
+        after: { privacyLevel },
+      },
+    });
+  } catch (cause) {
+    // The setting is saved either way. A trail write that failed is worth a log
+    // and not worth telling the coordinator their save did not happen.
+    console.error(
+      "Could not audit the privacy level change for %s",
+      villageId,
+      cause,
+    );
+  }
+
+  // The wizard reads the column server-side on every render of
+  // `/incidents/new`, so the next reporter to open it gets the new level.
+  revalidatePath("/dashboard");
+  revalidatePath("/incidents/new");
+
+  return {
+    ok: true,
+    message: `Faces will be covered with ${PRIVACY_LEVEL_META[privacyLevel].label.toLowerCase()} from now on. Media already uploaded keeps the level it was processed with.`,
   };
 }
 

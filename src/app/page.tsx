@@ -99,7 +99,7 @@ const PIN_COLOR = Object.fromEntries(SEVERITIES.map((s) => [s.value, s.pin]));
 const FAQS = [
   {
     question: 'Is my data safe?',
-    answer: `Reports are held in a UK-region database and the app is served from London. Your exact location is never stored — coordinates are moved by about a hundred metres before they are written down, so the pin lands on the right street and not on your door. Faces in a photograph are covered on your own phone before it is uploaded — a black box by default, or heavy pixelation if you prefer — which also strips the GPS tag cameras write into every picture. Reports are archived after ${RETENTION.incidentArchiveMonths} months and photographs are deleted after ${RETENTION.mediaDeleteMonths}.`,
+    answer: `Reports are held in a UK-region database and the app is served from London. Your exact location is never stored — coordinates are moved by about a hundred metres before they are written down, so the pin lands on the right street and not on your door. Faces in a photograph are covered on your own phone before it is uploaded — a black box, or a mosaic and a blur, depending on what your village has chosen, and you can always ask for the black box — which also strips the GPS tag cameras write into every picture. Reports are archived after ${RETENTION.incidentArchiveMonths} months and photographs are deleted after ${RETENTION.mediaDeleteMonths}.`,
   },
   {
     question: 'Who can see what I report?',

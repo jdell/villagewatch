@@ -213,6 +213,26 @@ model Village {
   /// which statuses residents can see.
   autoApprove Boolean @default(false) @map("auto_approve")
 
+  /// How faces in this village's uploaded media are covered.
+  ///
+  /// One of `PRIVACY_LEVEL_VALUES` in `src/lib/constants.ts` — `light`,
+  /// `standard`, `heavy` or `redact` — which is what maps a level to a
+  /// redaction mode and a blur radius. `standard` is the default and the
+  /// fallback for anything unrecognised, so a value written by hand into psql
+  /// can never turn the redaction off.
+  ///
+  /// `String` rather than an enum on purpose: the levels are a presentation
+  /// scale a coordinator picks from, not a domain concept anything branches on,
+  /// and adding a fifth would otherwise cost an `ALTER TYPE` in a hand-written
+  /// migration. Every read goes through `resolvePrivacyLevel`, which is where
+  /// the narrowing happens.
+  ///
+  /// It never weakens the mosaic. A `blur` at any radius is still resampled to
+  /// `MOSAIC_CELLS` first (see `src/lib/media/face-blur.ts`) — the radius is the
+  /// Gaussian laid over that, so the level changes how the redaction *looks*
+  /// and not whether a face survives it.
+  privacyLevel String @default("standard") @map("privacy_level")
+
   // --- WhatsApp Channel -----------------------------------------------------
   // A channel is a PUBLIC surface: anyone holding the invite link can follow it,
   // village resident or not. That makes it the only place VillageWatch discloses

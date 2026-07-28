@@ -5,6 +5,7 @@ import {
   DEFAULT_REPORT_RANGE,
   INCIDENT_TYPE_VALUES,
   NOTIFICATION_RADIUS_VALUES,
+  PRIVACY_LEVEL_VALUES,
   REPORT_RANGE_VALUES,
   SEVERITY_VALUES,
   PUBLIC_INCIDENT_STATUSES,
@@ -803,6 +804,25 @@ export const complianceAcceptFormSchema = z.object({
  * "Bourn Parish Council", "Cyngor Cymuned Llanddewi", "The Parish Meeting of
  * Croxton". A pattern here would reject somebody's actual council.
  */
+/**
+ * The village's face redaction level, as a coordinator picks it.
+ *
+ * A closed enum, unlike `Village.privacyLevel` itself, which is a `String` —
+ * this is the only place in the application that writes that column, so the
+ * narrowing happens here rather than in a CHECK constraint. An unrecognised
+ * value never reaches the database; one that is already in it is narrowed on
+ * the way out by `resolvePrivacyLevel`.
+ *
+ * No `villageId`. It comes from the session profile server-side (domain rule
+ * 4) — a village id in this payload would be a way to turn down the redaction
+ * on a neighbouring parish's uploads.
+ */
+export const villagePrivacyLevelFormSchema = z.object({
+  privacyLevel: z.enum(PRIVACY_LEVEL_VALUES, {
+    error: "Choose one of the privacy levels",
+  }),
+});
+
 export const villageParishCouncilFormSchema = z.object({
   parishCouncil: z
     .string()

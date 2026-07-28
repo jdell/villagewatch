@@ -6,6 +6,11 @@ import type {
   UserRole,
   VillageStatus,
 } from "@/generated/prisma/enums";
+// `import type` only. `face-blur.ts` is browser-only — it assumes `document`
+// and `canvas` — so a value import here would drag it into every server module
+// that reads a label. The type is erased, and keeping the union defined once is
+// what stops `PRIVACY_LEVELS` naming a mode the blur code does not implement.
+import type { FaceRedactionMode } from "@/lib/media/face-blur";
 
 /**
  * Display metadata for the Prisma enums, plus the map palette.
@@ -581,6 +586,130 @@ export const HOME_LOCATION_FUZZ_METERS = 75;
 export const MAP_HIDDEN_TYPES = [] as const satisfies readonly IncidentType[];
 
 // ---------------------------------------------------------------------------
+// Covering faces
+// ---------------------------------------------------------------------------
+
+export type PrivacyLevelMeta = {
+  value: string;
+  /** Which of the two covers `src/lib/media/face-blur.ts` paints. */
+  mode: FaceRedactionMode;
+  /**
+   * Gaussian radius in CSS pixels, laid over the mosaic. `0` for `redact`,
+   * which reads no source pixels at all and so has nothing to blur.
+   */
+  radius: number;
+  label: string;
+  /** One line under the label on the coordinator's selector. */
+  detail: string;
+};
+
+/**
+ * How a village covers faces in the media its residents upload.
+ *
+ * Set per village on `/dashboard` and stored in `Village.privacyLevel`; read
+ * by `MediaUploader`, which hands the mode and the radius to `blurFaces`.
+ *
+ * ## What the radius does, and what it does not
+ *
+ * It is the **Gaussian laid over the mosaic**, and only that. Every `blur`
+ * level, including `light`, still resamples the padded face box down to
+ * `MOSAIC_CELLS` (six across) before anything is drawn back — that resample is
+ * what destroys the identity, because the original pixels stop existing
+ * anywhere in the output, and it is deliberately not on this scale. So the
+ * level a village picks changes how the redaction *looks* and how much of the
+ * surrounding composition survives; it does not decide whether a face does.
+ *
+ * That asymmetry is the point. A coordinator choosing "light" because a PCSO
+ * asked for something more legible is making a presentation decision, and the
+ * one outcome they must not be able to reach from a settings screen is an
+ * upload somebody can be recognised in.
+ *
+ * `redact` is the strongest and is what the app defaulted to before this was
+ * configurable — a solid black box, no source pixels read, nothing to argue
+ * about. A reporter can always choose it for their own upload whatever the
+ * village is set to; they cannot choose anything weaker.
+ */
+export const PRIVACY_LEVELS = [
+  {
+    value: "light",
+    mode: "blur",
+    radius: 15,
+    label: "Light blur (15px)",
+    detail:
+      "The softest option. Keeps the most of the scene around a face — use it only if your police contact has asked for it.",
+  },
+  {
+    value: "standard",
+    mode: "blur",
+    radius: 22,
+    label: "Standard blur (22px) — recommended",
+    detail:
+      "The default. Faces are unreadable and you can still see how many people were there and where they stood.",
+  },
+  {
+    value: "heavy",
+    mode: "blur",
+    radius: 35,
+    label: "Heavy blur (35px)",
+    detail:
+      "A wider smear that spreads well past the face box, so hair, build and clothing at the collar go with it.",
+  },
+  {
+    value: "redact",
+    mode: "redact",
+    radius: 0,
+    label: "Full redact (black box)",
+    detail:
+      "A solid black rectangle. No pixel of the face is read, so there is nothing left in the file to work back from.",
+  },
+] as const satisfies readonly PrivacyLevelMeta[];
+
+export type PrivacyLevel = (typeof PRIVACY_LEVELS)[number]["value"];
+
+export const PRIVACY_LEVEL_VALUES = PRIVACY_LEVELS.map((p) => p.value) as [
+  PrivacyLevel,
+  ...PrivacyLevel[],
+];
+
+export const PRIVACY_LEVEL_META = Object.fromEntries(
+  PRIVACY_LEVELS.map((p) => [p.value, p]),
+) as Record<PrivacyLevel, PrivacyLevelMeta>;
+
+/**
+ * The level a village gets when nobody has chosen one.
+ *
+ * Also the fallback for a value this build does not recognise — see
+ * `resolvePrivacyLevel`.
+ */
+export const DEFAULT_PRIVACY_LEVEL: PrivacyLevel = "standard";
+
+/**
+ * Narrows whatever is in the column to a level this build knows about.
+ *
+ * `Village.privacyLevel` is a `String`, so the database will hold anything a
+ * `psql` session puts there, and a level removed in a later release leaves rows
+ * behind that still name it. Falling back rather than throwing is what keeps
+ * that from being an upload failure — and the fallback is `standard` rather
+ * than "no cover", because there is no level in this list that does not cover a
+ * face and an unreadable value must not become one.
+ *
+ * `Object.hasOwn`, not `in`. `PRIVACY_LEVEL_META` is a plain object, so `in`
+ * answers true for `toString`, `constructor` and everything else on
+ * `Object.prototype` — and this reads a `String` column, which is exactly where
+ * one of those could arrive. The lookup that followed would hand a function to
+ * the uploader where a level was expected.
+ */
+export function resolvePrivacyLevel(
+  value: string | null | undefined,
+): PrivacyLevel {
+  return value !== null &&
+    value !== undefined &&
+    Object.hasOwn(PRIVACY_LEVEL_META, value)
+    ? (value as PrivacyLevel)
+    : DEFAULT_PRIVACY_LEVEL;
+}
+
+// ---------------------------------------------------------------------------
 // Notifications
 // ---------------------------------------------------------------------------
 
@@ -881,6 +1010,22 @@ export const AUDIT_ACTIONS = [
     // council, and in the notice a resident reads before exercising a UK GDPR
     // right. Named wrongly, a subject access request goes to a body with no
     // authority to answer it and no record that it was asked.
+    tone: "sensitive",
+  },
+  {
+    value: "village.privacy_level_changed",
+    label: "Face redaction level changed",
+    description:
+      "A coordinator changed how faces are covered in media uploaded to the village",
+    // Sensitive, and the fourth configuration change in this list. It is the
+    // only setting in the app that changes what is left of a person in a file
+    // published to the village — and the person it affects is not the reporter
+    // and not the coordinator, but whoever was in shot and never chose to be.
+    // Moving down the scale weakens that for every upload afterwards, so who
+    // did it and when is the question the trail exists to answer. The row
+    // carries both levels for the same reason the other three carry their
+    // before/after: neither value is personal data and every coordinator can
+    // read both on the screen it is posted from.
     tone: "sensitive",
   },
   {

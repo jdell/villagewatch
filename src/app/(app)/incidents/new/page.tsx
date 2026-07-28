@@ -8,6 +8,7 @@ import {
   getVillageCompliance,
 } from "@/lib/compliance";
 import { prisma } from "@/lib/prisma";
+import { getVillagePrivacyLevel } from "@/lib/village";
 import { getVillageChannel } from "@/lib/whatsapp-channel";
 import { MAP_DEFAULTS, isCoordinatorRole } from "@/lib/constants";
 
@@ -135,6 +136,20 @@ export default async function NewIncidentPage() {
   // this ends up in an `href`.
   const channel = canPostAlert ? await getVillageChannel(village.id) : null;
 
+  /*
+    How this village covers faces. Read through its own function rather than
+    added to the `select` above, because `privacy_level` arrives with a
+    migration and a plain select naming a column that does not exist throws for
+    the whole statement — which would take the wizard down rather than the
+    setting. Unlike `autoApprove` above this is *not* display-only: the blur
+    runs in the browser, so this value is what the uploader actually applies.
+    There is no server-side check behind it and there cannot be one, because the
+    original never reaches the server (domain rule 3). What bounds it is the
+    scale itself: every level covers every face, and the mosaic that does the
+    covering is not on the scale.
+  */
+  const privacyLevel = await getVillagePrivacyLevel(village.id);
+
   return (
     <IncidentForm
       village={{
@@ -145,6 +160,7 @@ export default async function NewIncidentPage() {
         defaultZoom: village.defaultZoom || MAP_DEFAULTS.zoom,
         autoApprove: village.autoApprove,
         channelUrl: channel?.url ?? null,
+        privacyLevel: privacyLevel.value,
       }}
       canPostAlert={canPostAlert}
     />

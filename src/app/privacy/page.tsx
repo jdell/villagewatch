@@ -37,10 +37,13 @@ export const metadata: Metadata = {
  *     uploaded (domain rule 3, `src/lib/media/face-blur.ts`). The claim that an
  *     original with a face in it never leaves the phone is the strongest promise
  *     on this page, and it is true because `POST /api/incidents/media` has no
- *     server-side fallback. The reporter chooses between a black box (the
- *     default) and heavy pixelation; both run in the same place, so the promise
- *     holds either way and the notice names both rather than only the one that
- *     used to exist.
+ *     server-side fallback. Which cover is painted — a black box, or a mosaic
+ *     under a Gaussian — is now the village's setting (`Village.privacyLevel`,
+ *     `PRIVACY_LEVELS` in `src/lib/constants.ts`), with the reporter able to
+ *     redact instead but never to do less. All of them run in the same place,
+ *     so the promise holds whichever is chosen, and the notice names the
+ *     mechanism rather than one fixed default that a coordinator can now
+ *     change.
  *   - Coordinates are jittered by `LOCATION_FUZZ_METERS` before they are stored
  *     (domain rule 2, `src/lib/geo.ts`).
  *   - Report text is sent to Anthropic for anonymisation
@@ -177,13 +180,17 @@ export default function PrivacyPage() {
         <Callout title="Photos with faces in them never leave your device">
           <p>
             Face detection runs in your browser, on your phone or computer,
-            before anything is sent. Every face found is covered there and then
-            — by default with a solid black box, or with heavy pixelation if you
-            choose that instead. What gets uploaded is a re-encoded copy of the
-            covered image, which also strips the EXIF block, including the GPS
-            tag that would otherwise say exactly where the photo was taken.
-            There is no server-side fallback that accepts the original. If the
-            faces cannot be covered, the upload does not happen.
+            before anything is sent. Every face found is covered there and then.
+            Your village coordinator chooses how — a solid black box, or a
+            mosaic that reduces the face to a handful of blocks and then blurs
+            it — and you can always choose the black box for your own photo
+            whatever your village is set to. Every one of those options destroys
+            the face before the file is made: the original pixels are gone, not
+            hidden. What gets uploaded is a re-encoded copy of the covered
+            image, which also strips the EXIF block, including the GPS tag that
+            would otherwise say exactly where the photo was taken. There is no
+            server-side fallback that accepts the original. If the faces cannot
+            be covered, the upload does not happen.
           </p>
         </Callout>
         <P>We also do not collect any of the following:</P>
@@ -495,8 +502,9 @@ export default function PrivacyPage() {
             distinctive enough to identify one particular child.
           </LI>
           <LI>
-            Faces are blurred before any photo is uploaded, so a photograph of a
-            child cannot be published even by mistake.
+            Faces are covered before any photo is uploaded, at every setting a
+            village can choose, so a photograph of a child cannot be published
+            even by mistake.
           </LI>
           <LI>
             Coordinators are asked to reject any report that names or clearly

@@ -13,6 +13,14 @@
  * are still named `blurFaces*` because that is what every caller and every
  * screen calls the step, and renaming them would churn more than it explains.
  *
+ * Which of the two runs, and how wide the Gaussian is when it is the second, is
+ * a **village** setting: `Village.privacyLevel`, mapped by `PRIVACY_LEVELS` in
+ * `src/lib/constants.ts` and passed in as `mode` and `blurRadius`. Nothing in
+ * here reads that column — this module takes numbers. What it does guarantee is
+ * that the scale cannot reach a weak result: `MOSAIC_CELLS` is off the scale
+ * entirely, so the softest level still resamples a face to six blocks before a
+ * single pixel is drawn back.
+ *
  * Re-encoding through a canvas has a second benefit that domain rule 3 depends
  * on: it drops every EXIF block, GPS tags included. There is no separate
  * EXIF-stripping step because there is nothing left to strip.
@@ -111,6 +119,20 @@ const MOSAIC_CELLS = 6;
 const BLUR_RADIUS_RATIO = 0.45;
 
 /**
+ * Floor for a radius handed in through `BlurOptions.blurRadius`.
+ *
+ * The village's privacy level is a number chosen on a settings screen, and the
+ * one value that would make `blur` mode meaningless is a small one. Four
+ * pixels is the same floor the ratio-derived radius has always had, applied to
+ * the configured path so a level cannot be dialled down to nothing.
+ *
+ * There is no ceiling, because a radius larger than the region is not a
+ * failure — it is a wider smear, drawn overscanned like every other, and the
+ * clip keeps it inside the box.
+ */
+const MIN_BLUR_RADIUS_PX = 4;
+
+/**
  * How a detected face is taken out of the frame.
  *
  * - `redact` — a solid black rectangle. Nothing survives, nothing can be
@@ -177,6 +199,20 @@ export type BlurOptions = {
   signal?: AbortSignal;
   /** How faces are covered. Defaults to `DEFAULT_REDACTION_MODE`. */
   mode?: FaceRedactionMode;
+  /**
+   * Gaussian radius in pixels, for `blur` mode only.
+   *
+   * Comes from the village's privacy level (`PRIVACY_LEVELS` in
+   * `src/lib/constants.ts`). Omitted, the radius scales with the region as it
+   * always has — `BLUR_RADIUS_RATIO` of its longest edge — which is what every
+   * caller that does not know about a village still gets.
+   *
+   * It does **not** reach the mosaic. `MOSAIC_CELLS` is fixed, so the smallest
+   * radius on the scale still lands on a face that has already been resampled
+   * to six cells across. A settings screen can make the cover look softer; it
+   * cannot put a recognisable face back into an upload.
+   */
+  blurRadius?: number;
 };
 
 export type BlurredMedia = {
@@ -403,12 +439,17 @@ function padBox(box: Box, padding: number, width: number, height: number): Box {
  * That ordering also means the result is still safe on a browser where
  * `ctx.filter` is unsupported and silently ignored: the worst case is a visible
  * six-cell mosaic rather than a recognisable face.
+ *
+ * `blurRadius`, when the village's privacy level supplies one, replaces the
+ * region-scaled Gaussian and nothing else. The mosaic above it is fixed, which
+ * is what makes the level a presentation choice rather than a privacy one.
  */
 function obscureRegion(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   region: Box,
   mode: FaceRedactionMode,
+  blurRadius?: number,
 ) {
   const x = Math.floor(region.x);
   const y = Math.floor(region.y);
@@ -449,16 +490,25 @@ function obscureRegion(
   ctx.rect(x, y, w, h);
   ctx.clip();
 
+  // One radius for the filter and the overscan below. They have to agree: the
+  // bleed exists to keep the Gaussian from sampling transparent pixels beyond
+  // the region, and a bleed narrower than the blur leaves the translucent
+  // border back.
+  const radius =
+    blurRadius === undefined
+      ? Math.max(MIN_BLUR_RADIUS_PX, Math.round(longest * BLUR_RADIUS_RATIO))
+      : Math.max(MIN_BLUR_RADIUS_PX, Math.round(blurRadius));
+
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.filter = `blur(${Math.max(4, Math.round(longest * BLUR_RADIUS_RATIO))}px)`;
+  ctx.filter = `blur(${radius}px)`;
 
   // Drawn overscanned. A Gaussian this wide samples transparent pixels from
   // beyond the region's edge and drags them inwards, which would leave a
   // translucent border showing the unblurred frame through it. Bleeding the
   // source out by a blur radius on every side and clipping back to the region
   // means every sampled pixel is real.
-  const bleed = Math.round(longest * BLUR_RADIUS_RATIO);
+  const bleed = radius;
   ctx.drawImage(
     mosaicCanvas,
     0,
@@ -494,6 +544,7 @@ function blurBoxes(
   boxes: readonly Box[],
   padding: number,
   mode: FaceRedactionMode,
+  blurRadius?: number,
 ) {
   for (const box of boxes) {
     obscureRegion(
@@ -501,6 +552,7 @@ function blurBoxes(
       canvas,
       padBox(box, padding, canvas.width, canvas.height),
       mode,
+      blurRadius,
     );
   }
 }
@@ -511,7 +563,12 @@ function blurBoxes(
 
 export async function blurFacesInImage(
   file: File,
-  { onProgress, signal, mode = DEFAULT_REDACTION_MODE }: BlurOptions = {},
+  {
+    onProgress,
+    signal,
+    mode = DEFAULT_REDACTION_MODE,
+    blurRadius,
+  }: BlurOptions = {},
 ): Promise<BlurredMedia> {
   onProgress?.({ stage: "loading-detector", ratio: 0 });
   const detector = await loadDetector("IMAGE");
@@ -554,7 +611,7 @@ export async function blurFacesInImage(
     // Detection runs against the resized canvas, so box coordinates are already
     // in output space — no rescaling, no chance of a half-pixel miss.
     const boxes = boxesFrom(detector.detect(canvas).detections);
-    blurBoxes(ctx, canvas, boxes, FACE_PADDING, mode);
+    blurBoxes(ctx, canvas, boxes, FACE_PADDING, mode, blurRadius);
 
     onProgress?.({ stage: "encoding", ratio: 0 });
     throwIfAborted(signal);
@@ -634,7 +691,12 @@ function onceEvent(target: EventTarget, event: string, errorEvent = "error") {
  */
 export async function blurFacesInVideo(
   file: File,
-  { onProgress, signal, mode = DEFAULT_REDACTION_MODE }: BlurOptions = {},
+  {
+    onProgress,
+    signal,
+    mode = DEFAULT_REDACTION_MODE,
+    blurRadius,
+  }: BlurOptions = {},
 ): Promise<BlurredMedia> {
   if (!isVideoBlurSupported()) {
     throw new FaceBlurError(
@@ -768,7 +830,14 @@ export async function blurFacesInVideo(
 
           // Between detections the last known boxes are grown, so a face that
           // moves during the gap stays inside the covered area.
-          blurBoxes(ctx, canvas, cachedBoxes, FACE_PADDING + MOTION_MARGIN, mode);
+          blurBoxes(
+            ctx,
+            canvas,
+            cachedBoxes,
+            FACE_PADDING + MOTION_MARGIN,
+            mode,
+            blurRadius,
+          );
 
           if (!thumbnailCanvas && video.currentTime >= thumbnailAt) {
             thumbnailCanvas = document.createElement("canvas");

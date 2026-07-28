@@ -127,9 +127,10 @@ src/
       incidents/[id]/actions.ts  Moderate / edit / withdraw server actions
       incidents/new/          Report wizard host (village lookup, server-side)
       dashboard/              Stats, breakdowns, hotspots, moderation queue
-      dashboard/actions.ts    Moderate, audited raw-text reveal, and the three
+      dashboard/actions.ts    Moderate, audited raw-text reveal, and the four
                               village settings — the parish council,
-                              auto-approve and the WhatsApp Channel
+                              auto-approve, the WhatsApp Channel and the face
+                              redaction level
       dashboard/audit/        Audit trail viewer — coordinator only, filterable
       dashboard/compliance/   The legal gate — renders the DPIA and the APD in
                               full and records the coordinator's acceptance.
@@ -197,6 +198,8 @@ src/
                               off for the whole village — warns on the way on
     dashboard/whatsapp-channel-form.tsx  The village's own channel — link, id,
                               posting switch, severity floor
+    dashboard/privacy-level-form.tsx  How the village covers faces — four
+                              levels, each with a preview of what it looks like
     severity-badge.tsx        green / amber / red / purple pill
     incident-type-icon.tsx    Enum icon name → lucide component
     no-village.tsx            Shown wherever a resident has no village yet
@@ -278,6 +281,8 @@ tests/                        Vitest, unit only — see The test suite
   format-alert.test.ts        The WhatsApp alert — severity, place, the link
   compliance.test.ts          The gate's three states and its one-way write
   markdown.test.ts            The parser, incl. leaving snake_case alone
+  privacy-level.test.ts       The four levels, the free-text column's fallback
+                              (including `toString`), and the write schema
 vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
   ci.yml                      lint → typecheck → test → build, PRs and main
@@ -673,12 +678,12 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Nine files, ~171 assertions, covering the
+between the typecheck and the build. Ten files, ~183 assertions, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 AI pass's failure modes, the Zod schemas, the WhatsApp channel code, the alert
 format, the CSV export's escaping and formula-injection guard, the compliance
-gate's three states, and the Markdown parser the compliance page renders the two
-legal documents through.
+gate's three states, the Markdown parser the compliance page renders the two
+legal documents through, and the per-village face redaction level.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -809,13 +814,68 @@ running in the browser; what happens to the box it returns is now a choice, and
   long history of being undone — the search space behind a known mosaic is small
   enough to brute-force.
 - **The mode is recorded per file, not read off the control.** `BlurredMedia`
-  and `AttachedMedia` both carry it, because the radio can be changed after a
+  and `AttachedMedia` both carry it, because the control can be changed after a
   file is processed and the file cannot. Telling a reporter their photo was
   redacted when it was blurred is the one label here that would matter.
-- **The toggle lives in `MediaUploader`**, which is the wizard's step 0, so the
-  control sits next to the thing it governs. It applies to files added after it
-  is changed; anything already attached keeps what it was processed with, and
-  the panel says so once there is something to say it about.
+- **Which mode runs is the village's decision now, not the reporter's.** See
+  The privacy level below. `MediaUploader` takes a `privacyLevel` prop, maps it
+  through `PRIVACY_LEVELS` and hands `blurFaces` a `mode` and a `blurRadius`.
+  It applies to files added after a change; anything already attached keeps what
+  it was processed with, and the panel says so once there is something to say it
+  about.
+- **The reporter's one remaining control only points one way.** A checkbox that
+  blacks a face out completely, offered in any village not already set to
+  `redact`. There is deliberately no control that covers a face *less* than the
+  village asked for — the direction that cannot go wrong is the only one on
+  offer.
+
+## The privacy level
+
+`Village.privacyLevel`, `PRIVACY_LEVELS` in `src/lib/constants.ts`, and a
+selector on `/dashboard`. Four levels — `light` (blur, 15px), `standard` (blur,
+22px, the default), `heavy` (blur, 35px), `redact` (black box).
+
+- **It moves the Gaussian and nothing else.** `MOSAIC_CELLS` is fixed at six and
+  is deliberately off the scale. The mosaic is what destroys the identity — the
+  original pixels stop existing anywhere in the output — so the level decides
+  how much of the *scene around* a face survives, not whether the face does.
+  That asymmetry is the whole safety argument for putting a "light" option on a
+  settings screen at all: a coordinator can make the cover look softer and
+  cannot reach an upload somebody is recognisable in.
+- **A `String` column, not an enum**, and there is no CHECK constraint. The
+  narrowing happens in two places instead: `villagePrivacyLevelFormSchema` is a
+  Zod enum and is the only thing in the application that writes the column, and
+  `resolvePrivacyLevel` narrows on the way out. It falls back to `standard`
+  rather than throwing, because this value becomes a redaction mode in a
+  reporter's browser and an exception there is a wizard that cannot attach a
+  photo.
+- **`resolvePrivacyLevel` uses `Object.hasOwn`, not `in`.** `PRIVACY_LEVEL_META`
+  is a plain object, so `in` answers true for `toString` and `constructor` — and
+  this reads a free-text column, which is exactly where one of those could
+  arrive. Asserted in `tests/privacy-level.test.ts`.
+- **The value is applied in the browser and cannot be re-checked server-side.**
+  `POST /api/incidents/media` never sees the original (domain rule 3), only the
+  covered copy, so there is nothing to validate against. What bounds it is the
+  scale: every level covers every face.
+- **`getVillagePrivacyLevel` reports whether the column exists**, the same
+  two-part answer `getVillageParishCouncil` gives and for the same reason —
+  `20260728120000_village_privacy_level` is new. The difference is that `value`
+  is never null: it ends up as a redaction mode, and there is no state whose
+  right answer is to cover nothing, so an unmigrated database reports
+  `available: false` with the standard blur.
+- **`village.privacy_level_changed` is audited and toned `sensitive`**, the
+  fourth village setting in `AUDIT_ACTIONS`. Its reason is its own: it is the
+  only setting whose subject is neither the reporter nor the coordinator but
+  whoever happened to be in shot and never chose to be.
+- **The dashboard shows a preview of each level** — a six-by-six grid of flat
+  colours under a CSS blur, which is the pipeline itself at a scale that fits in
+  a settings row. No asset, no photograph of anybody, nothing to fetch, and
+  labelled an illustration on screen.
+- **`/privacy` and the landing FAQ changed in the same commit**, for the reason
+  the legal-pages section gives. Both named a fixed default ("a black box by
+  default"), which a coordinator can now change; they describe the mechanism and
+  the village's choice instead. `/terms` never named a default and did not
+  change.
 - **`/privacy`, `/terms` and the landing FAQ changed in the same commit**, for
   the reason the legal-pages section gives. All three said photos were blurred;
   the notice now names both modes and which is the default. The promise that
@@ -1497,10 +1557,11 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates, the onboarding tour and the ONS village directory pipeline. Still
 open:
 
-- The Supabase project exists (eu-west-2), **migrations 1–5 of the seven are
+- The Supabase project exists (eu-west-2), **migrations 1–5 of the eight are
   applied**, and `postgis.sql` and `rls_policies.sql` have both been re-run after
-  them. `20260727180000_village_activation` (`parish_council`) and
-  `20260728090000_village_compliance_gate` have never been applied anywhere. The
+  them. `20260727180000_village_activation` (`parish_council`),
+  `20260728090000_village_compliance_gate` and
+  `20260728120000_village_privacy_level` have never been applied anywhere. The
   `incident-media` bucket exists, private. What has **not** happened: no
   production deployment and no cron has ever fired.
 - **Applying migration 7 closes every village's reporting** until a coordinator
@@ -1641,12 +1702,21 @@ open:
   first report filed with it on: check the status, the push, the audit rows and —
   if the village also has channel posting on — what actually lands in the
   channel, which is the one surface an unauthenticated stranger can read.
+- **The privacy level has a column, a screen and no village behind it.**
+  `20260728120000_village_privacy_level` has never run, so every village is on
+  the unmigrated path — `getVillagePrivacyLevel` returns `available: false` with
+  the standard blur, and the dashboard renders the "not ready yet" panel rather
+  than the selector. Nothing has ever been uploaded at a level somebody chose.
+  Watch the first one: attach a photo with a face in it at `light` and again at
+  `heavy`, and look at the two files. The scale is meant to be visibly different
+  and never to leave a face readable, and only a real photograph settles the
+  second half of that.
 - **The compliance gate has never been exercised against a database**, because
   its migration has never run. Nothing has ever been blocked by it and no
   acceptance has ever been recorded. Its unit tests cover the three states and
   the one-way write; what they cannot cover is the 403 actually reaching a
   resident, which wants the route test named below.
-- **There is a test suite now, and it covers eight modules rather than the app.**
+- **There is a test suite now, and it covers nine modules rather than the app.**
   `npm run test` runs Vitest over `tests/`, and `.github/workflows/ci.yml` runs
   it between the typecheck and the build. See The test suite below for what is
   asserted and what is deliberately not. Nothing yet asserts that a

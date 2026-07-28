@@ -1,0 +1,35 @@
+-- Per-village face redaction level.
+--
+-- Hand-written, like the migrations before it. `prisma migrate diff` against
+-- this database also proposes:
+--
+--   DROP INDEX "incidents_location_point_idx";
+--   DROP INDEX "pattern_alerts_centroid_point_idx";
+--   DROP INDEX "villages_boundary_idx";
+--
+-- Those are the GiST indexes created by `prisma/sql/postgis.sql`. They sit on
+-- `Unsupported("geography(...)")` columns, so Prisma cannot see them, reads
+-- them as drift, and offers to remove them — which would take out every radius
+-- query (`ST_DWithin`) the app makes. They are deliberately not in this file.
+-- Check any future generated migration for the same three lines.
+--
+-- `DEFAULT 'standard'` is what makes this safe to apply to a live village: no
+-- row is left with a null to interpret, and `resolvePrivacyLevel` in
+-- `src/lib/constants.ts` narrows anything unrecognised back to `standard`
+-- anyway. There is no level that means "do not cover faces" — the weakest one
+-- is still a six-cell mosaic under a Gaussian, and the mode is what the column
+-- selects, never whether redaction happens at all.
+--
+-- No CHECK constraint on the four values, deliberately. The column is written
+-- from exactly one place (`setVillagePrivacyLevel`, behind a Zod enum) and read
+-- through a function that falls back rather than throws, so a constraint would
+-- buy a 500 on a bad write in exchange for an `ALTER TABLE` every time a level
+-- is added.
+--
+-- Re-run `prisma/sql/rls_policies.sql` after this. The `villages` SELECT grant
+-- is enumerated per column, so `privacy_level` is unreadable through PostgREST
+-- until that file names it — which is the intended default for a new column,
+-- and it is named there now.
+
+-- AlterTable
+ALTER TABLE "villages" ADD COLUMN     "privacy_level" TEXT NOT NULL DEFAULT 'standard';

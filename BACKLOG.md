@@ -1,7 +1,8 @@
 # VillageWatch — Backlog & Improvements Tracker
 
-**Last updated:** 27 July 2026 (B1, B2, B4, B5, I1, I2, T3, T4, T7, T8 closed;
-village activation landed; DPIA drafted)
+**Last updated:** 28 July 2026 (B1, B2, B4, B5, I1, I2, T3, T4, T7, T8 closed;
+village activation landed; DPIA drafted; compliance gate and the per-village
+face redaction level added — B2/I2 are configurable rather than fixed now)
 **Repo:** https://github.com/jdell/villagewatch
 
 ---
@@ -21,7 +22,7 @@ village activation landed; DPIA drafted)
 | # | Issue | Severity | Details |
 |---|-------|----------|---------|
 | B1 | ~~Mobile menu unreachable~~ | Done 27 Jul | The drawer is `fixed inset-0 z-[1100] h-dvh`, above Leaflet's `z-[1000]` panes, with a separate backdrop child that animates independently of the panel and a `motion-reduce` escape. `h-dvh` rather than `h-screen`, so the browser chrome does not eat the last item. |
-| B2 | ~~Face blurring too weak~~ | Done 27 Jul | Landed with I2 — the mosaic is a cell *count* (6 across) rather than a 12px cell size, so destruction no longer scales with the photo, and the Gaussian went 0.12 → 0.45 of the region's longest edge. |
+| B2 | ~~Face blurring too weak~~ | Done 27 Jul, **configurable 28 Jul** | Landed with I2 — the mosaic is a cell *count* (6 across) rather than a 12px cell size, so destruction no longer scales with the photo, and the Gaussian went 0.12 → 0.45 of the region's longest edge. Now a per-village setting: `Village.privacyLevel` picks light/standard/heavy/redact on `/dashboard`, and the level drives the Gaussian only. The six-cell mosaic is deliberately **not** on the scale, so no level a coordinator can choose puts a readable face back into an upload — what the scale moves is how much of the scene around the face survives. |
 | B3 | OneSignal not sending push notifications | High | Verify: (1) OneSignal app ID correct, (2) service worker at /onesignal/OneSignalSDKWorker.js, (3) all 3 env vars set in Vercel, (4) browser permission granted, (5) user registered with OneSignal via OneSignal.login(userId). |
 | B4 | ~~CSV download not working~~ | Done 27 Jul | The route and its headers were correct; the `<a href download>` was not. It saved every 401/403/503/500 under the export's name, so a failure looked like a corrupt spreadsheet. Now a fetch that checks the status and toasts the error, every exit from the route is JSON, formatting moved to `src/lib/incident-csv.ts`, and `tests/incident-csv.test.ts` covers it. |
 | B5 | ~~Test data / stubs present~~ | Done 27 Jul | Swept `src/`, `prisma/`, `scripts/`, `tests/`, `public/`, `data/` and the config files. **No** TODO/FIXME/HACK/XXX anywhere, no hardcoded credentials, no mock timers, no fabricated ids outside the test suite. Two things changed: `ADMIN_EMAILS` in `.env.example` shipped a real address that grants platform admin, now blank (the fail-closed default the comment above it already described); and the seed's sample data is now tracked as a launch item rather than an assumption — see L7. Full findings in the commit message. |
@@ -33,7 +34,7 @@ village activation landed; DPIA drafted)
 | # | Feature | Priority | Details |
 |---|---------|----------|---------|
 | I1 | ~~Share summary with police/council~~ | Done 27 Jul | `/reports` — a period report with counts, breakdowns, hotspots and a Claude-written narrative (counted fallback when Claude is unavailable), plus a single-incident share button on any published report. One format for screen, clipboard, share sheet and print; "Download PDF" is `window.print()` and `@media print`. Coordinator only, published and resolved incidents only, structurally incapable of carrying raw text or coordinates. The period report is audited; the share sheet deliberately is not, because an `await` before `navigator.share()` spends the user gesture and iOS refuses the call. |
-| I2 | ~~Stronger face blurring~~ | Done 27 Jul | `FaceRedactionMode` — `redact` (solid black box, the default) or `blur` (six-cell mosaic under a heavy Gaussian). Chosen in the wizard's upload step, recorded per file. `/privacy`, `/terms` and the landing FAQ updated in the same commit. |
+| I2 | ~~Stronger face blurring~~ | Done 27 Jul, **configurable 28 Jul** | `FaceRedactionMode` — `redact` (solid black box) or `blur` (six-cell mosaic under a heavy Gaussian), recorded per file. As of 28 Jul the choice is the **village's**, not the reporter's: `Village.privacyLevel` (`light` 15px / `standard` 22px, the default / `heavy` 35px / `redact`) is set by a coordinator on `/dashboard` with a preview of each level, audited as `village.privacy_level_changed` (sensitive). The reporter keeps one control and it only points one way — black out faces completely — so nobody can file below what their village set. `tests/privacy-level.test.ts` covers the mapping, the fallback and the write schema. `/privacy` and the landing FAQ updated in the same commit; `/terms` never named a default, so it did not change. Needs `20260728120000_village_privacy_level`. |
 | I3 | Coordinator share invite link | High | **Half done 27 Jul.** Village activation landed, so a code now exists to share: `activateVillage()` mints it, `/admin/villages` shows it once, and `regenerateJoinCode()` rotates it. What is still missing is the sharing itself — copy button, WhatsApp hand-off, QR code, and a public `/join/[slug]` that pre-fills registration. Carried as a running task above. |
 
 ---
@@ -47,7 +48,7 @@ village activation landed; DPIA drafted)
 | L3 | Village activation from cold | Done 27 Jul | `src/lib/village.ts` — activate, mint a join code before the status flips, suspend, reactivate, regenerate, and appoint the first coordinator, all guarded on the status just read and all audited. `/admin/villages` is the screen. The registration routes now require the code whenever a village has one. Sharing the invite is I3; applying the migration is L6. |
 | L4 | OneSignal push not working | Not started | See B3. No push has been delivered to a real device. |
 | L5 | Verify coordinator flow end-to-end | Not started | Confirm submit → PENDING_REVIEW → approve → PUBLISHED → notification. Nothing in the test suite asserts that a village with auto-approve off still queues. |
-| L6 | Apply pending migrations | **1 pending** | `20260727180000_village_activation` has never run anywhere. Order and consequences are in SETUP.md §4. `migrate deploy`, then `postgis.sql`, then `rls_policies.sql`. |
+| L6 | Apply pending migrations | **3 pending** | `20260727180000_village_activation`, `20260728090000_village_compliance_gate` and `20260728120000_village_privacy_level` have never run anywhere. Order and consequences are in SETUP.md §4. `migrate deploy`, then `postgis.sql`, then `rls_policies.sql`. **The compliance gate one is not routine**: applying it closes every existing village's reporting until a coordinator has been through `/dashboard/compliance`, so tell whoever coordinates the village before it runs. The other two are additive and change nothing until somebody uses the screen. |
 | L7 | Sample seed data in the live database | Not started | The only ACTIVE village is the one `prisma/seed.ts` created, with five invented incidents and the hardcoded join code `VILLAGE1`. Both are obviously placeholders by design, and both are in the database a resident would land in. Delete the seeded village, or rotate its code and clear its incidents, before the first real resident registers. |
 
 ---

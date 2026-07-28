@@ -271,7 +271,7 @@ GRANT SELECT (
   center_lat, center_lng, default_zoom, radius_meters, boundary,
   region, postcode, country, timezone, population,
   alert_threshold, contact_email, contact_phone, auto_approve,
-  parish_council,
+  parish_council, privacy_level,
   dpia_accepted_at, apd_accepted_at,
   whatsapp_channel_url, whatsapp_enabled, whatsapp_min_severity,
   created_at, updated_at

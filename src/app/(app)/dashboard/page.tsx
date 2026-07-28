@@ -23,13 +23,17 @@ import { ModerationQueue } from "@/components/dashboard/moderation-queue";
 import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
 import { ExportCsvButton } from "@/components/dashboard/export-csv-button";
 import { ParishCouncilForm } from "@/components/dashboard/parish-council-form";
+import { PrivacyLevelForm } from "@/components/dashboard/privacy-level-form";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { WhatsAppChannelForm } from "@/components/dashboard/whatsapp-channel-form";
 import { NoVillage } from "@/components/no-village";
 import { requireCoordinator } from "@/lib/auth";
 import { getVillageCompliance } from "@/lib/compliance";
 import { getVillageAutoApprove } from "@/lib/moderation";
-import { getVillageParishCouncil } from "@/lib/village";
+import {
+  getVillageParishCouncil,
+  getVillagePrivacyLevel,
+} from "@/lib/village";
 import { prisma } from "@/lib/prisma";
 import {
   getVillageChannel,
@@ -98,6 +102,7 @@ export default async function DashboardPage() {
     followLink,
     autoApprove,
     parishCouncil,
+    privacyLevel,
     compliance,
   ] = await Promise.all([
     prisma.incident.count({
@@ -176,6 +181,10 @@ export default async function DashboardPage() {
     // renders a different thing for each, because "no council named" is the
     // coordinator's to fix and "no column to name one in" is not.
     getVillageParishCouncil(villageId),
+    // Same two-part answer again, and the same reason — except that the value
+    // is never null here: it ends up as a redaction mode, and there is no state
+    // in which the right answer is to cover nothing.
+    getVillagePrivacyLevel(villageId),
     // Same shape and the same reason: the banner is shown for "not accepted"
     // and suppressed for "no columns to accept into", which is somebody else's
     // problem entirely.
@@ -510,6 +519,21 @@ export default async function DashboardPage() {
             // default — a public feed is not the place for a missing cat.
             minSeverity: channel?.minSeverity ?? "HIGH",
           }}
+        />
+
+        {/*
+          Last, and deliberately not between the two above — those are adjacent
+          on purpose, and a village running both has put unreviewed reports in
+          front of the open internet, which is the pairing worth seeing in one
+          glance.
+
+          This one is the other axis: not who reads a report, but what is left
+          of a bystander in the photo attached to it. It is the only setting
+          here whose subject never used the app and never agreed to anything.
+        */}
+        <PrivacyLevelForm
+          value={privacyLevel.value}
+          available={privacyLevel.available}
         />
       </section>
     </div>

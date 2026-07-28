@@ -6,7 +6,12 @@ import { isPlatformAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { appointCoordinator } from "@/lib/coordinator-requests";
 import { notifySlack } from "@/lib/slack";
-import { JOIN_CODE_LENGTH } from "@/lib/constants";
+import {
+  DEFAULT_PRIVACY_LEVEL,
+  JOIN_CODE_LENGTH,
+  resolvePrivacyLevel,
+  type PrivacyLevel,
+} from "@/lib/constants";
 
 /**
  * The village lifecycle: seeded directory entry → live village.
@@ -723,6 +728,122 @@ export async function setVillageParishCouncil(
 
     console.error(
       "Could not save the parish council for village %s",
+      villageId,
+      cause,
+    );
+    return { ok: false, reason: "failed" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The face redaction level, as the village's own coordinator sets it
+// ---------------------------------------------------------------------------
+
+/**
+ * Postgres `42703` for `villages.privacy_level`.
+ *
+ * Same three shapes and the same narrow matching as
+ * `isMissingParishCouncilColumn` above — see its comment for why a broad catch
+ * here would be worse than useless.
+ */
+function isMissingPrivacyLevelColumn(cause: unknown): boolean {
+  if (typeof cause !== "object" || cause === null) return false;
+
+  const code = (cause as { code?: unknown }).code;
+  if (code === "P2022" || code === "42703") return true;
+
+  const message = (cause as { message?: unknown }).message;
+  return typeof message === "string" && message.includes("privacy_level");
+}
+
+/**
+ * Whether `villages.privacy_level` exists in this database, and what is in it.
+ *
+ * The same two-part answer `getVillageParishCouncil` returns, for the same
+ * reason: `20260728120000_village_privacy_level` is new, and a bare level
+ * cannot tell "this village runs the default" apart from "this database has no
+ * column to hold a choice in". The dashboard renders those differently because
+ * only one of them is the coordinator's to fix.
+ *
+ * The difference from the parish council is what `value` is when the column is
+ * missing. There it is `null` and the footer falls back; here it is
+ * `DEFAULT_PRIVACY_LEVEL`, because the uploader has to be told *something* and
+ * the honest something is what an unmigrated deployment actually does — the
+ * standard blur, for every village, with no way to change it. Never `null`:
+ * this value ends up as a redaction mode, and there is no state in which the
+ * right answer is to cover nothing.
+ */
+export type PrivacyLevelSetting = {
+  /** False when the column is missing from this database. */
+  available: boolean;
+  value: PrivacyLevel;
+};
+
+/** What the uploader applies, and what the dashboard's selector shows. */
+export async function getVillagePrivacyLevel(
+  villageId: string,
+): Promise<PrivacyLevelSetting> {
+  if (!process.env.DATABASE_URL) {
+    return { available: false, value: DEFAULT_PRIVACY_LEVEL };
+  }
+
+  try {
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      select: { privacyLevel: true },
+    });
+
+    // `resolvePrivacyLevel` rather than a cast. The column is a `String`, so a
+    // value typed into psql — or left behind by a level a later release removed
+    // — reaches here as something this build has no mapping for, and the
+    // fallback has to be a level rather than a crash in the report wizard.
+    return { available: true, value: resolvePrivacyLevel(village?.privacyLevel) };
+  } catch (cause) {
+    if (!isMissingPrivacyLevelColumn(cause)) throw cause;
+
+    console.error(
+      "villages.privacy_level is missing — has 20260728120000_village_privacy_level been applied?",
+      cause,
+    );
+
+    return { available: false, value: DEFAULT_PRIVACY_LEVEL };
+  }
+}
+
+export type PrivacyLevelWrite =
+  | { ok: true }
+  | { ok: false; reason: "unmigrated" | "failed" };
+
+/**
+ * Writes the village's face redaction level.
+ *
+ * Returns rather than throws and distinguishes the two failures, for the reason
+ * `setVillageParishCouncil` does: "try again" is a lie when the column does not
+ * exist, and the coordinator could press Save until somebody runs a migration.
+ */
+export async function setVillagePrivacyLevel(
+  villageId: string,
+  privacyLevel: PrivacyLevel,
+): Promise<PrivacyLevelWrite> {
+  try {
+    await prisma.village.update({
+      where: { id: villageId },
+      data: { privacyLevel },
+    });
+
+    return { ok: true };
+  } catch (cause) {
+    if (isMissingPrivacyLevelColumn(cause)) {
+      console.error(
+        "Could not save privacy_level for village %s — the column does not exist. Apply 20260728120000_village_privacy_level.",
+        villageId,
+        cause,
+      );
+      return { ok: false, reason: "unmigrated" };
+    }
+
+    console.error(
+      "Could not save the privacy level for village %s",
       villageId,
       cause,
     );
