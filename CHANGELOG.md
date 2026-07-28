@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.18](https://github.com/jdell/villagewatch/compare/v0.1.17...v0.1.18) (2026-07-28)
+
+
+### Features
+
+* **icons:** a real favicon, from the brand mark rather than Next's default ([1fc852f](https://github.com/jdell/villagewatch/commit/1fc852f0fb682f0593a1abf5465ba614e53289b1))
+
 ### [0.1.17](https://github.com/jdell/villagewatch/compare/v0.1.16...v0.1.17) (2026-07-28)
 
 
