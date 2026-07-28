@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.19](https://github.com/jdell/villagewatch/compare/v0.1.18...v0.1.19) (2026-07-28)
+
+
+### Features
+
+* **domain:** villagewatch.app is the real origin, and the fallback ([4ca3e9d](https://github.com/jdell/villagewatch/commit/4ca3e9d12f4917e847574d07724c5dc2be30b2c7))
+
 ### [0.1.18](https://github.com/jdell/villagewatch/compare/v0.1.17...v0.1.18) (2026-07-28)
 
 
