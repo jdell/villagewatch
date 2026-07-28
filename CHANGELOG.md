@@ -3,6 +3,19 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.15](https://github.com/jdell/villagewatch/compare/v0.1.14...v0.1.15) (2026-07-28)
+
+
+### Features
+
+* **privacy:** let a village choose how faces are covered ([399b950](https://github.com/jdell/villagewatch/commit/399b950ebe38e7419b77d86c84bd0f37ee2b6ffd))
+
+
+### Documentation
+
+* **dpia:** a summary at the top, and §9 split by who owns each action ([2430916](https://github.com/jdell/villagewatch/commit/24309166d12994f19599900fffd0191074671147))
+* rewrite the DPIA and the APD for the people who sign them ([fa0a037](https://github.com/jdell/villagewatch/commit/fa0a03707663885be250dd1b687fbf38e2b94f7a))
+
 ### [0.1.14](https://github.com/jdell/villagewatch/compare/v0.1.13...v0.1.14) (2026-07-27)
 
 
