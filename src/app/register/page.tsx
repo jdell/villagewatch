@@ -9,6 +9,7 @@ import {
 import { AuthDivider, GoogleButton } from "@/components/auth/google-button";
 import { isGoogleAuthEnabled, isSupabaseConfigured } from "@/lib/supabase/env";
 import { prisma } from "@/lib/prisma";
+import { normalizeJoinCode } from "@/lib/validations";
 
 export const metadata: Metadata = {
   title: "Create an account",
@@ -43,8 +44,40 @@ async function getVillages(): Promise<VillageOption[]> {
   });
 }
 
-export default async function RegisterPage() {
-  const villages = await getVillages();
+/**
+ * Prefill from an invite link.
+ *
+ * `/join/[slug]` sends `?village=<id>&code=<CODE>` when a resident arrives from a
+ * scanned QR or a shared link, and this is where those two land. The village id
+ * is only honoured if it is one of the villages already on this screen, so a
+ * hand-edited parameter cannot select a village the picker would not offer —
+ * and nothing about standing rides on either value: `POST /api/auth/register`
+ * re-checks the code against the database (domain rule 5).
+ */
+function readPrefill(
+  params: Record<string, string | string[] | undefined>,
+  villages: VillageOption[],
+): { villageId: string; joinCode: string } {
+  const first = (value: string | string[] | undefined) =>
+    (Array.isArray(value) ? value[0] : value) ?? "";
+
+  const villageId = first(params.village);
+  const known = villages.some((village) => village.id === villageId);
+
+  return {
+    villageId: known ? villageId : "",
+    joinCode: normalizeJoinCode(first(params.code)).slice(0, 32),
+  };
+}
+
+export default async function RegisterPage({
+  searchParams,
+}: {
+  // Next 16: a Promise, like `params`.
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [villages, query] = await Promise.all([getVillages(), searchParams]);
+  const prefill = readPrefill(query, villages);
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50">
@@ -92,7 +125,11 @@ export default async function RegisterPage() {
           )}
 
           <div className="mt-6">
-            <RegisterForm villages={villages} />
+            <RegisterForm
+              villages={villages}
+              initialVillageId={prefill.villageId}
+              initialJoinCode={prefill.joinCode}
+            />
           </div>
         </div>
 

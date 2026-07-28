@@ -8,6 +8,7 @@ import L from "leaflet";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
+import { HeatmapLayer } from "@/components/map/heatmap-layer";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
   INCIDENT_TYPE_LABELS,
@@ -45,12 +46,31 @@ export type MapIncident = {
   recurring: boolean;
 };
 
+/**
+ * What is drawn over the tiles.
+ *
+ * `pins` is the default everywhere and the behaviour this map has always had.
+ * `heat` swaps the markers for a density canvas; `both` layers the pins on top of
+ * it, which is the combination a coordinator wants when they have spotted a warm
+ * patch and need to know which reports made it.
+ */
+export type MapMode = "pins" | "heat" | "both";
+
 type IncidentMapProps = {
   incidents: readonly MapIncident[];
   center: { lat: number; lng: number };
   zoom?: number;
   /** Fit the viewport to the pins instead of using `center`/`zoom`. */
   fitToIncidents?: boolean;
+  mode?: MapMode;
+  /**
+   * False for a map that is a picture rather than a map — the density thumbnail
+   * on the dashboard. Drops dragging, both zooms and the zoom control, so a
+   * coordinator scrolling the page past a 200px map does not zoom it by accident.
+   * The OpenStreetMap attribution stays either way; it is a licence condition,
+   * not a control.
+   */
+  interactive?: boolean;
   /**
    * Epoch milliseconds the page was rendered at, used to size pins by recency.
    *
@@ -138,16 +158,27 @@ export function IncidentMap({
   center,
   zoom = MAP_DEFAULTS.zoom,
   fitToIncidents = false,
+  mode = "pins",
+  interactive = true,
   now,
   className = "size-full",
 }: IncidentMapProps) {
+  // An empty array rather than a conditional around the loop below: the markers
+  // are the same markers in every mode, and `heat` is simply a mode with none.
+  const pins = mode === "heat" ? [] : incidents;
+
   return (
     <MapContainer
       center={[center.lat, center.lng]}
       zoom={zoom}
       minZoom={MAP_DEFAULTS.minZoom}
       maxZoom={MAP_DEFAULTS.maxZoom}
-      scrollWheelZoom
+      scrollWheelZoom={interactive}
+      dragging={interactive}
+      doubleClickZoom={interactive}
+      touchZoom={interactive}
+      keyboard={interactive}
+      zoomControl={interactive}
       className={className}
     >
       <TileLayer
@@ -157,7 +188,15 @@ export function IncidentMap({
 
       <FitBounds incidents={incidents} enabled={fitToIncidents} />
 
-      {incidents.map((incident) => {
+      {/*
+        Under the pins, always. Leaflet puts the heat canvas in the overlay pane
+        and markers in the marker pane above it, so "both" needs no z-index of
+        its own — and a heat blob drawn over a pin would hide the one thing that
+        is clickable.
+      */}
+      {mode !== "pins" && <HeatmapLayer incidents={incidents} now={now} />}
+
+      {pins.map((incident) => {
         const occurred = new Date(incident.occurredAt);
         const recent = now - occurred.getTime() <= RECENT_MS;
 

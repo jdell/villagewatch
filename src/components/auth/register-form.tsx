@@ -25,6 +25,14 @@ export type VillageOption = {
 
 type RegisterFormProps = {
   villages: VillageOption[];
+  /**
+   * Village and code from an invite link — see `readPrefill` in
+   * `src/app/register/page.tsx`. Both are conveniences and neither is trusted:
+   * the register route re-checks the code against the database, so a resident
+   * who edits them gets the same answer as one who typed them in.
+   */
+  initialVillageId?: string;
+  initialJoinCode?: string;
 };
 
 const inputClass =
@@ -64,14 +72,18 @@ function Field({
   );
 }
 
-export function RegisterForm({ villages }: RegisterFormProps) {
+export function RegisterForm({
+  villages,
+  initialVillageId = "",
+  initialJoinCode = "",
+}: RegisterFormProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Controlled so the home-location map knows which village to open on. The
   // `<select>` still carries the value into FormData like every other field.
-  const [villageId, setVillageId] = useState("");
+  const [villageId, setVillageId] = useState(initialVillageId);
   const [home, setHome] = useState<LocationValue | null>(null);
 
   const noVillages = villages.length === 0;
@@ -189,13 +201,21 @@ export function RegisterForm({ villages }: RegisterFormProps) {
         name="joinCode"
         label="Join code"
         error={errors.joinCode}
-        hint="Optional. A code from your coordinator verifies you straight away."
+        hint={
+          initialJoinCode
+            ? "Filled in from your invite link. Check it matches the code you were given."
+            : "Optional. A code from your coordinator verifies you straight away."
+        }
       >
         <input
           id="joinCode"
           name="joinCode"
           type="text"
           autoComplete="off"
+          // Uncontrolled with a default: the invite fills it in and the resident
+          // is free to correct it, which is the whole point of showing it rather
+          // than posting it invisibly.
+          defaultValue={initialJoinCode}
           aria-invalid={Boolean(errors.joinCode)}
           className={`${inputClass} font-mono uppercase`}
           placeholder="ABCD-1234"

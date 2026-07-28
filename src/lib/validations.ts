@@ -659,6 +659,25 @@ export function extractChannelCode(url: string): string | null {
 }
 
 /**
+ * A village join code in the shape the column holds.
+ *
+ * Case-folded, and spaces and hyphens dropped — a code read off a newsletter
+ * arrives as `oak 7x2` or `OAK-7X2` about as often as it arrives clean, and
+ * rejecting those teaches residents that the code they were given is wrong.
+ * Applied to both sides of the comparison in `checkVillageJoin`, because rows
+ * set by hand in psql before that module existed are not guaranteed to be
+ * normalised either.
+ *
+ * It lives here rather than in `src/lib/village.ts` — where it started — because
+ * `src/lib/invite.ts` needs it to build a link in the browser, and `village.ts`
+ * imports `node:crypto` and Prisma. One copy that both sides share, rather than
+ * a normalisation the server does and the invite link does not.
+ */
+export function normalizeJoinCode(value: string): string {
+  return value.replace(/[\s-]/g, "").toUpperCase();
+}
+
+/**
  * The coordinator's WhatsApp Channel settings, posted from the dashboard.
  *
  * A `<form>`, so the same two shape problems `settingsFormSchema` has: an empty

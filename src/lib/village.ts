@@ -12,6 +12,7 @@ import {
   resolvePrivacyLevel,
   type PrivacyLevel,
 } from "@/lib/constants";
+import { normalizeJoinCode } from "@/lib/validations";
 
 /**
  * The village lifecycle: seeded directory entry → live village.
@@ -94,16 +95,12 @@ export function generateJoinCode(): string {
 /**
  * What a resident typed, in the shape the column holds.
  *
- * Case-folded, and spaces and hyphens dropped — a code read off a newsletter
- * arrives as `oak 7x2` or `OAK-7X2` about as often as it arrives clean, and
- * rejecting those teaches residents that the code they were given is wrong.
- * Applied to both sides of the comparison in `checkVillageJoin`, because rows
- * set by hand in psql before this module existed are not guaranteed to be
- * normalised either.
+ * Re-exported rather than defined here: the invite link built in the browser has
+ * to normalise a code the same way the join check does, and this module cannot
+ * be imported from a Client Component — see `normalizeJoinCode` in
+ * `src/lib/validations.ts` for the reasoning and the rules it applies.
  */
-export function normalizeJoinCode(value: string): string {
-  return value.replace(/[\s-]/g, "").toUpperCase();
-}
+export { normalizeJoinCode };
 
 /** Prisma's unique-constraint failure, without importing the error class. */
 function isUniqueViolation(cause: unknown): boolean {
@@ -209,6 +206,50 @@ async function audit({ session, villageId, action, before, after }: AuditInput) 
 // ---------------------------------------------------------------------------
 // Joining a village
 // ---------------------------------------------------------------------------
+
+/** What the two public invite pages render, and all they are allowed to know. */
+export type InviteVillage = {
+  id: string;
+  name: string;
+  slug: string;
+  region: string | null;
+  status: VillageStatus;
+};
+
+/**
+ * One village by slug, for `/invite/[slug]` and `/join/[slug]`.
+ *
+ * **`joinCode` is deliberately not selected.** Both callers are public pages,
+ * and a page that looked the code up by slug would hand a village's credential
+ * to anybody who could guess a parish name — the slugs are `name-county`, so
+ * guessing is the easy case. The code those pages render arrives in the request,
+ * from the link a coordinator sent; see `src/lib/invite.ts`.
+ *
+ * `status` comes back rather than being filtered on, because a `PENDING` parish
+ * out of the ONS directory is a real village that is not live yet, and the page
+ * says so — a 404 would tell a resident their village does not exist.
+ */
+export async function findVillageBySlug(
+  slug: string,
+): Promise<InviteVillage | null> {
+  if (!process.env.DATABASE_URL) return null;
+
+  try {
+    return await prisma.village.findUnique({
+      where: { slug },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        region: true,
+        status: true,
+      },
+    });
+  } catch (cause) {
+    console.error("Could not read village %s", slug, cause);
+    return null;
+  }
+}
 
 export type VillageJoinCheck =
   | {

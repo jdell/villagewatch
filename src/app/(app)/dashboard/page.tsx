@@ -22,10 +22,12 @@ import type { QueuedIncident } from "@/components/dashboard/moderation-card";
 import { ModerationQueue } from "@/components/dashboard/moderation-queue";
 import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
 import { ExportCsvButton } from "@/components/dashboard/export-csv-button";
+import { InviteShare } from "@/components/dashboard/invite-share";
 import { ParishCouncilForm } from "@/components/dashboard/parish-council-form";
 import { PrivacyLevelForm } from "@/components/dashboard/privacy-level-form";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { WhatsAppChannelForm } from "@/components/dashboard/whatsapp-channel-form";
+import { HotspotHeatmap } from "@/components/map/hotspot-heatmap";
 import { NoVillage } from "@/components/no-village";
 import { requireCoordinator } from "@/lib/auth";
 import { getVillageCompliance } from "@/lib/compliance";
@@ -42,11 +44,17 @@ import {
 import {
   HOTSPOT_COUNT,
   INCIDENT_TYPE_LABELS,
+  MAP_DEFAULTS,
   MODERATION_QUEUE_SIZE,
   PUBLIC_INCIDENT_STATUSES,
   SEVERITIES,
   SEVERITY_META,
 } from "@/lib/constants";
+import {
+  MAX_MAP_INCIDENTS,
+  PUBLIC_INCIDENT_SELECT,
+  toMapIncident,
+} from "@/lib/incidents";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -96,6 +104,8 @@ export default async function DashboardPage() {
     byType,
     bySeverity,
     hotspotRows,
+    hotspotPins,
+    village,
     queue,
     pendingCount,
     channel,
@@ -143,6 +153,38 @@ export default async function DashboardPage() {
       _count: { _all: true },
       orderBy: { _count: { locationText: "desc" } },
       take: HOTSPOT_COUNT,
+    }),
+    // The same period again, read off the coordinates rather than the landmark
+    // text, for the density thumbnail beside the list. `PUBLIC_INCIDENT_SELECT`
+    // rather than a hand-written select, so this cannot pick up
+    // `rawDescription` (domain rule 1) — and it is the same select the map uses,
+    // so `toMapIncident` takes the rows as they are.
+    prisma.incident.findMany({
+      where: {
+        ...published,
+        occurredAt: { gte: monthStart },
+        lat: { not: null },
+        lng: { not: null },
+      },
+      select: PUBLIC_INCIDENT_SELECT,
+      orderBy: { occurredAt: "desc" },
+      take: MAX_MAP_INCIDENTS,
+    }),
+    // Where that thumbnail opens, and the village's own invite details. The
+    // join code is a credential and this is the one screen that hands it out on
+    // purpose — see `InviteShare` for why that is not the same decision
+    // `/admin/villages` made.
+    prisma.village.findUnique({
+      where: { id: villageId },
+      select: {
+        name: true,
+        slug: true,
+        region: true,
+        joinCode: true,
+        centerLat: true,
+        centerLng: true,
+        defaultZoom: true,
+      },
     }),
     prisma.incident.findMany({
       where: { villageId, status: "PENDING_REVIEW" },
@@ -214,6 +256,15 @@ export default async function DashboardPage() {
     count: severityCounts.get(meta.value) ?? 0,
     colour: SEVERITY_META[meta.value].pin,
   }));
+
+  // Rows with no coordinates are already filtered out by the query; the mapper
+  // returns null for them anyway, and narrowing here is what keeps the component
+  // free of a nullable point.
+  const heatIncidents = hotspotPins
+    .map(toMapIncident)
+    .filter((incident): incident is NonNullable<typeof incident> =>
+      Boolean(incident),
+    );
 
   const queued: QueuedIncident[] = queue.map((row) => ({
     id: row.id,
@@ -358,8 +409,23 @@ export default async function DashboardPage() {
         </h2>
         <p className="mt-0.5 text-xs text-slate-500">
           The {HOTSPOT_COUNT} most reported places in the last 30 days, grouped
-          by the landmark residents typed.
+          by the landmark residents typed, and the same period as density.
         </p>
+
+        {/*
+          Above the list rather than below it: the map answers "where" in one
+          look, and the list is what a coordinator then reads for the detail.
+          Only rendered when the village has a viewport to open on — every
+          seeded village does, but `Village` is fetched here rather than
+          assumed.
+        */}
+        {village && (
+          <HotspotHeatmap
+            incidents={heatIncidents}
+            center={{ lat: village.centerLat, lng: village.centerLng }}
+            zoom={village.defaultZoom || MAP_DEFAULTS.zoom}
+          />
+        )}
 
         {hotspotRows.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500">
@@ -536,6 +602,22 @@ export default async function DashboardPage() {
           value={privacyLevel.value}
           available={privacyLevel.available}
         />
+
+        {/*
+          Last, and the only block in here that is not a setting at all — nothing
+          about a report changes because of it. It sits below the four decisions
+          on purpose: a coordinator inviting the village in should have just read
+          who reviews a report, who can read it afterwards and what happens to a
+          face in a photo.
+        */}
+        {village && (
+          <InviteShare
+            villageName={village.name}
+            slug={village.slug}
+            region={village.region}
+            joinCode={village.joinCode}
+          />
+        )}
       </section>
     </div>
   );

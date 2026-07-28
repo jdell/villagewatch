@@ -21,7 +21,8 @@ flags clusters before anyone joins the dots by hand.
 | Auth       | Supabase Auth via `@supabase/ssr`                            |
 | Validation | Zod 4                                                        |
 | Icons      | lucide-react                                                 |
-| Maps       | Leaflet + react-leaflet, OpenStreetMap tiles                 |
+| Maps       | Leaflet + react-leaflet, OpenStreetMap tiles, `leaflet.heat` |
+| QR codes   | `qrcode.react` — SVG on screen, canvas for the download      |
 | AI         | `@anthropic-ai/sdk`, `claude-sonnet-5` (`ANTHROPIC_MODEL`)   |
 | Push       | OneSignal — `@onesignal/node-onesignal` server, v16 web SDK   |
 | Toasts     | sonner                                                       |
@@ -109,9 +110,15 @@ src/
     page.tsx                  Public landing page
     not-found.tsx             Friendly 404 — also where a withdrawn report lands
     error.tsx                 Root error boundary; client, uses unstable_retry
-    login/, register/         Public auth pages
+    login/, register/         Public auth pages. /register pre-fills the village
+                              and code from an invite link — neither is trusted
     welcome/                  Village, join code and terms for a provider
                               sign-up — outside (app), or it would loop
+    join/[slug]/              Where a scanned invite QR lands — public, noindex.
+                              One screen between the camera and registration
+    invite/[slug]/            The printable invite sheet — public, noindex, needs
+                              no account. Neither page reads joinCode from the
+                              database; it arrives in the query string
     privacy/                  UK GDPR privacy notice
     terms/                    Terms of use + community guidelines
     account-closed/           Where a closed account lands — public, outside
@@ -121,7 +128,7 @@ src/
       admin/coordinators/     Platform-admin queue — the only page not scoped
                               to one village; approve promotes to COORDINATOR
       coordinator-apply/      The resident's application form + its action
-      map/                    Full-screen Leaflet map, severity pins
+      map/                    Full-screen Leaflet map, severity pins, heatmap
       incidents/              List with type + severity filters (GET form)
       incidents/[id]/         Detail — media, tags, map pin; params is a Promise
       incidents/[id]/edit/    Reporter's own edit, queue statuses only
@@ -180,8 +187,16 @@ src/
     media-uploader.tsx        Blur-then-upload; never touches the original
     location-picker.tsx       Leaflet pin picker — dynamic import, ssr: false
     ai-preview.tsx            Review / publish screens, reprocess + edit
-    incident-map.tsx          Leaflet pin layer — never import without ssr:false
-    map-view.tsx              Client wrapper: dynamic import + date-range toggle
+    incident-map.tsx          Leaflet pin + heat layers — never import without
+                              ssr:false. `mode` picks pins / heat / both
+    map-view.tsx              Client wrapper: dynamic import, date range, and the
+                              layer toggle remembered in localStorage
+    map/heatmap-layer.tsx     leaflet.heat as a react-leaflet child. The plugin
+                              is imported dynamically inside the effect
+    map/hotspot-heatmap.tsx   The dashboard's density thumbnail — heat only,
+                              not interactive
+    qr-invite.tsx             The invite QR — SVG on screen, canvas behind the
+                              download, `[data-print-region]` for the sheet
     incident-location-map.tsx Client wrapper for the detail page's single pin
     incident-card.tsx         One incident, used by preview, list and detail
     incident-actions.tsx      Detail-page actions — reporter and coordinator
@@ -204,6 +219,8 @@ src/
                               posting switch, severity floor
     dashboard/privacy-level-form.tsx  How the village covers faces — four
                               levels, each with a preview of what it looks like
+    dashboard/invite-share.tsx  The invite: link, code, copy, WhatsApp, QR. The
+                              one screen that shows a village's join code
     severity-badge.tsx        green / amber / red / purple pill
     incident-type-icon.tsx    Enum icon name → lucide component
     no-village.tsx            Shown wherever a resident has no village yet
@@ -234,6 +251,10 @@ src/
                               format, client-safe, shared by log and clipboard
     community-report.ts       The police/council documents — one incident and a
                               period. Client-safe, no rawDescription/lat/lng
+    invite.ts                 buildJoinUrl / buildInviteUrl / readJoinCodeParam —
+                              client-safe, and the code never comes from the DB
+    heatmap.ts                Severity × recency → heat intensity, plus the
+                              layer's config. Client-safe
     reports.ts                Resolves the date range, counts the period, and
                               writes the narrative when Claude is unavailable
     clipboard.ts              copyText + shareText, browser only, shared by the
@@ -305,6 +326,10 @@ tests/                        Vitest, unit only — see The test suite
   compliance-documents.test.ts  The three docs/*.md load and parse; the DPA
                               carries all eight Article 28(3) obligations
   markdown.test.ts            The parser, incl. leaving snake_case alone
+  heatmap.test.ts             The intensity scale — no point exceeds the layer's
+                              max, and the legend's CSS stops ascend
+  invite.test.ts              The invite link — the code survives, a missing one
+                              stays missing, and a bad base costs a relative path
   privacy-level.test.ts       The four levels, the free-text column's fallback
                               (including `toString`), and the write schema
 vitest.config.ts              node environment, the `@/*` alias, no setup file
@@ -714,13 +739,13 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Eleven files, ~191 assertions, covering the
+between the typecheck and the build. Thirteen files, 213 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 AI pass's failure modes, the Zod schemas, the WhatsApp channel code, the alert
 format, the CSV export's escaping and formula-injection guard, the compliance
 gate's three states, the three legal documents loading and parsing, the Markdown
-parser the compliance page renders them through, and the per-village face
-redaction level.
+parser the compliance page renders them through, the per-village face redaction
+level, the heat intensity scale and the invite link.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -1458,6 +1483,117 @@ together. Two documents: one incident, and everything published over a period.
 - The date-range boundaries are the server's midnight, not London's. See
   `resolveReportRange` for why that hour is left alone.
 
+## The village invite
+
+`src/lib/invite.ts` builds the link, `src/components/qr-invite.tsx` draws it,
+`InviteShare` on `/dashboard` hands it to the coordinator, and two public pages
+— `/join/[slug]` and `/invite/[slug]` — are where it lands. This is the other
+half of village activation: `activateVillage()` mints a join code, and until now
+nothing shared it.
+
+- **One builder, four surfaces.** `buildJoinUrl` produces
+  `https://villagewatch.app/join/<slug>?code=<CODE>`, and the QR, the clipboard,
+  the WhatsApp message and the printed sheet all call it. A link assembled at
+  four call sites is a link that will one day point four different ways — the
+  same reasoning `formatIncidentAlert` is built on, and `invite.ts` keeps the
+  same client-safe import budget so the browser can call it too.
+- **The join code travels in the URL, and the public pages never read it from
+  the database.** `findVillageBySlug` does not select the column. A page that
+  looked the code up by slug would hand a village's credential to anybody who
+  could guess a parish name, and the slugs are `name-county` — guessing is the
+  easy case. Someone opening `/invite/<slug>` with no `?code=` gets the village's
+  name and a sentence explaining what is missing. Both pages are `noindex` for
+  the same reason: a crawled invite would put the code in an index nobody can
+  rotate.
+- **`readJoinCodeParam` narrows before anything renders it.** The value goes
+  into a QR that somebody then prints a hundred of, so anything not code-shaped
+  becomes null rather than reaching the encoder.
+- **The dashboard shows the code, and `/admin/villages` deliberately does not.**
+  That is not an inconsistency. The admin page browses 10,670 parishes it has
+  nothing to do with and selects `joinCode` only to test whether one exists; this
+  is a coordinator looking at their own village, from their own session (domain
+  rule 4), at the thing they are there to hand out. The flyer is the exposure,
+  not the panel, and `regenerateJoinCode()` is the answer when one ends up
+  somewhere it should not.
+- **`/register` pre-fills from the link and trusts none of it.** The village id
+  is honoured only if it is one of the villages already on that screen, the code
+  is normalised and shown in the field rather than posted invisibly, and
+  `POST /api/auth/register` still puts both through `checkVillageJoin` — so a
+  hand-edited URL buys nothing (domain rule 5).
+- **`normalizeJoinCode` moved to `src/lib/validations.ts`.** It was in
+  `village.ts`, which imports `node:crypto` and Prisma and therefore cannot be
+  reached from a Client Component. Both sides of the comparison and the link
+  itself now share one copy; `village.ts` re-exports it so its own callers are
+  unchanged.
+- **`/join/[slug]` exists rather than sending a scan straight to `/register`.** A
+  QR code is not readable by a human, so this is the first chance anybody has had
+  to see which village they are about to join — and a village that is not
+  `ACTIVE` can say so here instead of after four filled-in fields.
+- The printed sheet is `[data-print-region]` against the rules `/reports`
+  already added to `globals.css`. Those rules are page-global, so this claims
+  Ctrl+P on whatever page it renders on — intended, since the sheet is the only
+  thing on either page anybody wants on paper, and worth knowing before a second
+  print region joins it.
+
+## The heatmap
+
+`src/lib/heatmap.ts` decides the intensities, `src/components/map/heatmap-layer.tsx`
+draws them, and two screens show them: `/map` behind a Pins / Heatmap / Both
+toggle, and `/dashboard` as a thumbnail beside the hotspot list.
+
+- **Intensity is severity weight × recency decay**, both in 0..1, so a single
+  point never exceeds the layer's `max` of 1. That is what makes the top of the
+  gradient mean *accumulation* rather than "one serious report": a handful of
+  recent moderate reports on the same corner reach red, which is the property a
+  coordinator is looking for. `tests/heatmap.test.ts` pins the ceiling down,
+  because a scale that could exceed it would paint every pin red and look like a
+  working heatmap in a screenshot.
+- **The decay is piecewise linear through the anchors it was specified with** —
+  today 1.0, 7 days 0.7, 30 days 0.3 — and floors at 0.1 rather than zero. "All
+  time" has to keep meaning all time; a weight of zero would quietly turn the
+  range toggle into a filter that does nothing past a month. The boundary test is
+  strict (`days > 30`), so 30 days old is the anchor's own 0.3.
+- **`leaflet.heat` is a 2014 plugin and is handled like one.** It has no module
+  exports, reads `L` off the global scope, and touches `document` on load. The
+  import is dynamic and inside the effect; Leaflet's own dist sets `window.L`
+  unconditionally (its comment: "Always export us to window global"), and being
+  inside a `MapContainer` is what guarantees Leaflet loaded first — there is
+  nothing to sequence by hand. `@types/leaflet.heat` augments `declare module
+  "leaflet"` rather than declaring its own, which is why `L.heatLayer` types.
+- **The layer is created once and fed new points.** `setLatLngs` redraws in
+  place; recreating it per render would flash the canvas and drop the plugin's
+  own pan and zoom listeners.
+- **The heat reads the date-filtered set the pins read.** A density map of "all
+  time" beside a pin set of "last 7 days" would be two different claims about the
+  same village.
+- **Pins are the default and the choice is remembered per device**, in
+  localStorage through `useSyncExternalStore` — the same store shape as the
+  onboarding tour and for the same reasons: localStorage cannot be read during
+  render, the server snapshot is the existing behaviour, and a resident who
+  chose the heatmap last week does not watch the pins flash first.
+- **The legend follows the layers.** A severity key beside a map with no pins
+  explains nothing, and a heat scale beside a map with no heat invites somebody
+  to read pin colours as density.
+- **`HEATMAP_LEGEND_CSS` sorts its stops, and that is a real bug it fixes.**
+  `1.0` is an integer-like key, so JavaScript enumerates it *first* —
+  `Object.keys` on the gradient returns `["1", "0.3", "0.5", "0.7"]`. Canvas does
+  not care, because `addColorStop` sorts by offset; CSS clamps a stop up to the
+  one before it, so the unsorted legend rendered as a solid red bar under a map
+  whose whole point is that red is rare. Asserted.
+- **Every coordinate feeding it was jittered by `LOCATION_FUZZ_METERS`** on the
+  way in (domain rule 2). At `radius: 50` the blob is comfortably wider than the
+  fuzz, so the heat says "around here" — which is all the underlying data
+  supports. It is not a pattern detector; `ai/detect-patterns.ts` is, against the
+  database, with `ST_DWithin`.
+- **The dashboard thumbnail is heat only and not interactive.** The hotspot list
+  beside it counts `locationText`, the landmark residents typed, which is the
+  right unit for a police report and a poor one for geography — "Mill Lane" and
+  "the bus stop on Mill Lane" are two rows and one place, and a report filed
+  without a landmark is in neither. The map is the same period read off the
+  coordinates, so the two cover each other's blind spots. `interactive={false}`
+  drops dragging and both zooms, so scrolling the page past a 200px map does not
+  zoom it.
+
 ## The village directory
 
 `prisma/seed-villages.ts`, fed by `scripts/download-ons-places.ts`. Builds the
@@ -1845,7 +1981,21 @@ open:
   §6(d) states that plainly rather than claiming cover it does not have. Its
   §6(c) is a list of the security measures actually in place, in a contract:
   removing one of them is a breach, not a stale sentence.
-- **There is a test suite now, and it covers eleven modules rather than the app.**
+- **The invite has never been scanned and the heatmap has never been drawn over
+  real reports.** Both build, both are unit tested where there is logic to test,
+  and neither has been exercised against a database — the only `ACTIVE` village is
+  `prisma/seed.ts`'s placeholder with its hardcoded `VILLAGE1` code (L7 in
+  BACKLOG.md), so the first real invite is still ahead. Two things to check on the
+  first run of each. **Print the QR sheet before printing a hundred of them**: the
+  print rules force black on transparent inside `[data-print-region]`, which an
+  SVG `fill` is untouched by in theory and a browser could still surprise us over.
+  And **watch a scan end to end** — camera to `/join/[slug]` to `/register` with
+  the village and code filled in to a `VERIFIED_RESIDENT` row — because the last
+  step is the one nothing in the suite can assert. For the heatmap, look at
+  `/map` in a village with a handful of reports and check the blobs sit where the
+  pins do: `leaflet.heat` reads `L` off the global scope, and the failure mode if
+  that ever stops being true is a silent no-op layer rather than an error.
+- **There is a test suite now, and it covers thirteen modules rather than the app.**
   `npm run test` runs Vitest over `tests/`, and `.github/workflows/ci.yml` runs
   it between the typecheck and the build. See The test suite below for what is
   asserted and what is deliberately not. Nothing yet asserts that a

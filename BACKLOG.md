@@ -1,9 +1,10 @@
 # VillageWatch — Backlog & Improvements Tracker
 
-**Last updated:** 28 July 2026 (B1, B2, B4, B5, I1, I2, T3, T4, T7, T8 closed;
-village activation landed; DPIA drafted; compliance gate and the per-village
-face redaction level added — B2/I2 are configurable rather than fixed now;
-Article 28(3) processing agreement drafted and added to the gate as L8)
+**Last updated:** 28 July 2026 (B1, B2, B4, B5, I1, I2, I3, N1, N9, T3, T4, T7,
+T8 closed; village activation landed; DPIA drafted; compliance gate and the
+per-village face redaction level added — B2/I2 are configurable rather than
+fixed now; Article 28(3) processing agreement drafted and added to the gate as
+L8; the invite is now shareable end to end and the map has a density layer)
 **Repo:** https://github.com/jdell/villagewatch
 **Domain:** https://villagewatch.app — canonical origin, `APP_ORIGIN` in
 `src/lib/constants.ts`. `www` redirects to it; there is one origin, because
@@ -18,7 +19,7 @@ resident across hosts.
 |------|--------|-------|
 | Apply `20260727180000_village_activation` | Running | The one migration never applied anywhere. Until it runs, the parish council field on `/dashboard` is disabled on screen and `/reports` falls back to the deployment-wide `DATA_CONTROLLER`. Re-run `rls_policies.sql` after it. |
 | DPIA sign-off | Running | `docs/DPIA.md` is written and is a template. It needs the council's review, the five blocker actions in its §9, and a signature. |
-| Public invite page `/join/[slug]` | Running | The remaining half of I3 — see below. Activation mints and shows the code; nothing yet shares it. |
+| Public invite page `/join/[slug]` | Done 28 Jul | Built with N9 — `/join/[slug]` is where a scanned QR lands and `/invite/[slug]` is the printable sheet. Both public, both `noindex`, and neither reads `joinCode` from the database: the code arrives in the query string or not at all. See I3. |
 
 ---
 
@@ -40,7 +41,7 @@ resident across hosts.
 |---|---------|----------|---------|
 | I1 | ~~Share summary with police/council~~ | Done 27 Jul | `/reports` — a period report with counts, breakdowns, hotspots and a Claude-written narrative (counted fallback when Claude is unavailable), plus a single-incident share button on any published report. One format for screen, clipboard, share sheet and print; "Download PDF" is `window.print()` and `@media print`. Coordinator only, published and resolved incidents only, structurally incapable of carrying raw text or coordinates. The period report is audited; the share sheet deliberately is not, because an `await` before `navigator.share()` spends the user gesture and iOS refuses the call. |
 | I2 | ~~Stronger face blurring~~ | Done 27 Jul, **configurable 28 Jul** | `FaceRedactionMode` — `redact` (solid black box) or `blur` (six-cell mosaic under a heavy Gaussian), recorded per file. As of 28 Jul the choice is the **village's**, not the reporter's: `Village.privacyLevel` (`light` 15px / `standard` 22px, the default / `heavy` 35px / `redact`) is set by a coordinator on `/dashboard` with a preview of each level, audited as `village.privacy_level_changed` (sensitive). The reporter keeps one control and it only points one way — black out faces completely — so nobody can file below what their village set. `tests/privacy-level.test.ts` covers the mapping, the fallback and the write schema. `/privacy` and the landing FAQ updated in the same commit; `/terms` never named a default, so it did not change. Needs `20260728120000_village_privacy_level`. |
-| I3 | Coordinator share invite link | High | **Half done 27 Jul.** Village activation landed, so a code now exists to share: `activateVillage()` mints it, `/admin/villages` shows it once, and `regenerateJoinCode()` rotates it. What is still missing is the sharing itself — copy button, WhatsApp hand-off, QR code, and a public `/join/[slug]` that pre-fills registration. Carried as a running task above. |
+| I3 | ~~Coordinator share invite link~~ | Done 28 Jul | Half landed 27 Jul with village activation, which minted a code to share; the sharing itself landed with N9. `InviteShare` on `/dashboard` → Village settings has the link, the code, copy buttons, a WhatsApp hand-off and the QR; `/join/[slug]` is where a scan lands and pre-fills `/register`; `/invite/[slug]` is the printable sheet a coordinator can send to whoever runs the noticeboard. Every surface builds its link from `buildJoinUrl` in `src/lib/invite.ts`, so the QR, the clipboard and the WhatsApp message cannot come apart. |
 
 ---
 
@@ -101,7 +102,7 @@ launch date slips for reasons nobody can defend to a parish clerk.
 
 | # | Feature | Details |
 |---|---------|---------|
-| N1 | Heatmap overlay | Incident density on map. |
+| N1 | ~~Heatmap overlay~~ | **Done 28 Jul.** `leaflet.heat` behind `src/components/map/heatmap-layer.tsx`, fed by `src/lib/heatmap.ts` — intensity is severity weight × recency decay, so red means accumulation rather than one serious report. `/map` gains a Pins / Heatmap / Both toggle, default Pins, remembered per device in localStorage through `useSyncExternalStore`, and the heat reads the same date-filtered set the pins do. `/dashboard` gains a non-interactive density thumbnail beside the hotspot list, which is the same period read off coordinates rather than off the landmark text. `tests/heatmap.test.ts` covers the scale. |
 | N2 | Email digest | Weekly digest via email. |
 | N3 | Notification radius filtering | Alert within X metres. |
 | N4 | Severity filter | Alert on Moderate+ or High+. |
@@ -109,7 +110,7 @@ launch date slips for reasons nobody can defend to a parish clerk.
 | N6 | ONS seed all England | ~10,000 parishes. Needs a server-side search endpoint for the picker first. |
 | N7 | Telegram Channel | Free official Bot API. |
 | N8 | Auto-posting via WAHA/Whapi | When manual copy-paste becomes painful. |
-| N9 | QR code for village invite | For printed flyers. Pairs with the rest of I3. |
+| N9 | ~~QR code for village invite~~ | **Done 28 Jul.** `qrcode.react` behind `src/components/qr-invite.tsx` — an SVG at 256px on screen because that is what prints, and an off-screen 1024px canvas behind "Download QR" because `toDataURL` needs one. "Print" is `window.print()` against the `[data-print-region]` rules already in `globals.css`, and the sheet carries the QR, the village name, the join code as text and the three steps. Rendered on `/dashboard` for the coordinator's own village and on the public `/invite/[slug]`. The code travels in the URL and is never read from the database by either public page — see `src/lib/invite.ts`. Closes the rest of I3. |
 | N10 | Police API integration | Direct feed to police systems. |
 | N11 | Multi-language support | Welsh, Polish, other community languages. |
 | N12 | Render `PatternAlert` rows | The digest creates them and nothing shows them; acknowledge and dismiss have no UI. The RLS policy is already in place, waiting on the screen. |
@@ -144,6 +145,8 @@ launch date slips for reasons nobody can defend to a parish clerk.
 | 27 Jul | DPIA drafted — `docs/DPIA.md` (L1) |
 | 28 Jul | Article 28(3) processing agreement drafted; third document in the compliance gate (L8, DPIA A2) |
 | 28 Jul | Real domain — `villagewatch.app` throughout; `APP_ORIGIN` replaces the `localhost` fallback behind push, email and WhatsApp links |
+| 28 Jul | Invite QR code, `/join/[slug]` and the printable `/invite/[slug]`; registration pre-fills from the link (N9, I3) |
+| 28 Jul | Heatmap overlay — Pins / Heatmap / Both on `/map`, density thumbnail on `/dashboard` (N1) |
 
 ---
 

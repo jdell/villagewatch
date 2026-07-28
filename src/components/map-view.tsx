@@ -1,20 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
-import { MapPinned } from "lucide-react";
-import type { MapIncident } from "@/components/incident-map";
+import { Flame, MapPinned } from "lucide-react";
+import type { MapIncident, MapMode } from "@/components/incident-map";
 import { SEVERITIES } from "@/lib/constants";
+import { HEATMAP_LEGEND_CSS } from "@/lib/heatmap";
 
 /**
  * The full-screen map, plus the controls that sit on top of it.
  *
- * This component exists to own two things the map itself should not: the
+ * This component exists to own three things the map itself should not: the
  * `next/dynamic` call, which is only legal from a Client Component because
- * Leaflet touches `window` on import, and the date range, which is a filter
- * over data already in the browser rather than another round trip. The server
- * sends the village's incidents once; narrowing to seven days is then instant,
- * which is the difference between a toggle people use and one they do not.
+ * Leaflet touches `window` on import; the date range, which is a filter over
+ * data already in the browser rather than another round trip; and the layer
+ * choice below. The server sends the village's incidents once, so narrowing to
+ * seven days or switching to density is instant — which is the difference
+ * between a control people use and one they do not.
+ *
+ * The heat layer reads the *filtered* set, so the date range applies to both
+ * layers. A density map of "all time" and a pin set of "last 7 days" on the same
+ * screen would be two different claims about the same village.
  */
 
 const IncidentMap = dynamic(
@@ -31,6 +37,77 @@ const RANGES = [
   { value: 0, label: "All time" },
 ] as const;
 
+const MODES = [
+  { value: "pins", label: "Pins" },
+  { value: "heat", label: "Heatmap" },
+  { value: "both", label: "Both" },
+] as const satisfies readonly { value: MapMode; label: string }[];
+
+// ---------------------------------------------------------------------------
+// Which layer, remembered
+// ---------------------------------------------------------------------------
+
+/**
+ * The chosen layer, in localStorage.
+ *
+ * Same shape as the onboarding tour's store and for the same reasons:
+ * localStorage cannot be read during render, reading it in an effect and calling
+ * `setState` is the cascading render React lints against, and
+ * `useSyncExternalStore` has a server snapshot for exactly this. The server
+ * snapshot is `pins`, which is both the default and the existing behaviour — so
+ * a resident who has never touched the control gets no re-render, and one who
+ * chose the heatmap last week gets it on the pass after hydration rather than
+ * after a flash of the wrong map.
+ *
+ * Device-local on purpose. This is a way of looking at the map, not a setting
+ * about the village, and it costs nothing to be wrong about on a new device.
+ */
+const STORAGE_KEY = "villagewatch:map-mode";
+
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  // Fires in the *other* tabs, so a resident with the map open twice does not
+  // have two of them disagreeing.
+  window.addEventListener("storage", listener);
+
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+function isMode(value: string | null): value is MapMode {
+  return value === "pins" || value === "heat" || value === "both";
+}
+
+function storedMode(): MapMode {
+  try {
+    const value = window.localStorage.getItem(STORAGE_KEY);
+    return isMode(value) ? value : "pins";
+  } catch {
+    // Private browsing with storage blocked. The default is a working map.
+    return "pins";
+  }
+}
+
+/** No localStorage on the server, so it renders the default. */
+function defaultMode(): MapMode {
+  return "pins";
+}
+
+function rememberMode(mode: MapMode): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, mode);
+  } catch {
+    // Worst case the choice does not survive a reload.
+  }
+
+  // `storage` does not fire in the tab that made the change.
+  for (const listener of listeners) listener();
+}
+
 type MapViewProps = {
   incidents: readonly MapIncident[];
   center: { lat: number; lng: number };
@@ -45,6 +122,10 @@ export function MapView({
   villageName,
 }: MapViewProps) {
   const [days, setDays] = useState<number>(30);
+
+  // No `setState` behind this: the store *is* localStorage, and writing to it
+  // notifies every subscriber including this one.
+  const mode = useSyncExternalStore(subscribe, storedMode, defaultMode);
 
   /**
    * The clock, read once when the view mounts.
@@ -65,6 +146,9 @@ export function MapView({
     );
   }, [incidents, days, now]);
 
+  const showPins = mode !== "heat";
+  const showHeat = mode !== "pins";
+
   return (
     // `map-surface` isolates Leaflet's z-index scale from the rest of the page
     // — see the note in globals.css. Without it the zoom control at 1000 sits
@@ -82,8 +166,10 @@ export function MapView({
         center={center}
         zoom={zoom}
         now={now}
+        mode={mode}
         // Framing the pins beats the village's stored viewport once there is
-        // anything to frame, and re-frames when the range changes.
+        // anything to frame, and re-frames when the range changes. It applies to
+        // the heat layer too — the blobs are drawn from the same set.
         fitToIncidents={visible.length > 0}
         className="size-full"
       />
@@ -99,48 +185,98 @@ export function MapView({
           </p>
         </div>
 
-        <div
-          className="pointer-events-auto inline-flex rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
-          role="group"
-          aria-label="Date range"
-        >
-          {RANGES.map((range) => (
-            <button
-              key={range.value}
-              type="button"
-              onClick={() => setDays(range.value)}
-              aria-pressed={days === range.value}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                days === range.value
-                  ? "bg-brand-600 text-white"
-                  : "text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              {range.label}
-            </button>
-          ))}
+        <div className="pointer-events-none flex flex-wrap items-start justify-end gap-2">
+          <div
+            className="pointer-events-auto inline-flex rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
+            role="group"
+            aria-label="Map layer"
+          >
+            {MODES.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => rememberMode(option.value)}
+                aria-pressed={mode === option.value}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  mode === option.value
+                    ? "bg-brand-600 text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="pointer-events-auto inline-flex rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
+            role="group"
+            aria-label="Date range"
+          >
+            {RANGES.map((range) => (
+              <button
+                key={range.value}
+                type="button"
+                onClick={() => setDays(range.value)}
+                aria-pressed={days === range.value}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  days === range.value
+                    ? "bg-brand-600 text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[800] flex justify-center p-3 sm:justify-start sm:p-4">
-        <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
-          <p className="text-xs font-medium text-slate-500">Severity</p>
-          <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-            {SEVERITIES.map((severity) => (
-              <li
-                key={severity.value}
-                className="inline-flex items-center gap-1.5 text-xs text-slate-700"
-              >
-                <span
-                  className="size-2.5 rounded-full"
-                  style={{ backgroundColor: severity.pin }}
-                  aria-hidden
-                />
-                {severity.label}
-              </li>
-            ))}
-          </ul>
-        </div>
+      {/*
+        The legend follows the layers rather than sitting there regardless: a
+        severity key beside a map with no pins on it explains nothing, and a heat
+        scale beside a map with no heat is worse — it invites somebody to read
+        pin colours as density.
+      */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[800] flex flex-wrap justify-center gap-2 p-3 sm:justify-start sm:p-4">
+        {showPins && (
+          <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+            <p className="text-xs font-medium text-slate-500">Severity</p>
+            <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+              {SEVERITIES.map((severity) => (
+                <li
+                  key={severity.value}
+                  className="inline-flex items-center gap-1.5 text-xs text-slate-700"
+                >
+                  <span
+                    className="size-2.5 rounded-full"
+                    style={{ backgroundColor: severity.pin }}
+                    aria-hidden
+                  />
+                  {severity.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {showHeat && (
+          <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <Flame className="size-3.5 text-slate-400" aria-hidden />
+              Density
+            </p>
+            <div
+              className="mt-1.5 h-2 w-32 rounded-full"
+              style={{ background: HEATMAP_LEGEND_CSS }}
+              aria-hidden
+            />
+            <div className="mt-1 flex justify-between text-[11px] text-slate-500">
+              <span>Quieter</span>
+              <span>Busier</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {incidents.length === 0 && (
