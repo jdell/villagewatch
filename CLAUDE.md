@@ -895,8 +895,15 @@ configuration one.
   look like a controlled process in the trail while standing for something
   nobody was shown. `src/lib/markdown.ts` parses to a typed tree and
   `MarkdownView` renders it as React, so there is no HTML string in the path and
-  nothing to sanitise. It supports no `_underscore_` emphasis on purpose: both
-  documents are full of snake_case column names outside backticks.
+  nothing to sanitise. It supports no `_underscore_` emphasis on purpose, so a
+  snake_case identifier written outside backticks cannot have its middle eaten.
+- **Both documents are written for a parish councillor, not for a developer.**
+  They name no source file, no function and no column, and they explain what the
+  service does rather than how it does it — the council is the data controller
+  and this is the document it signs. Every statement in them is still a
+  statement about how the code behaves, so the rule the privacy notice is held
+  to applies here too: change the behaviour and change the document in the same
+  commit, in the same plain English.
 - **`docs/*.md` need `outputFileTracingIncludes`.** Nothing imports them, so
   Next's tracing would leave them out of the serverless bundle — it works in
   `npm run dev` and fails **only in production**. `next.config.ts` names both.

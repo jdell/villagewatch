@@ -9,10 +9,12 @@ import { headingId, parseMarkdown, tableOfContents } from "@/lib/markdown";
  * silently vanished or a table row that lost a cell would be a legal document
  * misrepresented on the screen where somebody signs it.
  *
- * The underscore case is the one this was written for. Both documents are full
- * of snake_case column names outside backticks — `dpia_accepted_at`,
- * `raw_description`, `auto_approve` — and every Markdown implementation that
- * supports `_emphasis_` eats the middle of them.
+ * The underscore case is the one this was written for. Every Markdown
+ * implementation that supports `_emphasis_` eats the middle of a snake_case
+ * identifier written outside backticks — `dpia_accepted_at`, `raw_description`,
+ * `auto_approve`. The two documents have since been rewritten in plain English
+ * for a parish councillor and name no columns, so nothing in `docs/` exercises
+ * this today; the assertion stays because the failure it catches is silent.
  */
 
 describe("inline parsing", () => {

@@ -26,11 +26,13 @@
  * untrusted input. It renders our own repository files, which is the whole
  * scope. Notable omissions, each of them deliberate:
  *
- * - **No `_underscore_` emphasis.** Both documents are full of snake_case column
- *   names — `dpia_accepted_at`, `auto_approve`, `raw_description` — and half of
- *   them appear outside backticks. Underscore emphasis would eat the middle of
- *   every one. `*asterisks*` are unambiguous here and are what the documents
- *   use.
+ * - **No `_underscore_` emphasis.** Underscore emphasis eats the middle of a
+ *   snake_case identifier written outside backticks — `dpia_accepted_at`,
+ *   `auto_approve`, `raw_description` — which is how it silently mangles a
+ *   sentence nobody proofreads again. Both documents have since been rewritten
+ *   for a parish councillor and no longer name a column at all, but the guard
+ *   costs nothing and the next paragraph somebody adds may. `*asterisks*` are
+ *   unambiguous here and are what the documents use.
  * - **No nested lists, no images, no HTML passthrough.** Nothing in either
  *   document uses them, and supporting a construct nothing exercises is a
  *   construct nobody has read the output of.
