@@ -27,6 +27,47 @@
 
 ---
 
+## Summary
+
+*A plain-English overview of what follows. It is not a substitute for the
+assessment itself, and every conclusion in it is drawn from the sections below.*
+
+This Data Protection Impact Assessment identifies **12 privacy risks** in
+running community safety reporting for a village, and records what reduces each
+of them.
+
+**What the service already does, with nothing required from the council or its
+coordinators.** Faces in photographs are found and covered automatically on the
+reporter's own device, before the file leaves it. Map positions are moved by a
+random distance before they are stored, so no exact location is ever held. An
+artificial intelligence model rewrites every report to remove names, vehicle
+registrations and addresses, and the reporter reads and accepts that rewrite
+before anything is saved. The reporter's original wording is kept apart from
+everything else and is never published. The database itself keeps one village's
+reports away from another's. Reports are archived after 12 months and
+photographs deleted after 6, automatically and overnight. None of this needs
+switching on, configuring or maintaining.
+
+**What the assessment concludes.** After those safeguards, **no risk is rated
+high**: nine of the twelve are medium and three are low. Consultation with the
+Information Commissioner before starting is therefore not required. The
+assessment is deliberate about why nine remain at medium — they sit where
+software cannot reach them, in the judgement of the coordinators who review
+reports, and in the position of a person who is described in a report and does
+not know it exists.
+
+**What the council still has to do.** Accepting this document and the
+Appropriate Policy Document on the compliance page is what allows the village to
+begin accepting reports, and it is the coordinator's part. It is not the whole
+of the council's part. Five actions at §9 are marked **blocker** and belong to
+the council rather than to the software — chiefly a written contract with the
+processor, the council's real details and ICO registration in the privacy
+notice, written guidance for coordinators, and a procedure for a data breach.
+Four of the five are documents the council writes; no software can produce them.
+Section 9 sets out who owns each action, and §10.3 is where the council signs.
+
+---
+
 ## Step 1 — Is a DPIA required?
 
 Yes. Under UK GDPR Article 35(1) a DPIA is required where processing is likely
@@ -578,24 +619,60 @@ The practice is real but it is a working practice rather than a guarantee.
 
 ## Step 9 — Measures to reduce risk
 
-| # | Action | Addresses | Owner | Priority | Due | Status |
-|---|---|---|---|---|---|---|
-| **A1** | Adopt an **Appropriate Policy Document** under Schedule 1 Part 4 DPA 2018 for criminal offence data, and identify the Schedule 1 condition relied on | §4.3 | Controller | **Blocker** | Before launch | Not started |
-| **A2** | Execute a **written data processing agreement** between the parish council (controller) and Yakasista Ltd (processor), meeting Article 28(3) | §5.4 | Controller + processor | **Blocker** | Before launch | Not started |
-| **A3** | Verify or replace the Slack disclosure — either a signed agreement, or move the staff channel to a service already covered | R6, §5.4 | Processor | Medium | Before a second parish | Disclosed in the notice |
-| **A4** | Write **coordinator terms and review guidance** — what to reject, how to handle a report about a child, what "obviously about one household" looks like, and the consequences of misusing access | R1, R8, R9, R11 | Controller | **Blocker** | Before launch | Not started |
-| **A5** | Replace the placeholder controller details in the privacy notice with the council's real name, address, contact and **ICO registration number**; register with the ICO if not already registered | §6 | Controller | **Blocker** | Before launch | Placeholders in place |
-| **A6** | Carry out a deletion and an overnight housekeeping run against real data once, and confirm the stored photographs are genuinely gone | §6, §7 | Processor | High | Before launch | Never run |
-| **A7** | Decide and document what happens to the sign-in record held by the authentication provider when an account is closed; either delete it or state the retention in the notice | §6 | Processor | High | Before launch | Open |
-| **A8** | Either enforce the audit trail and dormant account retention periods, or amend the privacy notice to state what actually happens | §7 | Processor | High | Before launch | Open |
-| **A9** | Verify Anthropic's current terms — transfer mechanism, training exclusion, retention period — and record the date checked | R6, §5.1 | Controller | High | Before launch | Not verified |
-| **A10** | Write a **personal data breach procedure** — detection, the 72-hour ICO notification, resident notification, and who decides | R10 | Controller | **Blocker** | Before launch | Not started |
-| **A11** | Verify the OneSignal data processing agreement and its transfer mechanism | §5.4 | Controller | High | Before launch | Not verified |
-| **A12** | Consult residents through the parish newsletter or a public meeting and record the outcome at §3 | §3 | Controller | High | Before launch | Not started |
-| **A13** | Maintain a **record of processing activities** under Article 30 | Accountability | Controller | Medium | Before launch | Not started |
-| **A14** | Remove the sample demonstration data from any database a resident will use, and issue a fresh village join code | Data quality | Processor | High | Before launch | Open |
-| **A15** | Give residents a self-service copy of their own data | §6, Article 20 | Processor | Low | Post-launch | Open |
-| **A16** | Review this DPIA at six months, or sooner on any change to the AI provider, the sub-processor list, retention, or the disclosure routes | R12 | Controller | Medium | Six months after launch | Scheduled |
+**The mitigations described at §8 are built into the service and are in place
+now.** Covering faces before a photograph is uploaded, shifting map positions
+before they are stored, the AI rewrite, keeping the original wording apart from
+everything else, the village boundary enforced by the database, the recording of
+every sensitive action, and the overnight archiving of old reports all operate
+by default. They require no decision, no configuration and no action from the
+council or its coordinators, and nothing in this section asks for any of them to
+be built.
+
+**The actions below are the things software cannot do.** They are documents,
+contracts, registrations and human judgement, and they are listed here because a
+DPIA that recorded only what the software handles would be an assessment of the
+easy half.
+
+**What "blocker" means.** A blocker must be complete before the service
+processes real resident data. It is *not* a precondition of accepting this
+document on the compliance page: accepting the two documents is what allows a
+village to begin, and completing the blockers is what makes beginning lawful.
+The council should treat them as two halves of one decision rather than as two
+separate occasions.
+
+### 9.1 Actions for the council, as data controller
+
+Four of the five blockers are here, and four of those five are documents the
+council writes. Nothing in the software can produce them, and none of them is
+waiting on the developer.
+
+| # | Action | Addresses | Priority | Due | Status |
+|---|---|---|---|---|---|
+| **A1** | Adopt an **Appropriate Policy Document** under Schedule 1 Part 4 DPA 2018 for criminal offence data, and identify the Schedule 1 condition relied on. The accompanying template is drafted and ready for the council to review and sign; adopting it is the council's act, and until it is signed the template is a draft | §4.3 | **Blocker** | Before launch | Template drafted, not yet adopted |
+| **A2** | Execute a **written data processing agreement** with Yakasista Ltd (processor), meeting Article 28(3). Jointly with the processor | §5.4 | **Blocker** | Before launch | Not started |
+| **A4** | Write **coordinator terms and review guidance** — what to reject, how to handle a report about a child, what "obviously about one household" looks like, and the consequences of misusing access | R1, R8, R9, R11 | **Blocker** | Before launch | Not started |
+| **A5** | Replace the placeholder controller details in the privacy notice with the council's real name, address, contact and **ICO registration number**; register with the ICO if not already registered | §6 | **Blocker** | Before launch | Placeholders in place |
+| **A10** | Write a **personal data breach procedure** — detection, the 72-hour ICO notification, resident notification, and who decides | R10 | **Blocker** | Before launch | Not started |
+| **A9** | Verify Anthropic's current terms — transfer mechanism, training exclusion, retention period — and record the date checked | R6, §5.1 | High | Before launch | Not verified |
+| **A11** | Verify the OneSignal data processing agreement and its transfer mechanism | §5.4 | High | Before launch | Not verified |
+| **A12** | Consult residents through the parish newsletter or a public meeting and record the outcome at §3 | §3 | High | Before launch | Not started |
+| **A13** | Maintain a **record of processing activities** under Article 30 | Accountability | Medium | Before launch | Not started |
+| **A16** | Review this DPIA at six months, or sooner on any change to the AI provider, the sub-processor list, retention, or the disclosure routes | R12 | Medium | Six months after launch | Scheduled |
+
+### 9.2 Actions for Yakasista Ltd, as processor
+
+Listed for completeness and for the council's oversight. **No action is required
+from the council or its coordinators on any of these**, beyond being told when
+they are done.
+
+| # | Action | Addresses | Priority | Due | Status |
+|---|---|---|---|---|---|
+| **A3** | Verify or replace the Slack disclosure — either a signed agreement, or move the staff channel to a service already covered | R6, §5.4 | Medium | Before a second parish | Disclosed in the notice |
+| **A6** | Carry out a deletion and an overnight housekeeping run against real data once, and confirm the stored photographs are genuinely gone | §6, §7 | High | Before launch | Never run |
+| **A7** | Decide and document what happens to the sign-in record held by the authentication provider when an account is closed; either delete it or state the retention in the notice | §6 | High | Before launch | Open |
+| **A8** | Either enforce the audit trail and dormant account retention periods, or amend the privacy notice to state what actually happens | §7 | High | Before launch | Open |
+| **A14** | Remove the sample demonstration data from any database a resident will use, and issue a fresh village join code | Data quality | High | Before launch | Open |
+| **A15** | Give residents a self-service copy of their own data | §6, Article 20 | Low | Post-launch | Open |
 
 ---
 
