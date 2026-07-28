@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.20](https://github.com/jdell/villagewatch/compare/v0.1.19...v0.1.20) (2026-07-28)
+
+
+### Features
+
+* invite QR code and map heatmap overlay ([aae92e7](https://github.com/jdell/villagewatch/commit/aae92e780cc48273b86e8b5d9bd324696b3e57d3))
+
 ### [0.1.19](https://github.com/jdell/villagewatch/compare/v0.1.18...v0.1.19) (2026-07-28)
 
 
