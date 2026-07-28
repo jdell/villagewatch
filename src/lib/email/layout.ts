@@ -1,4 +1,4 @@
-import { APP_NAME } from "@/lib/constants";
+import { APP_NAME, APP_ORIGIN } from "@/lib/constants";
 
 /**
  * The shared shell every VillageWatch email is rendered into, and the helpers
@@ -28,9 +28,15 @@ import { APP_NAME } from "@/lib/constants";
  * formatting.
  */
 
-/** Canonical origin. Absolute URLs are mandatory — an email has no base href. */
+/**
+ * Canonical origin. Absolute URLs are mandatory — an email has no base href.
+ *
+ * Falls back to `APP_ORIGIN` rather than `localhost` for the same reason the
+ * alert and the push deep link do: an email is read on a machine that is not
+ * the one that rendered it.
+ */
 export function appUrl(path = "/"): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? APP_ORIGIN;
   return new URL(path, base).toString();
 }
 

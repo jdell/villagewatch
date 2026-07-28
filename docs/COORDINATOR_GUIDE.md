@@ -17,6 +17,10 @@ VillageWatch is a way for the people who live in your village to tell each other
 what they have seen, without any of them having to put their name, their
 neighbour's name or a car registration in front of the whole village.
 
+It lives at **villagewatch.app**. There is nothing to install — a resident opens
+that address in the browser they already use, and their phone will offer to add
+it to the home screen, after which it behaves like any other app.
+
 A resident opens the app and describes what happened in their own words. Before
 anything is saved, the description is rewritten to take out the details that
 identify people — names, registrations, house numbers, descriptions that only
@@ -420,14 +424,15 @@ group.
 Your village has a join code — six characters, no easily confused letters,
 designed to be read aloud down the phone or printed in a newsletter.
 
-A resident goes to the sign-up page, finds your village in the list, and enters
-that code. It is the code that says they were invited by the village rather than
-having simply found it.
+A resident goes to **villagewatch.app/register**, finds your village in the
+list, and enters that code. It is the code that says they were invited by the
+village rather than having simply found it.
 
-Get the code to residents the way you already reach them: the parish newsletter,
-the noticeboard, the existing WhatsApp group, the annual meeting. It is not a
-secret in the password sense — it is a way of keeping out somebody two counties
-away who liked the look of the map — but do not post it on a public website.
+Get the address and the code to residents the way you already reach them: the
+parish newsletter, the noticeboard, the existing WhatsApp group, the annual
+meeting. The address is public and can go anywhere. The code is not a secret in
+the password sense — it is a way of keeping out somebody two counties away who
+liked the look of the map — but do not post it on a public website.
 
 If a code gets somewhere it should not, ask us to issue a new one. Everybody
 already signed up stays signed up; only new joiners need the new code.

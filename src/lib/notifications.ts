@@ -14,6 +14,7 @@ import {
   type ChannelAlertResult,
 } from "@/lib/whatsapp-channel";
 import {
+  APP_ORIGIN,
   COORDINATOR_ROLES,
   LOCATION_FUZZ_METERS,
   MAX_PUSH_RECIPIENTS,
@@ -365,7 +366,7 @@ async function recordNotifications(
 }
 
 function absoluteUrl(path: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? APP_ORIGIN;
   return new URL(path, base).toString();
 }
 

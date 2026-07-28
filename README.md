@@ -21,6 +21,8 @@ the dots by hand.
 [![Claude](https://img.shields.io/badge/Claude-Sonnet%205-D97757?logo=anthropic&logoColor=white)](https://www.anthropic.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+**[villagewatch.app](https://villagewatch.app)**
+
 </div>
 
 ---
@@ -80,7 +82,8 @@ the dots by hand.
 git clone https://github.com/jdell/villagewatch.git
 cd villagewatch
 npm install
-cp .env.example .env.local   # fill in the Supabase values
+cp .env.example .env.local   # fill in the Supabase values, and set
+                             # NEXT_PUBLIC_APP_URL to http://localhost:3000
 npx prisma migrate dev --name init
 psql "$DIRECT_URL" -f prisma/sql/postgis.sql       # spatial triggers + indexes
 psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql  # row-level security

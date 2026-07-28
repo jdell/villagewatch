@@ -4,6 +4,7 @@
 |---|---|
 | **Document status** | **TEMPLATE — not yet reviewed or signed by either party** |
 | **Version** | 0.1 |
+| **Service** | VillageWatch — villagewatch.app |
 | **Controller** | *[Parish Council name]* |
 | **Processor** | Yakasista Ltd |
 | **Village** | *[Village name]* |
@@ -69,7 +70,8 @@ obligations need to mean anything.
 | Registered in | England and Wales |
 
 In this document, "the council" means the controller and "the service" means
-VillageWatch, the community safety reporting platform operated by the processor.
+VillageWatch, the community safety reporting platform operated by the processor
+at **villagewatch.app**.
 
 ---
 

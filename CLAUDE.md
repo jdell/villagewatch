@@ -26,6 +26,7 @@ flags clusters before anyone joins the dots by hand.
 | Push       | OneSignal — `@onesignal/node-onesignal` server, v16 web SDK   |
 | Toasts     | sonner                                                       |
 | Hosting    | Vercel, `lhr1` (two crons in `vercel.json`)                   |
+| Domain     | `villagewatch.app` — see The canonical origin                 |
 | Versioning | `standard-version` + Conventional Commits, bumped by CI       |
 
 ---
@@ -770,6 +771,44 @@ redaction level.
   browser, and a suite that needed any of them would stop being the thing CI can
   run on every push. The gap that matters most is named in Not built yet —
   nothing asserts that a `PENDING_REVIEW` village still queues.
+
+## The canonical origin
+
+`https://villagewatch.app`. It appears in the codebase exactly twice — as
+`APP_ORIGIN` in `src/lib/constants.ts` and as the `.env.example` default — and
+everything else builds absolute links from `NEXT_PUBLIC_APP_URL`, with
+`APP_ORIGIN` as the fallback when it is unset.
+
+- **The fallback is the real domain rather than `localhost`, and that is the
+  change.** Three surfaces build absolute URLs — the "View details" line in a
+  pasted WhatsApp alert (`format-alert.ts`), a push deep link
+  (`notifications.ts`) and an email link (`email/layout.ts`) — and all three are
+  read somewhere other than the machine that rendered them. A missing
+  environment variable used to produce a link that could not work for anybody,
+  and in the WhatsApp case it was pasted onto a public feed by a coordinator
+  with no way to see which of the two hosts they had. Failing to the real origin
+  is wrong only on a deployment that is not this one; failing to `localhost` was
+  wrong everywhere but a laptop, where `.env.local` sets the variable anyway.
+- **`NEXT_PUBLIC_APP_URL` still wins wherever it is set**, so a preview
+  deployment describes itself. That is also why `metadataBase` in
+  `src/app/layout.tsx` reads the variable first and only then `APP_ORIGIN`.
+- **`.env.example` now defaults to production**, which is the one place this
+  costs something: a fresh clone has to change it to `http://localhost:3000` in
+  its own `.env.local` or every link it generates points at the live site. The
+  file says so, and so does the README's quick start.
+- **One canonical host, not two.** `www.villagewatch.app` is a redirect rather
+  than a second origin: `NEXT_PUBLIC_APP_URL` is a single value, and a resident
+  who signed in on one host and follows a push notification to the other arrives
+  without their session cookie.
+- **Three places outside the repo name the same host and all fail quietly if
+  they disagree**: the Vercel environment variable, both fields of Supabase →
+  Authentication → URL Configuration (a mismatch there sends a resident who
+  signed in with Google to somebody else's `localhost`), and the OneSignal site
+  URL. SETUP.md steps 7b, 8 and 10 cover them.
+- `tests/format-alert.test.ts` deliberately passes `https://villagewatch.example`
+  rather than the real domain. It is a fixture, and the point of it is that the
+  function threads the base it is handed through to the link — an assertion
+  against the production host would still pass if the argument were ignored.
 
 ## Deployment guardrails
 

@@ -2,6 +2,7 @@ import type { Severity } from "@/generated/prisma/enums";
 import { formatTimeAgo } from "@/lib/format";
 import {
   ALERT_DESCRIPTION_MAX_CHARS,
+  APP_ORIGIN,
   SEVERITY_META,
   WHATSAPP_POST_MAX_CHARS,
 } from "@/lib/constants";
@@ -65,9 +66,13 @@ export type AlertIncident = {
  * in a Server Component, a route handler and the browser — which matters,
  * because the link in a pasted alert and the link in a push notification have to
  * point at the same place.
+ *
+ * Unset, it falls back to `APP_ORIGIN` rather than to `localhost`: this link is
+ * pasted into a public channel by a coordinator who cannot see which of the two
+ * they got.
  */
 export function appBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return process.env.NEXT_PUBLIC_APP_URL ?? APP_ORIGIN;
 }
 
 /**
@@ -115,7 +120,7 @@ export function truncateWords(value: string, max: number): string {
  *
  * ⚠️ Pattern: fourth report in this area this month
  *
- * View details: https://villagewatch.example/incidents/abc123
+ * View details: https://villagewatch.app/incidents/abc123
  * ```
  *
  * **The link is never sacrificed to the length limit.** The header, the place,

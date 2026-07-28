@@ -1169,6 +1169,21 @@ export const APP_TAGLINE = "Keep your village safe";
 export const APP_DESCRIPTION =
   "Report what you see in seconds. AI strips out personal details, plots it on a live map, and alerts your neighbours when a pattern emerges.";
 
+/**
+ * The canonical production origin.
+ *
+ * `NEXT_PUBLIC_APP_URL` is what every absolute link is actually built from —
+ * this is only the fallback for when it is unset, and it is deliberately the
+ * real domain rather than `localhost`. The three surfaces that build absolute
+ * URLs (a pasted WhatsApp alert, a push deep link, an email) are all read
+ * somewhere other than the machine that rendered them, so a missing environment
+ * variable used to produce a link that could not work for anybody — and in the
+ * WhatsApp case, on a public feed. Failing to the real origin is wrong only on
+ * a deployment that is not this one; failing to `localhost` was wrong
+ * everywhere but a developer's laptop, where `.env.local` sets it anyway.
+ */
+export const APP_ORIGIN = "https://villagewatch.app";
+
 /** Routes that require a signed-in user. Mirrored by `src/proxy.ts`. */
 export const PROTECTED_ROUTES = [
   "/map",

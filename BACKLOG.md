@@ -5,6 +5,10 @@ village activation landed; DPIA drafted; compliance gate and the per-village
 face redaction level added — B2/I2 are configurable rather than fixed now;
 Article 28(3) processing agreement drafted and added to the gate as L8)
 **Repo:** https://github.com/jdell/villagewatch
+**Domain:** https://villagewatch.app — canonical origin, `APP_ORIGIN` in
+`src/lib/constants.ts`. `www` redirects to it; there is one origin, because
+`NEXT_PUBLIC_APP_URL` is one value and a session cookie does not follow a
+resident across hosts.
 
 ---
 
@@ -139,6 +143,7 @@ launch date slips for reasons nobody can defend to a parish clerk.
 | 27 Jul | Test data and stub audit (B5) |
 | 27 Jul | DPIA drafted — `docs/DPIA.md` (L1) |
 | 28 Jul | Article 28(3) processing agreement drafted; third document in the compliance gate (L8, DPIA A2) |
+| 28 Jul | Real domain — `villagewatch.app` throughout; `APP_ORIGIN` replaces the `localhost` fallback behind push, email and WhatsApp links |
 
 ---
 

@@ -5,7 +5,7 @@
 | **Document status** | **TEMPLATE — not yet reviewed or signed** |
 | **Version** | 0.1 |
 | **Controller** | *[Parish Council name]* |
-| **Service** | VillageWatch community safety reporting |
+| **Service** | VillageWatch community safety reporting — villagewatch.app |
 | **Processor** | Yakasista Ltd |
 | **Prepared on** | 27 July 2026 |
 | **Signed on** | *(pending — see §8)* |

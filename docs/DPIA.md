@@ -6,6 +6,7 @@
 |---|---|
 | **Document status** | **DRAFT TEMPLATE — not yet reviewed or signed off** |
 | **Version** | 0.1 |
+| **Service** | VillageWatch — villagewatch.app |
 | **Prepared by** | Yakasista Ltd (processor) |
 | **Prepared on** | 27 July 2026 |
 | **Controller** | *[Parish Council name]* — one controller per village |

@@ -103,7 +103,7 @@ not the bare `postgres` the direct string uses.
 Also set:
 
 ```bash
-NEXT_PUBLIC_APP_URL="http://localhost:3000"   # your real domain in production
+NEXT_PUBLIC_APP_URL="http://localhost:3000"   # https://villagewatch.app in production
 CRON_SECRET="$(openssl rand -base64 32)"      # see step 11
 ADMIN_EMAILS="you@example.com"                # your own sign-in address
 ```
@@ -327,7 +327,7 @@ id and secret, enable it.
 and getting the second one wrong produces a failure that looks like a bug in
 this app:
 
-- **Site URL** — the fallback. Set it to the production origin. Leave it at
+- **Site URL** — the fallback. Set it to `https://villagewatch.app`. Leave it at
   `http://localhost:3000` and every resident who signs in from the deployed site
   is sent to their own machine after consenting.
 - **Redirect URLs** — the allow list. Add every origin the button can be pressed
@@ -335,7 +335,8 @@ this app:
 
   ```
   http://localhost:3000/**
-  https://your-production-domain/**
+  https://villagewatch.app/**
+  https://www.villagewatch.app/**
   https://villagewatch-*-<your-vercel-scope>.vercel.app/**
   ```
 
@@ -383,7 +384,7 @@ state, not a bug.
 
 To turn push on: <https://onesignal.com> → new **Web** app.
 
-- Site URL: your production URL.
+- Site URL: `https://villagewatch.app`.
 - **Service worker path: `/onesignal/`, filename `OneSignalSDKWorker.js`.**
   This is not the OneSignal default. The root scope belongs to VillageWatch's
   own offline worker at `/sw.js`, and a scope can have exactly one controlling
@@ -454,7 +455,7 @@ path `/onesignal/` and filename `OneSignalSDKWorker.js`, matching
 SDK versions still resolve `init()`. Confirm it directly:
 
 ```bash
-curl -sI https://<your-domain>/onesignal/OneSignalSDKWorker.js | head -1   # expect 200
+curl -sI https://villagewatch.app/onesignal/OneSignalSDKWorker.js | head -1   # expect 200
 ```
 
 And in DevTools → Application → Service Workers you should see **two**
@@ -765,6 +766,21 @@ vercel --prod # production
 The git committer email must match a GitHub account Vercel recognises, or the
 deploy is blocked.
 
+### The domain
+
+**Project → Settings → Domains** → add `villagewatch.app`, and add
+`www.villagewatch.app` as a redirect to it rather than a second origin. One
+canonical origin is not a preference here: `NEXT_PUBLIC_APP_URL` is a single
+value, and a resident who signed in on one host and follows a push notification
+to the other arrives without their session cookie.
+
+Three things elsewhere have to name the same host, and all three fail quietly if
+they do not:
+
+- `NEXT_PUBLIC_APP_URL` in Vercel (step 11).
+- Supabase → Authentication → URL Configuration, both fields (step 7b).
+- The OneSignal site URL, if you set up push (step 8).
+
 ---
 
 ## 11. Add the environment variables to Vercel
@@ -772,9 +788,10 @@ deploy is blocked.
 **Project → Settings → Environment Variables.** Everything from `.env.local`,
 with three changes:
 
-- `NEXT_PUBLIC_APP_URL` becomes the real domain. Push deep links and email links
-  are built from it; left as `localhost` every notification points at a machine
-  that is not the reader's.
+- `NEXT_PUBLIC_APP_URL` becomes `https://villagewatch.app`. Push deep links,
+  email links and the "View details" line in a pasted WhatsApp alert are all
+  built from it; left as `localhost` every notification points at a machine that
+  is not the reader's.
 - `CRON_SECRET` must be set here, in Production. **Both scheduled routes refuse
   every request without it** — deliberately, because one spends Anthropic credit
   and pushes to coordinators' phones and the other deletes files and takes
@@ -798,7 +815,7 @@ Both are visible under **Project → Cron Jobs** after the first production
 deploy. Test one by hand before trusting it:
 
 ```bash
-curl -i -H "Authorization: Bearer $CRON_SECRET" https://your-domain/api/digest
+curl -i -H "Authorization: Bearer $CRON_SECRET" https://villagewatch.app/api/digest
 ```
 
 A Hobby plan allows two cron jobs, each running at most once a day. These two

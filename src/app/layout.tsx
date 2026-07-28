@@ -2,7 +2,12 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ServiceWorkerRegistration } from "@/components/service-worker";
-import { APP_DESCRIPTION, APP_NAME, APP_TAGLINE } from "@/lib/constants";
+import {
+  APP_DESCRIPTION,
+  APP_NAME,
+  APP_ORIGIN,
+  APP_TAGLINE,
+} from "@/lib/constants";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,7 +22,25 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
+/**
+ * The origin every relative URL in this metadata resolves against.
+ *
+ * A preview deployment should describe itself, not production, so
+ * `NEXT_PUBLIC_APP_URL` wins where it is set; `APP_ORIGIN` is the fallback.
+ * Without a base at all, Next resolves Open Graph and canonical URLs against
+ * `localhost` in development and warns in the build — so a shared link would
+ * carry a host nobody else can reach.
+ */
+const metadataBase = (() => {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_APP_URL ?? APP_ORIGIN);
+  } catch {
+    return new URL(APP_ORIGIN);
+  }
+})();
+
 export const metadata: Metadata = {
+  metadataBase,
   title: {
     default: `${APP_NAME} — ${APP_TAGLINE}`,
     template: `%s · ${APP_NAME}`,
@@ -34,6 +57,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: APP_NAME,
+    url: "/",
+    locale: "en_GB",
     title: `${APP_NAME} — ${APP_TAGLINE}`,
     description: APP_DESCRIPTION,
   },

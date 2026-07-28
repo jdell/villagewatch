@@ -86,6 +86,10 @@ export default function PrivacyPage() {
 
       <LegalSection id="controller" title="1. Who is responsible for your data">
         <P>
+          This notice covers {APP_NAME}, the community safety reporting service
+          at <strong>villagewatch.app</strong>.
+        </P>
+        <P>
           Your parish council is the <strong>data controller</strong> for
           everything described here. They decide what {APP_NAME} is used for and
           they answer for it. {APP_NAME} provides the software and processes data
