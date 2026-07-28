@@ -678,6 +678,14 @@ adopted an APD on a date did adopt it on that date, and the record exists for a
 regulator. Withdrawing from the processing is suspending the village, which is a
 different act.
 
+Once all three are accepted the page offers a link to the **Coordinator Guide**
+— `docs/COORDINATOR_GUIDE.md`, rendered at `/dashboard/guide` and linked from the
+sidebar for coordinators. It is informational and gates nothing: it is the
+practical guide to running a village, written for a parish councillor, and it is
+what somebody should read between accepting the documents and inviting the first
+resident. Like the other three it needs a line in `outputFileTracingIncludes` in
+`next.config.ts`, or it renders as a red panel in production only.
+
 ### Before the coordinator gets there
 
 Both files in `docs/` are **templates**, prepared from the source code. Their
@@ -864,6 +872,66 @@ Two consequences worth reading before you run it with `--confirm`:
   trigger refuses. `--deactivate` sets its status to `ARCHIVED` instead, which
   is what takes `[Your Village]` out of the picker on `/register` and
   `/welcome`.
+
+### Emptying a real village you have been testing in
+
+The script above is for the *sample* village. It is hardcoded to one slug and
+matches five incidents by their invented titles, so it can only ever remove data
+it was the author of.
+
+`scripts/clean-village.ts` is the other tool, and it is a blunter one. You point
+it at a village by slug and it deletes **every** report in that village. Use it
+when a real village — a seeded parish you have been trialling in, say — needs to
+be handed to residents with a clean slate, or walked through from the beginning
+a second time.
+
+```bash
+npm run db:clean-village -- --slug histon                    # dry run
+npm run db:clean-village -- --slug histon --confirm          # actually delete
+npm run db:clean-village -- --slug histon --confirm --keep-compliance
+```
+
+**It is a dry run by default**, and `--slug` is required — there is no default
+and no wildcard. The dry run prints the incidents grouped by status, the first
+fifteen by reference, how many of them still name a reporter, how many stored
+files are involved, and everything it is leaving alone.
+
+What it deletes, for the named village only:
+
+- every incident, and with it every tag, media row and notification that hangs
+  off one by cascade;
+- the stored objects behind those media rows — both variants of each file plus
+  the video still, out of the `incident-media` bucket;
+- every pattern alert, and the notifications for those;
+- every remaining notification belonging to a resident of the village, which is
+  how the ones about a coordinator application go;
+- the three compliance acceptances, unless you pass `--keep-compliance`.
+
+What it never touches: the village row, any of its settings (parish council
+name, privacy level, WhatsApp Channel, auto-approve), its residents' accounts,
+their roles or their verification.
+
+Four things to know before running it with `--confirm`:
+
+- **Clearing the compliance acceptances closes the village.** It will accept no
+  report at all until a coordinator has been back through
+  `/dashboard/compliance` and re-accepted the DPIA, the APD and the processing
+  agreement. That is the point — it is what lets you test the gate twice — but
+  tell whoever coordinates the village before you do it, not after.
+- **It cannot tell a test report from a real one**, because nothing can. If
+  somebody has filed a genuine report into the village you are cleaning, it goes
+  with the rest. The dry run counts the reports that still name a reporter for
+  exactly this reason; read that line before you confirm.
+- **Objects before rows.** If Supabase Storage is unreachable or unconfigured,
+  the incidents that have attachments are skipped rather than deleted, and the
+  script says how many — deleting the rows would orphan the files in the bucket
+  forever. Incidents with no media are unaffected. Re-run once storage is
+  reachable.
+- **Audit trail rows survive and cannot be deleted**, the same as above and for
+  the same reason. Rows naming a deleted incident stop resolving.
+
+If the compliance migrations have not been applied to the database you are
+pointing at, the script says so and skips that step rather than failing halfway.
 
 ---
 
