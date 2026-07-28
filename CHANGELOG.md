@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.16](https://github.com/jdell/villagewatch/compare/v0.1.15...v0.1.16) (2026-07-28)
+
+
+### Features
+
+* **compliance:** the processing agreement a council signs with us ([980a9a2](https://github.com/jdell/villagewatch/commit/980a9a24a8feee107b864bdb16e1e5b1f8b514b7))
+
 ### [0.1.15](https://github.com/jdell/villagewatch/compare/v0.1.14...v0.1.15) (2026-07-28)
 
 
