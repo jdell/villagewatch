@@ -5,6 +5,7 @@ import type {
   ReportNarrative,
 } from "@/lib/community-report";
 import { rangeDays, reportController } from "@/lib/community-report";
+import { dateInputValue } from "@/lib/date-range";
 import {
   DEFAULT_REPORT_RANGE,
   HOTSPOT_COUNT,
@@ -68,15 +69,15 @@ export type ReportRange = {
   notice: string | null;
 };
 
-/** `yyyy-mm-dd` in the village's own zone, which is the one on the inputs. */
-function dateValue(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Europe/London",
-  }).format(date);
-}
+/**
+ * `yyyy-mm-dd` in the village's own zone, which is the one on the inputs.
+ *
+ * Shared with `src/lib/date-range.ts` rather than duplicated. The two resolvers
+ * stay separate — the periods `/reports` offers are not the periods the map
+ * offers — but the string a date input renders is the same string either way,
+ * and two copies of that would drift the first time one was corrected.
+ */
+const dateValue = dateInputValue;
 
 /**
  * Turns the query string into a period.

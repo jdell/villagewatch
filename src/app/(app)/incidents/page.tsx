@@ -5,9 +5,13 @@ import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { FlashToast } from "@/components/flash-toast";
 import { IncidentCard } from "@/components/incident-card";
 import { NoVillage } from "@/components/no-village";
+import { TimeRangeFields } from "@/components/time-range-fields";
 import { requireSession } from "@/lib/auth";
+import { resolveTimeRange, timeRangeFilter } from "@/lib/date-range";
 import { prisma } from "@/lib/prisma";
 import {
+  BROWSE_RANGE_VALUES,
+  DEFAULT_TIME_RANGE,
   INCIDENT_TYPES,
   INCIDENT_TYPE_VALUES,
   PUBLIC_INCIDENT_STATUSES,
@@ -28,12 +32,19 @@ export const metadata: Metadata = { title: "Incidents" };
  * shareable URL, and the filter is applied by the same query that enforces the
  * village and status scoping rather than after it.
  *
+ * That last point is why the period is resolved here rather than filtered in
+ * the browser the way `/map` does it. The map already holds every incident it
+ * draws; this list is capped at `INCIDENT_PAGE_SIZE`, so a client-side period
+ * filter would narrow the most recent thirty rather than find the thirty most
+ * recent *in the period* — a June filter on a busy July would show nothing and
+ * look like a quiet June.
+ *
  * `searchParams` is a Promise in Next.js 16 — it is awaited, not destructured.
  */
 export default async function IncidentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; severity?: string; deleted?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await requireSession("/incidents");
   const villageId = session.profile?.villageId;
@@ -44,19 +55,29 @@ export default async function IncidentsPage({
 
   const params = await searchParams;
 
+  // A repeated key arrives as an array. Taking the first is the same forgiveness
+  // the enum checks below apply — a hand-edited query string should render a
+  // list, not an error page.
+  const single = (value: string | string[] | undefined) =>
+    Array.isArray(value) ? value[0] : value;
+
   // Anything that is not a real enum value is dropped rather than rejected — a
   // hand-edited query string should show the unfiltered list, not an error page.
   const type = (INCIDENT_TYPE_VALUES as readonly string[]).includes(
-    params.type ?? "",
+    single(params.type) ?? "",
   )
-    ? (params.type as IncidentType)
+    ? (single(params.type) as IncidentType)
     : undefined;
 
   const severity = (SEVERITY_VALUES as readonly string[]).includes(
-    params.severity ?? "",
+    single(params.severity) ?? "",
   )
-    ? (params.severity as Severity)
+    ? (single(params.severity) as Severity)
     : undefined;
+
+  // Same resolver the map and the dashboard use, over the same preset list the
+  // map offers, so "Last 30 days" is the same span on both screens.
+  const range = resolveTimeRange(params, { allowed: BROWSE_RANGE_VALUES });
 
   const rows = await prisma.incident.findMany({
     where: {
@@ -64,6 +85,8 @@ export default async function IncidentsPage({
       status: { in: [...PUBLIC_INCIDENT_STATUSES] },
       type,
       severity,
+      // Spread, so an unbounded range contributes no `occurredAt` key at all.
+      ...timeRangeFilter(range),
     },
     select: {
       ...PUBLIC_INCIDENT_SELECT,
@@ -88,7 +111,11 @@ export default async function IncidentsPage({
     rows.flatMap((row) => row.media[0]?.redactedPath ?? []),
   );
 
-  const filtered = Boolean(type || severity);
+  // The period counts as a filter once it is not the default, so the empty
+  // state says "nothing matches" rather than "nothing reported yet" — the two
+  // are very different messages to show someone whose village is not quiet.
+  const filtered =
+    Boolean(type || severity) || range.preset !== DEFAULT_TIME_RANGE;
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
@@ -116,9 +143,17 @@ export default async function IncidentsPage({
 
       <form
         method="get"
-        className="mt-6 rounded-2xl border border-slate-200 bg-white p-4"
+        className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-4"
       >
-        <div className="flex flex-wrap items-end gap-3">
+        {/*
+          One form, three filters. The period control is a row of submit buttons
+          rather than its own form precisely so that changing it carries the type
+          and severity selects along in the same submission — see
+          `TimeRangeFields`.
+        */}
+        <TimeRangeFields range={range} presets={BROWSE_RANGE_VALUES} />
+
+        <div className="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
           <div className="min-w-44 flex-1">
             <label
               htmlFor="filter-type"
@@ -164,8 +199,16 @@ export default async function IncidentsPage({
           </div>
 
           <div className="flex gap-2">
+            {/*
+              Carries the resolved period rather than submitting bare. Every
+              preset control in this form is a submit button named `range`, so a
+              plain Apply would send no `range` at all and silently drop the
+              reader back to the default month while they were filtering by type.
+            */}
             <button
               type="submit"
+              name="range"
+              value={range.preset}
               className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               <Filter className="size-4" aria-hidden />
@@ -239,8 +282,8 @@ export default async function IncidentsPage({
 
       {rows.length === INCIDENT_PAGE_SIZE && (
         <p className="mt-4 text-center text-sm text-slate-500">
-          Showing the {INCIDENT_PAGE_SIZE} most recent. Narrow the filters to see
-          further back.
+          Showing the {INCIDENT_PAGE_SIZE} most recent in this period. Narrow the
+          filters to see further back.
         </p>
       )}
     </div>

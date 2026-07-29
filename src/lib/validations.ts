@@ -3,11 +3,13 @@ import {
   COORDINATOR_APPLICANT_ROLE_VALUES,
   COORDINATOR_REASON_MIN_CHARS,
   DEFAULT_REPORT_RANGE,
+  DEFAULT_TIME_RANGE,
   INCIDENT_TYPE_VALUES,
   NOTIFICATION_RADIUS_VALUES,
   PRIVACY_LEVEL_VALUES,
   REPORT_RANGE_VALUES,
   SEVERITY_VALUES,
+  TIME_RANGE_VALUES,
   PUBLIC_INCIDENT_STATUSES,
 } from "@/lib/constants";
 
@@ -1025,6 +1027,26 @@ export const reportRangeSchema = z.object({
 });
 
 export type ReportRangeInput = z.output<typeof reportRangeSchema>;
+
+/**
+ * The date range behind the map, the incident list and the dashboard.
+ *
+ * Same shape and the same forgiveness as `reportRangeSchema` above, over
+ * `TIME_RANGE_VALUES` rather than the report's three. It is a separate schema
+ * because the two lists are separate — see the note on `TIME_RANGES`.
+ *
+ * `.catch()` on every field is what makes this safe to run on a page render:
+ * a stale bookmark or a hand-edited query string resolves to the default
+ * period rather than throwing in front of somebody looking at a map.
+ */
+export const timeRangeSchema = z.object({
+  range: z.enum(TIME_RANGE_VALUES).catch(DEFAULT_TIME_RANGE),
+  /** `yyyy-mm-dd` from a date input. Only read when `range` is `custom`. */
+  from: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
+  to: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
+});
+
+export type TimeRangeInput = z.output<typeof timeRangeSchema>;
 
 /**
  * Formats a ZodError into `{ field: message }` for rendering next to inputs.

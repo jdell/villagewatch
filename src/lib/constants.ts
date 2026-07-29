@@ -1089,6 +1089,75 @@ export const AUDIT_LOG_PAGE_SIZE = 50;
 export const HOTSPOT_COUNT = 3;
 
 // ---------------------------------------------------------------------------
+// Looking at a period
+// ---------------------------------------------------------------------------
+
+/**
+ * The periods the map, the incident list and the dashboard offer.
+ *
+ * One list for three surfaces, so "Last 30 days" means the same span and
+ * carries the same query string wherever a resident meets it. Each surface
+ * picks the subset it renders — the map and the list drop `90`, which is longer
+ * than either is useful over; the dashboard drops `all`, because a stat card
+ * comparing all time against the preceding all time is comparing something with
+ * nothing.
+ *
+ * `days: null` is not one thing. `all` means unbounded and `custom` means the
+ * two date inputs decide, which is why `resolveTimeRange` branches on the value
+ * rather than on the number being absent.
+ *
+ * Deliberately separate from `REPORT_RANGES` below. That list is a police
+ * liaison meeting and a parish council meeting; this one is a resident reading
+ * a map. They agree on 7 and 30 today and there is no reason they must forever —
+ * merging them would make a change to one a silent change to the other.
+ */
+export const TIME_RANGES = [
+  { value: "7", label: "Last 7 days", days: 7 },
+  { value: "30", label: "Last 30 days", days: 30 },
+  { value: "90", label: "Last 90 days", days: 90 },
+  { value: "all", label: "All time", days: null },
+  { value: "custom", label: "Custom range", days: null },
+] as const satisfies readonly {
+  value: string;
+  label: string;
+  days: number | null;
+}[];
+
+export type TimeRangePreset = (typeof TIME_RANGES)[number]["value"];
+
+export const TIME_RANGE_VALUES = TIME_RANGES.map((r) => r.value) as [
+  TimeRangePreset,
+  ...TimeRangePreset[],
+];
+
+/** What the map and the incident list offer. Ninety days is the dashboard's. */
+export const BROWSE_RANGE_VALUES = ["7", "30", "all", "custom"] as const;
+
+/** What the dashboard offers. `all` is absent — see the note on `TIME_RANGES`. */
+export const DASHBOARD_RANGE_VALUES = ["7", "30", "90", "custom"] as const;
+
+/**
+ * The preset each surface starts on.
+ *
+ * Thirty days everywhere, which is what the map already defaulted to and what
+ * the dashboard's breakdowns were already hardcoded to. The stat cards are the
+ * one thing this changes: "this week" was a fixed seven days and is now the
+ * head of the selected period, which is what makes the dropdown mean anything.
+ */
+export const DEFAULT_TIME_RANGE: TimeRangePreset = "30";
+
+/**
+ * The widest custom range these three screens accept, in days.
+ *
+ * Two years rather than `/reports`' one. That ceiling is there because a report
+ * is a document somebody reads end to end; these are a map, a capped list and a
+ * set of counts, none of which get longer as the window widens. What the cap is
+ * actually for here is stopping a hand-edited URL asking Postgres for a range
+ * with no bottom while pretending it is not `all`.
+ */
+export const MAX_CUSTOM_RANGE_DAYS = 730;
+
+// ---------------------------------------------------------------------------
 // Community safety reports
 // ---------------------------------------------------------------------------
 
@@ -1308,6 +1377,26 @@ export const LEGAL_LAST_UPDATED = "2026-07-27";
  * that offer help can name it without restating it.
  */
 export const SUPPORT_EMAIL = "info@yakasista.com";
+
+/**
+ * The company that runs the service, as distinct from the council that controls
+ * the data in it.
+ *
+ * The split matters and is the same one `DATA_CONTROLLER` below is about: a
+ * parish council is the **controller** of its residents' reports and Yakasista
+ * is the **processor** acting on its instructions. This constant is what the
+ * landing page's `Organization` structured data names — the entity that
+ * publishes the site and takes support mail — and it is deliberately not the
+ * entity a subject access request goes to. See `docs/DATA_PROCESSING_AGREEMENT.md`.
+ *
+ * Unlike `DATA_CONTROLLER`, this is real rather than placeholders: it is the
+ * same company either way, whereas the council differs per village.
+ */
+export const OPERATOR = {
+  name: "Yakasista Ltd",
+  email: SUPPORT_EMAIL,
+  country: "GB",
+} as const;
 
 export const DATA_CONTROLLER = {
   name: "[Parish Council name]",

@@ -29,8 +29,14 @@ import { StatCard } from "@/components/dashboard/stat-card";
 import { WhatsAppChannelForm } from "@/components/dashboard/whatsapp-channel-form";
 import { HotspotHeatmap } from "@/components/map/hotspot-heatmap";
 import { NoVillage } from "@/components/no-village";
+import { TimeRangeFields } from "@/components/time-range-fields";
 import { requireCoordinator } from "@/lib/auth";
 import { getVillageCompliance } from "@/lib/compliance";
+import {
+  previousPeriod,
+  resolveDashboardRange,
+  timeRangeFilter,
+} from "@/lib/date-range";
 import { getVillageAutoApprove } from "@/lib/moderation";
 import {
   getVillageParishCouncil,
@@ -42,6 +48,7 @@ import {
   getVillageChannelSettings,
 } from "@/lib/whatsapp-channel";
 import {
+  DASHBOARD_RANGE_VALUES,
   HOTSPOT_COUNT,
   INCIDENT_TYPE_LABELS,
   MAP_DEFAULTS,
@@ -70,11 +77,26 @@ export const metadata: Metadata = { title: "Dashboard" };
  * The queue itself is the exception, and it renders `description` — the
  * anonymised column. The reporter's verbatim words are behind a button that
  * writes an `AuditLog` row (domain rule 1); see `ModerationCard`.
+ *
+ * `searchParams` is a Promise in Next.js 16 — awaited, never destructured in
+ * the signature.
  */
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * What the second stat card counts.
+ *
+ * The levels a coordinator would ring somebody about. Deliberately a constant
+ * rather than a `gte` on the enum: Prisma orders enum members by their position
+ * in the schema, so a comparison here would silently change meaning the day
+ * somebody inserted a level in the middle of `Severity`.
+ */
+const SERIOUS_SEVERITIES: Severity[] = ["HIGH", "CRITICAL"];
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // Coordinators, moderators and admins only — residents are sent to the map.
   const session = await requireCoordinator("/dashboard");
   const villageId = session.profile?.villageId;
@@ -83,11 +105,21 @@ export default async function DashboardPage() {
     return <NoVillage />;
   }
 
-  const now = new Date();
-  const weekStart = new Date(now.getTime() - 7 * DAY_MS);
-  const previousWeekStart = new Date(now.getTime() - 14 * DAY_MS);
-  const monthStart = new Date(now.getTime() - 30 * DAY_MS);
-  const previousMonthStart = new Date(now.getTime() - 60 * DAY_MS);
+  /**
+   * The period everything below the queue is counted over.
+   *
+   * Every figure on this page used to be a hardcoded window — two stat cards on
+   * seven and thirty days, and the breakdowns and hotspots on thirty. They now
+   * read one selection, which is the only way a dropdown can be honest: a
+   * period control that moved the cards and left "Last 30 days" printed over
+   * the breakdowns beneath them would be worse than no control.
+   *
+   * `all` is deliberately not offered here — see the note on `TIME_RANGES`. A
+   * trend against the period preceding all time is a comparison with nothing.
+   */
+  const range = resolveDashboardRange(await searchParams);
+  const rangeFilter = timeRangeFilter(range);
+  const preceding = previousPeriod(range);
 
   // Spread rather than `as const`: Prisma's generated `in` filter wants a
   // mutable array, and a readonly tuple will not satisfy it.
@@ -96,11 +128,13 @@ export default async function DashboardPage() {
     status: { in: [...PUBLIC_INCIDENT_STATUSES] },
   } satisfies { villageId: string; status: { in: IncidentStatus[] } };
 
+  const inRange = { ...published, ...rangeFilter };
+
   const [
-    thisWeek,
-    lastWeek,
-    thisMonth,
-    lastMonth,
+    total,
+    previousTotal,
+    serious,
+    previousSerious,
     byType,
     bySeverity,
     hotspotRows,
@@ -115,36 +149,42 @@ export default async function DashboardPage() {
     privacyLevel,
     compliance,
   ] = await Promise.all([
+    prisma.incident.count({ where: inRange }),
+    // `preceding` is null only for an unbounded range, which this page does not
+    // offer. Counting zero rather than skipping the query keeps the card's
+    // shape the same either way — `StatCard` already renders a count instead of
+    // a percentage when the baseline is zero.
+    preceding
+      ? prisma.incident.count({
+          where: { ...published, occurredAt: preceding },
+        })
+      : Promise.resolve(0),
     prisma.incident.count({
-      where: { ...published, occurredAt: { gte: weekStart } },
+      where: { ...inRange, severity: { in: SERIOUS_SEVERITIES } },
     }),
-    prisma.incident.count({
-      where: { ...published, occurredAt: { gte: previousWeekStart, lt: weekStart } },
-    }),
-    prisma.incident.count({
-      where: { ...published, occurredAt: { gte: monthStart } },
-    }),
-    prisma.incident.count({
-      where: {
-        ...published,
-        occurredAt: { gte: previousMonthStart, lt: monthStart },
-      },
-    }),
+    preceding
+      ? prisma.incident.count({
+          where: {
+            ...published,
+            occurredAt: preceding,
+            severity: { in: SERIOUS_SEVERITIES },
+          },
+        })
+      : Promise.resolve(0),
     prisma.incident.groupBy({
       by: ["type"],
-      where: { ...published, occurredAt: { gte: monthStart } },
+      where: inRange,
       _count: { _all: true },
     }),
     prisma.incident.groupBy({
       by: ["severity"],
-      where: { ...published, occurredAt: { gte: monthStart } },
+      where: inRange,
       _count: { _all: true },
     }),
     prisma.incident.groupBy({
       by: ["locationText"],
       where: {
-        ...published,
-        occurredAt: { gte: monthStart },
+        ...inRange,
         // A report filed without a landmark has no hotspot to belong to, and
         // bucketing every one of them together under "no location" would
         // reliably produce a phantom top spot.
@@ -161,8 +201,7 @@ export default async function DashboardPage() {
     // so `toMapIncident` takes the rows as they are.
     prisma.incident.findMany({
       where: {
-        ...published,
-        occurredAt: { gte: monthStart },
+        ...inRange,
         lat: { not: null },
         lng: { not: null },
       },
@@ -232,6 +271,21 @@ export default async function DashboardPage() {
     // problem entirely.
     getVillageCompliance(villageId),
   ]);
+
+  /**
+   * What the trend on both cards is measured against.
+   *
+   * Named from the resolved period rather than hardcoded, because the period is
+   * now the coordinator's choice — "vs the week before" printed under a
+   * ninety-day count would be a wrong statement about a real number.
+   */
+  const comparison =
+    range.days === null
+      ? "vs the preceding period"
+      : `vs the preceding ${range.days} days`;
+
+  /** Both breakdowns say the same thing when the period is empty. */
+  const emptyPeriod = `Nothing has been published in this period (${range.label.toLowerCase()}).`;
 
   const typeRows: BreakdownRow[] = byType
     .map((row) => ({
@@ -361,18 +415,40 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      <section className="mt-6 grid gap-3 sm:grid-cols-2">
-        <StatCard
-          label="Published this week"
-          value={thisWeek}
-          previous={lastWeek}
-          comparison="vs the week before"
+      {/*
+        The period control, above every figure it governs. A GET form for the
+        same reasons the incident list's filters are one: it works before
+        JavaScript loads, and every period is a URL a coordinator can bookmark
+        or paste into a parish council email.
+      */}
+      <form
+        method="get"
+        className="mt-6 rounded-2xl border border-slate-200 bg-white p-4"
+      >
+        <TimeRangeFields
+          range={range}
+          presets={DASHBOARD_RANGE_VALUES}
+          idPrefix="dashboard-range"
         />
+      </form>
+
+      <section className="mt-4 grid gap-3 sm:grid-cols-2">
         <StatCard
-          label="Published this month"
-          value={thisMonth}
-          previous={lastMonth}
-          comparison="vs the month before"
+          label={`Published · ${range.label}`}
+          value={total}
+          previous={previousTotal}
+          comparison={comparison}
+        />
+        {/*
+          Not a second window on the same number — the dropdown above is what
+          changes the window now. This is the figure a coordinator is actually
+          scanning for: how much of the period was serious enough to act on.
+        */}
+        <StatCard
+          label={`High or critical · ${range.label}`}
+          value={serious}
+          previous={previousSerious}
+          comparison={comparison}
         />
       </section>
 
@@ -381,23 +457,17 @@ export default async function DashboardPage() {
           <h2 className="text-sm font-semibold text-slate-900">
             What was reported
           </h2>
-          <p className="mt-0.5 text-xs text-slate-500">Last 30 days</p>
+          <p className="mt-0.5 text-xs text-slate-500">{range.label}</p>
           <div className="mt-4">
-            <BreakdownBar
-              rows={typeRows}
-              emptyMessage="Nothing has been published in the last 30 days."
-            />
+            <BreakdownBar rows={typeRows} emptyMessage={emptyPeriod} />
           </div>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <h2 className="text-sm font-semibold text-slate-900">How serious</h2>
-          <p className="mt-0.5 text-xs text-slate-500">Last 30 days</p>
+          <p className="mt-0.5 text-xs text-slate-500">{range.label}</p>
           <div className="mt-4">
-            <BreakdownBar
-              rows={severityRows}
-              emptyMessage="Nothing has been published in the last 30 days."
-            />
+            <BreakdownBar rows={severityRows} emptyMessage={emptyPeriod} />
           </div>
         </div>
       </section>
@@ -408,8 +478,9 @@ export default async function DashboardPage() {
           Where it keeps happening
         </h2>
         <p className="mt-0.5 text-xs text-slate-500">
-          The {HOTSPOT_COUNT} most reported places in the last 30 days, grouped
-          by the landmark residents typed, and the same period as density.
+          The {HOTSPOT_COUNT} most reported places in the selected period (
+          {range.label.toLowerCase()}), grouped by the landmark residents typed,
+          and the same period as density.
         </p>
 
         {/*

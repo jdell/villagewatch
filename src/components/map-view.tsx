@@ -4,7 +4,14 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import { Flame, MapPinned } from "lucide-react";
 import type { MapIncident, MapMode } from "@/components/incident-map";
-import { SEVERITIES } from "@/lib/constants";
+import {
+  BROWSE_RANGE_VALUES,
+  DEFAULT_TIME_RANGE,
+  SEVERITIES,
+  TIME_RANGES,
+  type TimeRangePreset,
+} from "@/lib/constants";
+import { resolveTimeRange, withinTimeRange } from "@/lib/date-range";
 import { HEATMAP_LEGEND_CSS } from "@/lib/heatmap";
 
 /**
@@ -31,11 +38,17 @@ const IncidentMap = dynamic(
   },
 );
 
-const RANGES = [
-  { value: 7, label: "Last 7 days" },
-  { value: 30, label: "Last 30 days" },
-  { value: 0, label: "All time" },
-] as const;
+/**
+ * The periods offered, from the one list all three surfaces read.
+ *
+ * `custom` is in it, and on this screen it is the only control that reveals
+ * anything: choosing it opens two date inputs, and because the filtering happens
+ * over incidents already in the browser, changing either one redraws both layers
+ * without a round trip.
+ */
+const RANGES = TIME_RANGES.filter((range) =>
+  (BROWSE_RANGE_VALUES as readonly string[]).includes(range.value),
+);
 
 const MODES = [
   { value: "pins", label: "Pins" },
@@ -121,7 +134,7 @@ export function MapView({
   zoom,
   villageName,
 }: MapViewProps) {
-  const [days, setDays] = useState<number>(30);
+  const [preset, setPreset] = useState<TimeRangePreset>(DEFAULT_TIME_RANGE);
 
   // No `setState` behind this: the store *is* localStorage, and writing to it
   // notifies every subscriber including this one.
@@ -137,14 +150,34 @@ export function MapView({
    */
   const [now] = useState(() => Date.now());
 
-  const visible = useMemo(() => {
-    if (days === 0) return incidents;
+  /**
+   * What the two date inputs hold, seeded with the default window.
+   *
+   * Seeded rather than empty so that pressing "Custom range" shows a month of
+   * reports and a pair of dates to adjust, instead of an empty map and two
+   * blank fields — the state somebody would read as the filter being broken.
+   */
+  const [custom, setCustom] = useState(() => {
+    const seed = resolveTimeRange({}, { now: new Date(now) });
+    return { from: seed.fromValue, to: seed.toValue };
+  });
 
-    const cutoff = now - days * 24 * 60 * 60 * 1000;
-    return incidents.filter(
-      (incident) => new Date(incident.occurredAt).getTime() >= cutoff,
-    );
-  }, [incidents, days, now]);
+  const range = useMemo(
+    () =>
+      resolveTimeRange(
+        { range: preset, from: custom.from, to: custom.to },
+        { now: new Date(now) },
+      ),
+    [preset, custom.from, custom.to, now],
+  );
+
+  const visible = useMemo(
+    () =>
+      incidents.filter((incident) =>
+        withinTimeRange(incident.occurredAt, range),
+      ),
+    [incidents, range],
+  );
 
   const showPins = mode !== "heat";
   const showHeat = mode !== "pins";
@@ -208,26 +241,93 @@ export function MapView({
             ))}
           </div>
 
-          <div
-            className="pointer-events-auto inline-flex rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
-            role="group"
-            aria-label="Date range"
-          >
-            {RANGES.map((range) => (
-              <button
-                key={range.value}
-                type="button"
-                onClick={() => setDays(range.value)}
-                aria-pressed={days === range.value}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  days === range.value
-                    ? "bg-brand-600 text-white"
-                    : "text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                {range.label}
-              </button>
-            ))}
+          <div className="pointer-events-none flex flex-col items-end gap-2">
+            <div
+              className="pointer-events-auto inline-flex rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
+              role="group"
+              aria-label="Date range"
+            >
+              {RANGES.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setPreset(option.value)}
+                  aria-pressed={preset === option.value}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    preset === option.value
+                      ? "bg-brand-600 text-white"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {/*
+              Only while Custom is chosen. Every other control on this screen is
+              always present; this one is a pair of inputs that mean nothing
+              under a preset, and leaving them on screen would invite somebody to
+              fill them in and wonder why the map did not move.
+            */}
+            {preset === "custom" && (
+              <div className="pointer-events-auto rounded-xl bg-white/95 p-3 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div>
+                    <label
+                      htmlFor="map-range-from"
+                      className="block text-[11px] font-medium text-slate-500"
+                    >
+                      From
+                    </label>
+                    <input
+                      id="map-range-from"
+                      type="date"
+                      value={custom.from}
+                      max={custom.to}
+                      onChange={(event) =>
+                        setCustom((current) => ({
+                          ...current,
+                          from: event.target.value,
+                        }))
+                      }
+                      className="mt-1 block h-9 rounded-lg border border-slate-300 px-2.5 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="map-range-to"
+                      className="block text-[11px] font-medium text-slate-500"
+                    >
+                      To
+                    </label>
+                    <input
+                      id="map-range-to"
+                      type="date"
+                      value={custom.to}
+                      onChange={(event) =>
+                        setCustom((current) => ({
+                          ...current,
+                          to: event.target.value,
+                        }))
+                      }
+                      className="mt-1 block h-9 rounded-lg border border-slate-300 px-2.5 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                    />
+                  </div>
+                </div>
+
+                {/*
+                  There is no Apply button: the filter runs over incidents
+                  already in the browser, so the map follows the inputs as they
+                  change. `notice` is where an adjustment the resolver made —
+                  swapped dates, an end date in the future — is admitted.
+                */}
+                <p className="mt-2 max-w-56 text-[11px] leading-relaxed text-slate-500">
+                  {range.notice ?? "Both dates are included."}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
