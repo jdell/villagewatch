@@ -17,6 +17,30 @@ resident across hosts.
 
 ---
 
+## Funding
+
+Strategy, the five tracked opportunities and their status live in
+`docs/FUNDING.md`; the first application is drafted in
+`docs/GRANT_APPLICATION_NL_AI.md`.
+
+| # | Item | Status | Details |
+|---|------|--------|---------|
+| F1 | National Lottery AI Programme | Drafting | £3m pot UK-wide via UK Community Foundations + CAST; window expected autumn 2026. Draft written and checked against the codebase — see its §Evidence. |
+| F2 | Cambridgeshire PCC Community Safety Fund | Not started | £500–£35,000, rolling. Contact the PCC office for round dates. |
+| F3 | Neighbourhood Watch Community Grants | Not started | £100–£300, annual; next round likely autumn 2026. |
+| F4 | NL Awards for All | Not started | Up to £10,000, rolling — can be applied for at any time. |
+| F5 | Innovate UK Smart Grants | Not started | £25k–£500k if framed as AI + privacy innovation. |
+
+**A grant application is a statement about how the code behaves**, held to the
+same rule as `/privacy`: change the behaviour and change the document. Three
+claims are the ones that would be wrong if copied forward carelessly — the DPIA
+is drafted rather than **completed** (L1), "GDPR compliant" is not available
+until L1, L2 and L8 close, and the 270 seeded parishes are `PENDING` and cannot
+be joined until they are activated (L6). The table at the foot of
+`docs/FUNDING.md` tracks all six of these against submission.
+
+---
+
 ## Running Tasks (in progress)
 
 | Task | Status | Notes |
