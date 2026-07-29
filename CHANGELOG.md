@@ -3,6 +3,14 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.22](https://github.com/jdell/villagewatch/compare/v0.1.21...v0.1.22) (2026-07-29)
+
+
+### Features
+
+* choose the period on the map, the incident list and the dashboard ([f893eac](https://github.com/jdell/villagewatch/commit/f893eacc7f34416cb5997c8f337f24bbc20059cc))
+* **seo:** robots, sitemap, share card, per-page canonicals and JSON-LD ([ca3ac6f](https://github.com/jdell/villagewatch/commit/ca3ac6f1789d826923c9866714858d8180102766))
+
 ### [0.1.21](https://github.com/jdell/villagewatch/compare/v0.1.20...v0.1.21) (2026-07-28)
 
 
