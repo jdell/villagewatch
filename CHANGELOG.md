@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.23](https://github.com/jdell/villagewatch/compare/v0.1.22...v0.1.23) (2026-07-29)
+
+
+### Fixes
+
+* stop a custom date range walking forward a day on every submission ([8e74c55](https://github.com/jdell/villagewatch/commit/8e74c5514452a32e17e7271607b7b3989318ca68))
+
 ### [0.1.22](https://github.com/jdell/villagewatch/compare/v0.1.21...v0.1.22) (2026-07-29)
 
 
