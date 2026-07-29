@@ -1866,10 +1866,22 @@ the one list of them, and three screens read it: `/map`, `/incidents` and
   comparison would silently change meaning the day somebody inserted a level in
   the middle of `Severity`.
 - **The boundaries are the server's midnight, not London's**, the same departure
-  `resolveReportRange` documents and for the same reason. `dateInputValue` is
-  shared between the two modules so the string a date input renders cannot drift;
-  the resolvers stay separate because the periods `/reports` offers are not the
-  periods a resident browsing a map wants.
+  `resolveReportRange` documents and for the same reason. The resolvers stay
+  separate — the periods `/reports` offers are not the periods a resident
+  browsing a map wants — but `dateInputValue` is shared, so the string a date
+  input renders cannot drift between them.
+- **`dateInputValue` formats in the host zone, and that is a fix rather than a
+  detail.** It is the exact inverse of `new Date("yyyy-mm-ddT00:00:00")`, which
+  is how a submitted date is parsed. Formatting in `Europe/London` instead is a
+  round trip that does not close: on a UTC host — every Vercel lambda —
+  `2026-07-07T23:59:59.999` is `2026-07-08T00:59` British Summer Time, so the
+  "To" field came back a day later than the one picked and walked forward again
+  on every submission. **`/reports` had the same latent bug and shares the fix.**
+  It passed on a British laptop and failed in CI, which is the shape of bug the
+  suite exists for; `tests/date-range.test.ts` pins both the single round trip
+  and three passes of the form feeding its own output back in. A display zone is
+  right for text a person reads — `customLabel` uses London — and wrong for a
+  value that gets parsed back.
 
 ## SEO
 

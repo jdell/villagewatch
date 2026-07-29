@@ -61,14 +61,26 @@ export type TimeRange = {
   notice: string | null;
 };
 
-/** `yyyy-mm-dd` in the village's own zone, which is the one on the inputs. */
+/**
+ * `yyyy-mm-dd` for a date input, in the **host** zone.
+ *
+ * The exact inverse of `new Date("yyyy-mm-ddT00:00:00")`, which is how a
+ * submitted date is parsed a few lines down, and that pairing is the whole
+ * point. Formatting these in `Europe/London` instead — which this did at first —
+ * is a round trip that does not close: on a UTC host, `2026-07-07T23:59:59.999`
+ * is `2026-07-08T00:59` British Summer Time, so the "To" field came back a day
+ * later than the one picked and walked forward again on every submission. It
+ * passed on a British laptop and failed in CI, which is exactly the shape of
+ * bug worth having CI for.
+ *
+ * A display zone is the right choice for text a person reads and the wrong one
+ * for a value that gets parsed back. `customLabel` below is the reader's half
+ * and does use `Europe/London`.
+ */
 export function dateInputValue(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Europe/London",
-  }).format(date);
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 /** Whole days between two instants, rounded up. A single day is 1, never 0. */

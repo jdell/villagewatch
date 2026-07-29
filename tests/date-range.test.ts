@@ -189,6 +189,42 @@ describe("resolveTimeRange — custom", () => {
     expect(range.days).toBe(30);
   });
 
+  it("hands back the dates it was given, unmoved", () => {
+    // The regression this exists for. `to` is parsed as host-zone midnight and
+    // was formatted back in `Europe/London`, so on a UTC host — every Vercel
+    // lambda — "2026-07-07T23:59:59.999" came back as 2026-07-08 and walked
+    // forward another day on every submission. It passed on a British laptop
+    // and failed in CI.
+    const range = resolveTimeRange(
+      { range: "custom", from: "2026-07-01", to: "2026-07-07" },
+      { now: NOW },
+    );
+
+    expect(range.fromValue).toBe("2026-07-01");
+    expect(range.toValue).toBe("2026-07-07");
+  });
+
+  it("is stable when its own output is fed back in", () => {
+    // What the form actually does: renders `fromValue`/`toValue` into the two
+    // inputs, which are submitted again on the next press. A range that drifts
+    // one day per submission is the failure mode above, seen from the form's
+    // side rather than the resolver's.
+    let range = resolveTimeRange(
+      { range: "custom", from: "2026-06-15", to: "2026-07-07" },
+      { now: NOW },
+    );
+
+    for (let pass = 0; pass < 3; pass += 1) {
+      range = resolveTimeRange(
+        { range: "custom", from: range.fromValue, to: range.toValue },
+        { now: NOW },
+      );
+    }
+
+    expect(range.fromValue).toBe("2026-06-15");
+    expect(range.toValue).toBe("2026-07-07");
+  });
+
   it("does not throw on a malformed date", () => {
     const range = resolveTimeRange(
       { range: "custom", from: "not-a-date", to: "2026-07-07" },
