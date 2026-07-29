@@ -14,7 +14,9 @@ import { normalizeJoinCode } from "@/lib/validations";
 export const metadata: Metadata = {
   title: "Create an account",
   description:
-    "Join your village on VillageWatch and start reporting what you see.",
+    "Join your village on VillageWatch. Report what you see in seconds, stay anonymous to your neighbours, and get alerted when something happens nearby.",
+  alternates: { canonical: "/register" },
+  openGraph: { url: "/register", title: "Create an account" },
 };
 
 /**

@@ -1,10 +1,14 @@
 # VillageWatch — Backlog & Improvements Tracker
 
-**Last updated:** 28 July 2026 (B1, B2, B4, B5, I1, I2, I3, N1, N9, T3, T4, T7,
-T8 closed; village activation landed; DPIA drafted; compliance gate and the
-per-village face redaction level added — B2/I2 are configurable rather than
-fixed now; Article 28(3) processing agreement drafted and added to the gate as
-L8; the invite is now shareable end to end and the map has a density layer)
+**Last updated:** 29 July 2026 (B1, B2, B4, B5, I1, I2, I3, N1, N9, N13, N14,
+T3, T4, T7, T8 closed; village activation landed; DPIA drafted; compliance gate
+and the per-village face redaction level added — B2/I2 are configurable rather
+than fixed now; Article 28(3) processing agreement drafted and added to the gate
+as L8; the invite is now shareable end to end, the map has a density layer, and
+every screen that shows a period now lets you choose it)
+
+**Note on numbering:** N5 is the WCAG 2.1 AA audit and is still open. The
+time-range work is N13 — it was in "Can launch without", not in the N list.
 **Repo:** https://github.com/jdell/villagewatch
 **Domain:** https://villagewatch.app — canonical origin, `APP_ORIGIN` in
 `src/lib/constants.ts`. `www` redirects to it; there is one origin, because
@@ -74,7 +78,7 @@ launch date slips for reasons nobody can defend to a parish clerk.
 | WhatsApp Channel | Extra reach, not core. A village with no channel loses nothing it had — residents are alerted in the app, and the coordinator can paste an alert anywhere. |
 | Notification radius filtering | Village-wide is fine at 200 people. A radius is a way to hear *less*; at parish scale there is not enough to filter. T8 now asks every new resident for a home location, but it is optional and anyone without one is included by design. |
 | Severity filter | Same reasoning. Every report in a village of 200 is worth a resident's attention. |
-| Time-range filters | The list shows the most recent 30 and the map the last 500. That is the whole history for a village in its first months. |
+| ~~Time-range filters~~ | **Done 29 Jul.** Built anyway — see N13. The reasoning above was sound for a village's first months and stopped being sound the moment the dashboard grew a period a coordinator wanted to move. |
 | Full WCAG audit | The obvious things are in place — labels, focus rings, 44px targets, `aria-current`, reduced motion. A formal AA audit is a launch-plus-one, not a launch gate. |
 | PWA offline resilience | The offline page and the shell cache exist. A resident with no signal cannot file a report to a server they cannot reach, and queueing one for later is a feature, not a fix. |
 | ONS seed beyond your village | The first parish needs one row. Seeding England's other 10,400 is what makes the picker need a server-side search endpoint — cost, not benefit, until there is a second village. |
@@ -114,6 +118,8 @@ launch date slips for reasons nobody can defend to a parish clerk.
 | N10 | Police API integration | Direct feed to police systems. |
 | N11 | Multi-language support | Welsh, Polish, other community languages. |
 | N12 | Render `PatternAlert` rows | The digest creates them and nothing shows them; acknowledge and dismiss have no UI. The RLS policy is already in place, waiting on the screen. |
+| N13 | ~~Time-range filters~~ | **Done 29 Jul.** One resolver behind three screens — `src/lib/date-range.ts`, client-safe, so the map filters in the browser over incidents it already holds while `/incidents` and `/dashboard` resolve the same query string into the same SQL. `TIME_RANGES` is the one list of periods; each surface picks a subset (`BROWSE_RANGE_VALUES`, `DASHBOARD_RANGE_VALUES`), so "Last 30 days" is one span everywhere. `/map` gains a Custom pill that reveals two date inputs and redraws both layers with no round trip; `/incidents` gains the same control as submit buttons inside its existing GET form, so a period is a shareable URL and carries the type and severity filters with it; `/dashboard` gains 7/30/90/Custom driving the stat cards, both breakdowns, the hotspot list and the density thumbnail together — every figure on the page was a hardcoded window before. `tests/date-range.test.ts` covers the resolver, including that `all` contributes no `occurredAt` key at all. |
+| N14 | ~~SEO audit~~ | **Done 29 Jul.** `src/app/robots.ts` and `src/app/sitemap.ts` as file conventions rather than static files, so both read the same `NEXT_PUBLIC_APP_URL ?? APP_ORIGIN` pair `metadataBase` does and a preview deployment cannot point crawlers at production. `opengraph-image.tsx` renders a 1200×630 card from the same constants and the same shield as the app, with `twitter-image.tsx` re-exporting it. Canonicals are **per page, never on the root layout** — metadata is inherited, so one there would mark `/privacy` and `/terms` duplicates of the home page. Landing page gains its own search-result description and a JSON-LD graph (`Organization` for Yakasista Ltd, `WebSite`, `SoftwareApplication`) in `src/lib/structured-data.ts`, which carries no `aggregateRating` and no `Offer` for the Pro tier, because nothing has been rated and nothing takes payment. `/welcome` is now `noindex`; `/join/[slug]` gained a description for the WhatsApp preview that names the village and never the join code. |
 
 ---
 
@@ -147,6 +153,8 @@ launch date slips for reasons nobody can defend to a parish clerk.
 | 28 Jul | Real domain — `villagewatch.app` throughout; `APP_ORIGIN` replaces the `localhost` fallback behind push, email and WhatsApp links |
 | 28 Jul | Invite QR code, `/join/[slug]` and the printable `/invite/[slug]`; registration pre-fills from the link (N9, I3) |
 | 28 Jul | Heatmap overlay — Pins / Heatmap / Both on `/map`, density thumbnail on `/dashboard` (N1) |
+| 29 Jul | Time-range filters — one resolver behind `/map`, `/incidents` and `/dashboard`, custom ranges throughout (N13) |
+| 29 Jul | SEO — robots, sitemap, OG image, per-page canonicals, JSON-LD on the landing page (N14) |
 
 ---
 

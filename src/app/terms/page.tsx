@@ -23,6 +23,8 @@ export const metadata: Metadata = {
   title: "Terms of use",
   description:
     "The rules for using VillageWatch: what may be reported, what may not, and who is responsible for what.",
+  alternates: { canonical: "/terms" },
+  openGraph: { url: "/terms", title: "Terms of use" },
 };
 
 /**

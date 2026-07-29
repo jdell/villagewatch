@@ -24,6 +24,10 @@ export const metadata: Metadata = {
   title: "Privacy policy",
   description:
     "How VillageWatch collects, uses and protects the personal data in a community safety report, under UK GDPR.",
+  // Per page, never on the root layout — metadata is inherited, so a canonical
+  // there would mark this page a duplicate of the home page.
+  alternates: { canonical: "/privacy" },
+  openGraph: { url: "/privacy", title: "Privacy policy" },
 };
 
 /**

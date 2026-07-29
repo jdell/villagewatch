@@ -106,8 +106,13 @@ them.**
 src/
   proxy.ts                    Next 16 proxy — session refresh + auth routing
   app/
-    layout.tsx                Root layout: fonts, metadata, Toaster
-    page.tsx                  Public landing page
+    layout.tsx                Root layout: fonts, metadata, Toaster. No canonical
+                              here on purpose — metadata is inherited
+    page.tsx                  Public landing page + the JSON-LD graph
+    opengraph-image.tsx       The 1200×630 share card, rendered by next/og
+    twitter-image.tsx         The same picture, re-exported — Next needs both
+    robots.ts                 /robots.txt. Not a security boundary; see the file
+    sitemap.ts                /sitemap.xml — the five public pages, by hand
     not-found.tsx             Friendly 404 — also where a withdrawn report lands
     error.tsx                 Root error boundary; client, uses unstable_retry
     login/, register/         Public auth pages. /register pre-fills the village
@@ -189,8 +194,10 @@ src/
     ai-preview.tsx            Review / publish screens, reprocess + edit
     incident-map.tsx          Leaflet pin + heat layers — never import without
                               ssr:false. `mode` picks pins / heat / both
-    map-view.tsx              Client wrapper: dynamic import, date range, and the
-                              layer toggle remembered in localStorage
+    map-view.tsx              Client wrapper: dynamic import, date range incl.
+                              the custom pair, and the layer toggle in localStorage
+    time-range-fields.tsx     The period control on /incidents and /dashboard.
+                              Renders inside the caller's own GET form
     map/heatmap-layer.tsx     leaflet.heat as a react-leaflet child. The plugin
                               is imported dynamically inside the effect
     map/hotspot-heatmap.tsx   The dashboard's density thumbnail — heat only,
@@ -253,6 +260,10 @@ src/
                               period. Client-safe, no rawDescription/lat/lng
     invite.ts                 buildJoinUrl / buildInviteUrl / readJoinCodeParam —
                               client-safe, and the code never comes from the DB
+    date-range.ts             The period behind /map, /incidents and /dashboard
+                              — one resolver, client-safe, nothing rejects
+    structured-data.ts        The landing page's JSON-LD graph. Server or client;
+                              every field in it is a claim that has to be true
     heatmap.ts                Severity × recency → heat intensity, plus the
                               layer's config. Client-safe
     reports.ts                Resolves the date range, counts the period, and
@@ -332,6 +343,9 @@ tests/                        Vitest, unit only — see The test suite
                               stays missing, and a bad base costs a relative path
   privacy-level.test.ts       The four levels, the free-text column's fallback
                               (including `toString`), and the write schema
+  date-range.test.ts          The period resolver — presets, the allowed-list
+                              narrowing, custom inclusivity, and `all` adding no
+                              `occurredAt` key at all
 vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
   ci.yml                      lint → typecheck → test → build, PRs and main
@@ -1796,6 +1810,124 @@ audit row. `src/lib/incident-csv.ts` holds the formatting, and is what
   and a bulk read of a village's reports that no trail records is the one
   outcome worse than a download that did not work.
 
+## The period
+
+`src/lib/date-range.ts` resolves it, `TIME_RANGES` in `src/lib/constants.ts` is
+the one list of them, and three screens read it: `/map`, `/incidents` and
+`/dashboard`.
+
+- **One resolver, three surfaces, and it is client-safe** — same import budget
+  as `format-alert.ts` and `community-report.ts`: `constants.ts`,
+  `validations.ts`, nothing that touches Prisma or a secret. That is what lets
+  the map filter in the browser, over incidents the server already sent, while
+  the other two resolve the same query string into the same SQL. A custom range
+  cannot mean one thing on the map and another in the list beside it.
+- **The map filters in the browser and the list does not, and that is not an
+  inconsistency.** The map already holds every pin it draws. The list is capped
+  at `INCIDENT_PAGE_SIZE`, so a client-side filter would narrow *the most recent
+  thirty* rather than find the thirty most recent **in the period** — a June
+  filter on a busy July would show nothing and look like a quiet June.
+- **Each surface picks a subset, and a preset outside it is ignored rather than
+  honoured.** `BROWSE_RANGE_VALUES` for the map and the list,
+  `DASHBOARD_RANGE_VALUES` for the dashboard. Honouring `range=90` on a screen
+  with no 90-day control would leave "Last 30 days" highlighted over ninety days
+  of data, which is a screen lying about what is on it.
+- **`all` is absent from the dashboard on purpose.** Every stat card is a
+  comparison against the preceding period of equal length, and there is no
+  period preceding all time. `previousPeriod` returns null rather than assuming
+  the caller checked.
+- **Unbounded means the key is absent, not undefined.** `timeRangeFilter` is
+  spread into a Prisma `where`, and for `all` it contributes no `occurredAt` at
+  all. `{ gte: undefined }` works today and is one Prisma release from meaning
+  something. Asserted.
+- **Nothing rejects.** Junk in the query string, half a custom range, dates the
+  wrong way round, an end date in the future, a span past
+  `MAX_CUSTOM_RANGE_DAYS` — every one produces a period, and `notice` is how the
+  adjustment is admitted rather than applied silently. This runs on a page
+  render; a throw here is an error page in front of somebody looking at a map.
+- **The two server forms use submit buttons rather than a `<select>`**, because
+  a submit button carries its own `name`/`value` and the map's control is a row
+  of pills. `TimeRangeFields` renders **inside the caller's form**, which is what
+  lets a change of period on `/incidents` carry the type and severity selects
+  through the same submission. The list's own Apply button carries
+  `name="range"` with the resolved preset for the mirror-image reason: every
+  other control in that form is named `range`, so a bare Apply would send none
+  and drop the reader back to the default month while they were filtering by
+  type.
+- **The first submit button in each form is a hidden `range=custom`.** A browser
+  presses the first one on Enter, and somebody typing in a date field and
+  pressing Enter means "use these dates" — without it they would get whichever
+  preset happened to be leftmost, discarding what they just typed.
+- **The dashboard's second stat card changed rather than gaining a window.**
+  "This week" and "this month" were two fixed windows because there was no
+  control; with one, a second window on the same number says nothing. It counts
+  `HIGH` and `CRITICAL` over the selected period instead — a constant, not a
+  `gte` on the enum, because Prisma orders enum members by schema position and a
+  comparison would silently change meaning the day somebody inserted a level in
+  the middle of `Severity`.
+- **The boundaries are the server's midnight, not London's**, the same departure
+  `resolveReportRange` documents and for the same reason. `dateInputValue` is
+  shared between the two modules so the string a date input renders cannot drift;
+  the resolvers stay separate because the periods `/reports` offers are not the
+  periods a resident browsing a map wants.
+
+## SEO
+
+- **`robots.ts` and `sitemap.ts` are file conventions, not files in `public/`.**
+  Both read the same `NEXT_PUBLIC_APP_URL ?? APP_ORIGIN` pair `metadataBase`
+  does, so a preview deployment describes itself rather than pointing crawlers
+  at production's sitemap — which is how a staging host ends up in the index.
+- **`robots.txt` is not a security boundary and the file says so.** `/dashboard`
+  is guarded by `requireCoordinator()` and `/api` by its own handlers; a
+  disallow line is a request to well-behaved crawlers. The list is deliberately
+  **not** `PROTECTED_ROUTES` — that constant answers a different question and
+  omits `/api`, `/join` and `/invite`, the last two of which carry a join code
+  in the query string.
+- **The invite pages are excluded three times over** — `noindex` in their own
+  metadata, disallowed in `robots.txt`, and absent from the sitemap. A crawled
+  join code cannot be rotated out of a search cache.
+- **The sitemap is a hand-written list of five pages**, because every other
+  route is one village's data behind a session (domain rule 4). The village
+  directory is 10,670 parishes with nobody in them; listing those would put ten
+  thousand empty pages in front of a crawler. `lastModified` is
+  `LEGAL_LAST_UPDATED` on the two legal pages — the same date the document
+  prints — and **absent** elsewhere rather than `new Date()`, which would claim
+  every page changed on every build and make the output nondeterministic between
+  two builds of the same commit.
+- **Canonicals are per page and never on the root layout.** Metadata is
+  inherited in Next, so a canonical of `/` on the layout would tell a crawler
+  that `/privacy` and `/terms` are duplicates of the home page and drop both.
+  This is the one SEO mistake in this codebase that would have looked correct in
+  a diff.
+- **`opengraph-image.tsx` renders from the same constants and the same shield as
+  the app**, so a change to `APP_TAGLINE` cannot leave a stale picture behind
+  saying the old one. `twitter-image.tsx` re-exports it — Next fills `og:image`
+  from the first convention and `twitter:image` from the second, and without the
+  second file the `summary_large_image` card the root layout declares falls back
+  to a bare text card. No `fonts` array is passed, deliberately: fetching a font
+  would put a network call on the critical path of `npm run build`.
+- **Satori renders a subset of CSS.** Flexbox and absolute positioning work;
+  grid, floats and most shorthands do not, and every element with more than one
+  child needs an explicit `display: "flex"`. It cannot see Tailwind's custom
+  properties either, so the brand colours are written out as hex and the two are
+  only checked by eye.
+- **`src/lib/structured-data.ts` carries no `aggregateRating` and no `review`,**
+  and no `Offer` for the Pro tier. Structured data is shown to people who never
+  visit the page, so a wrong figure there is worse than one on screen — nobody
+  can see the context that would correct it. Nothing has been rated, and nothing
+  takes payment (see **No billing** below). The free tier is matched on the
+  string `"Free"` because `PricingTier.price` is rendered text, not a number; if
+  it is ever renamed the `Offer` is omitted, which is the right way to be wrong.
+- **The landing page's JSON-LD is the only `dangerouslySetInnerHTML` in the
+  app.** A `<script type="application/ld+json">` has to receive a raw string.
+  Nothing user-supplied reaches it, and `serialiseJsonLd` escapes `<` anyway so
+  a `</script>` inside a value could never break out of the block — cheaper to
+  be right now than on the day somebody interpolates a village name into it.
+- **`OPERATOR` is Yakasista Ltd and is not `DATA_CONTROLLER`.** The company
+  running the service is the **processor**; the council is the controller. The
+  `Organization` node names the operator, which is who publishes the site and
+  takes support mail — deliberately not who a subject access request goes to.
+
 ## Not built yet
 
 Days 1–7 delivered the scaffold, schema, landing page, the on-device blur and
@@ -2030,9 +2162,22 @@ open:
   (`src/lib/supabase/admin.ts`) and do their own session, village and
   path-prefix checks. Once the `incident-media` bucket has village-scoped
   policies, move both back to the request-scoped client.
-- The incident list shows the most recent `INCIDENT_PAGE_SIZE` and does not
-  paginate; the map draws up to `MAX_MAP_INCIDENTS` pins with no clustering;
-  the moderation queue shows `MODERATION_QUEUE_SIZE` with no paging or filter.
+- The incident list shows the most recent `INCIDENT_PAGE_SIZE` **in the selected
+  period** and does not paginate; the map draws up to `MAX_MAP_INCIDENTS` pins
+  with no clustering; the moderation queue shows `MODERATION_QUEUE_SIZE` with no
+  paging or filter. The period control narrows what the cap applies to, which is
+  why it is resolved server-side there — it does not replace pagination.
+- **The period controls have never been used against a village with enough
+  history to need one.** The resolver is unit tested and the three screens
+  build, but no database anywhere holds reports spanning ninety days, so the
+  first real use is still ahead. The one to watch is `/dashboard`: every figure
+  on it now reads one selection, and a stat card silently keyed to a different
+  window from the breakdown beneath it is the failure that would look correct.
+- **The OG image has never been fetched by a real crawler.** It renders at build
+  time and was checked by eye; what has not happened is a paste into WhatsApp,
+  Slack or a search console. `robots.txt` and `sitemap.xml` have likewise never
+  been read by anything — there has been no production deployment, so
+  `villagewatch.app` serves nothing to verify them against.
 - **Erasure has never run against real data.** `removeIncident` and
   `eraseAccount` both delete files from the bucket and neither has been tried
   against one. Watch the first deletion and check the object is gone, the same

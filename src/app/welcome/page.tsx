@@ -9,6 +9,13 @@ import { prisma } from "@/lib/prisma";
 export const metadata: Metadata = {
   title: "Join your village",
   description: "Finish setting up your VillageWatch account.",
+  /**
+   * Not indexable. This is the second half of a registration, reachable only
+   * with a session and only once — a crawler that found it would index a page
+   * that redirects, and a searcher who clicked the result would land on
+   * `/login`. Same position as `/reset-password` and `/account-closed`.
+   */
+  robots: { index: false, follow: false },
 };
 
 /**

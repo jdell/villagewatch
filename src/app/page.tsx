@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   ArrowRight,
@@ -18,11 +19,39 @@ import { Logo } from '@/components/logo';
 import { SiteFooter } from '@/components/site-footer';
 import {
   APP_NAME,
+  APP_TAGLINE,
   PRICING,
   RETENTION,
   SEVERITIES,
   VILLAGES_LIVE,
 } from '@/lib/constants';
+import { landingStructuredData, serialiseJsonLd } from '@/lib/structured-data';
+
+/**
+ * The landing page's own metadata.
+ *
+ * The root layout's description is the app's one-liner and is what every other
+ * page inherits; this one is written for a search result, where the reader is a
+ * parish clerk or a watch coordinator typing something like "neighbourhood
+ * watch app UK" and deciding from two lines whether to click.
+ *
+ * `alternates.canonical` is set **per page**, never in the root layout. Metadata
+ * is inherited in Next, so a canonical of "/" on the layout would tell a crawler
+ * that `/privacy` and `/terms` are duplicates of the home page and drop both
+ * from the index.
+ */
+export const metadata: Metadata = {
+  title: `${APP_NAME} — ${APP_TAGLINE}`,
+  description:
+    'Community safety reporting for UK villages and parishes. Residents report what they see, AI removes the personal details, and the map and push alerts do the rest. Free for one village.',
+  alternates: { canonical: '/' },
+  openGraph: {
+    url: '/',
+    title: `${APP_NAME} — ${APP_TAGLINE}`,
+    description:
+      'Community safety reporting for UK villages and parishes. Report in seconds, stay anonymous, and see the pattern before anyone joins the dots by hand.',
+  },
+};
 
 const STEPS = [
   {
@@ -126,6 +155,21 @@ const FAQS = [
 export default function LandingPage() {
   return (
     <>
+      {/*
+        Organization, WebSite and SoftwareApplication, as one linked graph. The
+        only `dangerouslySetInnerHTML` in the app, and the exception is narrow:
+        a `<script type="application/ld+json">` has to receive a raw string, and
+        React would otherwise escape the JSON into something no parser reads.
+        Nothing user-supplied reaches it, and `serialiseJsonLd` escapes `<`
+        anyway so a `</script>` could never break out of the block.
+      */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: serialiseJsonLd(landingStructuredData()),
+        }}
+      />
+
       {/* ------------------------------------------------------------------ */}
       {/* Header                                                              */}
       {/* ------------------------------------------------------------------ */}

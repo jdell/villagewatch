@@ -42,6 +42,20 @@ export async function generateMetadata({
 
   return {
     title: village ? `Join ${village.name}` : "Join your village",
+    /**
+     * Worth writing even though the page is `noindex`. This is the link a
+     * coordinator pastes into a WhatsApp group, and the preview card is built
+     * from these two fields — a title with nothing under it is what an invite
+     * to a neighbourhood watch scheme should not look like.
+     *
+     * It names the village and never the join code. The code arrives in the
+     * query string and is deliberately never read from the database here (see
+     * `src/lib/invite.ts`); putting it in a description would also hand it to
+     * every link-preview service that fetches the page.
+     */
+    description: village
+      ? `${village.name} is running a neighbourhood watch on VillageWatch. Join to report what you see and get alerted about incidents nearby.`
+      : "Join your village's neighbourhood watch on VillageWatch.",
     robots: { index: false, follow: false },
   };
 }

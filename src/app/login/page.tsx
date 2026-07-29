@@ -8,7 +8,10 @@ import { isGoogleAuthEnabled, isSupabaseConfigured } from "@/lib/supabase/env";
 
 export const metadata: Metadata = {
   title: "Sign in",
-  description: "Sign in to your VillageWatch account.",
+  description:
+    "Sign in to VillageWatch to see your village's incident map, file a report or review the moderation queue.",
+  alternates: { canonical: "/login" },
+  openGraph: { url: "/login", title: "Sign in" },
 };
 
 /** Next.js 16: `searchParams` is a Promise and must be awaited. */
