@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.24](https://github.com/jdell/villagewatch/compare/v0.1.23...v0.1.24) (2026-08-03)
+
+
+### Documentation
+
+* funding strategy, National Lottery AI grant draft and backlog section ([e5873cc](https://github.com/jdell/villagewatch/commit/e5873cc678db26e34be583284b533a12ac3b2301))
+
+
+### Fixes
+
+* **reports:** keep the printed report inside the page ([3dec689](https://github.com/jdell/villagewatch/commit/3dec6894ee44d2894e968bd964c08bdc8d49dbba))
+
 ### [0.1.23](https://github.com/jdell/villagewatch/compare/v0.1.22...v0.1.23) (2026-07-29)
 
 
