@@ -1484,6 +1484,39 @@ together. Two documents: one incident, and everything published over a period.
   controls inside it that do not. The rules use `visibility` rather than
   `display` because the report sits several layers deep in the app shell and
   hiding an ancestor would hide the report with it.
+- **What bounds the printed page is `table-layout: fixed`, not `width: 100%`.**
+  Automatic table layout sizes from content and exceeds a percentage width to
+  fit a column's longest unbreakable run, so the incident log ran off the right
+  of the paper — where a printer, unlike the screen's `overflow-x-auto` wrapper,
+  has no scrollbar and simply loses the columns past the fold. Fixed layout
+  takes its widths from the header row, which is why every `<th>` in
+  `report-view.tsx` carries a `print:w-[…]`: declare none and six columns split
+  evenly, giving the description a sixth of the page. The page is `A4` at
+  `15mm 10mm` — British product, and 10mm at the sides is 12mm of column width
+  the log did not have at 16mm all round.
+- **The print scale is `html { font-size }`, and it has to be.** Every size in
+  the app is a Tailwind rem utility, and rem resolves against the *root*, so
+  `body { font-size }` is inherited by nothing and changes nothing. 81.25% puts
+  `text-sm` at ~11.4px and scales the padding and the table's minimum widths
+  with it rather than leaving 16px gutters around 11px type.
+- **The print rules in `globals.css` sit outside Tailwind's cascade layers**, so
+  they beat any utility outright. That is what lets `white-space: normal` unpick
+  the timestamp's `whitespace-nowrap` and `min-width: 0` unpick the table's
+  `min-w-[46rem]` without resting on which variant the compiler emitted last.
+  Set a property there and the matching `print:` utility becomes dead weight —
+  pick one place per property.
+- **`break-inside: avoid` is on rows and short sections, never on the log.** A
+  box taller than a page is a request no engine can honour: some ignore it,
+  others push the section to a fresh page, leave the one before it blank, and
+  overflow anyway. `Section` takes `allowBreak` and the incident log is the only
+  caller that sets it. Headings carry `break-after: avoid` instead, and `thead`
+  is `table-header-group` so the columns repeat on every page the log runs onto.
+- **The app shell's sidebar and top bar carry `data-print-hide`.** Under the
+  `visibility` rule they were invisible and still occupied their boxes — 256px
+  of nothing down the left of every page, taken out of the width the report had
+  to fit into. The onboarding tour's card carries it too; the existing
+  `[data-tour]` rule matches the sidebar links it points at, not the card, which
+  is fixed to the viewport and printed over the top of the first page.
 - **`Village.parishCouncil` names the data controller in the footer**, falling
   back to `DATA_CONTROLLER` in `constants.ts` — which is still placeholders, so
   `/reports` shows a warning when the footer would read "[Parish Council name]".

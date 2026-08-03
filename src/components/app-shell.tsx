@@ -311,8 +311,19 @@ export function AppShell({
 
   return (
     <div className="flex min-h-full flex-1 bg-slate-50">
-      {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 bg-brand-950 lg:block">
+      {/*
+        Desktop sidebar.
+
+        `data-print-hide` because the print rules hide everything outside
+        `[data-print-region]` with `visibility`, and an invisible box is still a
+        box — this one is 256px of nothing down the left of every printed page,
+        taken out of the width the report had to fit into. The same goes for the
+        mobile bar and the drawer below. See globals.css.
+      */}
+      <aside
+        className="hidden w-64 shrink-0 bg-brand-950 lg:block"
+        data-print-hide
+      >
         {/*
           `h-dvh`, not `h-screen`. `100vh` is the *large* viewport — the height the
           window would have with the browser chrome retracted — so in a short
@@ -345,7 +356,7 @@ export function AppShell({
         that tracks the chrome. Everything inside is `h-full` off this.
       */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-[1100] h-dvh lg:hidden">
+        <div className="fixed inset-0 z-[1100] h-dvh lg:hidden" data-print-hide>
           <button
             type="button"
             aria-label="Close navigation"
@@ -370,7 +381,10 @@ export function AppShell({
           underneath this bar, and its zoom control used to cover the hamburger
           button outright.
         */}
-        <header className="sticky top-0 z-[1000] flex h-14 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:hidden">
+        <header
+          className="sticky top-0 z-[1000] flex h-14 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:hidden"
+          data-print-hide
+        >
           <button
             type="button"
             onClick={() => setMobileOpen(true)}

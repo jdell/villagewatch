@@ -225,11 +225,34 @@ body[data-tour-active] [data-push-prompt] {
  *
  * `[data-print-hide]` is for the controls *inside* the region — the buttons
  * that made this printable in the first place, and the "not generated yet"
- * placeholder. Those really are `display: none`, so they leave no gap.
+ * placeholder. Those really are `display: none`, so they leave no gap. The app
+ * shell's own chrome carries it too (`src/components/app-shell.tsx`): the
+ * sidebar and the mobile top bar are invisible under the rule above but still
+ * occupy their boxes, and a 256px column of nothing down the left of every page
+ * is 256px the report does not get.
  */
 @media print {
+  /*
+    A4, because every surface of this product is British — `Europe/London`,
+    en-GB, 999. 10mm at the sides rather than 16mm all round buys the incident
+    log 12mm of column width, which is where the overflow was.
+  */
   @page {
-    margin: 16mm;
+    size: A4;
+    margin: 15mm 10mm;
+  }
+
+  /*
+    The one lever that shrinks the whole document, and it has to be `html`
+    rather than `body`. Every size in this app is a Tailwind rem utility —
+    `text-sm`, `px-4`, `min-w-[46rem]` — and rem resolves against the *root*, so
+    `body { font-size: 11px }` would be inherited by nothing and change nothing.
+    13px puts `text-sm` at ~11.4px and scales the padding and the table's
+    minimum widths with it, in proportion, rather than leaving 16px gutters
+    around 11px type.
+  */
+  html {
+    font-size: 81.25%;
   }
 
   body {
@@ -250,6 +273,7 @@ body[data-tour-active] [data-push-prompt] {
     top: 0;
     left: 0;
     width: 100%;
+    max-width: 100%;
     margin: 0;
     padding: 0;
     box-shadow: none;
@@ -258,6 +282,72 @@ body[data-tour-active] [data-push-prompt] {
   [data-print-hide],
   [data-print-region] [data-print-hide] {
     display: none !important;
+  }
+
+  /*
+    Nothing inside the region may be wider than the page, and nothing may be
+    clipped to hide the fact that it is.
+
+    Both halves matter. On screen the incident log is a `min-w-[46rem]` table
+    inside an `overflow-x-auto` wrapper, which is the right answer on a phone
+    and the wrong one on paper: a printer has no scrollbar, so the columns past
+    the fold were simply not there. `overflow: visible` is what stops the
+    clipping and the width cap is what stops there being anything to clip.
+
+    `overflow-wrap: break-word` is for the content the app does not control —
+    a resident's description with a URL or a 40-character road name in it. A
+    word longer than its column overflows a fixed-layout cell silently; this
+    breaks it instead.
+  */
+  [data-print-region] * {
+    max-width: 100%;
+    overflow: visible !important;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  [data-print-region] img {
+    height: auto;
+  }
+
+  /*
+    `table-layout: fixed` is what actually holds the log inside the page.
+
+    Automatic layout sizes a table from its content and will happily exceed
+    `width: 100%` to fit a column's longest unbreakable run — a timestamp under
+    `whitespace-nowrap`, a reference code — so "100%" was never a ceiling. Fixed
+    layout takes the widths from the header row and nothing after it can argue,
+    which is why `report-view.tsx` carries a `print:w-[…]` on every `<th>`: with
+    fixed layout and no widths declared, six columns would split evenly and the
+    description — the column the whole document exists for — would get a sixth
+    of the page.
+  */
+  [data-print-region] table {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+  }
+
+  /*
+    `white-space: normal` unpicks the `whitespace-nowrap` the timestamp and the
+    reference carry. That is right on screen, where the scroll container absorbs
+    it, and wrong on paper: a fixed-layout column cannot widen for a run it
+    cannot break, so "24 Jul 2026, 15:04" would simply run into the column next
+    to it.
+
+    It is set here rather than as a `print:whitespace-normal` on the cell
+    because these rules sit outside Tailwind's cascade layers and so beat the
+    utilities outright — one place decides, and nothing rests on which variant
+    the compiler happened to emit last.
+  */
+  [data-print-region] th,
+  [data-print-region] td {
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
   }
 
   /*
@@ -271,13 +361,41 @@ body[data-tour-active] [data-push-prompt] {
   }
 
   /* Keep a row's description with its date rather than orphaned overleaf. */
-  [data-print-region] tr,
-  [data-print-region] section {
+  [data-print-region] tr {
     break-inside: avoid;
   }
 
+  /*
+    `section` is deliberately *not* in that rule any more, and the incident log
+    is why: it is the one section that can run to several pages, and
+    `break-inside: avoid` on a box taller than a page is a request no engine can
+    honour — some ignore it, others push the whole thing to a fresh page and
+    leave the first one blank before overflowing anyway. Each `Section` asks for
+    itself instead (see `report-view.tsx`), and the log asks to be allowed to
+    break.
+
+    A heading that lands at the foot of a page with its section overleaf is the
+    other half of the same problem, and `break-after` is the fix for it.
+  */
+  [data-print-region] h1,
+  [data-print-region] h2,
+  [data-print-region] h3,
+  [data-print-region] header {
+    break-after: avoid;
+  }
+
+  [data-print-region] header,
+  [data-print-region] footer {
+    break-inside: avoid;
+  }
+
+  /* The column headings repeat at the top of every page the log runs onto. */
   [data-print-region] thead {
     display: table-header-group;
+  }
+
+  [data-print-region] tfoot {
+    display: table-footer-group;
   }
 
   /* The toast layer and the tour both sit outside the region and are fixed. */

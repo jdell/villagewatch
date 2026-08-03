@@ -352,7 +352,11 @@ export function ReportView({
           )}
         </Section>
 
-        <Section title="Incident log">
+        {/*
+          `allowBreak`, because this is the one section that can run past a
+          page. See the `break-after` note in globals.css.
+        */}
+        <Section title="Incident log" allowBreak>
           {report.incidents.length === 0 ? (
             <p className="text-sm text-slate-600">
               Nothing was published in this village during the period.
@@ -361,20 +365,41 @@ export function ReportView({
             <>
               {/*
                 A table on a wide screen and a scroll container on a narrow one.
-                In print it is neither — `print:block` unpicks the wrapper so
-                the rows break across pages instead of being clipped at the
-                bottom of the first.
+                In print it is neither — the wrapper's scroll is unpicked so the
+                rows break across pages instead of being clipped at the bottom
+                of the first, and the table's `min-w-[46rem]` goes with it. 46rem
+                is 736px, wider than A4's printable 190mm however the margins are
+                set, so leaving it on was the overflow.
+
+                The percentages are the column widths `table-layout: fixed`
+                reads off this row — see globals.css for why fixed layout is the
+                only thing that actually bounds a table. They total 100 and are
+                weighted towards the report itself, which is the column carrying
+                free text; the five before it carry a timestamp, a code and three
+                enum labels, and none of those grows.
               */}
               <div className="-mx-1 overflow-x-auto print:mx-0 print:overflow-visible">
                 <table className="w-full min-w-[46rem] border-collapse text-left text-sm print:min-w-0">
                   <thead>
                     <tr className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
-                      <th className="py-2 pr-3 font-semibold">When</th>
-                      <th className="py-2 pr-3 font-semibold">Reference</th>
-                      <th className="py-2 pr-3 font-semibold">Category</th>
-                      <th className="py-2 pr-3 font-semibold">Severity</th>
-                      <th className="py-2 pr-3 font-semibold">Location</th>
-                      <th className="py-2 font-semibold">Report</th>
+                      <th className="py-2 pr-3 font-semibold print:w-[14%]">
+                        When
+                      </th>
+                      <th className="py-2 pr-3 font-semibold print:w-[11%]">
+                        Reference
+                      </th>
+                      <th className="py-2 pr-3 font-semibold print:w-[12%]">
+                        Category
+                      </th>
+                      <th className="py-2 pr-3 font-semibold print:w-[9%]">
+                        Severity
+                      </th>
+                      <th className="py-2 pr-3 font-semibold print:w-[14%]">
+                        Location
+                      </th>
+                      <th className="py-2 font-semibold print:w-[40%]">
+                        Report
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -383,6 +408,11 @@ export function ReportView({
                         key={incident.id}
                         className="border-b border-slate-100 align-top break-inside-avoid"
                       >
+                        {/*
+                          `whitespace-nowrap` here and on the reference below is
+                          unpicked in print by globals.css — a fixed-layout
+                          column cannot widen for a run it cannot break.
+                        */}
                         <td className="py-2.5 pr-3 whitespace-nowrap text-slate-600">
                           {formatDateTime(incident.occurredAt)}
                         </td>
@@ -454,6 +484,7 @@ export function ReportView({
 function Section({
   title,
   printHidden,
+  allowBreak,
   children,
 }: {
   title: string;
@@ -466,11 +497,25 @@ function Section({
    * as a section that failed rather than one nobody asked for.
    */
   printHidden?: boolean;
+  /**
+   * Lets the section be split across pages.
+   *
+   * Only the incident log sets it, and it has to: a village with a busy month
+   * produces a section several pages tall, and `break-inside: avoid` on a box
+   * that cannot fit on one page is a request the browser has to break. Some
+   * engines ignore it; others move the section to a fresh page, leave the one
+   * before it blank, and overflow anyway.
+   *
+   * The class is added rather than overridden for the same reason the widths
+   * are on the `<th>`s: an opt-out that depended on `print:break-inside-auto`
+   * beating `break-inside-avoid` would be resting on utility ordering.
+   */
+  allowBreak?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <section
-      className="mt-6 break-inside-avoid"
+      className={`mt-6${allowBreak ? "" : " break-inside-avoid"}`}
       data-print-hide={printHidden ? "" : undefined}
     >
       <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">

@@ -192,11 +192,18 @@ export function OnboardingTour() {
   const isLast = step === STEPS.length - 1;
   const Icon = current.icon;
 
+  /*
+    `data-print-hide`: the print rules already drop `[data-tour]`, but that
+    attribute is on the sidebar links this card points *at*, not on the card —
+    which is fixed to the viewport and would otherwise land on the first printed
+    page, over the top of whatever is being printed.
+  */
   return (
     <div
       role="dialog"
       aria-modal="false"
       aria-labelledby="tour-title"
+      data-print-hide
       className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:inset-x-auto sm:right-4"
     >
       <div className="flex items-start gap-3">
