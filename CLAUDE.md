@@ -258,6 +258,8 @@ src/
                               format, client-safe, shared by log and clipboard
     community-report.ts       The police/council documents — one incident and a
                               period. Client-safe, no rawDescription/lat/lng
+    incident-reference.ts     VW-HIS-2026-0003 — the village's code, the year and
+                              the village's own count. Client-safe, one format
     invite.ts                 buildJoinUrl / buildInviteUrl / readJoinCodeParam —
                               client-safe, and the code never comes from the DB
     date-range.ts             The period behind /map, /incidents and /dashboard
@@ -346,6 +348,8 @@ tests/                        Vitest, unit only — see The test suite
   date-range.test.ts          The period resolver — presets, the allowed-list
                               narrowing, custom inclusivity, and `all` adding no
                               `occurredAt` key at all
+  incident-reference.test.ts  The village code, the four digits, the fallback for
+                              a row with no number, and 0 not being falsy
 vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
   ci.yml                      lint → typecheck → test → build, PRs and main
@@ -753,10 +757,11 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Thirteen files, 213 tests, covering the
+between the typecheck and the build. Fifteen files, 257 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 AI pass's failure modes, the Zod schemas, the WhatsApp channel code, the alert
-format, the CSV export's escaping and formula-injection guard, the compliance
+format, the incident reference, the CSV export's escaping and formula-injection
+guard, the compliance
 gate's three states, the three legal documents loading and parsing, the Markdown
 parser the compliance page renders them through, the per-village face redaction
 level, the heat intensity scale and the invite link.
@@ -1843,6 +1848,87 @@ audit row. `src/lib/incident-csv.ts` holds the formatting, and is what
   and a bulk read of a village's reports that no trail records is the one
   outcome worse than a download that did not work.
 
+## The incident reference
+
+`VW-HIS-2026-0003` — VillageWatch, Histon, 2026, the third report Histon filed
+that year. `src/lib/incident-reference.ts` is the one place the string is built,
+`POST /api/incidents` allocates the number, and `Incident.reference` stores the
+result.
+
+- **The number is the village's own, and that is the whole change.** It was a
+  single platform-wide sequence (`VW-2026-0184`), so the first report a new
+  parish ever filed was numbered by how busy every other parish had been — a
+  number a coordinator cannot explain to a resident, and one that tells anybody
+  holding two references from different villages how large the deployment is.
+  `villageIncidentNumber` and `referenceYear` are the columns behind it, and the
+  sequence restarts on 1 January.
+- **`reference` is no longer `@unique`, and it cannot be.** The village code is
+  the first three letters of the name, which does not separate 10,670 parishes
+  — every "Great …" derives `GRE`. A global unique index would mean the second
+  `GRE` village to file its third report of the year could not file it at all:
+  the number it computed for itself is spoken for, and the retry computes the
+  same number again. What replaced it is
+  `@@unique([villageId, referenceYear, villageIncidentNumber])`, which is the
+  constraint that was always meant — references are unique *per village*,
+  because the village is the tenant boundary (domain rule 4).
+- **`Village.villageCode` is the answer to a collision that matters**, set by
+  hand and null everywhere. Nothing breaks without it; what it buys is a police
+  officer covering two `GRE` parishes being able to tell their references apart.
+  Changing it changes nothing already issued — stored strings stay as they are,
+  which is the point of storing them.
+- **The string is stored, not derived on read.** It is what the audit trail
+  holds, what a police summary prints and what a resident reads out on the
+  phone, and deriving it at render time would mean threading a village name
+  through every card, popup, CSV row and email — where the one surface that
+  forgot would print a different reference for the same report. So
+  `formatIncidentReference` is called once, when the row is created, and the
+  eight surfaces that show a reference render the column. It falls back to the
+  stored string for a row with no number, which is what makes it safe to call
+  from a read path.
+- **`MAX(villageIncidentNumber) + 1` races, and the constraint is what catches
+  it.** Two requests read the same maximum; the loser gets a P2002 and the
+  create loop — which already existed for the old scheme — allocates again
+  against a moved maximum. Deliberately not a lock or an interactive
+  transaction: both would serialise every report filed in a village behind one
+  connection, through pgBouncer in transaction mode, to buy an ordering the
+  unique key already guarantees.
+- **`referenceYear` comes from `reportedAt`, never `occurredAt`.** The sequence
+  is a filing order. A report made on 2 January about New Year's Eve belongs to
+  this year's numbering, or a village's log has gaps in it that only make sense
+  to whoever remembers what happened last December.
+- **The backfill in `20260803120000_incident_village_numbering` renumbers what
+  is already there**, and writes the derivation a second time in SQL. Rows could
+  have been left alone — Postgres treats NULLs as distinct in a unique index, so
+  they would not have blocked anything — but two schemes in one column is a
+  coordinator with no way to know which reports are numbered against what. The
+  `[^A-Za-z]` class and the `VIL` fallback in that file are
+  `villageReferenceCode`'s rules; keep the two in step, or a rebuilt reference
+  stops agreeing with a stored one.
+
+## The version on screen
+
+`APP_VERSION` and `VERSION_LABEL` in `src/lib/constants.ts`, filled from
+`package.json` by `next.config.ts` at build time. Three surfaces render it: the
+app sidebar under Sign out, the foot of `/settings` with the product name in
+front of it, and the public footer beside the copyright line.
+
+- **It is read in `next.config.ts` rather than imported where it is rendered.**
+  `package.json` carries the whole dependency list; importing it from
+  `constants.ts` would ship every package and pinned version this deployment
+  runs to every browser. One string in `env` is inlined into both bundles
+  instead.
+- **`NEXT_PUBLIC_APP_VERSION` wins where it is set**, which is the escape hatch
+  for a preview that wants to label itself a commit SHA. Inlined at build time,
+  so changing it needs a redeploy.
+- **Empty renders nothing.** A build with no version says nothing rather than
+  inventing a number, and each of the three surfaces tests the label first.
+- **Production sits one patch behind `main`, and that is not a failed deploy.**
+  `version.yml` bumps the version *after* a release lands, in a commit carrying
+  `[skip ci]` — which is what stops Vercel spending a production deploy on a
+  version bump. So the number on screen is the version of the commit the build
+  came from, and `package.json` on `main` is a patch ahead until the next real
+  change deploys.
+
 ## The period
 
 `src/lib/date-range.ts` resolves it, `TIME_RANGES` in `src/lib/constants.ts` is
@@ -1985,11 +2071,12 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates, the onboarding tour and the ONS village directory pipeline. Still
 open:
 
-- The Supabase project exists (eu-west-2), **migrations 1–5 of the nine are
+- The Supabase project exists (eu-west-2), **migrations 1–5 of the ten are
   applied**, and `postgis.sql` and `rls_policies.sql` have both been re-run after
   them. `20260727180000_village_activation` (`parish_council`),
   `20260728090000_village_compliance_gate`,
-  `20260728120000_village_privacy_level` and `20260728150000_village_dpa_gate`
+  `20260728120000_village_privacy_level`, `20260728150000_village_dpa_gate` and
+  `20260803120000_incident_village_numbering`
   have never been applied anywhere. The
   `incident-media` bucket exists, private. What has **not** happened: no
   production deployment and no cron has ever fired.
@@ -1999,7 +2086,12 @@ open:
   this repository whose application is a visible change to what residents can
   do, so do not run them without telling whoever coordinates the village. Run
   them together: 9 alone re-closes a village that had already accepted the first
-  two documents.
+  two documents. **Migration 10 lands with them**, because
+  `database.yml` applies whatever is outstanding in one pass — it renumbers
+  every report that exists and rewrites its reference, which is the intended
+  effect (see The incident reference) and is worth expecting rather than
+  discovering. `rls_policies.sql` has to run after it, as always: three new
+  columns need their SELECT grants.
 - **Migrations are applied by `.github/workflows/database.yml`**, on a push to
   main touching `prisma/**` or from the Run workflow button: `migrate deploy`,
   then `postgis.sql`, then `rls_policies.sql`, in that order. It is not in the
@@ -2172,7 +2264,7 @@ open:
   `/map` in a village with a handful of reports and check the blobs sit where the
   pins do: `leaflet.heat` reads `L` off the global scope, and the failure mode if
   that ever stops being true is a silent no-op layer rather than an error.
-- **There is a test suite now, and it covers thirteen modules rather than the app.**
+- **There is a test suite now, and it covers fifteen modules rather than the app.**
   `npm run test` runs Vitest over `tests/`, and `.github/workflows/ci.yml` runs
   it between the typecheck and the build. See The test suite below for what is
   asserted and what is deliberately not. Nothing yet asserts that a

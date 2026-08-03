@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/logo";
-import { APP_NAME, GITHUB_URL } from "@/lib/constants";
+import { APP_NAME, GITHUB_URL, VERSION_LABEL } from "@/lib/constants";
 
 /**
  * The public footer, shared by the landing page and the legal pages.
@@ -120,6 +120,15 @@ export function SiteFooter({
         <div className="mt-12 flex flex-col gap-4 border-t border-white/10 pt-8 text-sm sm:flex-row sm:items-center sm:justify-between">
           <p>
             © {year} {APP_NAME}. All rights reserved.
+            {/*
+              The build, on the public footer as well as inside the app. A
+              parish clerk reporting something odd on the landing page has no
+              other way to say which deployment they were looking at, and this
+              is the page somebody lands on before they have an account at all.
+            */}
+            {VERSION_LABEL && (
+              <span className="ml-2 text-brand-400">{VERSION_LABEL}</span>
+            )}
           </p>
           <p className="text-brand-300">
             In an emergency, always call the emergency services first.

@@ -22,7 +22,11 @@ import { Logo } from "@/components/logo";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { PushRegistration } from "@/components/push-registration";
 import type { UserRole } from "@/generated/prisma/enums";
-import { COORDINATOR_ROLES, USER_ROLE_LABELS } from "@/lib/constants";
+import {
+  COORDINATOR_ROLES,
+  USER_ROLE_LABELS,
+  VERSION_LABEL,
+} from "@/lib/constants";
 
 /**
  * `tour` marks an item the onboarding tour points at. The highlight itself is a
@@ -305,6 +309,16 @@ export function AppShell({
             Sign out
           </button>
         </form>
+
+        {/*
+          The build, quietly. It is here so that "which version are you on?" is
+          a question a coordinator can answer from the screen they are already
+          looking at, rather than one that needs a screenshot of a bug report
+          and a guess. Nothing renders when the build carries no version.
+        */}
+        {VERSION_LABEL && (
+          <p className="mt-3 px-3 text-xs text-brand-400">{VERSION_LABEL}</p>
+        )}
       </div>
     </div>
   );

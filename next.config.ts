@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import pkg from "./package.json";
 
 /**
  * Security headers, applied to every response.
@@ -115,6 +116,25 @@ const SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   /** No `X-Powered-By: Next.js`. Free information for an attacker, no use to us. */
   poweredByHeader: false,
+
+  /**
+   * The running version, read out of `package.json` and inlined at build time.
+   *
+   * It is here rather than imported by the component that renders it because
+   * `package.json` carries the whole dependency list: importing it from
+   * `src/lib/constants.ts` would put that list — every package and every pinned
+   * version this deployment runs — into the JavaScript sent to every browser.
+   * A single string in `env` is inlined into both bundles instead.
+   *
+   * The environment wins where it is set, so a deployment can label itself
+   * (a commit SHA, a staging marker) without editing the manifest. See
+   * `APP_VERSION` in `src/lib/constants.ts` for why the number on a production
+   * page can sit one patch behind `main`.
+   */
+  env: {
+    NEXT_PUBLIC_APP_VERSION:
+      process.env.NEXT_PUBLIC_APP_VERSION ?? pkg.version ?? "",
+  },
 
   /**
    * `/dashboard/compliance` renders `docs/DPIA.md`, `docs/APD_TEMPLATE.md` and

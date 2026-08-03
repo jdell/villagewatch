@@ -7,9 +7,11 @@ import { requireSession } from "@/lib/auth";
 import { getLatestCoordinatorRequest } from "@/lib/coordinator-requests";
 import { getVillageChannel } from "@/lib/whatsapp-channel";
 import {
+  APP_NAME,
   canApplyForCoordinator,
   isCoordinatorRole,
   USER_ROLE_LABELS,
+  VERSION_LABEL,
 } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -120,6 +122,18 @@ export default async function SettingsPage({
         rather than by client code that might not run.
       */}
       <form id="sign-out" action="/api/auth/logout" method="post" />
+
+      {/*
+        The build, named in full rather than as a bare `v0.1.24`. This is the
+        one a resident is asked to read out to whoever is helping them, and
+        "VillageWatch 0.1.24" survives being repeated over the phone in a way a
+        number on its own does not. Nothing renders on a build with no version.
+      */}
+      {VERSION_LABEL && (
+        <p className="mt-10 text-center text-xs text-slate-400">
+          {APP_NAME} {VERSION_LABEL}
+        </p>
+      )}
     </div>
   );
 }

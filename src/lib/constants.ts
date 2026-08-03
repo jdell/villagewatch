@@ -1235,6 +1235,31 @@ export const DIGEST_MAX_INCIDENTS = 60;
 
 export const APP_NAME = "VillageWatch";
 export const APP_TAGLINE = "Keep your village safe";
+
+/**
+ * Which build this is — `0.1.24`, no leading `v`.
+ *
+ * `NEXT_PUBLIC_APP_VERSION` is set from `package.json` by `next.config.ts` at
+ * build time, so the number on screen is the number `standard-version` wrote
+ * into the tag rather than something maintained by hand beside it. An
+ * environment variable of the same name set in Vercel wins, which is the escape
+ * hatch for a deployment that wants to label itself something else.
+ *
+ * **Empty is a supported state**, not a bug to fall back from: a build with no
+ * variable renders no version rather than a made-up one. `VERSION_LABEL` is
+ * empty with it, and every surface tests that before rendering.
+ *
+ * A wrinkle worth knowing before reading a mismatch as a failed deploy: CI
+ * bumps the version *after* a release lands on `main`, in a commit carrying
+ * `[skip ci]` — which is what stops Vercel spending a production deploy on a
+ * version bump. So production shows the version of the commit it was built
+ * from, and `package.json` on `main` is one patch ahead of it until the next
+ * real change deploys.
+ */
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "";
+
+/** `v0.1.24` for display, or an empty string when the build carries no version. */
+export const VERSION_LABEL = APP_VERSION ? `v${APP_VERSION}` : "";
 export const APP_DESCRIPTION =
   "Report what you see in seconds. AI strips out personal details, plots it on a live map, and alerts your neighbours when a pattern emerges.";
 
