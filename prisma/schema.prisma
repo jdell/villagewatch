@@ -151,6 +151,23 @@ model Village {
   timezone   String  @default("Europe/London")
   population Int?
 
+  /// The letters in the middle of this village's incident references —
+  /// `VW-HIS-2026-0003`. Null derives it from the first three letters of
+  /// `name`, which is what every village runs on; see
+  /// `src/lib/incident-reference.ts`.
+  ///
+  /// It exists because the derivation is not unique — every "Great …" parish
+  /// derives `GRE` — and two villages sharing a code is a reference a police
+  /// officer covering both cannot tell apart. It is not a database problem
+  /// (references are unique per village, not per deployment, and the composite
+  /// key on `incidents` is what enforces that), so nothing breaks without it;
+  /// it is the hand-set answer for the day somebody notices. There is no UI:
+  /// set it in Prisma Studio and only for a village that has a clash worth
+  /// fixing, because **changing it changes nothing already issued** — the
+  /// references on reports already filed are stored strings and they stay as
+  /// they are, by design.
+  villageCode String? @map("village_code")
+
   /// Short code residents enter at registration to join this village.
   ///
   /// Minted by `activateVillage()` in `src/lib/village.ts` and **required at
@@ -367,8 +384,42 @@ model User {
 model Incident {
   id String @id @default(uuid()) @db.Uuid
 
-  /// Human-facing reference, e.g. "VW-2026-0184".
-  reference String @unique
+  /// Human-facing reference, e.g. "VW-HIS-2026-0003" — the village's code, the
+  /// year, and this village's third report of that year.
+  ///
+  /// **Not `@unique`, and that is the change rather than an oversight.** It used
+  /// to be a platform-wide sequence (`VW-2026-0184`), which meant a village's
+  /// own reports were numbered by how busy every other village had been. The
+  /// number is per village per year now, and the uniqueness that matters moved
+  /// to the composite key at the foot of this model. A global unique index here
+  /// would additionally require village codes to be unique, which the
+  /// first-three-letters derivation cannot promise — and the failure mode of
+  /// promising it would be a village unable to file a report at all, because
+  /// every number it tried was spoken for by a village with the same three
+  /// letters.
+  ///
+  /// The string is stored rather than derived on read because it is what is
+  /// already in the audit trail, on a police summary and in a resident's inbox.
+  /// It is built in exactly one place — `formatIncidentReference` in
+  /// `src/lib/incident-reference.ts` — from the two columns below.
+  reference String
+
+  /// The year the reference is numbered within, and the year the sequence
+  /// resets on. Taken from `reportedAt` in the deployment's clock (UTC on
+  /// Vercel), not from `occurredAt`: a report filed on 2 January about
+  /// something that happened on 31 December belongs to this year's sequence,
+  /// because the sequence is a filing order rather than a calendar of events.
+  referenceYear Int? @map("reference_year")
+
+  /// This village's own count for `referenceYear` — 1 for its first report of
+  /// the year, whatever the rest of the deployment has been doing.
+  ///
+  /// Nullable because every row written before the per-village scheme existed
+  /// has no number and never will have a meaningful one; those rows keep the
+  /// old-format string in `reference` and are the reason the pair below can
+  /// hold NULLs. Allocated by `nextVillageReference()` in
+  /// `src/app/api/incidents/route.ts`.
+  villageIncidentNumber Int? @map("village_incident_number")
 
   villageId String  @map("village_id") @db.Uuid
   village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
@@ -447,6 +498,17 @@ model Incident {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  /// What actually stops two reports filed in the same second from sharing a
+  /// number. The application reads `MAX(villageIncidentNumber) + 1`, which two
+  /// concurrent requests can both read; this is the constraint that turns the
+  /// loser into a P2002 the create loop retries, rather than two reports with
+  /// the same reference on a police summary.
+  ///
+  /// Rows from before the scheme carry NULL in both columns, and Postgres
+  /// treats NULLs as distinct in a unique index — so they neither collide with
+  /// each other nor need a backfill to be tolerated. They were backfilled
+  /// anyway, in `20260803120000_incident_village_numbering`.
+  @@unique([villageId, referenceYear, villageIncidentNumber], map: "incidents_village_year_number_key")
   @@index([villageId, status, occurredAt(sort: Desc)])
   @@index([villageId, type])
   @@index([villageId, severity])

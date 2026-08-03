@@ -8,6 +8,7 @@ import type {
   Severity,
 } from "../src/generated/prisma/enums";
 import { fuzzCoordinates } from "../src/lib/geo";
+import { formatIncidentReference } from "../src/lib/incident-reference";
 import {
   LOCATION_FUZZ_METERS,
   VILLAGE_STATUS_LABELS,
@@ -239,7 +240,12 @@ async function main() {
 
   const village = await seedVillage();
   const userId = await seedCoordinator(village.id);
-  const incidents = await seedIncidents({ villageId: village.id, userId, now });
+  const incidents = await seedIncidents({
+    villageId: village.id,
+    villageName: village.name,
+    userId,
+    now,
+  });
   await seedPatternAlert({ villageId: village.id, incidents, now });
 
   console.log("");
@@ -359,10 +365,19 @@ type SeededIncident = { id: string; occurredAt: Date; severity: Severity };
 
 async function seedIncidents(input: {
   villageId: string;
+  villageName: string;
   userId: string;
   now: Date;
 }): Promise<SeededIncident[]> {
   const seeded: SeededIncident[] = [];
+
+  /*
+    References are numbered per village per year, so the counter is per year
+    rather than the position in `INCIDENTS`. It matters on any run in the first
+    week of January, where the sample reports straddle a year boundary and the
+    index would number the January ones 4 and 5 instead of 1 and 2.
+  */
+  const numbers = new Map<number, number>();
 
   for (const [index, incident] of INCIDENTS.entries()) {
     const occurredAt = new Date(input.now.getTime() - incident.daysAgo * DAY_MS);
@@ -370,7 +385,15 @@ async function seedIncidents(input: {
       occurredAt.getTime() + incident.reportedHoursLater * HOUR_MS,
     );
 
-    const reference = `VW-${occurredAt.getFullYear()}-${String(index + 1).padStart(4, "0")}`;
+    // The filing year, matching `POST /api/incidents`.
+    const referenceYear = reportedAt.getUTCFullYear();
+    const villageIncidentNumber = (numbers.get(referenceYear) ?? 0) + 1;
+    numbers.set(referenceYear, villageIncidentNumber);
+
+    const reference = formatIncidentReference(
+      { name: input.villageName },
+      { referenceYear, villageIncidentNumber },
+    );
 
     // Offset from the village centre, then jittered exactly as a real report is
     // on the way in (domain rule 2). The seed has no privacy to protect, but a
@@ -386,13 +409,26 @@ async function seedIncidents(input: {
       incident.status === "PUBLISHED" || incident.status === "RESOLVED";
 
     const row = await prisma.incident.upsert({
-      where: { reference },
-      // Nothing. If this reference exists, a coordinator may have moderated it
+      // The composite key rather than `reference`, which is no longer unique on
+      // its own — see the `@@unique` on `Incident`. It is also the more stable
+      // handle of the two: renaming the seed village through
+      // `SEED_VILLAGE_NAME` changes the reference string and would otherwise
+      // make a second run seed five more reports beside the first five.
+      where: {
+        villageId_referenceYear_villageIncidentNumber: {
+          villageId: input.villageId,
+          referenceYear,
+          villageIncidentNumber,
+        },
+      },
+      // Nothing. If this report exists, a coordinator may have moderated it
       // since — re-running the seed must not put a rejected report back on the
       // map. `update: {}` keeps the upsert idempotent without overwriting.
       update: {},
       create: {
         reference,
+        referenceYear,
+        villageIncidentNumber,
         villageId: input.villageId,
         reporterId: input.userId,
         type: incident.type,

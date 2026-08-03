@@ -15,6 +15,7 @@ import {
 } from "@/lib/notifications";
 import { notifySlack } from "@/lib/slack";
 import { formatIncidentAlert } from "@/lib/format-alert";
+import { formatIncidentReference } from "@/lib/incident-reference";
 import {
   LOCATION_FUZZ_METERS,
   SEVERITY_META,
@@ -66,16 +67,55 @@ import { fieldErrors, incidentReportSchema } from "@/lib/validations";
  * even read.
  */
 
-/** Sequence room per year before references start colliding. */
+/** How many times a losing race for a number is re-run before giving up. */
 const REFERENCE_ATTEMPTS = 5;
 
-async function nextReference(year: number): Promise<string> {
-  const startOfYear = new Date(Date.UTC(year, 0, 1));
-  const count = await prisma.incident.count({
-    where: { createdAt: { gte: startOfYear } },
+/** A reference and the two columns it was built from, written together. */
+type AllocatedReference = {
+  reference: string;
+  referenceYear: number;
+  villageIncidentNumber: number;
+};
+
+/**
+ * The next reference for this village, this year.
+ *
+ * `MAX(villageIncidentNumber) + 1` scoped to the village and the year, so a
+ * village's reports are numbered by its own filing history and the sequence
+ * restarts each January. It used to be a count of every incident on the
+ * deployment, which made a parish's first ever report `VW-2026-0184`.
+ *
+ * **Two requests can read the same maximum, and that is handled downstream
+ * rather than here.** The `@@unique([villageId, referenceYear,
+ * villageIncidentNumber])` key on `Incident` is what makes a duplicate
+ * impossible; the loser of the race gets a P2002 and the create loop calls this
+ * again, by which time the winner's row is committed and the maximum has moved.
+ *
+ * That is deliberately not a lock or an interactive transaction. Both would
+ * serialise every report filed in a village behind one connection — through
+ * pgBouncer in transaction mode, which is what `DATABASE_URL` points at — to
+ * buy an ordering the constraint already guarantees. A retry costs one extra
+ * SELECT on the rare occasion two neighbours press Publish in the same second.
+ */
+async function nextVillageReference(
+  village: { id: string; name: string; villageCode: string | null },
+  year: number,
+): Promise<AllocatedReference> {
+  const { _max } = await prisma.incident.aggregate({
+    where: { villageId: village.id, referenceYear: year },
+    _max: { villageIncidentNumber: true },
   });
 
-  return `VW-${year}-${String(count + 1).padStart(4, "0")}`;
+  const villageIncidentNumber = (_max.villageIncidentNumber ?? 0) + 1;
+
+  return {
+    reference: formatIncidentReference(village, {
+      referenceYear: year,
+      villageIncidentNumber,
+    }),
+    referenceYear: year,
+    villageIncidentNumber,
+  };
 }
 
 /**
@@ -98,6 +138,8 @@ async function announce(input: {
   incidentId: string;
   reference: string;
   villageId: string;
+  /** Already in hand from the reference lookup — never re-read for a log line. */
+  villageName: string;
   autoApprove: boolean;
   session: NonNullable<Awaited<ReturnType<typeof getSession>>>;
   report: z.output<typeof incidentReportSchema>;
@@ -166,13 +208,8 @@ async function announce(input: {
     // The same line `applyModeration` sends, with the same rule about what may
     // be in it: the anonymised title, the severity and the landmark. Never the
     // reporter's wording, never the coordinates.
-    const village = await prisma.village.findUnique({
-      where: { id: villageId },
-      select: { name: true },
-    });
-
     await notifySlack(
-      `🚨 New incident in ${village?.name ?? "a village"} (auto-approved): ${SEVERITY_META[report.severity].label} — ${report.title}${
+      `🚨 New incident in ${input.villageName} (auto-approved): ${SEVERITY_META[report.severity].label} — ${report.title}${
         report.locationText ? ` — ${report.locationText}` : ""
       }`,
     );
@@ -280,6 +317,27 @@ export async function POST(request: NextRequest) {
   // The exact point the reporter tapped is never persisted.
   const fuzzed = fuzzCoordinates(report.lat, report.lng, LOCATION_FUZZ_METERS);
 
+  // The village's own name and code, for the reference. Read from the row
+  // rather than from anything the browser sent (domain rule 4), and read once —
+  // the create loop may run more than once and the village will not have been
+  // renamed in between.
+  const village = await prisma.village.findUnique({
+    where: { id: villageId },
+    select: { id: true, name: true, villageCode: true },
+  });
+
+  if (!village) {
+    return NextResponse.json(
+      { error: "Join a village before filing a report" },
+      { status: 403 },
+    );
+  }
+
+  // The year the reference is numbered within — the deployment's clock, which
+  // is UTC on Vercel. `reportedAt` rather than `occurredAt`: the sequence is a
+  // filing order, so a report made on 2 January about New Year's Eve is this
+  // year's, and a village's numbering has no gaps in it that only make sense to
+  // whoever knows what happened last December.
   const year = new Date().getUTCFullYear();
 
   // Present only when the wizard actually got a record back from
@@ -294,9 +352,16 @@ export async function POST(request: NextRequest) {
 
   for (let attempt = 0; attempt < REFERENCE_ATTEMPTS; attempt += 1) {
     try {
+      // Re-read on every attempt. A retry is here precisely because somebody
+      // else took the number, so reusing the one from the last pass would fail
+      // the same way five times over.
+      const allocated = await nextVillageReference(village, year);
+
       const incident = await prisma.incident.create({
         data: {
-          reference: await nextReference(year),
+          reference: allocated.reference,
+          referenceYear: allocated.referenceYear,
+          villageIncidentNumber: allocated.villageIncidentNumber,
           villageId,
           reporterId: session.user.id,
           type: report.type,
@@ -392,6 +457,7 @@ export async function POST(request: NextRequest) {
         incidentId: incident.id,
         reference: incident.reference,
         villageId,
+        villageName: village.name,
         autoApprove,
         session,
         report,
@@ -432,8 +498,10 @@ export async function POST(request: NextRequest) {
         { status: 201 },
       );
     } catch (cause) {
-      // Two reports filed in the same second race for the same reference.
-      // Anything else is a real failure.
+      // Two reports filed into the same village in the same second read the
+      // same `MAX(villageIncidentNumber)` and race for the number that follows
+      // it. The composite unique key is what turns that into this P2002 rather
+      // than two reports sharing a reference; anything else is a real failure.
       const isReferenceClash =
         typeof cause === "object" &&
         cause !== null &&

@@ -238,6 +238,16 @@ export function IncidentMap({
                   {incident.locationText ? ` · ${incident.locationText}` : ""}
                 </p>
 
+                {/*
+                  The reference, on the pin as well as the card and the detail
+                  page. A resident standing in the lane on the phone to a PCSO
+                  is reading it off whichever surface they had open, and the map
+                  is the one they had open.
+                */}
+                <p className="mt-1 font-mono text-xs text-slate-400">
+                  {incident.reference}
+                </p>
+
                 {incident.recurring && (
                   <p className="mt-1.5 rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
                     Part of a pattern nearby

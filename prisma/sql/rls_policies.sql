@@ -270,6 +270,7 @@ GRANT SELECT (
   id, name, slug, description, status,
   center_lat, center_lng, default_zoom, radius_meters, boundary,
   region, postcode, country, timezone, population,
+  village_code,
   alert_threshold, contact_email, contact_phone, auto_approve,
   parish_council, privacy_level,
   dpia_accepted_at, apd_accepted_at, dpa_accepted_at,
@@ -430,7 +431,8 @@ GRANT INSERT, UPDATE ON public.incidents TO authenticated;
 REVOKE SELECT ON public.incidents FROM authenticated;
 
 GRANT SELECT (
-  id, reference, village_id, reporter_id,
+  id, reference, reference_year, village_incident_number,
+  village_id, reporter_id,
   type, severity, status, source,
   title, description,
   ai_summary, ai_model, ai_processed_at, ai_confidence, anonymized,
