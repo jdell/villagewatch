@@ -3,6 +3,19 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.25](https://github.com/jdell/villagewatch/compare/v0.1.24...v0.1.25) (2026-08-04)
+
+
+### Features
+
+* **app:** show the build version in the app and both footers ([fe89f41](https://github.com/jdell/villagewatch/commit/fe89f41fd5ad78f9c889d3ece14236b1fd8231ce))
+* **incidents:** number references per village and per year ([35b9508](https://github.com/jdell/villagewatch/commit/35b9508fd911c9c8caa61cb39924afdc3351f94e))
+
+
+### Documentation
+
+* correct the migration status — all ten are applied ([6c53bd9](https://github.com/jdell/villagewatch/commit/6c53bd92c2d729bddd0857d970fa7c7eed5799da))
+
 ### [0.1.24](https://github.com/jdell/villagewatch/compare/v0.1.23...v0.1.24) (2026-08-03)
 
 
