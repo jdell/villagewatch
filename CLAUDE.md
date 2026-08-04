@@ -1251,8 +1251,9 @@ setting, and the only one that changes nothing about how a report flows.
   audience and removes no reviewer; it is a statement of legal accountability
   leaving the village on paper.
 - **The form is disabled outright when the column does not exist.**
-  `parish_council` arrives with `20260727180000_village_activation`, which has
-  never been applied anywhere, so on the deployed database a write to it fails.
+  `parish_council` arrives with `20260727180000_village_activation`, which is
+  applied on the deployed database now but was not for as long as this form has
+  existed — and a fresh clone or a restored copy can still be behind.
   `getVillageParishCouncil` returns whether the column is there as well as what
   is in it, because a plain null cannot tell "no council named" apart from "no
   column to name one in" — the first is the coordinator's to fix and the second
@@ -2071,14 +2072,15 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates, the onboarding tour and the ONS village directory pipeline. Still
 open:
 
-- The Supabase project exists (eu-west-2), **migrations 1–5 of the ten are
-  applied**, and `postgis.sql` and `rls_policies.sql` have both been re-run after
-  them. `20260727180000_village_activation` (`parish_council`),
-  `20260728090000_village_compliance_gate`,
-  `20260728120000_village_privacy_level`, `20260728150000_village_dpa_gate` and
-  `20260803120000_incident_village_numbering`
-  have never been applied anywhere. The
-  `incident-media` bucket exists, private. What has **not** happened: no
+- The Supabase project exists (eu-west-2) and **all ten migrations are now
+  applied**, with `postgis.sql` and `rls_policies.sql` re-run after them. This
+  entry said "1–5 of the nine" until 3 August 2026 and was stale: the run that
+  applied `20260803120000_incident_village_numbering` reported every other
+  migration already present and finished `Database schema is up to date!`, so 6
+  to 9 had gone in at some point without this file being told. **Read the
+  workflow's log rather than this paragraph** before planning around what is
+  applied — that is the record, and this is a note about it.
+  The `incident-media` bucket exists, private. What has **not** happened: no
   production deployment and no cron has ever fired.
 - **Applying migrations 7 and 9 closes every village's reporting** until a
   coordinator has been through `/dashboard/compliance`. That is the gate working
@@ -2086,12 +2088,8 @@ open:
   this repository whose application is a visible change to what residents can
   do, so do not run them without telling whoever coordinates the village. Run
   them together: 9 alone re-closes a village that had already accepted the first
-  two documents. **Migration 10 lands with them**, because
-  `database.yml` applies whatever is outstanding in one pass — it renumbers
-  every report that exists and rewrites its reference, which is the intended
-  effect (see The incident reference) and is worth expecting rather than
-  discovering. `rls_policies.sql` has to run after it, as always: three new
-  columns need their SELECT grants.
+  two documents. Both are applied, so the gate is live: a village that has not
+  been through that screen is refusing reports right now.
 - **Migrations are applied by `.github/workflows/database.yml`**, on a push to
   main touching `prisma/**` or from the Run workflow button: `migrate deploy`,
   then `postgis.sql`, then `rls_policies.sql`, in that order. It is not in the
@@ -2099,9 +2097,10 @@ open:
   staging project, and because `migrate deploy` alone would leave a new table
   with RLS off — the header of that file has the full reasoning. With no
   `DIRECT_URL` secret the `migrate` job is skipped rather than failed, so a fork
-  or a fresh clone goes green. **The workflow has never applied a migration** —
-  the five were applied by hand and it has only ever run as a no-op. The first
-  real run is still ahead.
+  or a fresh clone goes green. **It has now applied one for real** —
+  `20260803120000_incident_village_numbering`, on 3 August 2026, followed by
+  both SQL files in order. Everything before that was applied by hand and the
+  workflow had only ever run as a no-op.
   A note kept for whoever writes the next hand-written migration: the erasure
   one carries
   `ALTER TYPE "incident_status" ADD VALUE 'REMOVED'`, which is only safe inside
@@ -2162,9 +2161,9 @@ open:
   the council review both documents before launch. A coordinator can now name
   their own council on `/dashboard`, which covers the `/reports` footers — but
   that is per village and `/privacy` still reads the constant, so this is
-  narrowed rather than closed. **The dashboard field cannot be saved until
-  `20260727180000_village_activation` is applied**, and it says so on screen
-  rather than failing on Save.
+  narrowed rather than closed. The dashboard field needs
+  `20260727180000_village_activation`, which is applied — it says so on screen
+  rather than failing on Save where it is not.
 - **Slack is disclosed rather than covered by its own agreement, and `/privacy`
   §6 now says so in as many words.** The blanket claim that every processor acts
   under a written data processing agreement was untrue for Slack, and a false
@@ -2219,24 +2218,26 @@ open:
   AI pass did not run: `anonymized` is false, the description is the reporter's
   own wording, and the red warning on the panel is the only thing between it and
   a public feed.
-- **Auto-approve has a UI, a migration and no village behind it.** Nothing has
-  ever been filed through the published-on-submit path against a real database,
-  and its migration is one of the three above that have never run. Watch the
+- **Auto-approve has a UI, an applied migration and no village behind it.**
+  Nothing has ever been filed through the published-on-submit path against a
+  real database. Watch the
   first report filed with it on: check the status, the push, the audit rows and —
   if the village also has channel posting on — what actually lands in the
   channel, which is the one surface an unauthenticated stranger can read.
 - **The privacy level has a column, a screen and no village behind it.**
-  `20260728120000_village_privacy_level` has never run, so every village is on
-  the unmigrated path — `getVillagePrivacyLevel` returns `available: false` with
-  the standard blur, and the dashboard renders the "not ready yet" panel rather
-  than the selector. Nothing has ever been uploaded at a level somebody chose.
+  `20260728120000_village_privacy_level` is applied, so the dashboard renders
+  the selector rather than the "not ready yet" panel and
+  `getVillagePrivacyLevel` reports `available: true` — the unmigrated path is
+  now only reachable on a database that is behind. Nothing has ever been
+  uploaded at a level somebody chose.
   Watch the first one: attach a photo with a face in it at `light` and again at
   `heavy`, and look at the two files. The scale is meant to be visibly different
   and never to leave a face readable, and only a real photograph settles the
   second half of that.
-- **The compliance gate has never been exercised against a database**, because
-  neither of its migrations has run. Nothing has ever been blocked by it and no
-  acceptance has ever been recorded. Its unit tests cover the three states, the
+- **The compliance gate has never been exercised against a database**, though
+  both of its migrations are now applied — which means it is live and the
+  seeded village is refusing reports until somebody accepts all three documents.
+  No acceptance has ever been recorded. Its unit tests cover the three states, the
   one-way write and all three documents being required; what they cannot cover
   is the 403 actually reaching a resident, which wants the route test named
   below.
