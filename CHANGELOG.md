@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.27](https://github.com/jdell/villagewatch/compare/v0.1.26...v0.1.27) (2026-08-04)
+
+
+### Refactoring
+
+* **reports:** remove the print button, the server PDF replaces it ([dbd85ee](https://github.com/jdell/villagewatch/commit/dbd85ee228feccd3df6a0bba7e2389104139c479))
+
 ### [0.1.26](https://github.com/jdell/villagewatch/compare/v0.1.25...v0.1.26) (2026-08-04)
 
 
