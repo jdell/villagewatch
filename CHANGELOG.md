@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.26](https://github.com/jdell/villagewatch/compare/v0.1.25...v0.1.26) (2026-08-04)
+
+
+### Features
+
+* **reports:** download the community safety report as a PDF ([3797e6f](https://github.com/jdell/villagewatch/commit/3797e6f261b0a5bd974f3115874277703d841f5e))
+
 ### [0.1.25](https://github.com/jdell/villagewatch/compare/v0.1.24...v0.1.25) (2026-08-04)
 
 
