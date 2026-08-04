@@ -219,6 +219,7 @@ export default async function ReportsPage({
 
       <ReportView
         report={report}
+        villageId={villageId}
         rangeFields={{
           range: range.preset,
           from: range.fromValue,

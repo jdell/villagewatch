@@ -15,6 +15,7 @@ import {
   generateNarrativeAction,
   type NarrativeState,
 } from "@/app/(app)/reports/actions";
+import { DownloadPdfButton } from "@/components/reports/download-pdf-button";
 import type { CommunityReportData } from "@/lib/community-report";
 import {
   formatCommunityReport,
@@ -46,17 +47,32 @@ import { formatDate, formatDateTime } from "@/lib/format";
  * other three can see it. Everything privileged — the village scoping, the
  * status filter, the audit row — happened before this rendered.
  *
- * ## Printing
+ * ## Printing, and the two ways out of here
  *
- * `window.print()` against `@media print` rules in `globals.css`, rather than a
- * PDF library. A browser's own print dialogue has "Save as PDF" in it on every
- * desktop platform and on iOS, it needs no dependency, it paginates properly,
- * and it prints what is on the screen — which is the thing a coordinator has
- * just read. A generated PDF would be a second layout to keep in step with this
- * one, and the first time they disagreed nobody would notice.
+ * `window.print()` against `@media print` rules in `globals.css`. A browser's
+ * own print dialogue has "Save as PDF" in it on every desktop platform and on
+ * iOS, it needs no dependency, it paginates properly, and it prints what is on
+ * the screen — which is the thing a coordinator has just read, word for word,
+ * including the analysis paragraph in this component's state.
  *
  * `[data-print-region]` marks what survives; `[data-print-hide]` marks the
  * controls inside it that do not.
+ *
+ * "Download PDF" is the other way out, and it is a different trade rather than
+ * a replacement. What print cannot do is produce the same file twice: the page
+ * size, the margins, the browser's own headers and footers and whether
+ * backgrounds survive are all the recipient's settings, so the monthly report
+ * to the same PCSO looks different every month and on a phone often arrives
+ * with the app's chrome in it. `GET /api/reports/[villageId]/pdf` renders the
+ * document server-side instead, identically every time.
+ *
+ * What it cannot do is carry *this* analysis. A GET route cannot see a
+ * component's state and must not be handed prose by the browser, so it writes
+ * its own — counted by default, and from the model when `withAnalysis` sends
+ * `analysis=ai`, which this component does once the coordinator has generated
+ * one here. Same reports, same prompt, possibly different sentences. The line
+ * under the buttons says so, and print is the answer for anyone who wants the
+ * wording they are looking at.
  */
 
 const IDLE: NarrativeState = { narrative: null, message: "", ok: true };
@@ -89,10 +105,19 @@ function GenerateButton({ hasNarrative }: { hasNarrative: boolean }) {
 
 export function ReportView({
   report,
+  villageId,
   rangeFields,
 }: {
   /** Everything but the narrative. Collected on the server. */
   report: Omit<CommunityReportData, "narrative">;
+  /**
+   * The coordinator's own village, for the PDF route's path.
+   *
+   * It decides nothing — the route takes the village from the session and
+   * refuses an id that does not match it (domain rule 4). It is here so the
+   * link names the village it is for.
+   */
+  villageId: string;
   /** The resolved range, posted back so the action re-derives the same period. */
   rangeFields: { range: string; from: string; to: string };
 }) {
@@ -196,11 +221,25 @@ export function ReportView({
         </div>
       </form>
 
+      {/*
+        Download first and in brand blue, the other three behind it in one
+        weight. The PDF is the document that leaves the village; copying,
+        printing and sharing are a coordinator moving the same text around by
+        hand, and they were three equal buttons because until now there was no
+        first choice among them.
+      */}
       <div className="mt-4 flex flex-wrap gap-2" data-print-hide>
+        <DownloadPdfButton
+          villageId={villageId}
+          report={report}
+          rangeFields={rangeFields}
+          withAnalysis={state.narrative?.source === "ai"}
+        />
+
         <button
           type="button"
           onClick={handleCopy}
-          className="inline-flex h-11 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+          className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
         >
           {copied ? (
             <Check className="size-4" aria-hidden />
@@ -228,6 +267,25 @@ export function ReportView({
           Share
         </button>
       </div>
+
+      {/*
+        Only once there is something to differ. The PDF's analysis is written by
+        the route when it builds the file — a GET cannot see this component's
+        state — so a coordinator who has read the paragraph above is entitled to
+        know that the one in the file is a second pass over the same reports and
+        may be worded differently. Saying it to somebody who never generated an
+        analysis would be noise about a difference they cannot observe.
+      */}
+      {state.narrative?.source === "ai" && (
+        <p className="mt-2 text-xs text-slate-500" data-print-hide>
+          The PDF is written fresh when you download it, so its pattern analysis
+          may be worded differently from the one above.{" "}
+          <strong className="font-semibold text-slate-600">
+            Print or save as PDF
+          </strong>{" "}
+          keeps this exact wording.
+        </p>
+      )}
 
       {/*
         The document. `data-print-region` is what the print rules keep; see
@@ -377,27 +435,36 @@ export function ReportView({
                 weighted towards the report itself, which is the column carrying
                 free text; the five before it carry a timestamp, a code and three
                 enum labels, and none of those grows.
+
+                **They are `LOG_COLUMNS` in `src/lib/report-pdf.tsx`**, and the
+                two sets are meant to stay identical: the same report printed
+                from this page and downloaded as a PDF should not come out in
+                two different shapes. Tailwind needs the class as a literal, so
+                they cannot be imported — change one and change the other.
+                `When` and `Reference` are wider than they first were because
+                the PDF's own metrics proved they had to be, and the reason is
+                written up over that constant.
               */}
               <div className="-mx-1 overflow-x-auto print:mx-0 print:overflow-visible">
                 <table className="w-full min-w-[46rem] border-collapse text-left text-sm print:min-w-0">
                   <thead>
                     <tr className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
-                      <th className="py-2 pr-3 font-semibold print:w-[14%]">
+                      <th className="py-2 pr-3 font-semibold print:w-[16%]">
                         When
                       </th>
-                      <th className="py-2 pr-3 font-semibold print:w-[11%]">
+                      <th className="py-2 pr-3 font-semibold print:w-[14%]">
                         Reference
                       </th>
                       <th className="py-2 pr-3 font-semibold print:w-[12%]">
                         Category
                       </th>
-                      <th className="py-2 pr-3 font-semibold print:w-[9%]">
+                      <th className="py-2 pr-3 font-semibold print:w-[10%]">
                         Severity
                       </th>
                       <th className="py-2 pr-3 font-semibold print:w-[14%]">
                         Location
                       </th>
-                      <th className="py-2 font-semibold print:w-[40%]">
+                      <th className="py-2 font-semibold print:w-[34%]">
                         Report
                       </th>
                     </tr>

@@ -1024,6 +1024,23 @@ export const reportRangeSchema = z.object({
   /** `yyyy-mm-dd` from a date input. Only read when `range` is `custom`. */
   from: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
   to: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
+  /**
+   * `?days=7` — a whole number of days back from now, and the short form a
+   * link uses when it has no form behind it to carry three fields.
+   *
+   * It wins over `range` where both are present, because a caller that took
+   * the trouble to write one meant it. Anything not a positive whole number
+   * falls to `undefined` and the other two decide, which is the same
+   * forgiveness every field here has: this resolves on a page render, and a
+   * stale bookmark should produce a period rather than an error page.
+   *
+   * Not capped here — `resolveReportRange` clamps it to
+   * `REPORT_MAX_RANGE_DAYS` and says so in `notice`. Rejecting it at the
+   * schema would silently fall back to a week, which is the wrong answer to
+   * "give me five years": it is a report far shorter than asked for, with
+   * nothing on it to say so.
+   */
+  days: z.coerce.number().int().positive().optional().catch(undefined),
 });
 
 export type ReportRangeInput = z.output<typeof reportRangeSchema>;

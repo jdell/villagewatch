@@ -82,6 +82,11 @@ const dateValue = dateInputValue;
 /**
  * Turns the query string into a period.
  *
+ * Three ways in, and they are tried in that order: `?days=<n>`, then one of the
+ * `REPORT_RANGES` presets as `?range=`, then `?range=custom` with `?from=` and
+ * `?to=`. `days` is the short form a bare link uses — see the PDF route — and
+ * it wins where both are present.
+ *
  * **Nothing here rejects.** Every branch has a defined outcome, because this
  * runs on a page render: a hand-edited or stale URL should produce the default
  * period with a line explaining the adjustment, not an error page in front of
@@ -114,7 +119,40 @@ export function resolveReportRange(
     range: single(params.range) ?? DEFAULT_REPORT_RANGE,
     from: single(params.from),
     to: single(params.to),
+    days: single(params.days),
   });
+
+  /*
+    `?days=` first, because a caller that wrote one meant it.
+
+    It is here rather than in the route that introduced it so that there is
+    still one resolver: the ceiling, the fallbacks and the shape of the returned
+    period are decided in exactly one place, and `/reports` understands the same
+    parameter its own PDF link does. The arithmetic is deliberately identical to
+    the preset branch below — `now - days` to `now` — so `?days=7` and
+    `?range=7` are the same period rather than two that agree most of the time.
+
+    A value matching a preset reports that preset, so the picker on the page
+    still highlights "Last 7 days" for a URL that arrived as `?days=7`.
+  */
+  if (parsed.days !== undefined) {
+    const days = Math.min(parsed.days, REPORT_MAX_RANGE_DAYS);
+    const from = new Date(now.getTime() - days * DAY_MS);
+    const matching = REPORT_RANGES.find((r) => r.days === days);
+
+    return {
+      preset: matching?.value ?? "custom",
+      from,
+      to: now,
+      days,
+      fromValue: dateValue(from),
+      toValue: dateValue(now),
+      notice:
+        days === parsed.days
+          ? null
+          : `A report covers at most ${REPORT_MAX_RANGE_DAYS} days, so the start date has been moved.`,
+    };
+  }
 
   const preset = REPORT_RANGES.find((r) => r.value === parsed.range);
 
@@ -339,11 +377,21 @@ export async function collectVillageReport(input: {
 export function countedNarrative(
   report: Pick<
     CollectedReport,
-    "total" | "previousTotal" | "byType" | "hotspots" | "range"
-  >,
+    "total" | "previousTotal" | "byType" | "hotspots"
+  > & {
+    /**
+     * Whole days the period covers — `ReportRange.days`.
+     *
+     * Taken on its own rather than as the whole range, because it is the only
+     * field this reads and the range is the one thing on a collected report
+     * that does not cross into a Client Component. Asking for the number keeps
+     * both callers honest about that: `/reports`'s action has the range in
+     * hand, and the PDF route has only what it resolved.
+     */
+    days: number;
+  },
 ): ReportNarrative {
-  const { range } = report;
-  const period = `${range.days} day${range.days === 1 ? "" : "s"}`;
+  const period = `${report.days} day${report.days === 1 ? "" : "s"}`;
 
   if (report.total === 0) {
     return {

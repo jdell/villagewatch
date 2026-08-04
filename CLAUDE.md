@@ -23,6 +23,7 @@ flags clusters before anyone joins the dots by hand.
 | Icons      | lucide-react                                                 |
 | Maps       | Leaflet + react-leaflet, OpenStreetMap tiles, `leaflet.heat` |
 | QR codes   | `qrcode.react` — SVG on screen, canvas for the download      |
+| PDF        | `@react-pdf/renderer` — server only, `serverExternalPackages` |
 | AI         | `@anthropic-ai/sdk`, `claude-sonnet-5` (`ANTHROPIC_MODEL`)   |
 | Push       | OneSignal — `@onesignal/node-onesignal` server, v16 web SDK   |
 | Toasts     | sonner                                                       |
@@ -173,6 +174,8 @@ src/
     api/incidents/media/      POST blurred upload, DELETE abandoned attachment
     api/notifications/        POST re-send a published incident's alert
     api/dashboard/export/     GET village incidents as CSV (public columns only)
+    api/reports/[villageId]/pdf/  GET the community safety report as a file.
+                              The id in the path decides nothing — see The PDF
     api/digest/               Weekly cron — Claude summary, PatternAlert, push
     api/cron/retention/       Nightly cron — archives reports, deletes old media
   components/                 Shared UI (logo, app-shell, placeholder, auth forms)
@@ -209,6 +212,8 @@ src/
     incident-actions.tsx      Detail-page actions — reporter and coordinator
     share-summary.tsx         One report for a PCSO — navigator.share, then
                               the clipboard. Coordinator, published only
+    reports/download-pdf-button.tsx  Fetch, check the status, then save. Sends
+                              analysis=ai only once one is on screen
     reports/report-view.tsx   The period report on screen, on the clipboard and
                               on paper — one format, three destinations
     incident-edit-form.tsx    Five-field edit, no wizard, no re-anonymisation
@@ -256,6 +261,9 @@ src/
                               server only, opt-in, no API that can post
     format-alert.ts           formatIncidentAlert — the one WhatsApp alert
                               format, client-safe, shared by log and clipboard
+    report-pdf.tsx            The same period report as an A4 PDF. Server only —
+                              the one module that renders one, and where the
+                              hyphenation callback is registered
     community-report.ts       The police/council documents — one incident and a
                               period. Client-safe, no rawDescription/lat/lng
     incident-reference.ts     VW-HIS-2026-0003 — the village's code, the year and
@@ -348,6 +356,9 @@ tests/                        Vitest, unit only — see The test suite
   date-range.test.ts          The period resolver — presets, the allowed-list
                               narrowing, custom inclusivity, and `all` adding no
                               `occurredAt` key at all
+  report-pdf.test.ts          The PDF — the column widths totalling 100, and a
+                              real render of the empty, the wrapping and the
+                              200-row cases
   incident-reference.test.ts  The village code, the four digits, the fallback for
                               a row with no number, and 0 not being falsy
 vitest.config.ts              node environment, the `@/*` alias, no setup file
@@ -757,7 +768,7 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifteen files, 257 tests, covering the
+between the typecheck and the build. Seventeen files, 278 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 AI pass's failure modes, the Zod schemas, the WhatsApp channel code, the alert
 format, the incident reference, the CSV export's escaping and formula-injection
@@ -1535,6 +1546,83 @@ together. Two documents: one incident, and everything published over a period.
   recorded in the audit trail.
 - The date-range boundaries are the server's midnight, not London's. See
   `resolveReportRange` for why that hour is left alone.
+
+## The PDF report
+
+`src/lib/report-pdf.tsx` draws it, `GET /api/reports/[villageId]/pdf` serves it,
+and `DownloadPdfButton` on `/reports` is the only thing that asks for one. The
+same document the page already renders, as a file.
+
+- **It does not replace "Print or save as PDF", and the two are not
+  interchangeable.** Print puts *what is on the screen* on paper, wording for
+  wording, which is what a coordinator wants when they have just read it. What
+  print cannot do is produce the same file twice: the page size, the margins,
+  whether the browser prints its own headers and whether backgrounds survive are
+  all the recipient's own settings, so the monthly report to the same PCSO comes
+  out different every month, and on a phone it usually arrives with the app's
+  chrome in it. This route renders server-side, so the file is identical whoever
+  presses the button.
+- **The village id in the path decides nothing.** It is there because a report
+  is a village's document, but the village comes from the session profile and a
+  path id that does not match is a 403 (domain rule 4). Written as a comparison
+  rather than by ignoring the segment: a route that quietly served your own
+  village whatever id you typed would look like a working access check to
+  anybody testing it. The 403 is worded identically to a non-coordinator's, so
+  it is not an oracle for which parishes are live.
+- **Every exit is JSON and the file is built whole before the response starts.**
+  Both are the CSV export's reasoning, and the second one is why
+  `renderToBuffer` rather than `renderToStream`: once a response has started
+  streaming its status is spent, and a failure halfway through the log would
+  reach the browser as a truncated PDF under the report's own filename. The cap
+  at `REPORT_MAX_INCIDENTS` is what makes buffering affordable.
+- **The pattern analysis is counted unless `?analysis=ai` asks otherwise.** A
+  file download is the worst possible trigger for a paid call — a browser
+  re-requests one on a refresh, a retry, a preview pane and a "save link as" —
+  so the default costs nothing and the button sends the flag only once the
+  coordinator has already generated an analysis on screen. It is written by the
+  route rather than posted in by the browser, which means the wording can differ
+  from the paragraph on the page; the line under the buttons says so, and print
+  is the answer for anyone who wants the exact sentences they are looking at. A
+  refused rate limit or an unreachable model falls back to `countedNarrative`
+  rather than failing the download, and `source` on the document says which of
+  the two a reader is holding.
+- **It writes `incident.report_generated`**, the same action the narrative
+  button writes, with `format: "pdf"` to tell them apart. Before the response
+  and still able to fail the request, for the CSV export's reason: nothing has
+  left the building yet, and a village's reports assembled into a document for
+  the police with no trail behind it is worse than a download that did not work.
+- **`LOG_COLUMNS` and the `print:w-` utilities in `report-view.tsx` are the same
+  six percentages** and have to stay that way, or one report comes out in two
+  shapes. They cannot be imported — Tailwind needs the class as a literal. Two
+  of them were widened when the PDF's own metrics proved the web view's were too
+  tight: a reference is sixteen Courier characters and had 53pt of column, so
+  every row printed its reference over the top of the category beside it.
+  Nothing here wraps a run with no space in it, so a column that has to hold one
+  has to be wide enough for it.
+- **`Font.registerHyphenationCallback` turns hyphenation off.** The library's
+  default splits on syllables, which in a 12% column gives "Antisocial be- /
+  haviour" — a hyphen inside a category label reads as a different category to
+  somebody skimming a log — and it declines to split `VW-HIS-2026-0003`, which
+  is the only string that needed splitting. The callback returns each word whole
+  and chops only runs longer than `MAX_UNBROKEN`, which is what a resident's
+  free-text landmark can turn out to be.
+- **There are no page numbers, and that is the library rather than an
+  oversight.** A page carrying both a dynamic node (`render={({ pageNumber }) =>
+  …}`) and an absolutely positioned `fixed` one corrupts its own layout past
+  about eight pages — `splitPage` re-runs a full relayout per split and PDFKit
+  throws on a transform of -2.9e+22. Either feature works alone. The
+  every-page disclaimer is the one a recipient is entitled to, so the numbers
+  went. `tests/report-pdf.test.ts` renders a 200-row log, which is what makes
+  this a test failure rather than a rediscovery: the broken shape is the obvious
+  one, it is what the library's own examples show, and it works on every report
+  short enough to try by hand.
+- **`serverExternalPackages` in `next.config.ts` is required, not tidiness.**
+  `@react-pdf/renderer` carries a fork of PDFKit that reads its built-in font
+  metrics from binary blobs through Node's own module resolution; bundled, it
+  builds cleanly and throws on the first render, in production only.
+- `?days=<n>` is a third way into `resolveReportRange`, for a link with no form
+  behind it to carry three fields. It wins over `range`, clamps to
+  `REPORT_MAX_RANGE_DAYS` and says so in `notice`.
 
 ## The village invite
 
@@ -2316,6 +2404,18 @@ open:
   Slack or a search console. `robots.txt` and `sitemap.xml` have likewise never
   been read by anything — there has been no production deployment, so
   `villagewatch.app` serves nothing to verify them against.
+- **The PDF has never been built from a real village's reports.** Its layout was
+  settled against generated fixtures — every column width, the wrap in each cell
+  and the page breaks — and `tests/report-pdf.test.ts` renders the empty, the
+  wrapping and the 200-row cases on every push, so what is untested is the data
+  rather than the renderer. Two things to look at on the first real one:
+  **`locationText` and the title are resident-written**, which is where a run
+  with no space in it comes from, and the hyphenation callback rather than the
+  column width is what handles those; and **`?analysis=ai` has never reached
+  Anthropic from this route**, so the first download with an analysis on screen
+  is the first time that call is made anywhere but the `/reports` button. Neither
+  can fail the download — both fall back — which is exactly why they want
+  looking at rather than waiting for a bug report.
 - **Erasure has never run against real data.** `removeIncident` and
   `eraseAccount` both delete files from the bucket and neither has been tried
   against one. Watch the first deletion and check the object is gone, the same

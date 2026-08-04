@@ -137,6 +137,23 @@ const nextConfig: NextConfig = {
   },
 
   /**
+   * `@react-pdf/renderer` is required by the server and bundled by nobody.
+   *
+   * It carries a fork of PDFKit, which reads its built-in font metrics from
+   * binary blobs and resolves them through Node's own module machinery. A
+   * bundler that inlines it either loses those files or rewrites the paths that
+   * find them, and the failure is a route that builds cleanly and throws at the
+   * first render — in production only, because `npm run dev` resolves from
+   * `node_modules` anyway. Left external, it is required at run time as itself.
+   *
+   * This is a server-side concern with no client half:
+   * `src/lib/report-pdf.tsx` is imported only by
+   * `src/app/api/reports/[villageId]/pdf/route.ts`, and importing it from a
+   * Client Component would put a PDF engine in a resident's browser.
+   */
+  serverExternalPackages: ["@react-pdf/renderer"],
+
+  /**
    * `/dashboard/compliance` renders `docs/DPIA.md`, `docs/APD_TEMPLATE.md` and
    * `docs/DATA_PROCESSING_AGREEMENT.md` from disk — the coordinator accepts
    * those documents on their council's behalf, so the page shows the real files

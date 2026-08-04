@@ -93,7 +93,7 @@ export async function generateNarrativeAction(
     range,
   });
 
-  const fallback = countedNarrative(report);
+  const fallback = countedNarrative({ ...report, days: range.days });
 
   /*
     Counted against the coordinator after the range has resolved — a malformed
