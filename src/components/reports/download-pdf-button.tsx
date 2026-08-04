@@ -97,9 +97,10 @@ export function DownloadPdfButton({
       type="button"
       onClick={handleClick}
       disabled={pending}
-      // The primary action on this screen. The PDF is the thing that actually
-      // leaves the village — the copy, the print and the share are all a
-      // coordinator moving the same document around by hand.
+      // The primary action on this screen, and the only one that produces a
+      // file. The PDF is the thing that actually leaves the village — the copy
+      // and the share are a coordinator moving the same document around by
+      // hand.
       className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? (

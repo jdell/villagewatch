@@ -27,17 +27,19 @@ import { formatDate, formatDateTime } from "@/lib/format";
  * would put a PDF engine in a resident's browser to render a document only a
  * coordinator can ask for.
  *
- * ## Why this exists when Print already saves a PDF
+ * ## Why this exists when a browser can already print to PDF
  *
- * `ReportView`'s "Print or save as PDF" stays, and it is still the right button
- * for a coordinator who wants exactly what is in front of them. What the
- * browser's print dialogue cannot do is produce the same file twice: the page
- * size, the margins, whether headers and footers are printed and whether
- * background colours survive are all the recipient's own browser settings, so
- * the monthly report to the same PCSO looks different every month and on a
- * phone often arrives with the app's chrome in it. This is rendered
- * server-side, so the file is identical whoever presses the button — and it is
- * a URL, which is what a scheduled monthly send would eventually need.
+ * `ReportView` used to carry a "Print or save as PDF" button beside this one,
+ * and it was the right button for a coordinator who wanted exactly what was in
+ * front of them. What the browser's print dialogue cannot do is produce the
+ * same file twice: the page size, the margins, whether headers and footers are
+ * printed and whether background colours survive are all the recipient's own
+ * browser settings, so the monthly report to the same PCSO looked different
+ * every month and on a phone often arrived with the app's chrome in it. This is
+ * rendered server-side, so the file is identical whoever presses the button —
+ * and it is a URL, which is what a scheduled monthly send would eventually
+ * need. Two buttons handing a PCSO two different PDFs was the worse failure, so
+ * this is now the only one; Ctrl+P still works and nothing points at it.
  *
  * ## The pattern analysis, and where its prose comes from
  *

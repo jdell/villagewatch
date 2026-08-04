@@ -1493,14 +1493,17 @@ together. Two documents: one incident, and everything published over a period.
   and the document says which of the two it has — inventing prose to fill the
   gap would make an outage look like a working report to an officer with no way
   to tell.
-- **"Download PDF" is `window.print()` and `@media print` in `globals.css`.**
-  Every desktop browser and iOS Safari offer "Save as PDF" from the print
-  dialogue, so a PDF library would buy nothing but a second layout to keep in
-  step with the on-screen one — and the first time they disagreed nobody would
-  notice. `[data-print-region]` marks what survives, `[data-print-hide]` the
-  controls inside it that do not. The rules use `visibility` rather than
-  `display` because the report sits several layers deep in the app shell and
-  hiding an ancestor would hide the report with it.
+- **There is no print button any more, and the print rules stay.** "Download
+  PDF" was `window.print()` against `@media print` in `globals.css` until the
+  server-rendered file replaced it; the button went with it, because two buttons
+  producing two different PDFs is worse than one producing a predictable file —
+  see The PDF report. What is left is Ctrl+P, which nothing advertises and which
+  still produces the report rather than the app shell. The rules are page-global
+  and the printable invite sheet rests on them too, so they are not `/reports`'s
+  to remove. `[data-print-region]` marks what survives, `[data-print-hide]` the
+  controls inside it that do not. They use `visibility` rather than `display`
+  because the report sits several layers deep in the app shell and hiding an
+  ancestor would hide the report with it.
 - **What bounds the printed page is `table-layout: fixed`, not `width: 100%`.**
   Automatic table layout sizes from content and exceeds a percentage width to
   fit a column's longest unbreakable run, so the incident log ran off the right
@@ -1553,15 +1556,18 @@ together. Two documents: one incident, and everything published over a period.
 and `DownloadPdfButton` on `/reports` is the only thing that asks for one. The
 same document the page already renders, as a file.
 
-- **It does not replace "Print or save as PDF", and the two are not
-  interchangeable.** Print puts *what is on the screen* on paper, wording for
-  wording, which is what a coordinator wants when they have just read it. What
-  print cannot do is produce the same file twice: the page size, the margins,
+- **It replaced "Print or save as PDF", which is gone from the screen.** Print
+  put *what is on the screen* on paper, wording for wording, which is what a
+  coordinator wants when they have just read it — and that is the one thing lost
+  here, softened by "Copy report" carrying the on-screen wording exactly. What
+  print could not do is produce the same file twice: the page size, the margins,
   whether the browser prints its own headers and whether backgrounds survive are
-  all the recipient's own settings, so the monthly report to the same PCSO comes
-  out different every month, and on a phone it usually arrives with the app's
+  all the recipient's own settings, so the monthly report to the same PCSO came
+  out different every month, and on a phone it usually arrived with the app's
   chrome in it. This route renders server-side, so the file is identical whoever
-  presses the button.
+  presses the button. Keeping both would have meant a village sending its PCSO
+  two documents with the same title and different layouts, and no way to say
+  which one they had.
 - **The village id in the path decides nothing.** It is there because a report
   is a village's document, but the village comes from the session profile and a
   path id that does not match is a 403 (domain rule 4). Written as a comparison
@@ -1581,8 +1587,9 @@ same document the page already renders, as a file.
   so the default costs nothing and the button sends the flag only once the
   coordinator has already generated an analysis on screen. It is written by the
   route rather than posted in by the browser, which means the wording can differ
-  from the paragraph on the page; the line under the buttons says so, and print
-  is the answer for anyone who wants the exact sentences they are looking at. A
+  from the paragraph on the page; the line under the buttons says so, and "Copy
+  report" is the answer for anyone who wants the exact sentences they are
+  looking at — it is built in the browser from the state holding them. A
   refused rate limit or an unreachable model falls back to `countedNarrative`
   rather than failing the download, and `source` on the document says which of
   the two a reader is holding.

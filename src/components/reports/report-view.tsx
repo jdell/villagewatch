@@ -3,25 +3,14 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
-import {
-  Check,
-  ClipboardCopy,
-  Loader2,
-  Printer,
-  Share2,
-  Sparkles,
-} from "lucide-react";
+import { Check, ClipboardCopy, Loader2, Share2, Sparkles } from "lucide-react";
 import {
   generateNarrativeAction,
   type NarrativeState,
 } from "@/app/(app)/reports/actions";
 import { DownloadPdfButton } from "@/components/reports/download-pdf-button";
 import type { CommunityReportData } from "@/lib/community-report";
-import {
-  formatCommunityReport,
-  rangeDays,
-  reportFileName,
-} from "@/lib/community-report";
+import { formatCommunityReport, rangeDays } from "@/lib/community-report";
 import { copyText, shareText } from "@/lib/clipboard";
 import {
   APP_NAME,
@@ -32,47 +21,50 @@ import { formatDate, formatDateTime } from "@/lib/format";
 
 /**
  * The community safety report: what is on screen, what goes on the clipboard,
- * and what comes out of the printer.
+ * and what goes into the PDF.
  *
  * All three are the same document. The plain-text version is built here by
  * `formatCommunityReport` — the same function, in the browser — from the data
  * the page collected plus whatever narrative has come back from the action, so
- * a coordinator cannot copy one thing and print another.
+ * a coordinator cannot copy one thing and send another.
  *
  * ## Why this is a Client Component at all
  *
- * Three of the four things it does are browser APIs with no server half:
- * `navigator.share`, the clipboard, and `window.print()`. The fourth is the
- * narrative, which arrives from a server action and has to land somewhere the
- * other three can see it. Everything privileged — the village scoping, the
- * status filter, the audit row — happened before this rendered.
+ * Two of the things it does are browser APIs with no server half:
+ * `navigator.share` and the clipboard. The third is the narrative, which
+ * arrives from a server action and has to land somewhere the other two can see
+ * it. Everything privileged — the village scoping, the status filter, the audit
+ * row — happened before this rendered.
  *
- * ## Printing, and the two ways out of here
+ * ## The way out is the PDF
  *
- * `window.print()` against `@media print` rules in `globals.css`. A browser's
- * own print dialogue has "Save as PDF" in it on every desktop platform and on
- * iOS, it needs no dependency, it paginates properly, and it prints what is on
- * the screen — which is the thing a coordinator has just read, word for word,
- * including the analysis paragraph in this component's state.
+ * `GET /api/reports/[villageId]/pdf` renders the document server-side, so the
+ * file is identical whoever presses the button. There used to be a "Print or
+ * save as PDF" button beside it, on the reasoning that a browser's own print
+ * dialogue offers "Save as PDF" everywhere and prints exactly what is on the
+ * screen. What it cannot do is produce the same file twice — the page size, the
+ * margins, the browser's own headers and footers and whether backgrounds
+ * survive are all the recipient's settings, so the monthly report to the same
+ * PCSO came out different every month and on a phone usually arrived with the
+ * app's chrome in it. Two buttons producing two different PDFs is worse than
+ * one producing a predictable file, so the server route is now the only one.
  *
- * `[data-print-region]` marks what survives; `[data-print-hide]` marks the
- * controls inside it that do not.
+ * The `@media print` rules stay, and `[data-print-region]` /
+ * `[data-print-hide]` still mark what survives them. They are page-global (the
+ * invite sheet uses them too), and with them Ctrl+P on this screen still
+ * produces the report rather than the whole app shell — nothing advertises it,
+ * and nothing needs to.
  *
- * "Download PDF" is the other way out, and it is a different trade rather than
- * a replacement. What print cannot do is produce the same file twice: the page
- * size, the margins, the browser's own headers and footers and whether
- * backgrounds survive are all the recipient's settings, so the monthly report
- * to the same PCSO looks different every month and on a phone often arrives
- * with the app's chrome in it. `GET /api/reports/[villageId]/pdf` renders the
- * document server-side instead, identically every time.
+ * ## The pattern analysis, and whose wording it is
  *
- * What it cannot do is carry *this* analysis. A GET route cannot see a
- * component's state and must not be handed prose by the browser, so it writes
- * its own — counted by default, and from the model when `withAnalysis` sends
+ * The PDF cannot carry *this* analysis. A GET route cannot see a component's
+ * state and must not be handed prose by the browser, so it writes its own —
+ * counted by default, and from the model when `withAnalysis` sends
  * `analysis=ai`, which this component does once the coordinator has generated
  * one here. Same reports, same prompt, possibly different sentences. The line
- * under the buttons says so, and print is the answer for anyone who wants the
- * wording they are looking at.
+ * under the buttons says so, and "Copy report" is the answer for anyone who
+ * wants the exact wording they are looking at: it is built from this
+ * component's own state.
  */
 
 const IDLE: NarrativeState = { narrative: null, message: "", ok: true };
@@ -172,24 +164,6 @@ export function ReportView({
     }
   }
 
-  function handlePrint() {
-    /*
-      The filename a browser suggests for "Save as PDF" is `document.title`, so
-      it is set for the duration of the dialogue and put back afterwards.
-      `print()` blocks until the dialogue closes on desktop; on the browsers
-      where it does not, the restore lands a moment later and the file has
-      already been named.
-    */
-    const previous = document.title;
-    document.title = reportFileName(report);
-
-    try {
-      window.print();
-    } finally {
-      document.title = previous;
-    }
-  }
-
   return (
     <>
       <form action={generate} className="mt-6" data-print-hide>
@@ -222,11 +196,9 @@ export function ReportView({
       </form>
 
       {/*
-        Download first and in brand blue, the other three behind it in one
-        weight. The PDF is the document that leaves the village; copying,
-        printing and sharing are a coordinator moving the same text around by
-        hand, and they were three equal buttons because until now there was no
-        first choice among them.
+        Download first and in brand blue, the other two behind it in one weight.
+        The PDF is the document that leaves the village; copying and sharing are
+        a coordinator moving the same text around by hand.
       */}
       <div className="mt-4 flex flex-wrap gap-2" data-print-hide>
         <DownloadPdfButton
@@ -251,15 +223,6 @@ export function ReportView({
 
         <button
           type="button"
-          onClick={handlePrint}
-          className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-        >
-          <Printer className="size-4" aria-hidden />
-          Print or save as PDF
-        </button>
-
-        <button
-          type="button"
           onClick={handleShare}
           className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
         >
@@ -280,9 +243,7 @@ export function ReportView({
         <p className="mt-2 text-xs text-slate-500" data-print-hide>
           The PDF is written fresh when you download it, so its pattern analysis
           may be worded differently from the one above.{" "}
-          <strong className="font-semibold text-slate-600">
-            Print or save as PDF
-          </strong>{" "}
+          <strong className="font-semibold text-slate-600">Copy report</strong>{" "}
           keeps this exact wording.
         </p>
       )}

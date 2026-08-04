@@ -390,8 +390,12 @@ dozen times without spending it. If that summary is unavailable, the report
 still works — it says plainly that the figures were assembled by counting rather
 than written, so nobody mistakes an outage for a quiet month.
 
-**Download PDF** uses your browser's print dialogue. Every desktop browser and
-iPhone offers "Save as PDF" from there.
+**Download PDF** gives you the report as a file, built by the service rather
+than by your browser — so the copy you send this month looks like the one you
+sent last month, whatever device you are on. If you have written the narrative
+summary, the PDF is written fresh as you download it, so its wording may differ
+from the paragraph on screen; **Copy report** is the one that keeps exactly what
+you are looking at.
 
 Generating a period report is recorded in the audit trail. Producing a document
 that leaves the village is the act worth recording; looking at the dashboard

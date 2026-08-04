@@ -211,10 +211,17 @@ body[data-tour-active] [data-push-prompt] {
 /*
  * Printing a community safety report.
  *
- * `window.print()` against these rules is the whole "Download PDF" feature —
- * every desktop browser and iOS Safari offer "Save as PDF" from the print
- * dialogue, so a PDF library would buy nothing but a second layout to keep in
- * step with the on-screen one. See `src/components/reports/report-view.tsx`.
+ * These rules used to be the whole "Download PDF" feature — a button called
+ * `window.print()`, and every desktop browser and iOS Safari offer "Save as
+ * PDF" from that dialogue. They are no longer: a browser's print output is the
+ * recipient's own settings and comes out different every month, so the file is
+ * now rendered server-side by `src/lib/report-pdf.tsx` and the print button is
+ * gone. What is left of it is Ctrl+P, which nothing advertises and which these
+ * rules still make produce the report rather than the app shell.
+ *
+ * They are not only the report's, either — the printable invite sheet in
+ * `src/components/qr-invite.tsx` has its own print button and rests on the same
+ * `[data-print-region]`, so this block stays whatever `/reports` does.
  *
  * The `visibility` trick rather than `display: none` on everything else: the
  * report sits several layers deep inside the app shell, and hiding an ancestor
