@@ -1045,6 +1045,25 @@ replacement for them.
   read at module load, and it **fails closed** — unset, nobody is an
   administrator and the coordinator queue refuses everyone while applications
   keep arriving. Set it in Vercel as well as `.env.local`.
+- **Fail-open and fail-closed are per module, and the disagreement is the
+  design.** `rate-limit.ts` fails **open**, because a database blip must not
+  become "you cannot file a report". `getVillageAutoApprove` fails **closed**,
+  because a report published on the strength of a failed `SELECT` is not
+  recallable. The compliance gate **allows** when its columns do not exist — an
+  unapplied migration is a deployment fault rather than a council's decision —
+  while any *other* database error there blocks. Three directions, three
+  different failure modes, each chosen against the thing it would cost. A
+  tidying pass that makes them consistent is a regression, and it will look like
+  an improvement in the diff.
+- **Three invariants this file states are not currently true of the code.**
+  `checkVillageJoin` is never called and both auth routes accept a blank join
+  code; `src/lib/village.ts` and `src/lib/villages.ts` both implement the
+  village lifecycle and only the plural one is wired up; and
+  `coordinator-requests.ts` is not the only place a role is raised to
+  `COORDINATOR`, because `villages.ts` does it too. Found 5 August 2026 and
+  unfixed. The evidence is in `PROJECT_STATE.md` §"Where the code and the
+  documents disagree" — read it before trusting a sentence in this file about
+  joining a village or raising a role.
 
 ---
 
