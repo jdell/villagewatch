@@ -367,6 +367,10 @@ vitest.config.ts              node environment, the `@/*` alias, no setup file
   database.yml                migrate deploy → postgis.sql → rls_policies.sql
   version.yml                 standard-version bump on a releasable push to main
 SETUP.md                      Thirteen-step first-run guide + troubleshooting
+PROJECT_STATE.md              Where the project is right now — live version,
+                              branches, open items, blockers, what shipped.
+                              Updated in the same commit as the work
+BACKLOG.md                    The numbered items of work and their status
 ```
 
 ---
@@ -867,8 +871,13 @@ everything else builds absolute links from `NEXT_PUBLIC_APP_URL`, with
 
 ## Deployment guardrails
 
-- **Never push directly to `main`.** `main` auto-deploys to production.
-- Feature branch → PR → Vercel preview → review → merge.
+- **`main` auto-deploys to production.** The rule here used to be "never push
+  directly to `main`", and it is **overridden** — Joel pushes straight to `main`
+  and that is the working arrangement. See Known Pitfalls below; do not block on
+  it, do not open a PR to route around it, and do not reinstate the rule in a
+  later edit of this file.
+- Feature branch → PR → Vercel preview → review → merge is still the shape for
+  anything somebody else is meant to read before it lands.
 - **Commits are Conventional Commits.** `.github/workflows/version.yml` bumps the
   version, writes `CHANGELOG.md` and tags when a `feat`, `fix`, `perf`,
   `refactor` or `revert` lands on `main`. The release commit carries `[skip ci]`,
@@ -917,6 +926,125 @@ psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql  # Row-level security
 
 `SETUP.md` is the first-run guide — twelve ordered steps and a troubleshooting
 section. Several of them fail unhelpfully if the one before was skipped.
+
+---
+
+## Definition of Done
+
+A change is not finished when it works on the machine it was written on. All of
+these, in this order — the first three are what CI runs, so failing them locally
+only moves the failure somewhere slower and more public.
+
+1. **`npm run build` passes.** The production build, not `npm run dev`. Several
+   traps in this codebase — `serverExternalPackages` for `@react-pdf/renderer`,
+   `outputFileTracingIncludes` for `docs/*.md` — fail **only** here and only in
+   production, so a dev server that looks healthy proves nothing about them.
+2. **`npx tsc --noEmit` is clean.** No new `any`, no `@ts-expect-error` left
+   behind to be somebody else's problem.
+3. **`npm run lint` passes.** No new warnings either — a warning nobody clears
+   is a warning everybody learns to scroll past.
+4. **`npm run test` passes**, and a new rule with a failure mode gets a test.
+   Unit only, and **no test may need a secret or a database** — that property is
+   what lets CI run the suite on every push with no environment at all. If the
+   change has no testable seam, say so in the commit message rather than leaving
+   it unremarked.
+5. **No TODOs and no stubs introduced.** A function that returns a placeholder,
+   a branch that logs and carries on, a `// TODO: handle this` — none of them
+   ship. Either finish it or write it down in `BACKLOG.md` where it can be
+   scheduled, because a TODO in the source is a decision nobody is tracking.
+6. **`PROJECT_STATE.md` is updated** in the same commit. New status, new
+   blocker, a branch that is now stale, a feature shipped — all of it belongs
+   there while it is still true. A status file updated in a separate later pass
+   is a status file that will not be.
+7. **The documentation that makes a claim about this behaviour changes in the
+   same commit.** This is not tidiness here — `/privacy`, `/terms`, the landing
+   FAQ and the three documents in `docs/` all make statements about what the
+   code actually does, and a false sentence in a privacy notice is worse debt
+   than a missing one. `CLAUDE.md` too, if the change alters something this file
+   describes.
+8. **Pushed to `main`.** Conventional Commit subject, so `version.yml` can bump
+   the version and write `CHANGELOG.md`.
+9. **The Vercel deploy succeeds** — open the deployment and look at it. A green
+   local build and a green deploy are different claims, and the difference is
+   the environment variables. Check the preview URL renders the changed screen,
+   not just that the build went green.
+
+Anything touching the database adds one more: after a migration, re-run
+`prisma/sql/postgis.sql` if it added a geography column and
+`prisma/sql/rls_policies.sql` if it added a table **or a column** — the SELECT
+grants are enumerated per column, so a new one is invisible through PostgREST
+until it is named there, and a new table arrives with RLS off.
+
+---
+
+## Known Pitfalls
+
+The gotchas that have cost time, in one place. Each has a fuller section
+elsewhere in this file; this is the index to read before starting, not a
+replacement for them.
+
+- **"Never push to `main`" is overridden.** Joel pushes directly to `main`. Do
+  not block on it, do not insist on a PR, and do not restore the old rule when
+  editing Deployment guardrails. What still holds is everything the rule was
+  protecting: `main` deploys to production the moment it lands, so the Definition
+  of Done above is the review beat, and a migration that DROPs or renames still
+  wants the deploy to land first.
+- **Next.js 16 is not the Next.js you know.** `middleware.ts` is `proxy.ts` and
+  lives at `src/proxy.ts`; `cookies()` and `headers()` are **async**, which is
+  why `createClient()` in `src/lib/supabase/server.ts` is async and must never
+  be hoisted to a module constant; page `params` and `searchParams` are
+  **Promises** and have to be awaited. Read
+  `node_modules/next/dist/docs/` before writing anything unfamiliar rather than
+  trusting memory. Getting these wrong fails the build in ways that look
+  unrelated to the cause.
+- **Prisma 7 keeps the connection URL in `prisma.config.ts`, not
+  `schema.prisma`.** The `datasource db` block declares `provider` and nothing
+  else. The runtime goes through `@prisma/adapter-pg` — there is no Rust query
+  engine — and `prisma.config.ts` uses `DIRECT_URL` on port 5432 because
+  migrations cannot run through pgBouncer. `DIRECT_URL` must be the **session
+  pooler** (`postgres.<ref>@aws-N-<region>.pooler.supabase.com:5432`), not
+  `db.<ref>.supabase.co`, which is IPv6-only and dies with `P1001` on an
+  IPv4-only network. Add no `extensions` list — extension tracking turns
+  Supabase's pre-installed extensions into drift and demands a schema reset on
+  every `migrate dev`.
+- **Supabase is in London (`eu-west-2`) and every resident's data stays in the
+  UK.** That is a claim `/privacy` and the processing agreement both make, so it
+  is a constraint rather than a hosting preference. Anything that moves personal
+  data to another region — a new processor, a different bucket, an API in
+  another jurisdiction — needs the transfer mechanism settled and both documents
+  changed before it ships.
+- **OneSignal's service worker is scoped to `/onesignal/`, not the root.** A
+  scope can have exactly one controlling registration, and `public/sw.js`
+  already owns `/`. Left at their defaults, whichever registered second
+  silently evicts the other — giving either no offline page or no push, with
+  nothing on screen to say which. The file lives at
+  `public/onesignal/OneSignalSDKWorker.js`, `serviceWorkerPath` and
+  `serviceWorkerParam` in `push-registration.tsx` point at it, and **the
+  OneSignal dashboard's path must match**: a 404 there reports a perfectly
+  healthy init that never delivers a notification.
+- **Unblurred media never leaves the device.** Faces are detected by MediaPipe
+  WASM in the browser and covered on the canvas, and only the re-encoded output
+  is uploaded — which is also what drops the EXIF block and its GPS tag.
+  `POST /api/incidents/media` has **no server-side fallback on purpose**: a
+  fallback means accepting an original with a face in it. Never add one, and
+  never "temporarily" send the original to debug detection.
+- **The compliance gate closes reporting.** With
+  `20260728090000_village_compliance_gate` and `20260728150000_village_dpa_gate`
+  applied, a village accepts **no** report until a coordinator has accepted all
+  three documents on `/dashboard/compliance` — `POST /api/incidents` and
+  `POST /api/incidents/process` both 403 before parsing a body. Applying them is
+  therefore a visible change to what residents can do: run the two **together**
+  (the DPA one alone re-closes a village that had accepted the first two) and
+  tell whoever coordinates the village first. The columns not existing allows
+  reporting, loudly and deliberately — an unapplied migration is a deployment
+  fault, not a council's decision.
+- **`ADMIN_EMAILS=info@yakasista.com` is what gates `/admin`.** An administrator
+  is an email address on the revalidated JWT, not a role: `UserRole.ADMIN` no
+  longer opens anything (it survives because `vw_is_admin()` in the RLS policies
+  is defined against it). The variable is server-only and comma-separated, it is
+  read at module load, and it **fails closed** — unset, nobody is an
+  administrator and the coordinator queue refuses everyone while applications
+  keep arriving. Set it in Vercel as well as `.env.local`.
 
 ---
 
