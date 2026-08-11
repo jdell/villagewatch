@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatIncidentAlert, truncateWords, type AlertIncident } from "@/lib/format-alert";
+import {
+  facebookShareUrl,
+  formatIncidentAlert,
+  incidentUrl,
+  truncateWords,
+  whatsappShareUrl,
+  type AlertIncident,
+} from "@/lib/format-alert";
 import {
   ALERT_DESCRIPTION_MAX_CHARS,
   SEVERITY_META,
@@ -128,6 +135,59 @@ describe("formatIncidentAlert", () => {
 
     expect(alert).not.toMatch(/-?\d{1,3}\.\d{4,}/);
     expect(alert).not.toContain("rawDescription");
+  });
+});
+
+describe("the share links", () => {
+  const url = incidentUrl("abc123", APP_URL);
+
+  it("sends the alert to WhatsApp encoded", () => {
+    const share = whatsappShareUrl("🔴 HIGH — Shed & tools");
+
+    expect(share.startsWith("https://wa.me/?text=")).toBe(true);
+    // Decoded rather than string-matched: what matters is that the text arrives
+    // intact, not which encoder produced it.
+    expect(
+      decodeURIComponent(share.slice("https://wa.me/?text=".length)),
+    ).toBe("🔴 HIGH — Shed & tools");
+  });
+
+  it("shares the report's own page and offers the alert as the message", () => {
+    const share = facebookShareUrl(url, "🔴 HIGH — Shed broken into");
+
+    expect(share).not.toBeNull();
+
+    const parsed = new URL(share!);
+
+    expect(parsed.origin + parsed.pathname).toBe(
+      "https://www.facebook.com/sharer/sharer.php",
+    );
+    // `u` is the half that does the work — Facebook builds the card from it.
+    expect(parsed.searchParams.get("u")).toBe(`${APP_URL}/incidents/abc123`);
+    expect(parsed.searchParams.get("quote")).toBe("🔴 HIGH — Shed broken into");
+  });
+
+  it("shares the same address the alert text carries", () => {
+    // One builder, two surfaces. A card pointing at one report under the text of
+    // another is the failure this rules out.
+    const alert = formatIncidentAlert(incident(), APP_URL);
+    const share = new URL(facebookShareUrl(url, alert)!);
+
+    expect(alert).toContain(`View details: ${share.searchParams.get("u")}`);
+  });
+
+  it("refuses a relative URL rather than posting a dead link", () => {
+    // `incidentUrl` falls back to a path on a malformed base, and a share of
+    // `/incidents/abc123` would post `facebook.com/incidents/abc123` to a public
+    // feed — a broken link that reads as a working one. The button is hidden.
+    expect(incidentUrl("abc123", "not a url")).toBe("/incidents/abc123");
+    expect(facebookShareUrl("/incidents/abc123", "text")).toBeNull();
+    expect(facebookShareUrl("", "text")).toBeNull();
+  });
+
+  it("refuses a scheme that is not http or https", () => {
+    // Nothing here builds one, but this value ends up in `window.open`.
+    expect(facebookShareUrl("javascript:alert(1)", "text")).toBeNull();
   });
 });
 

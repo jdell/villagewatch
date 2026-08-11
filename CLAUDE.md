@@ -260,7 +260,9 @@ src/
     whatsapp-channel.ts       Village channel config + the publish log line —
                               server only, opt-in, no API that can post
     format-alert.ts           formatIncidentAlert — the one WhatsApp alert
-                              format, client-safe, shared by log and clipboard
+                              format, client-safe, shared by log and clipboard.
+                              Also the WhatsApp and Facebook share links, over
+                              the one exported `incidentUrl`
     report-pdf.tsx            The same period report as an A4 PDF. Server only —
                               the one module that renders one, and where the
                               hyphenation callback is registered
@@ -341,7 +343,9 @@ tests/                        Vitest, unit only — see The test suite
   structure-incident.test.ts  Every typed failure of the AI pass, none thrown
   validations.test.ts         The Zod schemas, both directions
   channel-code.test.ts        extractChannelCode + the dashboard's channel form
-  format-alert.test.ts        The WhatsApp alert — severity, place, the link
+  format-alert.test.ts        The WhatsApp alert — severity, place, the link —
+                              and the two share links, incl. Facebook refusing
+                              a relative URL rather than posting a dead one
   compliance.test.ts          The gate's three states, its one-way write, and
                               all three documents being required
   compliance-documents.test.ts  The three docs/*.md load and parse; the DPA
@@ -772,7 +776,7 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Seventeen files, 278 tests, covering the
+between the typecheck and the build. Seventeen files, 283 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 AI pass's failure modes, the Zod schemas, the WhatsApp channel code, the alert
 format, the incident reference, the CSV export's escaping and formula-injection
@@ -1477,7 +1481,8 @@ the same supported state OneSignal has.
 ## The WhatsApp Channel
 
 `src/lib/whatsapp-channel.ts` and `src/lib/format-alert.ts`. Optional, off by
-default, and the only surface in the app that discloses outside the village.
+default, and — with the Facebook share beside it — one of the two ways an alert
+leaves the village. See The public share buttons below for the pair.
 
 - **Nothing posts to it, and that is the design now.** Meta's Cloud API sends
   messages to phone numbers; it has no endpoint that posts to a Channel.
@@ -1501,7 +1506,8 @@ default, and the only surface in the app that discloses outside the village.
   `src/components/copy-alert.tsx`): the moderation queue the moment a report is
   approved, any published report's own page, and the wizard's success screen when
   a coordinator files into an auto-approving village. A resident never gets a
-  button that republishes their neighbour's report outside the village.
+  button that republishes their neighbour's report outside the village. The
+  Facebook button rides on the same three — same panel, same gate, same text.
 - **The queue's alert lives in `ModerationQueue`, not in `ModerationCard`.**
   `moderateIncidentAction` revalidates `/dashboard`, so the approved report
   leaves `PENDING_REVIEW` and its card unmounts on the next render — an alert
@@ -1566,7 +1572,7 @@ default, and the only surface in the app that discloses outside the village.
   person's and it is made with the text in front of them. **Where the AI pass did
   not run, `description` is the reporter's own wording** — the same text as
   `rawDescription`, already public on the map. `CopyAlert` reads `anonymized` and
-  says so in red when it is false, because this is the one button that puts it in
+  says so in red when it is false, because these are the buttons that put it in
   front of the open internet.
 - **Nothing throws**, same contract as `notifications.ts`. There is no network
   call left in the module to fail.
@@ -1583,6 +1589,52 @@ default, and the only surface in the app that discloses outside the village.
 - **`/privacy` §6 names this disclosure and the landing-page FAQ carves it out.**
   Both are statements about how the code behaves — change what a post contains
   and they change in the same commit.
+
+## The public share buttons
+
+`CopyAlert` renders three: **Copy alert**, **Open WhatsApp** and **Share to
+Facebook**. One panel, one text, three destinations, and the same gate on all of
+them — coordinators, published reports only. The share URLs are built by
+`whatsappShareUrl` and `facebookShareUrl` in `src/lib/format-alert.ts`, beside
+the format they carry.
+
+- **They are the same act, so they get the same paragraph.** Both put a
+  published report in front of people outside the village, both are a person
+  with a clipboard rather than an integration, and both are covered by one
+  entry in `/privacy` §6 rather than a WhatsApp sentence and a Facebook
+  footnote. Adding a third destination means editing that entry, not adding
+  another.
+- **The link builders live in `format-alert.ts` and `incidentUrl` is exported
+  for them.** Facebook needs the report's address as a parameter and the alert
+  text already contains it; two builders would be two links, and the day they
+  disagreed a coordinator would post a card pointing at one report under the
+  text of another. Asserted in `tests/format-alert.test.ts`.
+- **`facebookShareUrl` returns `null` for anything that is not absolute
+  `http(s)`, and the button is hidden rather than broken.** `incidentUrl` falls
+  back to a relative path on a malformed `NEXT_PUBLIC_APP_URL`, and `u=/incidents/<id>`
+  posts `facebook.com/incidents/<id>` to a public feed — a dead link that reads
+  as a working one. The same guard refuses a `javascript:` URL, which nothing
+  here builds and which would otherwise reach `window.open`.
+- **Facebook drops `quote` more often than it honours it.** Prefilled text is
+  deprecated as a platform policy — a share the user did not write is a share
+  they did not mean — so the composer frequently opens empty whatever is sent.
+  That is why the button copies the alert to the clipboard *before* it
+  navigates, exactly as "Open WhatsApp" does: the copy is what makes the button
+  reliable, not a nicety on top of it. The note under the buttons says so, so a
+  coordinator meeting an empty composer knows to paste rather than assuming the
+  feature is broken.
+- **Facebook's crawler cannot read the card it is building.** `/incidents/[id]`
+  is behind `requireSession()`, so the scrape lands on the sign-in redirect and
+  the card falls back to the site's own Open Graph image and tagline. That is
+  the right outcome and worth stating rather than rediscovering: a card that
+  rendered a village's incident detail for a logged-out crawler would be domain
+  rule 6 leaking through a preview.
+- **No new gate, no new audit row, no new environment variable.** The two
+  village switches gate the channel *log line* and never gated the copy button
+  (see The WhatsApp Channel); Facebook has no configuration at all, so on a
+  published report it is simply one of the options in front of a coordinator.
+  `/privacy` §6 says that in as many words rather than implying a setting that
+  does not exist.
 
 ## Sharing with police and the parish council
 
@@ -2459,7 +2511,13 @@ open:
   field the old relay post never carried. Watch in particular a report where the
   AI pass did not run: `anonymized` is false, the description is the reporter's
   own wording, and the red warning on the panel is the only thing between it and
-  a public feed.
+  a public feed. **The Facebook button beside it has never been pressed either.**
+  Two things to look at on the first share, both of which fail quietly rather
+  than loudly: whether the composer actually arrives prefilled — Facebook drops
+  `quote` more often than it honours it, which is what the clipboard copy is
+  there for — and what the card looks like, given the crawler scrapes a sign-in
+  redirect and should fall back to the site's own OG image, itself never fetched
+  by a real crawler. See The public share buttons.
 - **Auto-approve has a UI, an applied migration and no village behind it.**
   Nothing has ever been filed through the published-on-submit path against a
   real database. Watch the

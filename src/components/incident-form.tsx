@@ -598,6 +598,7 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
         <div className="mt-4">
           <CopyAlert
             text={published.alert}
+            incidentId={published.id}
             channelUrl={village.channelUrl}
             anonymized={published.anonymized}
             title="Post it to WhatsApp"

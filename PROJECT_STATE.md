@@ -1,6 +1,6 @@
 # VillageWatch — project state
 
-**Last updated:** 5 August 2026 · **Repo version:** `v0.1.27` (`508de8c`) ·
+**Last updated:** 11 August 2026 · **Repo version:** `v0.1.27` (`508de8c`) ·
 **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
@@ -24,7 +24,7 @@ in `BACKLOG.md`.
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 10, `20260726161847_init` → `20260803120000_incident_village_numbering` |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, unit only, **17 files, 278 tests**, all passing (~2s) — runs with no `.env.local` and no database |
+| Test suite | Vitest, unit only, **17 files, 283 tests**, all passing (~2s) — runs with no `.env.local` and no database |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump) |
 
 ---
@@ -57,6 +57,24 @@ under Known Pitfalls in `CLAUDE.md`.
   button is gone — two buttons producing two different PDFs is worse than one
   producing a predictable file. Never built from a real village's reports; the
   layout was settled against fixtures.
+- **Facebook share beside the WhatsApp copy button** — 11 August 2026. A third
+  button on `CopyAlert`, so the same three coordinator surfaces now offer the
+  same alert to `facebook.com/sharer/sharer.php` as well as to WhatsApp. The
+  share URLs moved into `src/lib/format-alert.ts` beside the format they carry,
+  over the now-exported `incidentUrl`, so the Facebook card and the "View
+  details" line in the text cannot point at different reports. No new gate, no
+  new audit row, no environment variable — it is the same act as the WhatsApp
+  paste and `/privacy` §6 covers both in one entry.
+
+  **Two things to watch on the first real share.** Facebook honours the `quote`
+  parameter inconsistently and usually drops it, which is why the button copies
+  the alert to the clipboard before it navigates — check whether the composer
+  actually arrives prefilled, and if it never does, the note under the buttons
+  is what carries the feature. And `/incidents/[id]` is behind
+  `requireSession()`, so Facebook's crawler scrapes the sign-in redirect: the
+  card should fall back to the site's own OG image and tagline, which is the
+  right outcome but has never been seen — the OG image has never been fetched by
+  a real crawler at all.
 
 ### Pending — needs confirming against the deployed database
 

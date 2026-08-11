@@ -402,6 +402,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         <section className="mt-6">
           <CopyAlert
             text={alert}
+            incidentId={incident.id}
             channelUrl={channel?.url ?? null}
             anonymized={incident.anonymized}
             title="Post this to WhatsApp"

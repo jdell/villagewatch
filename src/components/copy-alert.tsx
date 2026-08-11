@@ -2,8 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Check, ClipboardCopy, MessageCircle } from "lucide-react";
+import { Check, ClipboardCopy, MessageCircle, Share2 } from "lucide-react";
 import { copyText } from "@/lib/clipboard";
+import {
+  facebookShareUrl,
+  incidentUrl,
+  whatsappShareUrl,
+} from "@/lib/format-alert";
 
 /**
  * The published alert, ready to paste into WhatsApp.
@@ -21,7 +26,7 @@ import { copyText } from "@/lib/clipboard";
  * (`/dashboard` after an approval, the incident page, and the wizard's success
  * screen) all gate it on the viewer moderating this village.
  *
- * ## The two buttons
+ * ## The three buttons
  *
  * - **Copy alert** puts the text on the clipboard. `navigator.clipboard` is
  *   unavailable on a non-secure origin, so there is a `<textarea>` +
@@ -32,17 +37,33 @@ import { copyText } from "@/lib/clipboard";
  *   not a nicety there: a channel invite link opens the channel and nothing
  *   else — it cannot carry a prefilled message — so a coordinator who pressed
  *   only that button would arrive at the channel with an empty clipboard.
+ * - **Share to Facebook** does the same and for a sharper version of the same
+ *   reason. Facebook's sharer takes the report's URL and builds the card from
+ *   it; the alert text goes in `quote`, which **Facebook honours inconsistently
+ *   and frequently drops** — prefilled text is deprecated as a platform policy.
+ *   So the clipboard copy is what makes the button reliable rather than a nicety
+ *   on top of it: worst case the composer opens empty and the coordinator
+ *   pastes.
  *
- * `https://wa.me/?text=` rather than a `whatsapp://` scheme URL. The two behave
- * identically on a phone; on a desktop `whatsapp://` opens the desktop app if it
- * happens to be installed and otherwise fails silently with nothing on screen,
- * where `wa.me` falls through to WhatsApp Web. Silent failure is the one
- * outcome worth engineering away here.
+ * Every destination here is the same text, and the same decision: a person who
+ * has read the report choosing to put it somewhere public. Nothing on this panel
+ * posts anything — see `src/lib/whatsapp-channel.ts`, and `/privacy` §6, which
+ * names both destinations because both are readable by anyone.
+ *
+ * The share links are built by `format-alert.ts` from the same `incidentUrl` the
+ * alert text carries, so the card and the "View details" line in the post cannot
+ * point at different reports.
  */
 
 type CopyAlertProps = {
   /** The formatted alert. Built by `formatIncidentAlert` on the server. */
   text: string;
+  /**
+   * The report this alert is about. Only ever used to rebuild its public URL —
+   * the address Facebook builds its card from, and the same one already inside
+   * `text`.
+   */
+  incidentId: string;
   /**
    * The village's channel invite link, when it has one. Already through
    * `safeChannelUrl` — this renders it into an `href`.
@@ -62,13 +83,9 @@ type CopyAlertProps = {
 /** How long the button stays saying "Copied!" before going back. */
 const COPIED_MS = 2_000;
 
-/** WhatsApp's own share link. Mobile opens the app, desktop opens Web. */
-function whatsappShareUrl(text: string): string {
-  return `https://wa.me/?text=${encodeURIComponent(text)}`;
-}
-
 export function CopyAlert({
   text,
+  incidentId,
   channelUrl,
   anonymized = true,
   title = "Post this to WhatsApp",
@@ -76,6 +93,11 @@ export function CopyAlert({
 }: CopyAlertProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Null on a deployment whose base URL will not resolve, where the report's
+  // address comes out relative — see `facebookShareUrl`. The button goes rather
+  // than posting a dead link to a public feed.
+  const facebookUrl = facebookShareUrl(incidentUrl(incidentId), text);
 
   useEffect(() => {
     return () => {
@@ -99,17 +121,15 @@ export function CopyAlert({
     toast.error("Could not reach the clipboard — select the text and copy it.");
   }
 
-  async function handleOpen() {
-    // Best effort and deliberately quiet. The navigation below is the thing the
-    // coordinator asked for, and a clipboard failure must not stand in front of
-    // it — the text is still on screen to copy by hand.
+  /**
+   * Copy, then leave. Best effort and deliberately quiet: the navigation is the
+   * thing the coordinator asked for, and a clipboard failure must not stand in
+   * front of it — the text is still on screen to copy by hand.
+   */
+  async function openWith(url: string) {
     if (await copyText(text)) markCopied();
 
-    window.open(
-      channelUrl ?? whatsappShareUrl(text),
-      "_blank",
-      "noopener,noreferrer",
-    );
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -157,12 +177,23 @@ export function CopyAlert({
 
         <button
           type="button"
-          onClick={handleOpen}
+          onClick={() => openWith(channelUrl ?? whatsappShareUrl(text))}
           className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
         >
           <MessageCircle className="size-4" aria-hidden />
           💬 Open WhatsApp
         </button>
+
+        {facebookUrl && (
+          <button
+            type="button"
+            onClick={() => openWith(facebookUrl)}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            <Share2 className="size-4" aria-hidden />
+            📘 Share to Facebook
+          </button>
+        )}
       </div>
 
       <p className="mt-2 text-xs text-slate-400">
@@ -170,6 +201,14 @@ export function CopyAlert({
           ? "Opens your village's channel, with the alert already on your clipboard."
           : "Opens WhatsApp with the alert ready to send. Add your channel's invite link on the dashboard to jump straight to it."}
       </p>
+
+      {facebookUrl && (
+        <p className="mt-1 text-xs text-slate-400">
+          Facebook opens a post with a link to the report. It often ignores
+          prefilled wording, so the alert goes on your clipboard as well — paste
+          it in if the box comes up empty. A Facebook post is public.
+        </p>
+      )}
     </div>
   );
 }

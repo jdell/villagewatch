@@ -68,6 +68,7 @@ export function ModerationQueue({
             <li key={alert.incidentId} className="relative">
               <CopyAlert
                 text={alert.text}
+                incidentId={alert.incidentId}
                 channelUrl={channelUrl}
                 anonymized={alert.anonymized}
                 title={`${alert.reference} is published — post it to WhatsApp`}

@@ -81,8 +81,12 @@ export function appBaseUrl(): string {
  * Falls back to the relative path rather than throwing on a malformed base. This
  * runs inside a render, and a broken `NEXT_PUBLIC_APP_URL` should cost a shorter
  * link in a clipboard, not a blank screen.
+ *
+ * Exported because the share buttons need the same address the alert text
+ * carries. Two builders would be two links, and the day they disagreed a
+ * coordinator would post a card pointing at one report with the text of another.
  */
-function incidentUrl(id: string, appUrl: string): string {
+export function incidentUrl(id: string, appUrl: string = appBaseUrl()): string {
   const path = `/incidents/${id}`;
 
   try {
@@ -90,6 +94,47 @@ function incidentUrl(id: string, appUrl: string): string {
   } catch {
     return path;
   }
+}
+
+/**
+ * WhatsApp's own share link, with the alert prefilled.
+ *
+ * `https://wa.me/?text=` rather than a `whatsapp://` scheme URL. The two behave
+ * identically on a phone; on a desktop `whatsapp://` opens the desktop app if it
+ * happens to be installed and otherwise fails silently with nothing on screen,
+ * where `wa.me` falls through to WhatsApp Web.
+ */
+export function whatsappShareUrl(text: string): string {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+/**
+ * Facebook's share dialog for one report.
+ *
+ * `u` is the report's own page and is the half that does the work: Facebook
+ * builds the card from that URL, and it is what a reader clicks. `quote` is the
+ * alert text, offered as the post's opening message.
+ *
+ * **Facebook honours `quote` inconsistently and often drops it entirely.**
+ * Prefilled text was deprecated as a platform policy — a share the user did not
+ * write is a share they did not mean — so the dialog may open with an empty
+ * composer whatever is sent here. That is why the surface that renders this
+ * copies the alert to the clipboard first: the coordinator can paste it into the
+ * composer, and the button is never worse than a link with nothing to say about
+ * it.
+ *
+ * Returns `null` for anything that is not an absolute `http(s)` URL. Sharing a
+ * relative path would post `facebook.com/incidents/<id>` to a public feed — a
+ * dead link that reads as a working one, which is the outcome
+ * `incidentUrl`'s own fallback is one step away from producing on a deployment
+ * with a malformed `NEXT_PUBLIC_APP_URL`. The button is hidden instead.
+ */
+export function facebookShareUrl(url: string, text: string): string | null {
+  if (!/^https?:\/\//i.test(url)) return null;
+
+  const params = new URLSearchParams({ u: url, quote: text });
+
+  return `https://www.facebook.com/sharer/sharer.php?${params.toString()}`;
 }
 
 /**

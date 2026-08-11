@@ -326,17 +326,22 @@ export default function PrivacyPage() {
             and your name against the report even when you filed anonymously to
             other residents.
           </Definition>
-          <Definition term="Anyone, if your village runs a WhatsApp Channel">
-            A WhatsApp Channel is public: anyone holding the invite link can
-            read it, in or out of the village. Your village coordinator decides
-            whether to run one, and it is switched off unless they turn it on.
-            Nothing is posted automatically — WhatsApp gives an app no way to
-            write to a channel, so a coordinator copies the alert and posts it
-            themselves, which means a person makes the decision each time. An
-            alert carries a headline, an approximate area, how long ago it
+          <Definition term="Anyone, if your coordinator posts an alert somewhere public">
+            Once a report is published, your village coordinator can post an
+            alert about it to your village&rsquo;s WhatsApp Channel — public to
+            anyone holding the invite link, in or out of the village — or share
+            it to Facebook, where a post is public. Nothing is posted
+            automatically. Neither service gives an app a way to write on
+            somebody&rsquo;s behalf, so a coordinator copies the alert and posts
+            it themselves, which means a person makes the decision each time.
+            An alert carries a headline, an approximate area, how long ago it
             happened, a short extract of the same report your neighbours see,
             and a link back to this app. Never your name, never the
-            coordinates, and never a photograph.
+            coordinates, and never a photograph. Following the link still needs
+            an account in your village. A WhatsApp Channel is switched off
+            unless your coordinator sets one up; sharing to Facebook needs no
+            setting, so on a published report it is always one of the options in
+            front of them.
           </Definition>
           <Definition term="Your local police officer and parish council, in a summary from a coordinator">
             Your village coordinator can produce a written summary — of one
