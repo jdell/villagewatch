@@ -3,6 +3,19 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.28](https://github.com/jdell/villagewatch/compare/v0.1.27...v0.1.28) (2026-08-11)
+
+
+### Features
+
+* **share:** add a Facebook share button beside the WhatsApp copy button ([2af3cb6](https://github.com/jdell/villagewatch/commit/2af3cb6fd25d1bc3d2a1bb5857c9118a13bae568))
+
+
+### Documentation
+
+* record what has never been run, and three invariants the code drops ([96dae23](https://github.com/jdell/villagewatch/commit/96dae232242e0313314fadea33e89cc51f78bd90))
+* track project state, and write down the done bar and the pitfalls ([d6f44f5](https://github.com/jdell/villagewatch/commit/d6f44f528422ccc921c910f176fe7d495fa56686))
+
 ### [0.1.27](https://github.com/jdell/villagewatch/compare/v0.1.26...v0.1.27) (2026-08-04)
 
 
