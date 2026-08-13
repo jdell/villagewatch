@@ -14,7 +14,7 @@ import {
   countedNarrative,
   resolveReportRange,
 } from "@/lib/reports";
-import { getVillageController } from "@/lib/village";
+import { getVillageController } from "@/lib/villages";
 
 /**
  * GET /api/reports/[villageId]/pdf — the community safety report as a file.

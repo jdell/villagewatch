@@ -204,7 +204,12 @@ export function RegisterForm({
         hint={
           initialJoinCode
             ? "Filled in from your invite link. Check it matches the code you were given."
-            : "Optional. A code from your coordinator verifies you straight away."
+            : // Not "optional" any more, and the change is the point: a village
+              // that has a code requires it. Left un-starred rather than marked
+              // required because the handful of villages set up before codes
+              // existed have none to give, and this form cannot tell which is
+              // which — the server can, and says so in this field.
+              "Ask your coordinator, or use the link they sent you. Your village needs it to let you in."
         }
       >
         <input

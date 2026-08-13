@@ -131,8 +131,12 @@ src/
                               (app) and outside AUTH_ROUTES, or it would loop
     (app)/                    Authenticated shell (sidebar); force-dynamic
       layout.tsx              requireSession() — the real auth boundary
-      admin/coordinators/     Platform-admin queue — the only page not scoped
+      admin/coordinators/     Platform-admin queue — one of two pages not scoped
                               to one village; approve promotes to COORDINATOR
+      admin/villages/         The other. Activate a directory entry, mint and
+                              rotate its join code, appoint its first
+                              coordinator. Platform-admin only, all audited —
+                              this is the bootstrap, over src/lib/villages.ts
       coordinator-apply/      The resident's application form + its action
       map/                    Full-screen Leaflet map, severity pins, heatmap
       incidents/              List with type + severity filters (GET form)
@@ -150,6 +154,8 @@ src/
                               processing agreement in full and records the
                               coordinator's acceptance. Until all three are
                               accepted the village accepts no report at all
+      dashboard/compliance/actions.ts  acceptComplianceAction — the one-way
+                              write, one audit row per document
       dashboard/guide/        The Coordinator Guide, rendered from docs/. Gates
                               nothing — linked from the sidebar and offered on
                               the compliance page once all three are accepted
@@ -180,7 +186,11 @@ src/
     api/cron/retention/       Nightly cron — archives reports, deletes old media
   components/                 Shared UI (logo, app-shell, placeholder, auth forms)
     auth/google-button.tsx    "Continue with Google" + the or-divider, shared
+    auth/login-form.tsx       Email and password, plus the Google button
+    auth/register-form.tsx    The password sign-up — village, join code, terms
     auth/welcome-form.tsx     The provider sign-up's second half
+    auth/home-location-field.tsx  The optional pin, shared by both halves of
+                              registration so one promise covers both screens
     auth/village-picker.tsx   Type-to-search village combobox + OGL attribution
     auth/forgot-password-form.tsx  Reset request — never reveals if an account exists
     auth/reset-password-form.tsx   New password; the session says whose
@@ -190,7 +200,11 @@ src/
     coordinator-apply-form.tsx  The application — role, detail, why
     coordinator-application.tsx Settings section: apply / pending / declined
     flash-toast.tsx           One toast after a redirecting server action
+    markdown-view.tsx         Renders lib/markdown.ts's tree as React — no
+                              dangerouslySetInnerHTML, so nothing to sanitise
     admin/coordinator-request-card.tsx  One application, approve or reject
+    admin/village-card.tsx    One directory entry: activate, rotate the code,
+                              appoint a coordinator
     incident-form.tsx         5-step wizard, react-hook-form + Zod
     media-uploader.tsx        Blur-then-upload; never touches the original
     location-picker.tsx       Leaflet pin picker — dynamic import, ssr: false
@@ -212,6 +226,8 @@ src/
     incident-actions.tsx      Detail-page actions — reporter and coordinator
     share-summary.tsx         One report for a PCSO — navigator.share, then
                               the clipboard. Coordinator, published only
+    copy-alert.tsx            The three share buttons — copy, WhatsApp, Facebook
+                              — over one alert text. Coordinator, published only
     reports/download-pdf-button.tsx  Fetch, check the status, then save. Sends
                               analysis=ai only once one is on screen
     reports/report-view.tsx   The period report on screen, on the clipboard and
@@ -225,6 +241,13 @@ src/
     dashboard/stat-card.tsx   One figure with its trend against last period
     dashboard/breakdown-bar.tsx  CSS bars — no charting dependency
     dashboard/moderation-card.tsx  Queue row; audited raw-text reveal
+    dashboard/moderation-queue.tsx  Wraps the cards and holds the alert panel,
+                              which has to outlive the card that produced it
+    dashboard/compliance-form.tsx  The acceptance checkboxes, one per document
+    dashboard/parish-council-form.tsx  The data controller's name, or a note
+                              saying the column is not there yet
+    dashboard/export-csv-button.tsx  Fetches, checks the status, toasts the
+                              route's own error — never saves a 403 as a file
     dashboard/auto-approve-form.tsx  The switch that turns coordinator review
                               off for the whole village — warns on the way on
     dashboard/whatsapp-channel-form.tsx  The village's own channel — link, id,
@@ -246,8 +269,15 @@ src/
                               the village's auto-approve setting (fails closed)
     erasure.ts                removeIncident + eraseAccount — Article 17,
                               tombstones the row and deletes the media
-    coordinator-requests.ts   Apply, approve, reject — the only place a role
-                              is ever raised to COORDINATOR
+    audit-context.ts          The caller's IP and browser for an AuditLog row.
+                              Server only, never throws — the server actions
+                              have no `request` to read them off
+    villages.ts               The one village module: activate, mint and rotate
+                              a join code, appoint the first coordinator, check
+                              a resident's join, and the columns the dashboard
+                              reads. Server only
+    coordinator-requests.ts   Apply, approve, reject — the applied-for route to
+                              COORDINATOR. `villages.ts` is the other one
     compliance.ts             The DPIA/APD/DPA gate — three states, and the
                               missing column is one of them. Server only
     docs.ts                   Reads one docs/*.md and parses it. Server only,
@@ -291,9 +321,10 @@ src/
                               contract, written for a PCSO rather than residents
     geo.ts                    fuzzCoordinates — server only, uses node:crypto
     rate-limit.ts             Fixed windows counted in `rate_limit` — server only
-    erasure.ts                Article 17 — tombstone a report, close an account
     format.ts                 Time-ago, dates, sizes — en-GB
     incidents.ts              PUBLIC_INCIDENT_SELECT (no rawDescription), mappers
+    incident-csv.ts           The export's formatting — pure, so it is testable
+                              without a session. Quoting *and* formula guarding
     ai/client.ts              Anthropic client + isAiConfigured — server only
     ai/structure-incident.ts  Claude call, structured output, typed failures
     ai/detect-patterns.ts     200m/30d lookup + deterministic pattern heuristic
@@ -328,6 +359,15 @@ public/
 docs/                         The documents rendered from disk, not restated
   DPIA.md, APD_TEMPLATE.md, DATA_PROCESSING_AGREEMENT.md   The gate's three
   COORDINATOR_GUIDE.md        How to run a village, for a parish councillor
+                              The four above are rendered by the app and need a
+                              line in `outputFileTracingIncludes`. The three
+                              below are not — they are read by people, in the
+                              repository, and nothing imports them
+  E2E_VERIFICATION.md         What was checked by hand against the deployment,
+                              and what its addenda got wrong afterwards
+  FUNDING.md                  The five tracked grant opportunities
+  GRANT_APPLICATION_NL_AI.md  The first application, drafted. Every claim in it
+                              is held to the rule /privacy is held to
 scripts/
   generate-icons.mjs          Authoring tool — renders the icons, run by hand
   download-ons-places.ts      Finds + fetches the newest IPN release, unzips it
@@ -365,6 +405,14 @@ tests/                        Vitest, unit only — see The test suite
                               200-row cases
   incident-reference.test.ts  The village code, the four digits, the fallback for
                               a row with no number, and 0 not being falsy
+  incident-csv.test.ts        The export, parsed back rather than string-matched
+                              — and the formula guard behind its two laundering
+                              prefixes
+  report-range.test.ts        /reports' own resolver — the clamp, `?days=`, and
+                              the round trip a date input has to survive
+  village-join.test.ts        checkVillageJoin — the blank code, the empty
+                              string, normalisation, the legacy null, and status
+                              refusing before the code is looked at
 vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
   ci.yml                      lint → typecheck → test → build, PRs and main
@@ -554,10 +602,20 @@ separately by everything else.
 by Supabase auth user id — never by IP, because a village shares a broadband
 line often enough that an IP limit would silence a household.
 
-| Route                      | Limit          |
-| -------------------------- | -------------- |
-| `POST /api/incidents/process` | 5 per hour  |
-| `POST /api/incidents`      | 10 per day     |
+| Route                              | Rule              | Limit       |
+| ---------------------------------- | ----------------- | ----------- |
+| `POST /api/incidents/process`      | `aiProcess`       | 5 per hour  |
+| `POST /api/incidents`              | `incidentCreate`  | 10 per day  |
+| `generateNarrativeAction` (`/reports`) | `reportNarrative` | 12 per hour |
+
+The third is the most expensive single call in the app — a month of a village's
+reports goes into the prompt — and the only one a *coordinator* triggers by hand,
+repeatedly, from a button. Twelve an hour is well above regenerating a report
+while adjusting the dates and well below what a stuck retry loop would spend.
+Being limited there costs the prose and not the document: every other section is
+counted from the database, and `countedNarrative` writes the summary instead.
+`GET /api/reports/[villageId]/pdf` shares that rule when the button asks for
+`?analysis=ai`, and falls back rather than failing the download.
 
 - **Counted after the body validates**, not at the top of the handler. A
   malformed request costs a Zod parse; burning a slot on one would let a
@@ -776,14 +834,14 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Seventeen files, 283 tests, covering the
+between the typecheck and the build. Eighteen files, 293 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
-AI pass's failure modes, the Zod schemas, the WhatsApp channel code, the alert
-format, the incident reference, the CSV export's escaping and formula-injection
-guard, the compliance
-gate's three states, the three legal documents loading and parsing, the Markdown
-parser the compliance page renders them through, the per-village face redaction
-level, the heat intensity scale and the invite link.
+join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
+code, the alert format, the incident reference, the CSV export's escaping and
+formula-injection guard, the compliance gate's three states, the three legal
+documents loading and parsing, the Markdown parser the compliance page renders
+them through, the per-village face redaction level, the heat intensity scale,
+the two date-range resolvers, the PDF's layout and the invite link.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -837,10 +895,19 @@ level, the heat intensity scale and the invite link.
 
 ## The canonical origin
 
-`https://villagewatch.app`. It appears in the codebase exactly twice — as
-`APP_ORIGIN` in `src/lib/constants.ts` and as the `.env.example` default — and
-everything else builds absolute links from `NEXT_PUBLIC_APP_URL`, with
-`APP_ORIGIN` as the fallback when it is unset.
+`https://villagewatch.app`. It is written out exactly twice — as `APP_ORIGIN` in
+`src/lib/constants.ts` and as the `.env.example` default — and everything else
+builds absolute links from `NEXT_PUBLIC_APP_URL`, with `APP_ORIGIN` as the
+fallback when it is unset.
+
+- **That sentence was false for a while, and centralising was the fix rather
+  than recounting.** The host was also written out in `/privacy`, in `/terms`
+  and in the share card, in each case as a word rather than a link — the two
+  notices name the service by the address a resident types, and the card prints
+  it under the tagline. Three copies that would have carried on naming the old
+  host on the day the domain changed, in the two documents where naming the
+  wrong service is worst. `APP_HOST` in `constants.ts` is `APP_ORIGIN` with the
+  scheme stripped, and those three render it.
 
 - **The fallback is the real domain rather than `localhost`, and that is the
   change.** Three surfaces build absolute URLs — the "View details" line in a
@@ -928,8 +995,9 @@ psql "$DIRECT_URL" -f prisma/sql/postgis.sql        # PostGIS triggers + indexes
 psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql  # Row-level security
 ```
 
-`SETUP.md` is the first-run guide — twelve ordered steps and a troubleshooting
-section. Several of them fail unhelpfully if the one before was skipped.
+`SETUP.md` is the first-run guide — thirteen ordered steps, three lettered
+sub-steps and a troubleshooting section. Several of them fail unhelpfully if the
+one before was skipped.
 
 ---
 
@@ -1059,15 +1127,21 @@ replacement for them.
   different failure modes, each chosen against the thing it would cost. A
   tidying pass that makes them consistent is a regression, and it will look like
   an improvement in the diff.
-- **Three invariants this file states are not currently true of the code.**
-  `checkVillageJoin` is never called and both auth routes accept a blank join
-  code; `src/lib/village.ts` and `src/lib/villages.ts` both implement the
-  village lifecycle and only the plural one is wired up; and
-  `coordinator-requests.ts` is not the only place a role is raised to
-  `COORDINATOR`, because `villages.ts` does it too. Found 5 August 2026 and
-  unfixed. The evidence is in `PROJECT_STATE.md` §"Where the code and the
-  documents disagree" — read it before trusting a sentence in this file about
-  joining a village or raising a role.
+- **Three invariants this file stated were not true of the code. Two are fixed
+  and the third was the sentence rather than the code.** Found 5 August 2026,
+  closed 13 August. `checkVillageJoin` was never called and both auth routes
+  accepted a blank join code — both now call it, and the code is required
+  whenever the village has one. `src/lib/village.ts` and `src/lib/villages.ts`
+  both implemented the village lifecycle and only the plural one was wired up —
+  there is one module now, `villages.ts`, and the singular file is gone. The
+  third stands as a correction to this file: `coordinator-requests.ts` is **not**
+  "the only place in the codebase that raises a role", because
+  `appointCoordinator` in `villages.ts` does it too and has to, since an
+  application comes *from* a resident of a village and the first coordinator of
+  a cold village is not one yet. Both share their two rules by convention rather
+  than by code — never demote somebody who has since gained more access, fill
+  `verifiedAt` only when it is empty — so a change to either is a change to
+  check against the other.
 
 ---
 
@@ -1077,12 +1151,20 @@ replacement for them.
 running in the browser; what happens to the box it returns is now a choice, and
 `FaceRedactionMode` is that choice.
 
-- **`redact` is the default: a solid black rectangle.** No source pixels are
-  read, so there is nothing left in the output to reconstruct from, no
-  `ctx.filter` to be unsupported, and no browser on which it quietly degrades.
-  Square corners on purpose — the rounded ones the blur used to draw read as
-  styling, and the corners of the padded box are exactly where a jaw and an ear
-  sit.
+- **What actually runs by default is the standard blur, not the black box, and
+  this file said otherwise for as long as both were true of something.** There
+  are two defaults and they are different constants. `DEFAULT_REDACTION_MODE` in
+  `face-blur.ts` is `redact` and is the fallback when `blurFaces` is called with
+  no mode — which nothing does. `DEFAULT_PRIVACY_LEVEL` in `constants.ts` is
+  `standard`, and *that* is what a village gets until a coordinator changes it,
+  so what a reporter's photo actually receives is a six-cell mosaic under a 22px
+  Gaussian. Quote the second one when describing behaviour to anybody; the first
+  is a library default with no caller.
+- **`redact` is a solid black rectangle.** No source pixels are read, so there
+  is nothing left in the output to reconstruct from, no `ctx.filter` to be
+  unsupported, and no browser on which it quietly degrades. Square corners on
+  purpose — the rounded ones the blur used to draw read as styling, and the
+  corners of the padded box are exactly where a jaw and an ear sit.
 - **`blur` is the option, and it is pixelation rather than a smudge.** The
   mosaic is what destroys the identity: the region is resampled to
   `MOSAIC_CELLS` (6) across, so the original pixels no longer exist anywhere in
@@ -1100,12 +1182,16 @@ running in the browser; what happens to the box it returns is now a choice, and
   translucent border showing the unblurred frame through it. The source is bled
   out by a blur radius on every side and clipped back, so every sampled pixel is
   real.
-- **`redact` is the default because the failure modes are not symmetrical.** A
-  redaction that was not needed costs a black rectangle in a photo of a hedge; a
-  blur that was not heavy enough costs a resident their anonymity, in a file
-  already published to the village and not recallable. Pixelation also has a
-  long history of being undone — the search space behind a known mosaic is small
-  enough to brute-force.
+- **`redact` is the module's fallback because the failure modes are not
+  symmetrical.** A redaction that was not needed costs a black rectangle in a
+  photo of a hedge; a blur that was not heavy enough costs a resident their
+  anonymity, in a file already published to the village and not recallable.
+  Pixelation also has a long history of being undone — the search space behind a
+  known mosaic is small enough to brute-force. What makes shipping `standard` as
+  the *village* default defensible against that reasoning is the mosaic: it is
+  fixed at six cells and is off the level scale entirely, so the original pixels
+  stop existing at every level. The scale moves how much of the scene around a
+  face survives, not whether the face does. See The privacy level.
 - **The mode is recorded per file, not read off the control.** `BlurredMedia`
   and `AttachedMedia` both carry it, because the control can be changed after a
   file is processed and the file cannot. Telling a reporter their photo was
@@ -1867,11 +1953,12 @@ nothing shared it.
   is normalised and shown in the field rather than posted invisibly, and
   `POST /api/auth/register` still puts both through `checkVillageJoin` — so a
   hand-edited URL buys nothing (domain rule 5).
-- **`normalizeJoinCode` moved to `src/lib/validations.ts`.** It was in
-  `village.ts`, which imports `node:crypto` and Prisma and therefore cannot be
-  reached from a Client Component. Both sides of the comparison and the link
-  itself now share one copy; `village.ts` re-exports it so its own callers are
-  unchanged.
+- **`normalizeJoinCode` lives in `src/lib/validations.ts`.** It cannot live
+  beside the join check: `villages.ts` imports `node:crypto` and Prisma, so a
+  Client Component reaching for it breaks the build. Both sides of the
+  comparison in `checkVillageJoin` and the invite link built in the browser
+  share the one copy, which is what makes a scanned QR and a code typed off a
+  newsletter compare equal.
 - **`/join/[slug]` exists rather than sending a scan straight to `/register`.** A
   QR code is not readable by a human, so this is the first chance anybody has had
   to see which village they are about to join — and a village that is not
@@ -2024,9 +2111,18 @@ finally creates `PatternAlert` rows.
 
 `src/lib/coordinator-requests.ts`. A resident applies from `/settings`, a
 **platform** administrator decides at `/admin/coordinators`, and an approval is
-what writes `role: "COORDINATOR"`. This module is the only place in the codebase
-that raises a role, which is why the rules live here rather than at the two call
-sites — the API route and the admin page's server action both go through it.
+what writes `role: "COORDINATOR"`. The rules live in the module rather than at
+the two call sites — the API route and the admin page's server action both go
+through it.
+
+**It is not the only place a role is raised, and this file used to say it was.**
+`appointCoordinator` in `src/lib/villages.ts` is the other, and it has to exist:
+an application comes *from* a resident of a village, so the first coordinator of
+a cold village has nobody to be. The two share their rules by convention rather
+than by code — `isPlatformAdmin` on the way in, `canApplyForCoordinator` so
+nobody who has since become a `MODERATOR` is demoted by a promotion, and
+`verifiedAt` filled only when it is empty. A change to either is a change to
+check against the other, and a third would be one too many.
 
 - **An administrator is an email address, not a role.** `ADMIN_EMAILS` is a
   comma-separated server-only variable; `isPlatformAdmin()` in `src/lib/auth.ts`
@@ -2374,8 +2470,13 @@ open:
   to 9 had gone in at some point without this file being told. **Read the
   workflow's log rather than this paragraph** before planning around what is
   applied — that is the record, and this is a note about it.
-  The `incident-media` bucket exists, private. What has **not** happened: no
-  production deployment and no cron has ever fired.
+  The `incident-media` bucket exists, private. **The app is deployed** — Vercel,
+  `lhr1`, serving `villagewatch.app`, and `main` auto-deploys on every push. Two
+  earlier entries in this section said there had been no production deployment;
+  they were written before there was one and were never corrected, which is how
+  a file ends up contradicting itself twice in the same list. What has **not**
+  happened is that **no cron has ever fired** — neither the weekly digest nor the
+  nightly retention sweep.
 - **Applying migrations 7 and 9 closes every village's reporting** until a
   coordinator has been through `/dashboard/compliance`. That is the gate working
   as designed — see The compliance gate — but they are the only migrations in
@@ -2422,21 +2523,24 @@ open:
   selectable village is whatever `prisma/seed.ts` created. Filtering happens in
   the browser over the whole list; at a county's 270 that is free, but activating
   the national directory wholesale wants a server-side search endpoint first.
-- **A directory entry still cannot be claimed from cold, and this is now the
-  blocker.** Nothing in the repo writes `Village.status` except `prisma/seed.ts`,
-  which hardcodes `ACTIVE` for its one placeholder; `seed-villages.ts`
-  deliberately never touches it, and every other `status: "ACTIVE"` in `src/` is
-  a read filter. So a seeded parish is `PENDING` forever and the only promotion
-  path is editing the row by hand in Prisma Studio or psql. Joining it would
-  still need a join code a seeded village does not have, and both auth routes
-  hardcode `role: codeMatches ? "VERIFIED_RESIDENT" : "RESIDENT"`. Coordinator
-  access requests close the *second* half of this — `coordinator-requests.ts`
-  does assign `COORDINATOR` on approval — but that flow starts from a resident
-  who is *already* in the village, so it cannot bootstrap one. The missing piece
-  is the first step, not the last: activate a village, mint its join code and
-  appoint its first coordinator in the same operation, or the village is a black
-  hole where every report filed sits in `PENDING_REVIEW` unreachable (domain
-  rule 6).
+- **A directory entry can be claimed from cold, and this entry said otherwise
+  long after it stopped being true.** `src/lib/villages.ts` writes
+  `Village.status`: `activateVillage` mints a join code, flips the status to
+  `ACTIVE` and optionally appoints the first coordinator by email, all guarded on
+  the status just read and all audited; `regenerateJoinCode` rotates a code that
+  has ended up somewhere it should not; `appointCoordinator` is the promotion the
+  application flow structurally cannot perform, because an application comes
+  *from* a resident and a cold village has none. `/admin/villages` is the screen,
+  platform-admin only. That is the bootstrap this paragraph called the blocker,
+  and it closed with L3 on 27 July 2026.
+
+  **What is still true is the operational half**: nobody has run it. The 270
+  seeded Cambridgeshire parishes are `PENDING`, the only `ACTIVE` village is
+  `prisma/seed.ts`'s placeholder with its hardcoded `VILLAGE1` code (L7 in
+  `BACKLOG.md`), and no village has ever been activated through the screen. So a
+  seeded parish is still not joinable *today* — the difference is that promoting
+  one is now a button rather than an `UPDATE` typed into psql, and the code it
+  mints is now actually demanded at registration.
 - **The retention job has never run against data.** It deletes files and takes
   reports off the map, and every line of it is untested against a real bucket.
   Watch the first run and read the counts in the response before trusting the
@@ -2565,12 +2669,12 @@ open:
   `/map` in a village with a handful of reports and check the blobs sit where the
   pins do: `leaflet.heat` reads `L` off the global scope, and the failure mode if
   that ever stops being true is a silent no-op layer rather than an error.
-- **There is a test suite now, and it covers fifteen modules rather than the app.**
+- **There is a test suite, and it covers eighteen modules rather than the app.**
   `npm run test` runs Vitest over `tests/`, and `.github/workflows/ci.yml` runs
-  it between the typecheck and the build. See The test suite below for what is
-  asserted and what is deliberately not. Nothing yet asserts that a
-  `PENDING_REVIEW` village still queues — that needs a route test with a
-  database behind it, and it is still the regression worth having one for.
+  it between the typecheck and the build. See The test suite above for what is
+  asserted and what is deliberately not. Nothing yet asserts that a village with
+  auto-approve off still queues — that needs a route test with a database behind
+  it, and it is still the regression worth having one for.
 - The README's screenshots are placeholder text. Capture them after the first
   seeded deploy.
 - `aiSummary` is still unused; the AI pass fills `aiModel`, `aiConfidence`,
@@ -2614,8 +2718,9 @@ open:
 - **The OG image has never been fetched by a real crawler.** It renders at build
   time and was checked by eye; what has not happened is a paste into WhatsApp,
   Slack or a search console. `robots.txt` and `sitemap.xml` have likewise never
-  been read by anything — there has been no production deployment, so
-  `villagewatch.app` serves nothing to verify them against.
+  been read by anything. The deployment is live, so all three are actually
+  served and verifying them is now a matter of pasting a link and opening two
+  URLs — which is worth doing rather than assuming, since each fails silently.
 - **The PDF has never been built from a real village's reports.** Its layout was
   settled against generated fixtures — every column width, the wrap in each cell
   and the page breaks — and `tests/report-pdf.test.ts` renders the empty, the

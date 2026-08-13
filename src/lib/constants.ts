@@ -359,18 +359,25 @@ export const VILLAGE_ADMIN_STATUSES = [
 /**
  * Characters in a join code.
  *
- * Six, drawn from `JOIN_CODE_ALPHABET` in `src/lib/village.ts` — long enough not
- * to be guessed off a village's name, short enough to read down the phone and to
- * fit on a noticeboard. Here rather than beside the generator because the
- * registration form renders it in a hint and cannot import a module that pulls
- * in `node:crypto`.
+ * Eight, drawn from `JOIN_CODE_ALPHABET` in `src/lib/villages.ts` — long enough
+ * not to be guessed off a village's name, short enough to read down the phone
+ * and to fit on a noticeboard. Here rather than beside the generator because a
+ * Client Component cannot import a module that pulls in `node:crypto`.
+ *
+ * **It was 6 and nothing minted a 6-character code.** The constant was read only
+ * by the generator in the dead singular village module; the live one had its own
+ * `const JOIN_CODE_LENGTH = 8` and every code ever issued — including the seed's
+ * `VILLAGE1` — is eight. Changed to match what exists rather than the other way
+ * round: shortening it would have invalidated nothing already stored (a code is
+ * compared, not measured) but would have left two lengths in circulation for no
+ * reason. `readJoinCodeParam` accepts 4–16, so both survive a link.
  */
-export const JOIN_CODE_LENGTH = 6;
+export const JOIN_CODE_LENGTH = 8;
 
 /**
  * Why a resident cannot join the village they just picked.
  *
- * The client half of `VILLAGE_JOIN_REFUSALS` in `src/lib/village.ts`, which says
+ * The client half of `VILLAGE_JOIN_REFUSALS` in `src/lib/villages.ts`, which says
  * the same things to a hand-crafted POST. Two copies because this one has to
  * render in a Client Component and that one has to sit next to the check it
  * describes; they are three short strings and the alternative is a Client
@@ -1277,6 +1284,20 @@ export const APP_DESCRIPTION =
  * everywhere but a developer's laptop, where `.env.local` sets it anyway.
  */
 export const APP_ORIGIN = "https://villagewatch.app";
+
+/**
+ * The same host with no scheme, for the three places that print it as a word
+ * rather than link to it: the two legal notices, which name the service by the
+ * address a resident types, and the share card.
+ *
+ * Derived rather than written out again. `CLAUDE.md` has always claimed the
+ * domain "appears in the codebase exactly twice" — here and in `.env.example` —
+ * and it was written out in four more places, each of which would have carried
+ * on naming the old host on the day the domain changed. A privacy notice naming
+ * a domain the service no longer answers on is a notice that describes a
+ * different service.
+ */
+export const APP_HOST = APP_ORIGIN.replace(/^https?:\/\//, "");
 
 /** Routes that require a signed-in user. Mirrored by `src/proxy.ts`. */
 export const PROTECTED_ROUTES = [

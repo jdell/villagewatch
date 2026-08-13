@@ -181,7 +181,7 @@ export function WelcomeForm({
         name="joinCode"
         label="Join code"
         error={errors.joinCode}
-        hint="Optional. A code from your coordinator verifies you straight away."
+        hint="Ask your coordinator, or use the link they sent you. Your village needs it to let you in."
       >
         <input
           id="joinCode"

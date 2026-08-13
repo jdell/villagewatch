@@ -105,7 +105,7 @@ export type ComplianceStatus =
  * Postgres `42703` — undefined column — however Prisma happens to surface it.
  *
  * Three shapes, for the reason `isMissingParishCouncilColumn` gives in
- * `src/lib/village.ts`: the column is in `schema.prisma` and missing from the
+ * `src/lib/villages.ts`: the column is in `schema.prisma` and missing from the
  * database, which Prisma reports differently depending on how the statement was
  * built. Matched narrowly on purpose — a broad catch here would swallow a
  * genuinely unreachable database and let reports through on a deployment where

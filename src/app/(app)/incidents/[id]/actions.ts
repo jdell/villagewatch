@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
+import { auditContext } from "@/lib/audit-context";
 import { prisma } from "@/lib/prisma";
 import { applyModeration } from "@/lib/moderation";
 import { removeIncident } from "@/lib/erasure";
@@ -145,6 +146,12 @@ export async function editIncidentAction(
     };
   }
 
+  // `/privacy` §2 names editing in the list of privileged actions recorded
+  // "including who did it, when, and from what IP address and browser". A server
+  // action has no `request` to read those off, which is why they were absent
+  // here and why `auditContext()` exists.
+  const context = await auditContext();
+
   await prisma.auditLog.create({
     data: {
       actorId: session.user.id,
@@ -159,6 +166,8 @@ export async function editIncidentAction(
         type: parsed.data.type,
         severity: parsed.data.severity,
       },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
     },
   });
 

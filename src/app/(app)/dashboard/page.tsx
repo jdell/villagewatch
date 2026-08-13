@@ -41,7 +41,7 @@ import { getVillageAutoApprove } from "@/lib/moderation";
 import {
   getVillageParishCouncil,
   getVillagePrivacyLevel,
-} from "@/lib/village";
+} from "@/lib/villages";
 import { prisma } from "@/lib/prisma";
 import {
   getVillageChannel,

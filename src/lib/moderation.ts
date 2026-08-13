@@ -1,5 +1,6 @@
 import type { IncidentStatus } from "@/generated/prisma/enums";
 import type { Session } from "@/lib/auth";
+import { auditContext } from "@/lib/audit-context";
 import { prisma } from "@/lib/prisma";
 import {
   notifyIncidentPublished,
@@ -22,7 +23,11 @@ import { SEVERITY_META } from "@/lib/constants";
  *    rows rather than the wrong one.
  * 2. **Write an `AuditLog` row.** Append-only, never updated or deleted
  *    (domain rule 7). Publishing is the moment a report becomes visible to a
- *    few hundred neighbours; there has to be a record of who decided that.
+ *    few hundred neighbours; there has to be a record of who decided that —
+ *    including where from, which is what `auditContext()` supplies. These are
+ *    server actions and have no `request` to read headers off, so the context is
+ *    resolved here rather than passed in; see `src/lib/audit-context.ts` for why
+ *    that is not an optional parameter.
  * 3. **Guard the status transition.** Publishing is only valid from the review
  *    queue, and archiving only from a published state. Without the `status`
  *    predicate, two coordinators clicking Approve at the same time would both
@@ -147,6 +152,8 @@ export async function applyModeration(input: {
     return { ok: false, error: "Someone else reviewed that report first." };
   }
 
+  const context = await auditContext();
+
   await prisma.auditLog.create({
     data: {
       actorId: session.user.id,
@@ -158,6 +165,8 @@ export async function applyModeration(input: {
       entityId: incidentId,
       before: { status: incident.status },
       after: { status, note: note ?? null },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
     },
   });
 
@@ -235,7 +244,10 @@ export async function applyModeration(input: {
  * on any select.
  *
  * The audit row is written **before** the text is returned, so a caller that
- * crashes mid-render has still left the trail.
+ * crashes mid-render has still left the trail. It carries the address and the
+ * browser it was read from, for the reason `src/lib/audit-context.ts` gives:
+ * this is the one row that records anybody reading a resident's unedited words,
+ * and an entry with no address cannot be told apart from any other.
  */
 export async function readRawDescription(input: {
   session: Session;
@@ -263,6 +275,8 @@ export async function readRawDescription(input: {
     return { ok: false, error: "That report is not in your village." };
   }
 
+  const context = await auditContext();
+
   await prisma.auditLog.create({
     data: {
       actorId: session.user.id,
@@ -273,6 +287,8 @@ export async function readRawDescription(input: {
       entityType: "Incident",
       entityId: incidentId,
       after: { reference: incident.reference },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
     },
   });
 

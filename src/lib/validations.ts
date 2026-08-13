@@ -10,7 +10,6 @@ import {
   REPORT_RANGE_VALUES,
   SEVERITY_VALUES,
   TIME_RANGE_VALUES,
-  PUBLIC_INCIDENT_STATUSES,
 } from "@/lib/constants";
 
 /**
@@ -372,25 +371,16 @@ export const mediaUploadMetaSchema = z.object({
 
 export type MediaUploadMeta = z.output<typeof mediaUploadMetaSchema>;
 
-/** Query params for the map and the incident list. */
-export const incidentFilterSchema = z.object({
-  types: z.array(z.enum(INCIDENT_TYPE_VALUES)).optional(),
-  severities: z.array(z.enum(SEVERITY_VALUES)).optional(),
-  statuses: z
-    .array(z.enum(PUBLIC_INCIDENT_STATUSES))
-    .default([...PUBLIC_INCIDENT_STATUSES]),
-  from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
-  /** Free-text search across title, description and tags. */
-  q: z.string().trim().max(120).optional(),
-  /** Radius search around a point, in metres. */
-  near: z.object({ lat: latitude, lng: longitude }).optional(),
-  radiusMeters: z.number().int().min(50).max(50_000).default(5_000),
-  cursor: z.uuid().optional(),
-  limit: z.number().int().min(1).max(100).default(25),
-});
-
-export type IncidentFilter = z.output<typeof incidentFilterSchema>;
+/**
+ * `incidentFilterSchema` used to sit here: cursor pagination, a radius search, a
+ * free-text query and a status list, none of which anything ever parsed. The map
+ * and the list resolve their period through `src/lib/date-range.ts` and read
+ * type and severity straight off a GET form; there is no cursor because neither
+ * screen paginates, and no radius search because the map draws every pin it is
+ * given. A schema describing an API the app does not have is a description of
+ * the wrong app, and it reads as coverage. Removed rather than left to be found
+ * by whoever tries to use it.
+ */
 
 /** Coordinator action on a report sitting in the moderation queue. */
 export const incidentModerationSchema = z.object({
@@ -461,7 +451,13 @@ export const registerSchema = z
     password,
     confirmPassword: z.string(),
     villageId: z.uuid({ error: "Choose your village" }),
-    /** Optional code from a coordinator that auto-verifies the resident. */
+    /**
+     * The code from a coordinator. Optional *here* and required by
+     * `checkVillageJoin` whenever the village has one — the shape of the field
+     * and the rule about it are different questions, and only the server can
+     * answer the second: this schema does not know which village was picked, and
+     * the handful of rows that predate activation have no code to demand.
+     */
     joinCode: z.string().trim().max(24).optional(),
     addressLine: z
       .string()
@@ -553,36 +549,18 @@ export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
 // Settings
 // ---------------------------------------------------------------------------
 
-export const notificationPreferencesSchema = z.object({
-  notifyPush: z.boolean(),
-  notifyEmail: z.boolean(),
-  notifySms: z.boolean(),
-  notifyMinSeverity: z.enum(SEVERITY_VALUES),
-  /**
-   * Null means village-wide. Constrained to the offered radii rather than any
-   * integer: the number ends up in a distance filter, and an arbitrary value
-   * would be a preference no screen can show back to the resident.
-   */
-  notifyRadiusMeters: z
-    .union([z.null(), z.literal(NOTIFICATION_RADIUS_VALUES)])
-    .default(null),
-});
-
-export const profileSchema = z.object({
-  fullName: z.string().trim().min(2).max(80),
-  phone: z.string().trim().max(24).optional(),
-  addressLine: z.string().trim().max(160).optional(),
-  homeLat: latitude.optional(),
-  homeLng: longitude.optional(),
-});
-
 /**
  * The settings form, which posts strings from a `<form>` rather than JSON.
  *
- * Kept separate from the two schemas above so those stay the shape the rest of
- * the app thinks in. Here `notifyRadiusMeters` arrives as `""` for village-wide
- * and a checkbox is either `"on"` or absent entirely — neither of which a
- * boolean or a nullable integer will accept without help.
+ * `notifyRadiusMeters` arrives as `""` for village-wide and a checkbox is either
+ * `"on"` or absent entirely — neither of which a boolean or a nullable integer
+ * will accept without help, which is why the coercion lives in the schema rather
+ * than in the action.
+ *
+ * A `notificationPreferencesSchema` and a `profileSchema` used to sit above it,
+ * described as "the shape the rest of the app thinks in". Nothing parsed either
+ * of them: `/settings` posts a form and this is what reads it, and the two halves
+ * they split the profile into were never assembled anywhere. Both removed.
  */
 export const settingsFormSchema = z.object({
   fullName: z
@@ -670,8 +648,8 @@ export function extractChannelCode(url: string): string | null {
  * set by hand in psql before that module existed are not guaranteed to be
  * normalised either.
  *
- * It lives here rather than in `src/lib/village.ts` — where it started — because
- * `src/lib/invite.ts` needs it to build a link in the browser, and `village.ts`
+ * It lives here rather than in `src/lib/villages.ts` — where it started — because
+ * `src/lib/invite.ts` needs it to build a link in the browser, and `villages.ts`
  * imports `node:crypto` and Prisma. One copy that both sides share, rather than
  * a normalisation the server does and the invite link does not.
  */

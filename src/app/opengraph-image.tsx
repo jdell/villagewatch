@@ -1,5 +1,10 @@
 import { ImageResponse } from "next/og";
-import { APP_DESCRIPTION, APP_NAME, APP_TAGLINE } from "@/lib/constants";
+import {
+  APP_DESCRIPTION,
+  APP_HOST,
+  APP_NAME,
+  APP_TAGLINE,
+} from "@/lib/constants";
 
 /**
  * The card that renders when a link to VillageWatch is pasted anywhere.
@@ -114,7 +119,7 @@ export default async function OpenGraphImage() {
             letterSpacing: "0.04em",
           }}
         >
-          villagewatch.app
+          {APP_HOST}
         </div>
       </div>
     ),

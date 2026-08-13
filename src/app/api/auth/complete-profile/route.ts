@@ -6,6 +6,7 @@ import { fuzzCoordinates } from "@/lib/geo";
 import { HOME_LOCATION_FUZZ_METERS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { notifySlack } from "@/lib/slack";
+import { checkVillageJoin } from "@/lib/villages";
 
 /**
  * POST /api/auth/complete-profile
@@ -19,9 +20,12 @@ import { notifySlack } from "@/lib/slack";
  * `auth.users.id` and `email` is the address Google verified; a client that
  * could supply either would be choosing whose account it was filling in.
  *
- * `role` and `verifiedAt` are derived here from a join code checked against the
- * database (domain rule 5), exactly as the register route derives them. There
- * is no path by which a payload can ask for a role.
+ * `role` and `verifiedAt` are derived from a join code checked against the
+ * database (domain rule 5), exactly as the register route derives them — by
+ * calling the same `checkVillageJoin`. There is no path by which a payload can
+ * ask for a role, and since both paths now share one check there is no longer a
+ * second copy of the comparison to drift from the first. Both copies used to let
+ * a blank code through; see `checkVillageJoin` for what that bought.
  */
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -87,36 +91,19 @@ export async function POST(request: NextRequest) {
       ? fuzzCoordinates(homeLat, homeLng, HOME_LOCATION_FUZZ_METERS)
       : null;
 
-  const village = await prisma.village.findFirst({
-    where: { id: villageId, status: "ACTIVE" },
-    select: { id: true, name: true, joinCode: true },
-  });
+  const join = await checkVillageJoin({ villageId, joinCode });
 
-  if (!village) {
+  if (!join.ok) {
     return NextResponse.json(
       {
-        error: "That village is not accepting new residents",
-        fieldErrors: { villageId: "Choose a different village" },
+        error: join.error,
+        fieldErrors: { [join.field]: join.error },
       },
       { status: 422 },
     );
   }
 
-  const codeMatches = Boolean(
-    joinCode &&
-      village.joinCode &&
-      joinCode.trim().toUpperCase() === village.joinCode.toUpperCase(),
-  );
-
-  if (joinCode && !codeMatches) {
-    return NextResponse.json(
-      {
-        error: "That join code is not valid for this village",
-        fieldErrors: { joinCode: "Check the code with your coordinator" },
-      },
-      { status: 422 },
-    );
-  }
+  const { village, verified } = join;
 
   try {
     await prisma.user.create({
@@ -129,8 +116,8 @@ export async function POST(request: NextRequest) {
         homeLat: home?.lat,
         homeLng: home?.lng,
         villageId: village.id,
-        role: codeMatches ? "VERIFIED_RESIDENT" : "RESIDENT",
-        verifiedAt: codeMatches ? new Date() : null,
+        role: verified ? "VERIFIED_RESIDENT" : "RESIDENT",
+        verifiedAt: verified ? new Date() : null,
       },
     });
   } catch (cause) {

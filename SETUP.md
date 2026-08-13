@@ -1,12 +1,20 @@
 # Setting up VillageWatch
 
-From an empty machine to a deployed village, in thirteen steps.
+From an empty machine to a deployed village, in thirteen numbered steps — plus
+7b, 8b and 8c, which are lettered because they are optional or belong to the step
+before them rather than because they are small. 8c is neither.
 
-Nothing in this repository has ever been run against a real database. These are
-the steps that do it for the first time, in the order they have to happen —
-several of them will fail if the one before was skipped, and the failures are
-not always obvious. Steps 1–7 are the database and its policies; 8–11 are the
-services and the deploy; 12 and 13 are optional seed data.
+This has been run for real: the Supabase project exists in `eu-west-2`, all ten
+migrations and both SQL files are applied, and the app is deployed on Vercel.
+What follows is still the order it has to happen in, because several steps fail
+if the one before was skipped and the failures are not always obvious. Steps 1–7
+are the database and its policies; 8–11 are the services and the deploy; 12 and
+13 are optional seed data.
+
+**What has never been done is the last mile**: no village has been activated
+through `/admin/villages`, no compliance acceptance has been recorded, and no
+cron has fired. Step 8c is the one to read before anything else, because the gate
+is on.
 
 Budget an hour. Most of it is waiting for Supabase to provision.
 
@@ -122,7 +130,7 @@ alerts are written to the server console, which is what local development wants.
 
 ## 4. Apply the schema
 
-`prisma/migrations/` is committed and holds **seven** migrations. On a fresh
+`prisma/migrations/` is committed and holds **ten** migrations. On a fresh
 database you apply all of them; on an existing one you apply whatever is
 outstanding. Either way the command is the same and it is **not**
 `migrate dev` — that is for authoring a migration, and it will offer to reset a
@@ -148,10 +156,18 @@ working out what a database is missing.
 | 7 | `20260728090000_village_compliance_gate` | The four `villages.[dpia\|apd]_accepted_*` columns behind step 8c. |
 | 8 | `20260728120000_village_privacy_level` | `villages.privacy_level` — how heavily the village covers faces. |
 | 9 | `20260728150000_village_dpa_gate` | The two `villages.dpa_accepted_*` columns — the third document in step 8c. |
+| 10 | `20260803120000_incident_village_numbering` | `incidents.village_incident_number` and `.reference_year`, the per-village unique key, and a backfill that renumbers the rows already there. |
 
-**As of 28 July 2026, migrations 1–5 are applied to the Supabase project and
-migrations 6 to 9 are not.** None of them has been applied anywhere. Until 6
-runs:
+**As of 3 August 2026 all ten are applied**, with both SQL files re-run after
+them. This section said "1–5 applied, 6 to 9 are not" until 13 August and was
+stale by five days: the run that applied 10 reported every earlier migration
+already present and finished `Database schema is up to date!`. **Read the
+workflow log or `npx prisma migrate status` rather than this paragraph** before
+planning around what a given database has — that is the record, and this is a
+note about it.
+
+What follows is what each one turns on, which is what you need when a database
+turns out to be behind. Without 6:
 
 - The parish council field on `/dashboard` renders as a note explaining that a
   migration has to run first, rather than failing on Save — `getVillageParishCouncil`
@@ -160,7 +176,7 @@ runs:
 - `/reports` falls back to the deployment-wide `DATA_CONTROLLER` constant in
   its footers.
 
-Until 7 **and** 9 run, **the compliance gate is not enforced** —
+Without 7 **and** 9, **the compliance gate is not enforced** —
 `getVillageCompliance` reports the columns as unavailable and allows reporting,
 on the reasoning that an unapplied migration is a deployment fault and taking
 every village's reporting offline over one would be a compliance feature causing
@@ -169,7 +185,9 @@ the outage it exists to prevent. It is logged on every check and
 every village at once**, including any that already has reports in it: the
 columns are nullable with no default, null means "not accepted", and a default
 that let existing villages carry on would be a gate that gates nothing. Read step
-8c before running them.
+8c before running them. **They are applied, so the gate is live**: any village
+that has not been through that screen is refusing reports right now, and no
+acceptance has ever been recorded.
 
 **Run 7 and 9 together.** They are two halves of one gate — 7 brings the DPIA and
 the Appropriate Policy Document, 9 brings the processing agreement. Applying 9 on
@@ -180,9 +198,12 @@ it. Nothing is lost either way; it is a second interruption for no reason.
 ### Village activation needs no new migration
 
 Activating a village writes `status` and `join_code`. Both columns have existed
-since migration 1. What changed in this release is *who* writes the code —
-`activateVillage()` in `src/lib/village.ts`, never a human in psql — and what it
-means at registration, where it is now required whenever a village has one.
+since migration 1. What changed is *who* writes the code —
+`activateVillage()` in `src/lib/villages.ts`, never a human in psql — and what it
+means at registration, where it is required whenever a village has one. That
+second half was written here on 27 July and only became true on 13 August:
+`checkVillageJoin` existed, was documented, and was never called, so both auth
+routes accepted a blank code until then.
 Neither is a schema change, so there is nothing to migrate for it. The only
 Village column that arrived with the activation work is `parish_council`, and
 that is migration 6 above.
@@ -204,10 +225,12 @@ optional follow-ups; they are part of applying a migration.
 ### In CI
 
 `.github/workflows/database.yml` does all three in order on a push to `main`
-touching `prisma/**`, or from the Run workflow button. It has only ever run as a
-no-op — the five applied migrations were applied by hand — so migrations 6 and 7
-will be the first ones it actually applies. Watch that run: 7 closes every
-village's reporting until a coordinator has been through step 8c.
+touching `prisma/**`, or from the Run workflow button. It has applied exactly one
+migration for real — number 10, on 3 August 2026, followed by both SQL files in
+order. Everything before that was applied by hand and the workflow had only ever
+run as a no-op, because its `DIRECT_URL` secret is an **environment** secret on
+`Production` and a job that does not name an environment reads it as an empty
+string with no warning. Both jobs name it now.
 
 With no `DIRECT_URL` secret the migrate job is **skipped rather than failed**,
 so a fork or a fresh clone still goes green.
@@ -1025,12 +1048,16 @@ None of these are optional, and none of them are code.
 - [ ] **Have the council read `/privacy` and `/terms`.** The community
       guidelines in §5 are the common village-watch set, not any particular
       parish's.
-- [ ] **Accept the DPIA and the APD in the app**, on `/dashboard/compliance`,
-      for every village that will take reports. Until both are accepted the
-      village accepts nothing — see step 8c. Do this *after* the council has
-      actually reviewed and signed the two documents, not instead of it: the
-      screen records that a named coordinator accepted on a date, and it is
-      worth exactly as much as the review behind it.
+- [ ] **Accept all three documents in the app** — the DPIA, the APD and the
+      processing agreement — on `/dashboard/compliance`, for every village that
+      will take reports. **Three, not two**: the Article 28(3) processing
+      agreement joined the gate on 28 July and this line was not updated with it.
+      Until all three are accepted the village accepts nothing — see step 8c. Do
+      this *after* the council has actually reviewed and signed them, not instead
+      of it: the screen records that a named coordinator accepted on a date, and
+      it is worth exactly as much as the review behind it. The third one records
+      only the council's half, because a contract needs two signatures and
+      nothing on a screen can evidence the other party's.
 - [ ] **Fill in `Village.parishCouncil`** for each village first. The compliance
       checkbox names it, and a coordinator accepting on behalf of
       `[Parish Council name]` has accepted on behalf of nobody.

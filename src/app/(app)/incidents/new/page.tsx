@@ -8,7 +8,7 @@ import {
   getVillageCompliance,
 } from "@/lib/compliance";
 import { prisma } from "@/lib/prisma";
-import { getVillagePrivacyLevel } from "@/lib/village";
+import { getVillagePrivacyLevel } from "@/lib/villages";
 import { getVillageChannel } from "@/lib/whatsapp-channel";
 import { MAP_DEFAULTS, isCoordinatorRole } from "@/lib/constants";
 
