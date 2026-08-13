@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import type { IncidentStatus } from "@/generated/prisma/enums";
 import type { Session } from "@/lib/auth";
+import { auditContext } from "@/lib/audit-context";
 import { prisma } from "@/lib/prisma";
 import { deleteStoredObjects } from "@/lib/media/storage";
 
@@ -281,6 +282,7 @@ export async function removeIncident(input: {
         status: incident.status,
       },
       after: { status: "REMOVED" },
+      ...(await auditContext()),
     },
   });
 
@@ -393,6 +395,10 @@ export async function eraseAccount(input: {
       entityId: session.user.id,
       before: { incidents: incidentIds.length },
       after: { deletedAt: new Date().toISOString() },
+      // The row that outlives the account. `actorId` is severed by the FK
+      // cascade moments later — that one UPDATE is the trigger's single
+      // carve-out — so the address here is part of what is left describing it.
+      ...(await auditContext()),
     },
   });
 

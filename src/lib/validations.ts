@@ -648,8 +648,8 @@ export function extractChannelCode(url: string): string | null {
  * set by hand in psql before that module existed are not guaranteed to be
  * normalised either.
  *
- * It lives here rather than in `src/lib/village.ts` — where it started — because
- * `src/lib/invite.ts` needs it to build a link in the browser, and `village.ts`
+ * It lives here rather than in `src/lib/villages.ts` — where it started — because
+ * `src/lib/invite.ts` needs it to build a link in the browser, and `villages.ts`
  * imports `node:crypto` and Prisma. One copy that both sides share, rather than
  * a normalisation the server does and the invite link does not.
  */

@@ -53,9 +53,15 @@ import {
  *
  * - **`RETENTION.auditLogMonths` is not enforced here, and cannot be.**
  *   `audit_logs_append_only` in `prisma/sql/rls_policies.sql` rejects every
- *   UPDATE and DELETE on the trail *including from the table owner* — which is
- *   exactly the point of domain rule 7, and means expiring old audit rows is a
- *   deliberate DBA action rather than something a nightly job does by itself.
+ *   DELETE on the trail *including from the table owner*, and every UPDATE bar
+ *   one: severing `actor_id` to NULL while every other column stays
+ *   byte-identical. That single exception is what lets an account be deleted at
+ *   all — the FK is `ON DELETE SET NULL`, so the cascade is an UPDATE — and it
+ *   costs the trail nothing, because `actor_email` and `actor_role` are
+ *   denormalised for exactly that. Nothing a retention job could use: there is
+ *   no way to remove a row, which is the point of domain rule 7 and means
+ *   expiring old audit rows is a deliberate DBA action rather than something a
+ *   nightly job does by itself.
  * - **`RETENTION.inactiveAccountMonths` is not enforced here.** Closing an
  *   account means anonymising a profile *and* deleting the matching
  *   `auth.users` row, which is a Supabase Auth admin call with no undo. It

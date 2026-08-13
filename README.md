@@ -228,7 +228,8 @@ cookie as-is.
 
 ### Data model
 
-Eight tables, all scoped to a village.
+Ten tables, all scoped to a village except `RateLimit`, which is keyed by the
+Supabase auth user id and has no foreign key at all.
 
 | Model | Purpose |
 | ----- | ------- |
@@ -239,6 +240,8 @@ Eight tables, all scoped to a village.
 | `IncidentTag` | AI-generated labels — what pattern detection clusters on |
 | `Notification` | One message, one user, one channel, with delivery state |
 | `PatternAlert` | A detected cluster of related incidents |
+| `CoordinatorRequest` | An application for coordinator access, and its decision |
+| `RateLimit` | One fixed window's count, keyed `(user, action, window start)` |
 | `AuditLog` | Append-only trail of privileged actions |
 
 ---
@@ -264,13 +267,20 @@ personal data. The full set, with the reasoning, is in
    `villageId`, taken from the session and never from a request body.
 5. **Roles come from the server**, never from a client payload.
 6. **Only published and resolved reports reach residents.**
-7. **`AuditLog` is append-only** — enforced by a trigger that rejects UPDATE and
-   DELETE from everyone, including the table owner.
+7. **`AuditLog` is append-only** — enforced by a trigger that rejects every
+   DELETE from everyone, including the table owner, and every UPDATE **bar
+   one**: severing `actor_id` to NULL while every other column stays
+   byte-identical. That exception is what lets an account be deleted at all,
+   since the foreign key is `ON DELETE SET NULL` and the cascade is an UPDATE.
+   It costs the trail nothing — `actorEmail` and `actorRole` are denormalised
+   for exactly that — and it is the only edit any caller can make.
 
-The privacy notice at `/privacy` makes three claims that are statements about
-how this code behaves: on-device blur with no server fallback, coordinate
-jitter, and report text going to Anthropic. **If any of those changes,
-`/privacy` changes in the same commit.**
+The privacy notice at `/privacy` makes **five** claims that are statements about
+how this code behaves: on-device face covering with no server fallback,
+coordinate jitter, report text going to Anthropic, what the Slack staff channel
+is told, and whether a human sees a report before it is published — the last of
+which is conditional on `Village.autoApprove` and says so. **If any of those
+changes, `/privacy` changes in the same commit.**
 
 ---
 
@@ -279,10 +289,15 @@ jitter, and report text going to Anthropic. **If any of those changes,
 ### Before a pull request
 
 ```bash
-npm run build      # must pass
+npm run build      # must pass — several traps fail only in a production build
 npm run typecheck
 npm run lint
+npm run test       # what CI runs; no secret and no database needed
 ```
+
+The full bar, in order, is the Definition of Done in [CLAUDE.md](CLAUDE.md) —
+these four plus the documentation that makes a claim about the behaviour you
+changed, updated in the same commit.
 
 ### Commits
 
@@ -325,27 +340,50 @@ Next.js in your training data or your muscle memory — check
 
 ## Project status
 
-Days 1–7 of the build. Everything below works against a configured Supabase
-project. **Nothing has been run against a real database yet** — there are no
-migrations, and `prisma/sql/rls_policies.sql` has never been executed.
+Deployed to production on Vercel (`lhr1`) against a Supabase project in
+`eu-west-2`. `PROJECT_STATE.md` is the live answer to "where is this right now";
+this section is the shape of it.
 
-**Working:** landing page with pricing and FAQ, auth, the five-step report
-wizard with on-device face blur, the Claude anonymisation pass, the live map,
-incident list and detail pages, push notifications, the coordinator dashboard
-and moderation queue, CSV export, the weekly digest cron, the nightly retention
-cron, settings, the audit trail viewer, the privacy policy and terms, home
-location capture, rate limiting, security headers, error pages, PWA install and
-offline page, the onboarding tour, email templates, the seed script and
-auto-versioning.
+**All ten migrations are applied**, with `prisma/sql/postgis.sql` and
+`prisma/sql/rls_policies.sql` re-run after them. The RLS policies have been
+tested with the anon key from two villages — 43 assertions, which found and
+closed two real holes (the `public` schema had lost its role grants to a
+`prisma migrate` reset, leaving every policy dormant; and `raw_description` and
+`join_code` were readable through PostgREST until they went behind column
+grants).
 
-**Written but never applied:** `prisma/sql/rls_policies.sql`. Apply it, and test
-it with the anon key from two different villages, before any real resident data
-exists.
+**Working:** landing page with pricing and FAQ, auth (password and Google) with
+password recovery, the five-step report wizard with on-device face covering, the
+Claude anonymisation pass, the live map with a heatmap layer, incident list and
+detail pages, push notifications, the coordinator dashboard and moderation queue,
+the compliance gate, per-village auto-approve and face redaction level, the
+village invite and its QR code, CSV export, the community safety report on screen
+and as a server-rendered PDF, the weekly digest cron, the nightly retention cron,
+settings, the audit trail viewer, the privacy policy and terms, home location
+capture, rate limiting, security headers, error pages, PWA install and offline
+page, the onboarding tour, email templates, the ONS village directory, the seed
+script and auto-versioning.
+
+**Built but never exercised against reality:** a long list, and the distinction
+matters — a code path is not a feature. No push has reached a device, the
+retention job has never run against data, no WhatsApp alert has been pasted into
+a real channel, and no compliance acceptance has been recorded. The table under
+"Built, but never exercised against reality" in `PROJECT_STATE.md` is the full
+set, with what to watch on each first run.
+
+**Tests and CI exist.** Vitest over `tests/` — 18 files, 293 tests, unit only,
+no secret and no database, which is what lets `.github/workflows/ci.yml` run
+lint → typecheck → test → build on every push with no environment at all. What
+is deliberately not covered: route handlers, server actions, React components
+and the RLS policies, all of which need a database, a request context or a
+browser.
 
 **Not started:** email and SMS delivery (the templates exist, the transport does
 not), resident verification UI, pattern alert screens, a Content-Security-Policy,
-tests, CI, a staging environment. `RETENTION.inactiveAccountMonths` is stated by
-the privacy policy and not enforced by the retention job — closing an account
+a staging environment. `RETENTION.auditLogMonths` and
+`RETENTION.inactiveAccountMonths` are both stated by the privacy policy and
+enforced by nothing — the first cannot be enforced from application code at all,
+because the append-only trigger rejects DELETE from the owner too, and the second
 means deleting an `auth.users` row, which wants its own route and its own review.
 
 **Before launch:** `DATA_CONTROLLER` in `src/lib/constants.ts` is placeholders

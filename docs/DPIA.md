@@ -370,11 +370,25 @@ both say so.
   biometric data under Article 9(1)**, which applies to processing carried out
   *for the purpose of uniquely identifying* a person. Identification is
   precisely what is not done.
-- **Two ways of covering a face.** The default is a **solid black rectangle**:
-  the original pixels are not used at all, so there is nothing left underneath
-  to recover. The alternative reduces the face to a handful of large blocks and
-  then blurs them heavily. The black rectangle is the default on purpose —
-  blurring and pixelation have a long history of being reversed.
+- **Two ways of covering a face, and the village chooses.** The one that runs
+  unless a village decides otherwise reduces the face to a handful of large
+  blocks and then blurs them heavily. The alternative is a **solid black
+  rectangle**, where the original pixels are not used at all, so there is nothing
+  left underneath to recover; a village can set that as its standard, and a
+  reporter can always choose it for a particular photograph even when their
+  village has not.
+
+  **What makes the blur safe is the blocks, not the blur.** The picture of the
+  face is rebuilt from six blocks across before anything else happens, so the
+  original detail no longer exists anywhere in the file that is uploaded — the
+  blurring on top of it has nothing left to sharpen. That step is fixed and is
+  not on the scale a coordinator can move. The four settings a village can choose
+  between change how much of the *scene around* a face is softened, not whether
+  the face itself survives.
+
+  (This document said the black rectangle was the default until 13 August 2026.
+  It is the default of one internal setting with nothing reading it; the setting
+  that actually decides is the village's, and it starts at the standard blur.)
 - **Hidden information inside the photograph file is destroyed**, including any
   GPS position recorded by the camera. This happens because the file that is
   uploaded is a newly created copy of the edited picture, never the original
@@ -502,7 +516,7 @@ coordinator judgement does. **Action A4.**
 | | |
 |---|---|
 | **Inherent** | Likelihood 3, Severity 3 — **High** — the GPS position saved inside a photograph file has re-identified people before |
-| **Mitigations** | Faces are detected and covered on the reporter's own device before the file is uploaded; only a newly created copy of the edited picture is transmitted, which destroys the hidden information inside the original file including its GPS position; the default is an opaque black rectangle rather than a blur; and **the service has no way of accepting an unedited original**, so one cannot be uploaded at all. |
+| **Mitigations** | Faces are detected and covered on the reporter's own device before the file is uploaded; only a newly created copy of the edited picture is transmitted, which destroys the hidden information inside the original file including its GPS position; every face is rebuilt from six blocks before it is blurred, so the original detail is not in the uploaded file at any setting, and a village may choose an opaque black rectangle instead; and **the service has no way of accepting an unedited original**, so one cannot be uploaded at all. |
 | **Residual** | Likelihood 2, Severity 2 — **Medium** |
 | **Accepted?** | *[Controller to confirm]* |
 

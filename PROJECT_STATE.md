@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 11 August 2026 · **Repo version:** `v0.1.27` (`508de8c`) ·
-**Domain:** https://villagewatch.app
+**Last updated:** 13 August 2026 · **Repo version:** `v0.1.27` · **Branch:**
+`fix/audit-code-vs-docs`, off `2af3cb6` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -22,9 +22,9 @@ in `BACKLOG.md`.
 | Repo version | `v0.1.27`, tagged, `package.json` on `main` reads `0.1.27` |
 | Version on screen | expect **v0.1.26** — the release commit carries `[skip ci]`, so production is built from `dbd85ee` and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
-| Migrations in repo | 10, `20260726161847_init` → `20260803120000_incident_village_numbering` |
+| Migrations in repo | 10, `20260726161847_init` → `20260803120000_incident_village_numbering`. All ten applied |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, unit only, **17 files, 283 tests**, all passing (~2s) — runs with no `.env.local` and no database |
+| Test suite | Vitest, unit only, **18 files, 293 tests**, all passing (~2s) — runs with no `.env.local` and no database |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump) |
 
 ---
@@ -33,7 +33,8 @@ in `BACKLOG.md`.
 
 | Branch | State | Action |
 | --- | --- | --- |
-| `main` | The working branch. Auto-deploys to production. Local and `origin/main` are in step at `508de8c`. | — |
+| `main` | The working branch. Auto-deploys to production. Head is `2af3cb6`, the Facebook share button. | — |
+| `fix/audit-code-vs-docs` | **In review.** The 13 August audit pass: the join code is actually enforced now, the two village modules are one, moderation's audit rows carry an address, and nineteen code-versus-documentation contradictions are reconciled across `CLAUDE.md`, this file, `BACKLOG.md`, `README.md`, `SETUP.md`, `docs/E2E_VERIFICATION.md`, `docs/DPIA.md` and `/privacy`. | Merge to `main` |
 | `fix/database-workflow-environment-secret` | **Stale.** Fully merged — `git log origin/main..origin/fix/database-workflow-environment-secret` is empty, so it carries nothing `main` does not already have. Its two commits (`5b76757` reading `DIRECT_URL` from the Production environment, `522270a` surviving a database without `parish_council`) are both in `main`. | Safe to delete, locally and on the remote |
 
 No other branches, local or remote. Work happens on `main` — see the push rule
@@ -79,32 +80,31 @@ under Known Pitfalls in `CLAUDE.md`.
 ### Pending — needs confirming against the deployed database
 
 - **Compliance gate migrations** (`20260728090000_village_compliance_gate`,
-  `20260728150000_village_dpa_gate`). **The record disagrees with itself and
-  this is the first thing to settle.** `CLAUDE.md` was corrected on 3 August
-  (`6c53bd9`) to say all ten migrations are applied, on the strength of a
-  `database.yml` run reporting `Database schema is up to date!`; the addendum in
-  `docs/E2E_VERIFICATION.md` (28 July, older) says these two are *not* applied
-  and that the missing-column state deliberately allows reporting.
+  `20260728150000_village_dpa_gate`). The two documents that disagreed now
+  agree: `docs/E2E_VERIFICATION.md`'s addendum was the older of the two and has
+  been corrected to match the `database.yml` run that reported `Database schema
+  is up to date!` on 3 August. **All ten migrations are applied**, so the gate is
+  live and the seeded village is refusing reports until somebody accepts all
+  three documents on `/dashboard/compliance`.
 
-  Both cannot be true, and the difference is visible to residents: applied, the
-  gate is live and every village refuses reports until a coordinator has
-  accepted all three documents on `/dashboard/compliance`; unapplied, every
-  village accepts reports and logs a warning nobody reads.
-
-  **Settle it by reading the workflow log or running `npx prisma migrate
-  status`, not by reading either document.** Then correct whichever of the two
-  is wrong in the same pass. If they do turn out to be pending, apply them
-  **together** — `_dpa_gate` alone re-closes a village that had already accepted
-  the first two — and tell whoever coordinates the village first.
+  That reconciles the record; it does not *verify* it, and the difference
+  matters because it is visible to residents. **Confirm with `npx prisma migrate
+  status` against `DIRECT_URL` before planning around it** — no machine in this
+  pass had database access, so what has been done is to make the documents stop
+  contradicting each other on the strength of the workflow log, which is the
+  better of the two sources rather than a first-hand check.
 
 - **No acceptance has ever been recorded**, either way. Nothing has been blocked
   by the gate and no village has been through that screen.
 
 ### Still open (see `BACKLOG.md` for the numbered list)
 
-- A directory village cannot be claimed from cold: nothing writes
-  `Village.status`, so all 270 seeded parishes are `PENDING` forever and the
-  only promotion path is editing the row by hand.
+- A directory village **can** be claimed from cold — `activateVillage` in
+  `src/lib/villages.ts`, behind `/admin/villages`, mints the code and flips the
+  status — but **nobody has ever run it**. All 270 seeded parishes are still
+  `PENDING`, so the operational gap is real even though the code gap closed on
+  27 July. Activating the first one is the next thing to do, and it now has to
+  be done properly: the code it mints is actually demanded at registration.
 - `DATA_CONTROLLER` in `src/lib/constants.ts` is still placeholders, so
   `/privacy` names no controller.
 - No push has been delivered to a real device; the retention job has never run;
@@ -142,45 +142,76 @@ as working — to anybody, and least of all in a grant application.
 
 ---
 
-## Where the code and the documents disagree
+## Where the code and the documents disagreed
 
-Found 5 August 2026 by reading the code against `CLAUDE.md`. Each is a
-documented invariant the code does not currently hold. Recorded rather than
-fixed — the pass that found them changed no code.
+Found 5 August 2026 by reading the code against `CLAUDE.md`, widened to
+nineteen items by a second pass, and **closed on 13 August** by
+`fix/audit-code-vs-docs`. Kept here rather than deleted: the shape of these is
+the useful part, and two of them were live security holes that read as features
+in the documentation.
 
-1. **`checkVillageJoin` is never called.** `src/lib/village.ts` exports it and
-   four other files mention it *in comments*; nothing invokes it.
-   `POST /api/auth/register` and `POST /api/auth/complete-profile` each compare
-   the code inline instead, and **both accept a blank one** — the check is
-   `joinCode && !codeMatches`, so an empty string short-circuits it and the
-   caller joins as `RESIDENT`. The guarded join logic that "requires the code
-   whenever a village has one" (BACKLOG L3) is written, documented and dead.
-   Domain rule 5 is not breached — the role still comes from the server — but
-   the gate meant to stand in front of a village is not standing anywhere.
+### Fixed in the code
 
-2. **Two village-lifecycle modules, and half of one is dead.**
-   `src/lib/villages.ts` holds the wired copies —
-   `/admin/villages/actions.ts` imports `activateVillage`,
-   `regenerateJoinCode` and `appointCoordinator` from it. `src/lib/village.ts`
-   exports its own `activateVillage`, `suspendVillage`, `reactivateVillage` and
-   `regenerateJoinCode`, and **nothing outside that file calls any of them.**
-   The rest of `village.ts` is very much alive (`findVillageBySlug`,
-   `getVillageController`, the parish council and privacy level accessors), so
-   this is a dead half of a live module rather than a dead file.
+1. **`checkVillageJoin` was never called, and both auth routes accepted a blank
+   join code.** The check is `joinCode && !codeMatches`, so a *wrong* code was
+   refused and an *empty* one short-circuited straight past — anybody who could
+   see a village in the picker could join it by leaving the field blank, landing
+   as a `RESIDENT` inside the tenant boundary every incident query is scoped by.
+   The guarded logic that "requires the code whenever a village has one" was
+   written, documented, exported and dead. Both routes now call it, and
+   `tests/village-join.test.ts` covers the blank case first.
 
-3. **`coordinator-requests.ts` is not "the only place in the codebase that
-   raises a role"**, which is what `CLAUDE.md` says under **Coordinator access
-   requests**. `src/lib/villages.ts` is a second place that writes
-   `COORDINATOR`. Both guard on `isPlatformAdmin` and both use
-   `canApplyForCoordinator`, so neither demotes an existing `MODERATOR` or
-   `ADMIN` — the invariant's *purpose* survives and the sentence does not. An
-   invariant enforced in two places is one refactor from being enforced in one
-   and a half.
+2. **Two village-lifecycle modules, and half of one was dead.**
+   `src/lib/village.ts` had its own `activateVillage`, `suspendVillage`,
+   `reactivateVillage`, `regenerateJoinCode` and `saveVillageAdminSettings`, and
+   nothing outside the file called any of them — `/admin/villages` imports from
+   the plural module. Its live half (the reads, and `checkVillageJoin`) moved
+   into `villages.ts` and the file is gone. The dead `appointCoordinator` and
+   `removeCoordinator` in `coordinator-requests.ts`, reachable only from it,
+   went with it. `activateVillage` also now mints the join code **before** it
+   flips the status: with the code enforced, an `ACTIVE` village holding a null
+   one is a village anybody can join.
 
-Two smaller drifts, noted so they are not rediscovered: the `tests/` listing in
-`CLAUDE.md`'s **Project structure** block omits `incident-csv.test.ts` and
-`report-range.test.ts`, and the `docs/` listing omits `E2E_VERIFICATION.md`,
-`FUNDING.md` and `GRANT_APPLICATION_NL_AI.md`.
+3. **Moderation's audit rows carried no address.** Every row written from a
+   route handler filled `ipAddress` and `userAgent`; every row written from a
+   server action did not, because a server action has no `request` — which left
+   publish, reject, `raw_viewed` and edit, the four that matter most in the
+   trail, as the four with nothing against them, while `/privacy` §2 told
+   residents all of them were recorded. `src/lib/audit-context.ts` resolves it
+   from `next/headers` inside the write, so no call site can forget.
+
+### Fixed in the documents
+
+4. **`coordinator-requests.ts` is not "the only place in the codebase that
+   raises a role"** — `appointCoordinator` in `villages.ts` is the other, and it
+   has to be: an application comes *from* a resident, so a cold village has
+   nobody who can file one. This one was the sentence being wrong rather than
+   the code; `CLAUDE.md` now names both and the rules they share.
+
+5. **`/privacy` claimed a resident's original wording was deleted when a report
+   was archived.** The retention job's archive step is `status: "ARCHIVED"` and
+   touches no other column. A false sentence in a privacy notice is worse debt
+   than a missing one, so the notice now says what actually happens — the wording
+   stays with the report, restricted and audited on every read, and goes when the
+   report or the account is erased, both of which are the resident's to trigger.
+
+6. **The face-covering default was documented as the black box and is the
+   standard blur.** Two constants: `DEFAULT_REDACTION_MODE` is `redact` and has
+   no caller; `DEFAULT_PRIVACY_LEVEL` is `standard` and is what every upload
+   actually gets. The second is the one to quote.
+
+7. Plus twelve counting and pointer errors — the migration count (10), the test
+   count, the model count (10), the "three claims" that were five, the "exactly
+   twice" canonical origin that was written out six times (now centralised
+   behind `APP_HOST`), the append-only trigger's NULL carve-out, the missing
+   `reportNarrative` rate limit, `village activation` still listed as the
+   blocker it stopped being on 27 July, and the structure block's missing
+   modules, routes, components, tests and documents.
+
+**The one that keeps happening** is worth naming: every item above except 5 and
+6 is a sentence that was true when written. The rule that catches them is
+already in the Definition of Done — the documentation making a claim about a
+behaviour changes in the *same commit* as the behaviour, not in a later pass.
 
 ---
 
@@ -223,6 +254,8 @@ landed in.
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 13 Aug 2026 | unreleased | The join code is enforced — both auth routes call `checkVillageJoin`, which had never been called; the two village modules became one; moderation's audit rows carry an address; nineteen code-versus-documentation contradictions reconciled (`fix/audit-code-vs-docs`) |
+| 11 Aug 2026 | unreleased | Facebook share button beside the WhatsApp copy button (`2af3cb6`) |
 | 4 Aug 2026 | v0.1.27 | Removed the print button from `/reports` — the server-rendered PDF replaces it (`dbd85ee`) |
 | 4 Aug 2026 | v0.1.26 | Download the community safety report as a PDF, rendered server-side so the file is identical every time (`3797e6f`) |
 | 3 Aug 2026 | v0.1.25 | Show the build version in the app sidebar, `/settings` and both footers (`fe89f41`) |

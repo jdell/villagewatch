@@ -3,6 +3,19 @@
 **Date:** 27 July 2026 · **Method:** code reading only · **Verdict:** every flow
 has a complete code path; four gaps found, one fixed in this pass.
 
+> **Resolution, 13 August 2026.** All four gaps are closed — see the note at the
+> head of each. Gaps 1 and 2 were closed **the other way round from the
+> recommendation below**, and deliberately: this document proposed keeping the
+> singular `src/lib/village.ts` and deleting the plural module, on the grounds
+> that the singular one was fuller. The plural one was the one actually wired to
+> a screen, and "delete the module that runs, keep the one that does not" is a
+> change with no way to test that it worked. The live module absorbed the live
+> half of the dead one instead, and `src/lib/village.ts` is gone.
+>
+> **Line numbers in this document are from 27 July and most no longer resolve.**
+> Treat them as a record of what was read, not as a way to find it. The file they
+> most often point at does not exist any more.
+
 > **Addendum, 28 July 2026 — the compliance gate.** A gate now sits in front of
 > flows (c), (d) and (e): a village accepts no report until its coordinator has
 > accepted the DPIA, the Appropriate Policy Document and the Article 28(3) data
@@ -13,12 +26,16 @@ has a complete code path; four gaps found, one fixed in this pass.
 > about those three flows still holds — it describes what happens *after* the
 > gate opens. See "The compliance gate" in CLAUDE.md.
 >
-> The gate is **not enforced on the deployed database**, because its migrations
-> (`20260728090000_village_compliance_gate` and
-> `20260728150000_village_dpa_gate`) have not been applied there and the
-> missing-column state deliberately allows reporting. So this addendum adds a
-> sixth entry to "What this document cannot tell you": nothing has ever been
-> blocked by the gate, and no acceptance has ever been recorded.
+> ~~The gate is **not enforced on the deployed database**~~ — **corrected 13
+> August 2026.** Both migrations are applied, along with the other eight; the
+> `database.yml` run that applied `20260803120000_incident_village_numbering` on
+> 3 August reported every earlier one already present. This addendum said
+> otherwise for a fortnight and was the older of two documents that disagreed,
+> which is why `PROJECT_STATE.md` was carrying it as an open question. **The gate
+> is live**, so a village that has not been through that screen is refusing
+> reports right now. What is still true is the sixth entry it added to "What this
+> document cannot tell you": nothing has ever been *blocked* by the gate in
+> anger, and no acceptance has ever been recorded.
 
 This walks the ten flows a resident or coordinator actually performs and checks,
 step by step, that the code behind each one exists and does what the rest of the
@@ -49,16 +66,17 @@ otherwise.
 
 **Gaps found**, in descending order of how much they matter:
 
-1. **Two village-activation modules exist and one of them is dead code.**
-   `src/lib/village.ts` and `src/lib/villages.ts` both implement the lifecycle;
-   only the plural one is wired up. Two separate implementations now raise a
-   role to `COORDINATOR`, which contradicts a stated invariant. §Gap 1.
-2. **A join code is still optional at registration**, so the guarded join logic
-   in `checkVillageJoin` — written, documented, tested against nothing — never
-   runs. §Gap 2.
+1. ~~**Two village-activation modules exist and one of them is dead code.**~~
+   **Closed 13 Aug** — one module, `src/lib/villages.ts`. §Gap 1.
+2. ~~**A join code is still optional at registration**~~, so the guarded join
+   logic in `checkVillageJoin` — written, documented, tested against nothing —
+   never runs. **Closed 13 Aug**, and it was the one that mattered: anybody who
+   could see a village in the picker could join it by leaving the field blank.
+   §Gap 2.
 3. **OneSignal counted a failed delivery as a success.** Found and **fixed** in
    this pass, along with an app-id fallback. §Gap 3.
-4. **A stale docstring** points at a script that does not exist. §Gap 4.
+4. ~~**A stale docstring** points at a script that does not exist.~~ **Closed.**
+   §Gap 4.
 
 ---
 
@@ -324,7 +342,9 @@ the output back rather than string-matching it.
 ## Gap 1 — two village-activation modules, one of them dead
 
 **Severity: high.** Not a broken path; a duplicated one, where the copy that
-runs is not the copy that is documented.
+runs is not the copy that is documented. **Closed 13 August 2026** — see the foot
+of this section, and note that it was closed the opposite way round from the
+recommendation.
 
 `src/lib/village.ts` (803 lines) and `src/lib/villages.ts` (374 lines) both
 implement the seeded-directory-entry → live-village lifecycle. Singular and
@@ -362,16 +382,38 @@ code, off an admin-gated action, never from a payload. But the invariant that
 made it easy to audit is gone, and a future change to the canonical function
 would silently not apply to the path that runs.
 
-**Recommended:** delete `src/lib/villages.ts`, point
+**Recommended at the time:** delete `src/lib/villages.ts`, point
 `admin/villages/actions.ts` at `src/lib/village.ts`, and keep the singular
 module — it is the fuller one, it delegates role-raising to
-`coordinator-requests.ts`, and it has the suspend/reactivate half. Then update
-CLAUDE.md, which currently describes this whole area as "Not built yet" and is
-stale in both directions.
+`coordinator-requests.ts`, and it has the suspend/reactivate half.
+
+**Closed 13 August 2026, the other way round.** `src/lib/villages.ts` is the one
+with a screen behind it, and replacing the module that runs with the module that
+does not is a refactor whose success is unobservable. So the live module absorbed
+the live half of the singular one — `findVillageBySlug`, `getVillageController`,
+the parish council and privacy-level accessors, and `checkVillageJoin` — and
+`src/lib/village.ts` was deleted, along with the dead `appointCoordinator` and
+`removeCoordinator` in `coordinator-requests.ts` that only it reached.
+
+Two things were given up and both were already unreachable: `suspendVillage` and
+`reactivateVillage`, which no screen could call. A village can still be activated
+and not suspended. That is now a missing *feature* with nothing pretending
+otherwise, rather than dead code that reads as one — and if it is wanted, it is a
+form and an action over `updateMany` guarded on the status just read.
+
+The third finding stands as a correction to `CLAUDE.md` rather than to the code:
+two implementations do raise a role, and the second one has to exist, because an
+application comes *from* a resident and a cold village has none. Both files now
+say so.
 
 ## Gap 2 — the join code is still optional at registration
 
-**Severity: medium.**
+**Severity: medium** as assessed — **high in hindsight**, and the gap between
+those two readings is the lesson. It was filed as "a feature is not wired up".
+What it actually was: the only credential standing between a stranger and a
+village's reports was optional, in a product whose whole premise is that the
+village is the boundary. **Closed 13 August 2026** — see the foot of this
+section.
 
 `src/lib/village.ts:239` defines `checkVillageJoin`, and the migration comment
 in `20260727180000_village_activation` describes the intended rule: a join code
@@ -394,8 +436,18 @@ not what the activation flow mints a code *for*, and `checkVillageJoin` is the
 function that was written to close it — unreachable, along with the rest of its
 module.
 
-Closing Gap 1 closes this one too, provided the two auth routes are pointed at
-`checkVillageJoin` when they are.
+**Closed 13 August 2026.** Both routes call `checkVillageJoin`, which now lives
+in `src/lib/villages.ts`. The code is required whenever the village has one; a
+village with none is refused on `status` first, so the null branch is reachable
+only by rows that predate activation, and `activateVillage` mints the code before
+it flips the status so nothing new can land in that state.
+`tests/village-join.test.ts` asserts the blank code, the empty string, the
+whitespace-only case, normalisation, the legacy null and the status refusal.
+
+Worth recording, because it is the reason this sat open for a fortnight: this was
+not a missing feature. `checkVillageJoin` was complete, correct, commented and
+referenced by four other files' documentation. Nothing called it, and nothing
+could have told you that except counting the callers.
 
 ## Gap 3 — OneSignal reported failures as successes *(fixed in this pass)*
 
@@ -450,6 +502,8 @@ and delivers nothing — and all three variables have to reach Vercel, with
 builder "is exercised by `scripts/check-incident-csv.ts`". That file is not in
 the repository; the tests are `tests/incident-csv.test.ts`, run by Vitest in CI.
 
+**Closed** — the docstring names the test file.
+
 ---
 
 # Things that are correct and easy to break
@@ -470,16 +524,20 @@ line it sits on.
   else it follows a completed act and is swallowed.
 - **`AuditLog` deletion is refused by a trigger, including to the table owner.**
   That is what makes domain rule 7 survive a careless `deleteMany`, and it is why
-  `RETENTION.auditLogMonths` cannot be enforced from application code.
+  `RETENTION.auditLogMonths` cannot be enforced from application code. UPDATE is
+  refused too, **bar one**: severing `actor_id` to NULL while every other column
+  stays byte-identical, which is what lets an account be deleted at all — the FK
+  is `ON DELETE SET NULL`, so the cascade is an UPDATE.
 - **Four types have no field that could carry `rawDescription`, `lat` or `lng`** —
   `AlertIncident`, `ReportIncident`, `ExportIncident`, `IncidentEmailInput`. The
   guard is structural, not a code review.
-- **`parish_council` is in the one unapplied migration**, and every read of it
-  handles the column's absence: `getVillageController` falls back
-  (`village.ts:601-622`), `getVillageParishCouncil` distinguishes "not named"
-  from "no column" by matching P2022/42703 narrowly (`:655-686`), and the
-  dashboard field is disabled with an explanation rather than failing on Save.
-  This was checked specifically and is right.
+- **Every read of `parish_council` handles the column's absence**, and still
+  should even though its migration is applied now: `getVillageController` falls
+  back, `getVillageParishCouncil` distinguishes "not named" from "no column" by
+  matching P2022/42703 narrowly, and the dashboard field is disabled with an
+  explanation rather than failing on Save. A fresh clone or a restored copy can
+  be behind. (Both functions live in `src/lib/villages.ts` now; this entry
+  originally cited line numbers in `village.ts`, which no longer exists.)
 
 ---
 
@@ -492,14 +550,22 @@ here have never run at all:
    remaining failure modes are in a dashboard and a build environment.
 2. **The retention job has never run against data.** It deletes files.
 3. **Erasure has never touched a real bucket.** Both entry points delete objects.
-4. **`.github/workflows/database.yml` has never applied a migration.** All five
-   applied migrations were run by hand; the sixth has not been applied anywhere.
+4. ~~**`.github/workflows/database.yml` has never applied a migration.**~~
+   **Corrected 13 August 2026**: it has applied one for real —
+   `20260803120000_incident_village_numbering`, on 3 August, followed by both SQL
+   files in order. Everything before that was applied by hand, and the workflow
+   ran as a no-op until its `DIRECT_URL` secret was reachable. All ten are
+   applied now.
 5. **Auto-approve has never published a report.** Its migration *is* applied,
    which is the part that would otherwise have failed loudest.
+6. **No village has ever been activated** through `/admin/villages`, so the join
+   code this document spent two gaps on has never been minted in anger.
 
-The suite in `tests/` covers six modules — the rate limiter, the auth guards, the
-AI pass's failure modes, the Zod schemas, the WhatsApp channel code, the alert
-format and the CSV builder. It covers no route handler, no server action, no
-component and no policy, by design: a test needing a database is a test CI cannot
-run on every push. The gap that matters most is still the one named above —
-nothing asserts that a village with auto-approve off queues its reports.
+The suite in `tests/` covered **six** modules when this was written and covers
+**eighteen** now — the six plus the compliance gate and its three documents, the
+Markdown parser, the privacy level, the heat scale, the invite link, both
+date-range resolvers, the incident reference, the PDF layout and the join check
+that Gap 2 was about. It covers no route handler, no server action, no component
+and no policy, by design: a test needing a database is a test CI cannot run on
+every push. The gap that matters most is still the one named above — nothing
+asserts that a village with auto-approve off queues its reports.

@@ -13,6 +13,7 @@ import {
   type LegalSectionRef,
 } from "@/components/legal-page";
 import {
+  APP_HOST,
   APP_NAME,
   DATA_CONTROLLER,
   MINIMUM_AGE,
@@ -76,7 +77,7 @@ export default function TermsPage() {
 
       <LegalSection id="who" title="1. Who these terms are between">
         <P>
-          {APP_NAME}, the service at <strong>villagewatch.app</strong>, is
+          {APP_NAME}, the service at <strong>{APP_HOST}</strong>, is
           operated for your village by {DATA_CONTROLLER.name}. By creating an
           account you agree to these terms and to our{" "}
           <Link

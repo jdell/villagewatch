@@ -42,11 +42,15 @@ import { APP_NAME } from "@/lib/constants";
  *
  * ## No code yet
  *
- * A village that has never been activated has `joinCode` null, and
- * `checkVillageJoin` reads "no code set" as "no code required" — so there is
- * nothing here that would let anybody in, and an invite that cannot be accepted
- * is worse than no invite. The panel says what has to happen and who does it,
- * the same shape `ParishCouncilForm` uses for its unmigrated column.
+ * A village that has never been activated has `joinCode` null, so there is
+ * nothing to put in a link and an invite that cannot be accepted is worse than
+ * no invite. The panel says what has to happen and who does it, the same shape
+ * `ParishCouncilForm` uses for its unmigrated column.
+ *
+ * `checkVillageJoin` does read "no code set" as "no code required", which sounds
+ * like a way in and is not: such a village is `PENDING`, and the status refusal
+ * comes first. `activateVillage` mints the code *before* it flips the status, so
+ * the two states cannot be reached in the other order.
  */
 
 /** How long a button stays saying "Copied!". Matches `CopyAlert`. */

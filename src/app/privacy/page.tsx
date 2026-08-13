@@ -13,6 +13,7 @@ import {
   type LegalSectionRef,
 } from "@/components/legal-page";
 import {
+  APP_HOST,
   APP_NAME,
   DATA_CONTROLLER,
   LOCATION_FUZZ_METERS,
@@ -33,9 +34,10 @@ export const metadata: Metadata = {
 /**
  * The privacy notice, written to Articles 13 and 14 of the UK GDPR.
  *
- * Three things here are statements about how the code actually behaves, and
+ * **Five** things here are statements about how the code actually behaves, and
  * they have to keep matching it. If any of them changes, this page changes in
- * the same commit:
+ * the same commit. It said three for as long as there were five, which is the
+ * kind of drift that ends with a notice nobody re-reads:
  *
  *   - Faces are covered on the device and only the re-encoded canvas output is
  *     uploaded (domain rule 3, `src/lib/media/face-blur.ts`). The claim that an
@@ -53,9 +55,23 @@ export const metadata: Metadata = {
  *   - Report text is sent to Anthropic for anonymisation
  *     (`src/lib/ai/structure-incident.ts`). Residents are told before they file,
  *     not after.
+ *   - §6 names what the staff channel is told (`src/lib/slack.ts`). Slack is a
+ *     third party outside the UK and a channel is retained indefinitely, so what
+ *     a message carries is a disclosure rather than an implementation detail:
+ *     never `rawDescription`, never coordinates, and a resident's name and email
+ *     on registration because that is what those two alerts are for.
+ *   - Whether a human sees a report before it is published, which is
+ *     **conditional** and says so. `Village.autoApprove` lets a village publish
+ *     on submit, so the human the Article 22 paragraph rests on is the reporter,
+ *     who reads the rewrite and accepts it before anything is saved — true in
+ *     both configurations. See "Auto-approve" in CLAUDE.md.
  *
- * The retention schedule is the one section that describes intent rather than
- * behaviour — there is no retention job yet. See "Not built yet" in CLAUDE.md.
+ * The retention schedule is the section to watch. `/api/cron/retention` enforces
+ * the first two figures nightly; the audit-log expiry and the dormant-account
+ * closure are schedule-only, and the notice has to keep saying which is which.
+ * **Archiving is a status change and nothing more** — see §7, which used to
+ * claim the original wording was deleted at that point and is the reason this
+ * paragraph names the difference rather than leaving it to be inferred.
  */
 
 const SECTIONS = [
@@ -91,7 +107,7 @@ export default function PrivacyPage() {
       <LegalSection id="controller" title="1. Who is responsible for your data">
         <P>
           This notice covers {APP_NAME}, the community safety reporting service
-          at <strong>villagewatch.app</strong>.
+          at <strong>{APP_HOST}</strong>.
         </P>
         <P>
           Your parish council is the <strong>data controller</strong> for
@@ -417,13 +433,18 @@ export default function PrivacyPage() {
             incident is old.
           </Definition>
           <Definition term={`Reports — archived at ${RETENTION.incidentArchiveMonths} months`}>
-            Archived reports leave the map and the incident list. The anonymised
-            text is retained beyond that only in aggregate, for the pattern
-            history a village needs to see year-on-year trends.
+            Archived reports leave the map and the incident list. They are not
+            deleted: the record is kept for the pattern history a village needs
+            to see year-on-year trends.
           </Definition>
-          <Definition term={`Original report wording — ${RETENTION.incidentArchiveMonths} months`}>
-            Deleted when the report is archived. After that, only the anonymised
-            version remains.
+          <Definition term="Original report wording — kept with the report">
+            Your original wording is <strong>not</strong> deleted when a report
+            is archived. It stays with the report, restricted to your
+            coordinators, and every single read of it is recorded in the audit
+            trail — which is what it has been from the moment you filed. It is
+            erased when the report itself is erased: delete the report, or close
+            your account, and it goes with it, along with the photos. Both are
+            in your hands and neither waits for a retention period.
           </Definition>
           <Definition term={`Audit records — ${RETENTION.auditLogMonths} months`}>
             Kept longer than the reports they describe, because their whole

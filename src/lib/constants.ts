@@ -377,7 +377,7 @@ export const JOIN_CODE_LENGTH = 8;
 /**
  * Why a resident cannot join the village they just picked.
  *
- * The client half of `VILLAGE_JOIN_REFUSALS` in `src/lib/village.ts`, which says
+ * The client half of `VILLAGE_JOIN_REFUSALS` in `src/lib/villages.ts`, which says
  * the same things to a hand-crafted POST. Two copies because this one has to
  * render in a Client Component and that one has to sit next to the check it
  * describes; they are three short strings and the alternative is a Client
@@ -1284,6 +1284,20 @@ export const APP_DESCRIPTION =
  * everywhere but a developer's laptop, where `.env.local` sets it anyway.
  */
 export const APP_ORIGIN = "https://villagewatch.app";
+
+/**
+ * The same host with no scheme, for the three places that print it as a word
+ * rather than link to it: the two legal notices, which name the service by the
+ * address a resident types, and the share card.
+ *
+ * Derived rather than written out again. `CLAUDE.md` has always claimed the
+ * domain "appears in the codebase exactly twice" — here and in `.env.example` —
+ * and it was written out in four more places, each of which would have carried
+ * on naming the old host on the day the domain changed. A privacy notice naming
+ * a domain the service no longer answers on is a notice that describes a
+ * different service.
+ */
+export const APP_HOST = APP_ORIGIN.replace(/^https?:\/\//, "");
 
 /** Routes that require a signed-in user. Mirrored by `src/proxy.ts`. */
 export const PROTECTED_ROUTES = [
