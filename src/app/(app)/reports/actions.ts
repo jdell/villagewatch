@@ -4,7 +4,7 @@ import { requireCoordinator } from "@/lib/auth";
 import { generateReportNarrative } from "@/lib/ai/report-narrative";
 import type { ReportNarrative } from "@/lib/community-report";
 import { prisma } from "@/lib/prisma";
-import { getVillageController } from "@/lib/village";
+import { getVillageController } from "@/lib/villages";
 import { RATE_LIMITS, formatRetryAfter, rateLimit } from "@/lib/rate-limit";
 import {
   collectVillageReport,

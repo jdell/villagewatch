@@ -18,7 +18,7 @@ import { NoVillage } from "@/components/no-village";
 import { ShareSummary } from "@/components/share-summary";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getVillageController } from "@/lib/village";
+import { getVillageController } from "@/lib/villages";
 import {
   formatIncidentSummary,
   reportController,

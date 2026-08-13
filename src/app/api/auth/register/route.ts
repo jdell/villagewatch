@@ -6,6 +6,7 @@ import { fuzzCoordinates } from "@/lib/geo";
 import { HOME_LOCATION_FUZZ_METERS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { notifySlack } from "@/lib/slack";
+import { checkVillageJoin } from "@/lib/villages";
 
 /**
  * POST /api/auth/register
@@ -16,6 +17,13 @@ import { notifySlack } from "@/lib/slack";
  * The village and role come from the server, never from the client payload
  * beyond the chosen village id: a resident cannot register themselves as a
  * coordinator by posting `role: "ADMIN"`.
+ *
+ * **Whether this village will have them is `checkVillageJoin`'s answer, not
+ * this route's.** It used to be decided here, in a hand-rolled comparison that
+ * `/api/auth/complete-profile` had its own copy of — and both copies asked
+ * `if (joinCode && !codeMatches)`, so a wrong code was refused and a blank one
+ * was waved through into the village as a plain `RESIDENT`. One function, both
+ * paths, and the code is required whenever the village has one.
  *
  * The home location arrives as the exact point the resident tapped and is
  * jittered here, on the server, before it is written — same reasoning as
@@ -74,37 +82,22 @@ export async function POST(request: NextRequest) {
       ? fuzzCoordinates(homeLat, homeLng, HOME_LOCATION_FUZZ_METERS)
       : null;
 
-  const village = await prisma.village.findFirst({
-    where: { id: villageId, status: "ACTIVE" },
-    select: { id: true, name: true, joinCode: true },
-  });
+  // The status check, the code check and the standing it earns, in one place.
+  // Refused before the auth user is created, so a rejected registration leaves
+  // nothing behind in Supabase Auth to collide with a later attempt.
+  const join = await checkVillageJoin({ villageId, joinCode });
 
-  if (!village) {
+  if (!join.ok) {
     return NextResponse.json(
       {
-        error: "That village is not accepting new residents",
-        fieldErrors: { villageId: "Choose a different village" },
+        error: join.error,
+        fieldErrors: { [join.field]: join.error },
       },
       { status: 422 },
     );
   }
 
-  // A correct join code from the coordinator verifies the resident up front.
-  const codeMatches = Boolean(
-    joinCode &&
-      village.joinCode &&
-      joinCode.trim().toUpperCase() === village.joinCode.toUpperCase(),
-  );
-
-  if (joinCode && !codeMatches) {
-    return NextResponse.json(
-      {
-        error: "That join code is not valid for this village",
-        fieldErrors: { joinCode: "Check the code with your coordinator" },
-      },
-      { status: 422 },
-    );
-  }
+  const { village, verified } = join;
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
@@ -142,8 +135,8 @@ export async function POST(request: NextRequest) {
         homeLat: home?.lat,
         homeLng: home?.lng,
         villageId: village.id,
-        role: codeMatches ? "VERIFIED_RESIDENT" : "RESIDENT",
-        verifiedAt: codeMatches ? new Date() : null,
+        role: verified ? "VERIFIED_RESIDENT" : "RESIDENT",
+        verifiedAt: verified ? new Date() : null,
       },
     });
   } catch (cause) {

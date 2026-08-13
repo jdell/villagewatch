@@ -359,13 +359,20 @@ export const VILLAGE_ADMIN_STATUSES = [
 /**
  * Characters in a join code.
  *
- * Six, drawn from `JOIN_CODE_ALPHABET` in `src/lib/village.ts` — long enough not
- * to be guessed off a village's name, short enough to read down the phone and to
- * fit on a noticeboard. Here rather than beside the generator because the
- * registration form renders it in a hint and cannot import a module that pulls
- * in `node:crypto`.
+ * Eight, drawn from `JOIN_CODE_ALPHABET` in `src/lib/villages.ts` — long enough
+ * not to be guessed off a village's name, short enough to read down the phone
+ * and to fit on a noticeboard. Here rather than beside the generator because a
+ * Client Component cannot import a module that pulls in `node:crypto`.
+ *
+ * **It was 6 and nothing minted a 6-character code.** The constant was read only
+ * by the generator in the dead singular village module; the live one had its own
+ * `const JOIN_CODE_LENGTH = 8` and every code ever issued — including the seed's
+ * `VILLAGE1` — is eight. Changed to match what exists rather than the other way
+ * round: shortening it would have invalidated nothing already stored (a code is
+ * compared, not measured) but would have left two lengths in circulation for no
+ * reason. `readJoinCodeParam` accepts 4–16, so both survive a link.
  */
-export const JOIN_CODE_LENGTH = 6;
+export const JOIN_CODE_LENGTH = 8;
 
 /**
  * Why a resident cannot join the village they just picked.

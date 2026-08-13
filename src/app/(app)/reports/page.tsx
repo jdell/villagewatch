@@ -4,7 +4,7 @@ import { CalendarRange, LayoutDashboard, TriangleAlert } from "lucide-react";
 import { NoVillage } from "@/components/no-village";
 import { ReportView } from "@/components/reports/report-view";
 import { requireCoordinator } from "@/lib/auth";
-import { getVillageController } from "@/lib/village";
+import { getVillageController } from "@/lib/villages";
 import { DATA_CONTROLLER, REPORT_RANGES } from "@/lib/constants";
 import { collectVillageReport, resolveReportRange } from "@/lib/reports";
 

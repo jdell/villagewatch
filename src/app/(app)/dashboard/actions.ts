@@ -18,7 +18,7 @@ import {
   getVillagePrivacyLevel,
   setVillageParishCouncil,
   setVillagePrivacyLevel,
-} from "@/lib/village";
+} from "@/lib/villages";
 import { PRIVACY_LEVEL_META } from "@/lib/constants";
 import {
   fieldErrors,

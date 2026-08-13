@@ -15,7 +15,7 @@ import { requireCoordinator } from "@/lib/auth";
 import { getVillageCompliance } from "@/lib/compliance";
 import { loadComplianceDocuments } from "@/lib/compliance-documents";
 import { reportController } from "@/lib/community-report";
-import { getVillageController } from "@/lib/village";
+import { getVillageController } from "@/lib/villages";
 import { formatDateTime } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Compliance" };

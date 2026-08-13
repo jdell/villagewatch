@@ -6,7 +6,7 @@ import { Logo } from "@/components/logo";
 import { QrInvite } from "@/components/qr-invite";
 import { SiteFooter } from "@/components/site-footer";
 import { readJoinCodeParam } from "@/lib/invite";
-import { findVillageBySlug } from "@/lib/village";
+import { findVillageBySlug } from "@/lib/villages";
 import { APP_NAME, VILLAGE_STATUS_LABELS } from "@/lib/constants";
 
 /**
