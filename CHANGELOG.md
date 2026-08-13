@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.29](https://github.com/jdell/villagewatch/compare/v0.1.28...v0.1.29) (2026-08-13)
+
+
+### Fixes
+
+* **auth:** require the join code the documents always said was required ([d7b7eac](https://github.com/jdell/villagewatch/commit/d7b7eac5b65eb0015ef81ff54bc0247180358fa1))
+
+
+### Documentation
+
+* reconcile nineteen contradictions between the code and the documents ([32668cc](https://github.com/jdell/villagewatch/commit/32668cc2a1844a20e5ee702be26dbd0e2f6c3211))
+
 ### [0.1.28](https://github.com/jdell/villagewatch/compare/v0.1.27...v0.1.28) (2026-08-11)
 
 
