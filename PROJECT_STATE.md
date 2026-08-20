@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
 **Last updated:** 20 August 2026 · **Repo version:** `v0.1.29` · **Branch:**
-`fix/archive-clears-raw-description`, off `8b1306b` · **Domain:**
+`feat/community-mode`, off `fix/archive-clears-raw-description` · **Domain:**
 https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
@@ -23,9 +23,9 @@ in `BACKLOG.md`.
 | Repo version | `v0.1.29`, tagged, `package.json` on `main` reads `0.1.29` |
 | Version on screen | expect **v0.1.28** — the release commit carries `[skip ci]`, so production is built from the merge of the audit branch and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
-| Migrations in repo | 11, `20260726161847_init` → `20260820100000_archive_deletes_raw_description`. Ten applied; the eleventh is new on this branch and has not been through `database.yml` |
+| Migrations in repo | 12, `20260726161847_init` → `20260820120000_village_community_mode`. Ten applied; the last two are new on these branches and have not been through `database.yml` |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, unit only, **19 files, 303 tests**, all passing (~2s) — runs with no `.env.local` and no database |
+| Test suite | Vitest, unit only, **20 files, 328 tests**, all passing (~2s) — runs with no `.env.local` and no database |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump) |
 
 ---
@@ -35,6 +35,7 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. Head is `8b1306b`, the `v0.1.29` release commit on top of the merged audit branch (PR #4). | — |
+| `feat/community-mode` | **In review (N17).** Stacked on the T10 branch, which is stacked on `main` — both touch `PROJECT_STATE.md`, `BACKLOG.md`, `CLAUDE.md` and `prisma/schema.prisma`, so basing them side by side on `main` would conflict on four files for no reason. A two-tier compliance model behind `Village.mode`: a village with no parish council has its coordinator as data controller and accepts one agreement instead of three, and the activation screen and the community compliance screen both spell out what being a controller obliges somebody to do. | Merge into `fix/archive-clears-raw-description`, or into `main` once that lands |
 | `fix/archive-clears-raw-description` | **In review (T10).** The nightly sweep now deletes `rawDescription` in the same statement that archives a report, plus a catch-up pass for reports a coordinator archived by hand. `raw_description` is nullable (migration 11), `readRawDescription` says so instead of writing an audit row for nothing, and `tests/retention.test.ts` is the first route-handler test in the suite. | Merge to `main` |
 
 `fix/audit-code-vs-docs` and `fix/database-workflow-environment-secret` are both
@@ -47,6 +48,26 @@ PRs because they were asked for as PRs.
 ## Open items
 
 ### Done — landed, not yet exercised against real data
+
+- **Community Mode** — 20 August 2026, N17. `Village.mode` is `community` or
+  `council`, defaulting to `community`. A community village's coordinator is the
+  data controller and accepts one document — `docs/COMMUNITY_DPA.md`, which
+  carries the Article 28(3) processing terms and the Schedule 1 paragraph 5
+  policy document together — instead of the council's DPIA, APD and DPA. The
+  paragraph 5 condition is folded in rather than dropped; what is genuinely left
+  out is the Article 35 assessment, because `docs/DPIA.md` rates no risk high
+  after mitigation for the same software. Upgrading to the council model is
+  one-way, audited, and **does not close the village** — the coordinator is still
+  the controller until the council adopts its three.
+
+  **Nothing has run against a database.**
+  `20260820120000_village_community_mode` is unapplied, no village is on either
+  model in anger, and no acceptance of any kind has ever been recorded. Three
+  things to watch on the first village through: that the migration's backfill
+  leaves the seeded village on `community` (nothing has been accepted anywhere,
+  so it should), that accepting the one agreement actually opens reporting, and
+  that an upgrade leaves the village open. `docs/COMMUNITY_DPA.md` has been
+  written from the code and read by no lawyer.
 
 - **Archiving deletes the reporter's original wording** — 20 August 2026, T10.
   `/privacy` §7 said it happened at twelve months and nothing did it; the
@@ -274,6 +295,7 @@ landed in.
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 20 Aug 2026 | unreleased | Community Mode — a two-tier compliance model, one agreement for a village with no council, and the controller's duties in plain English (N17, `feat/community-mode`) |
 | 20 Aug 2026 | unreleased | Archiving deletes the reporter's original wording, and catches up the reports a coordinator archived by hand (T10, `fix/archive-clears-raw-description`) |
 | 13 Aug 2026 | v0.1.29 | The join code is enforced — both auth routes call `checkVillageJoin`, which had never been called; the two village modules became one; moderation's audit rows carry an address; nineteen code-versus-documentation contradictions reconciled (PR #4) |
 | 11 Aug 2026 | v0.1.28 | Facebook share button beside the WhatsApp copy button (`2af3cb6`) |

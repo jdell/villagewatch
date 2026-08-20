@@ -9,7 +9,7 @@
 | **Service** | VillageWatch — villagewatch.app |
 | **Prepared by** | Yakasista Ltd (processor) |
 | **Prepared on** | 27 July 2026 |
-| **Controller** | *[Parish Council name]* — one controller per village |
+| **Controller** | *[Parish Council name]* — one controller per village. See the note below on villages with no council |
 | **Reviewed by** | *(pending)* |
 | **Signed off by** | *(pending — see signature block)* |
 | **Next review** | Six months after the first village goes live |
@@ -25,6 +25,21 @@
 > Every statement here about how the service behaves is a statement the
 > developer is held to. If the software changes, this document is corrected at
 > the same time — the same rule the privacy notice is held to.
+>
+> **This assessment is written for a village run by a parish or town council,
+> which is one of the two models the service supports.** In the other — the
+> *community model*, and the default — a village has no council behind it and
+> its coordinator is the data controller. Such a village accepts one document
+> instead of three, `COMMUNITY_DPA.md`, which carries the Article 28(3)
+> processing terms and the Schedule 1 paragraph 5 policy document together.
+>
+> That model does **not** carry an assessment of its own, and the reason is this
+> document: Article 35 requires a DPIA where processing is likely to result in a
+> high risk, and §8 below concludes that no risk here is rated high after
+> mitigation. A community village runs the same software with the same
+> safeguards, so what §8 says about the risk applies to it unchanged. Anyone
+> running a community village who wants to know what was considered should read
+> this; they are not obliged to produce one.
 
 ---
 

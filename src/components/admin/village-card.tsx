@@ -11,7 +11,8 @@ import {
   regenerateJoinCodeAction,
   type VillageAdminState,
 } from "@/app/(app)/admin/villages/actions";
-import { VILLAGE_STATUS_LABELS } from "@/lib/constants";
+import { ControllerDuties } from "@/components/controller-duties";
+import { VILLAGE_MODE_META, VILLAGE_STATUS_LABELS } from "@/lib/constants";
 
 /**
  * One village, with the two or three things an administrator can do to it.
@@ -21,6 +22,12 @@ import { VILLAGE_STATUS_LABELS } from "@/lib/constants";
  * the coordinator field beside it would invite appointing somebody to a village
  * nobody can join yet. Once active, the join code and the appointment are what
  * matter and activation is gone.
+ *
+ * **Activation is where somebody becomes a data controller**, so the card says
+ * what that means before the button rather than after it. A village is created
+ * in the community model, which puts the duty on its coordinator; the
+ * administrator pressing Activate is the last person in the chain who could
+ * have mentioned it.
  *
  * **The join code is shown once, when it is minted.** It is never rendered from
  * the row: the page does not select the column, `rls_policies.sql` withholds it
@@ -180,6 +187,32 @@ export function VillageCard({ village }: { village: AdminVillage }) {
           Joinable, but nobody can moderate it. Every report filed here waits in
           a queue no one can open. Appoint a coordinator below.
         </p>
+      )}
+
+      {/*
+        What activation actually hands somebody. A village is created in the
+        community model (`DEFAULT_VILLAGE_MODE`), which makes its coordinator the
+        data controller for every report filed in it — and an administrator
+        pressing this button is the last person in the chain who could have said
+        so before it happened. The duties are the ones with a deadline on them;
+        the coordinator meets the same three again, in the second person, on
+        their own compliance screen before they accept anything.
+      */}
+      {!isActive && (
+        <div className="mt-4 rounded-xl bg-brand-50/60 p-3.5 ring-1 ring-inset ring-brand-200">
+          <h4 className="text-xs font-semibold text-slate-900">
+            Activating makes its coordinator the data controller
+          </h4>
+          <p className="mt-1 text-xs leading-relaxed text-slate-600">
+            New villages run the <strong>community model</strong>:{" "}
+            {VILLAGE_MODE_META.community.summary} The village accepts no report
+            until that agreement is accepted on the coordinator&rsquo;s
+            dashboard. A parish council can take the village on later, which
+            switches it to the three-document model. What the coordinator is
+            taking on:
+          </p>
+          <ControllerDuties size="sm" />
+        </div>
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">

@@ -952,6 +952,35 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    value: "compliance.community_dpa_accepted",
+    label: "Community agreement accepted",
+    description:
+      "A coordinator accepted the Community Coordinator Agreement as the village's own data controller",
+    /*
+      Sensitive alongside the other three, and the one difference is worth
+      knowing when reading the trail: this row is a whole signature rather than
+      half of one, and it is signed by the coordinator **for themselves**. The
+      council rows record somebody accepting on a body's behalf; this one
+      records a person taking on the controller's duties in their own name.
+    */
+    tone: "sensitive",
+  },
+  {
+    value: "village.mode_changed",
+    label: "Compliance model changed",
+    description:
+      "A village moved from the community model to the parish council model — the data controller changed",
+    /*
+      Sensitive, and the fifth configuration change in this list. What it
+      changes is who is answerable for every report in the village: a subject
+      access request, a breach notification and an ICO enquiry all go somewhere
+      different afterwards. The trail is the only place the handover date is
+      written down, and "when did the council take this on" is exactly the
+      question it will be asked.
+    */
+    tone: "sensitive",
+  },
+  {
     value: "incident.notify",
     label: "Alert re-sent",
     description: "A village-wide push was sent again",
@@ -1443,6 +1472,184 @@ export const OPERATOR = {
   email: SUPPORT_EMAIL,
   country: "GB",
 } as const;
+
+// ---------------------------------------------------------------------------
+// The two compliance models
+// ---------------------------------------------------------------------------
+
+export type VillageModeMeta = {
+  value: string;
+  /** What the coordinator picks it by. */
+  label: string;
+  /** Who the data controller is, in four words. */
+  controller: string;
+  /** One line under the label. */
+  summary: string;
+  /** What the village has to accept before it can take a report. */
+  documents: string;
+};
+
+/**
+ * Whether a village is run by a parish council or by the people who live in it.
+ *
+ * `Village.mode`, and the only thing in the app that decides which documents
+ * the compliance gate asks for. Both modes are gated; they are gated on
+ * different documents, because they have different controllers.
+ *
+ * ## Why there are two
+ *
+ * The gate was built for a parish council: a DPIA under Article 35, an
+ * Appropriate Policy Document under DPA 2018 Schedule 1 paragraph 5, and an
+ * Article 28(3) processing agreement, all accepted by a coordinator **on the
+ * council's behalf**. That is the correct set of documents when a council is
+ * the controller, and an impossible set when there is no council — which is
+ * most neighbourhood watch groups. Six neighbours and a WhatsApp group cannot
+ * produce a council's impact assessment, and asking them to is asking them not
+ * to start.
+ *
+ * So `community` makes the **coordinator** the controller, which is what they
+ * already are in fact, and gives them one document to read.
+ *
+ * ## What community mode does not skip
+ *
+ * The paragraph 5 condition. It is what authorises processing criminal offence
+ * data at all, and it attaches to the processing rather than to the kind of
+ * organisation doing it — so dropping it would leave a community village with
+ * no lawful basis, which is exactly the failure the gate exists to prevent.
+ * `docs/COMMUNITY_DPA.md` carries the policy-document content and the Article
+ * 28(3) terms in one agreement written for a volunteer. One document, two
+ * instruments, no shortcut past either.
+ *
+ * What community mode genuinely does without is the **Article 35 assessment**,
+ * and that is a judgement rather than an omission: Article 35 requires one where
+ * processing is likely to result in a high risk, `docs/DPIA.md` concludes that
+ * no risk here is rated high after mitigation, and it is the assessment for the
+ * service as a whole. A community village runs the same software with the same
+ * safeguards. The document stays on the shelf and is linked from the agreement
+ * for anybody who wants to read it.
+ */
+export const VILLAGE_MODES = [
+  {
+    value: "community",
+    label: "Community group",
+    controller: "You, the coordinator",
+    summary:
+      "A neighbourhood group with no parish council behind it. You are the data controller and you accept one agreement.",
+    documents: "One document — the Community Coordinator Agreement",
+  },
+  {
+    value: "council",
+    label: "Parish or town council",
+    controller: "The council",
+    summary:
+      "A council has taken this village on. It is the data controller, and it accepts the three documents a council is separately obliged to hold.",
+    documents: "Three documents — the DPIA, the Appropriate Policy Document and the Data Processing Agreement",
+  },
+] as const satisfies readonly VillageModeMeta[];
+
+export type VillageMode = (typeof VILLAGE_MODES)[number]["value"];
+
+export const VILLAGE_MODE_VALUES = VILLAGE_MODES.map((m) => m.value) as [
+  VillageMode,
+  ...VillageMode[],
+];
+
+export const VILLAGE_MODE_META = Object.fromEntries(
+  VILLAGE_MODES.map((m) => [m.value, m]),
+) as Record<VillageMode, VillageModeMeta>;
+
+/**
+ * What a village is until somebody says otherwise.
+ *
+ * `community`, and the direction of that default is the whole feature: a group
+ * that has not been asked the question is a group with no council, and the mode
+ * that fits them is the one they can actually complete. A `council` default
+ * would leave every new village blocked behind three documents nobody has.
+ */
+export const DEFAULT_VILLAGE_MODE: VillageMode = "community";
+
+/**
+ * Narrows whatever is in the column to a mode this build knows about.
+ *
+ * `Village.mode` is a `String` with no CHECK constraint, so it will hold
+ * whatever a `psql` session puts there. Falling back rather than throwing keeps
+ * an unrecognised value from becoming a 500 in front of a resident filing a
+ * report — and the fallback is `community`, which asks for a document the
+ * village can actually produce rather than three it cannot.
+ *
+ * `Object.hasOwn`, not `in`, for the reason `resolvePrivacyLevel` gives: a plain
+ * object answers `in` for `toString` and `constructor`, and this reads a
+ * free-text column.
+ */
+export function resolveVillageMode(
+  value: string | null | undefined,
+): VillageMode {
+  return value !== null &&
+    value !== undefined &&
+    Object.hasOwn(VILLAGE_MODE_META, value)
+    ? (value as VillageMode)
+    : DEFAULT_VILLAGE_MODE;
+}
+
+/**
+ * The documents either model can ask for.
+ *
+ * Here rather than in `src/lib/compliance-documents.ts` — which is where the
+ * files themselves are described — because that module imports `node:fs`, and
+ * the gate, the acceptance form and the audit trail all need to know *which*
+ * documents a mode calls for without any of them reading one off the disk.
+ */
+export type ComplianceDocumentId = "dpia" | "apd" | "dpa" | "community";
+
+/**
+ * Which documents a village in this mode has to accept.
+ *
+ * The one place the two-tier model turns into a list, so the screen, the gate
+ * and the audit trail cannot disagree about what was asked for.
+ *
+ * There is deliberately no overlap between the two sets. A community village is
+ * not asked for a cut-down council pack, and a council village is not asked to
+ * accept an agreement that names a private individual as the controller — the
+ * two documents make different people answerable, which is the whole difference
+ * between the models.
+ */
+export function documentsForMode(mode: VillageMode): ComplianceDocumentId[] {
+  return mode === "community" ? ["community"] : ["dpia", "apd", "dpa"];
+}
+
+/**
+ * What being a data controller actually obliges somebody to do, in the words a
+ * volunteer needs rather than the words the legislation uses.
+ *
+ * Rendered on the activation screen and above the community agreement, because
+ * in `community` mode the person reading it **is** the controller and nobody
+ * has told them what that means. A coordinator accepting an agreement whose
+ * consequences they have not been shown is the same failure as a council
+ * accepting a summary instead of a document — it looks like a controlled
+ * process and stands for nothing.
+ *
+ * Three duties, not thirty. These are the ones with a clock on them: a subject
+ * access request has a deadline, a breach has a shorter one, and the record of
+ * processing is the thing the ICO asks for first. Everything else the agreement
+ * covers is either done by the software or is a matter of behaving sensibly.
+ */
+export const CONTROLLER_RESPONSIBILITIES = [
+  {
+    title: "Answer requests from residents within one month",
+    detail:
+      "Anyone can ask what you hold about them, ask for it to be corrected, or ask for it to be deleted. You have one calendar month to reply and you cannot charge for it. Most of it is a few clicks — the audit trail shows who read what, and a resident can delete their own reports and close their own account without you.",
+  },
+  {
+    title: "Report a serious breach to the ICO within 72 hours",
+    detail:
+      "If personal data gets somewhere it should not — a join code posted publicly, a coordinator account taken over, reports sent to the wrong list — you have 72 hours to tell the Information Commissioner, and you must tell the residents affected if the risk to them is high. Tell us at the same time and we will help you work out what was exposed.",
+  },
+  {
+    title: "Keep a record of what the village processes",
+    detail:
+      "A short written note of what data you hold, why, who else sees it and how long you keep it. The agreement you are accepting is that record for everything the software does; you only have to add anything you do outside it — a paper list of residents, a spreadsheet on a laptop, a WhatsApp group with reports pasted into it.",
+  },
+] as const;
 
 export const DATA_CONTROLLER = {
   name: "[Parish Council name]",

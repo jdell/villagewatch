@@ -379,10 +379,13 @@ export default async function DashboardPage({
 
       {/*
         Above the figures, because it is the only thing on this page that stops
-        the village working. Not dismissible: a village with no Appropriate
-        Policy Document has no lawful authorisation to process the criminal
-        offence data its reports contain (DPA 2018 Schedule 1 paragraph 5), so
-        this is a state to leave rather than a notice to acknowledge.
+        the village working. Not dismissible: a village with no policy document
+        has no lawful authorisation to process the criminal offence data its
+        reports contain (DPA 2018 Schedule 1 paragraph 5), so this is a state to
+        leave rather than a notice to acknowledge. Which document supplies it
+        depends on `Village.mode` — a community village's single agreement
+        carries the policy-document content, a council's is separate — so the
+        sentence names what the coordinator will actually be asked for.
 
         `compliance.available` gates it because an unapplied migration means the
         gate is not being enforced either — telling a coordinator to go and fix
@@ -400,10 +403,10 @@ export default async function DashboardPage({
               Complete compliance setup to enable incident reporting
             </p>
             <p className="mt-1">
-              Your village cannot accept reports until the Data Protection Impact
-              Assessment, the Appropriate Policy Document and the Data Processing
-              Agreement have been accepted. Residents who open the report form
-              are being told to contact you.
+              {compliance.mode === "community"
+                ? "Your village cannot accept reports until you have read and accepted the Community Coordinator Agreement. It takes about ten minutes and there is one document."
+                : "Your village cannot accept reports until the Data Protection Impact Assessment, the Appropriate Policy Document and the Data Processing Agreement have been accepted."}{" "}
+              Residents who open the report form are being told to contact you.
             </p>
           </div>
           <Link

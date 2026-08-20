@@ -10,8 +10,15 @@ import {
 } from "@/app/(app)/dashboard/compliance/actions";
 
 /**
- * The acceptance itself — three checkboxes and the button that opens the
- * village.
+ * The council model's acceptance — three checkboxes and the button that opens
+ * the village.
+ *
+ * The community model has its own form beside this one
+ * (`community-compliance-form.tsx`) rather than a flag on this one. Every
+ * sentence here is about accepting on somebody else's behalf, and there the
+ * person ticking the box *is* the controller — one component with a mode
+ * boolean would be two sets of copy interleaved, which is how the wrong one
+ * ends up on screen.
  *
  * **There is no way to un-tick this.** Once a document is accepted the checkbox
  * renders as a recorded fact with the date and the person on it, not as a
@@ -82,6 +89,7 @@ export function ComplianceForm({
   dpaAccepted,
   /** False when the migration adding the columns has not been applied. */
   available,
+  runningOnCommunityAgreement = null,
 }: {
   /** The council the coordinator is accepting on behalf of. */
   parishCouncil: string;
@@ -89,6 +97,14 @@ export function ComplianceForm({
   apdAccepted: AcceptedDocument | null;
   dpaAccepted: AcceptedDocument | null;
   available: boolean;
+  /**
+   * Set on a village that upgraded from the community model and has not
+   * finished the council's three yet. Its reporting is open on the
+   * coordinator's own agreement — see `isComplete` in `src/lib/compliance.ts` —
+   * and without this the screen is three unticked boxes under a banner about
+   * being unable to accept reports, which is the opposite of what is happening.
+   */
+  runningOnCommunityAgreement?: AcceptedDocument | null;
 }) {
   const [state, accept] = useActionState(acceptComplianceAction, IDLE);
   const [dpia, setDpia] = useState(false);
@@ -112,8 +128,8 @@ export function ComplianceForm({
           Compliance complete
         </h2>
         <p className="mt-0.5 text-xs text-slate-500">
-          Your village can accept incident reports. Both documents are due for
-          review one year from the date they were accepted.
+          Your village can accept incident reports. All three documents are due
+          for review one year from the date they were accepted.
         </p>
 
         <div className="mt-4 space-y-3">
@@ -186,6 +202,20 @@ export function ComplianceForm({
         against your village and written to the audit trail, and an acceptance
         cannot be undone from this screen.
       </p>
+
+      {runningOnCommunityAgreement && (
+        <div className="mt-3 rounded-xl bg-safe-50 p-3.5 text-sm leading-relaxed text-safe-900 ring-1 ring-inset ring-safe-600/20">
+          <p className="font-medium">
+            Your village is still open while the council works through these.
+          </p>
+          <p className="mt-1 text-safe-800">
+            The Community Coordinator Agreement accepted on{" "}
+            {runningOnCommunityAgreement.acceptedAt} is what authorises the
+            processing until the council has adopted all three documents below.
+            The coordinator who accepted it is the data controller until then.
+          </p>
+        </div>
+      )}
 
       <form action={accept} className="mt-4 space-y-4">
         {dpiaAccepted ? (

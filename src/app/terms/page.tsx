@@ -77,9 +77,19 @@ export default function TermsPage() {
 
       <LegalSection id="who" title="1. Who these terms are between">
         <P>
-          {APP_NAME}, the service at <strong>{APP_HOST}</strong>, is
-          operated for your village by {DATA_CONTROLLER.name}. By creating an
-          account you agree to these terms and to our{" "}
+          {APP_NAME}, the service at <strong>{APP_HOST}</strong>, is run for your
+          village by its <strong>data controller</strong> — the parish or town
+          council where one has taken the village on, and your village
+          coordinator where none has. Section 1 of the{" "}
+          <Link
+            href="/privacy"
+            className="font-medium text-brand-700 underline underline-offset-2"
+          >
+            privacy policy
+          </Link>{" "}
+          explains which applies and how to find out. Where these terms name{" "}
+          {DATA_CONTROLLER.name}, read it as whichever of the two runs your
+          village. By creating an account you agree to these terms and to our{" "}
           <Link
             href="/privacy"
             className="font-medium text-brand-700 underline underline-offset-2"
