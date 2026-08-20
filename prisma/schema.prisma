@@ -437,7 +437,20 @@ model Incident {
 
   /// Verbatim submission. May contain names, plates, addresses. Restricted to
   /// the reporter, coordinators and moderators.
-  rawDescription String @map("raw_description")
+  ///
+  /// **Nullable because it is deleted.** `/api/cron/retention` clears it in the
+  /// same statement that archives the report at
+  /// `RETENTION.incidentArchiveMonths`, which is what the privacy notice has
+  /// always said happens; null is that deletion, and it is deliberately not a
+  /// placeholder string — a sentinel is a value a reporter could have typed,
+  /// and this column is the one place a resident's unedited words live. Erasure
+  /// is the other direction and does use a placeholder (`ERASED_TEXT` in
+  /// `src/lib/erasure.ts`), because a tombstone has something to say to whoever
+  /// opens the report and an archived report does not.
+  ///
+  /// Read through `readRawDescription()` in `src/lib/moderation.ts` and nowhere
+  /// else (domain rule 1). That is the one caller that has to handle the null.
+  rawDescription String? @map("raw_description")
 
   /// Public, AI-anonymised description — this is what the map and list render.
   description String

@@ -8,7 +8,7 @@ import {
 } from "@/lib/notifications";
 import { notifySlack } from "@/lib/slack";
 import { formatIncidentAlert } from "@/lib/format-alert";
-import { SEVERITY_META } from "@/lib/constants";
+import { RETENTION, SEVERITY_META } from "@/lib/constants";
 
 /**
  * Coordinator actions on a report, and the audit trail they owe.
@@ -248,7 +248,27 @@ export async function applyModeration(input: {
  * browser it was read from, for the reason `src/lib/audit-context.ts` gives:
  * this is the one row that records anybody reading a resident's unedited words,
  * and an entry with no address cannot be told apart from any other.
+ *
+ * **The column is nullable, and null means deleted.** The nightly retention
+ * sweep clears it in the same statement that archives the report at
+ * `RETENTION.incidentArchiveMonths`, which is what `/privacy` §7 says happens.
+ * There is nothing to disclose then and no row is written: an
+ * `incident.raw_viewed` entry against a report with no wording left would read,
+ * to the only audience the trail has, as a coordinator having looked at
+ * somebody's words. Same reasoning as the erased report above, and the
+ * coordinator is told which of the two they have hit rather than being left
+ * with a blank panel.
  */
+/**
+ * What a coordinator is told when the wording has been through the retention
+ * sweep. Names the period rather than saying "unavailable", because the reveal
+ * button is the one place somebody finds out the schedule is real.
+ */
+export const RAW_DESCRIPTION_DELETED_MESSAGE =
+  `The reporter's original wording was deleted when this report was archived ` +
+  `after ${RETENTION.incidentArchiveMonths} months. The published description ` +
+  `is what remains.`;
+
 export async function readRawDescription(input: {
   session: Session;
   villageId: string;
@@ -273,6 +293,12 @@ export async function readRawDescription(input: {
 
   if (!incident) {
     return { ok: false, error: "That report is not in your village." };
+  }
+
+  if (incident.rawDescription === null) {
+    // Archived past `RETENTION.incidentArchiveMonths`. Before the audit write,
+    // deliberately — see the header.
+    return { ok: false, error: RAW_DESCRIPTION_DELETED_MESSAGE };
   }
 
   const context = await auditContext();

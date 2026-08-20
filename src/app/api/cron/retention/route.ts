@@ -28,9 +28,13 @@ import {
  *
  * 1. **Media older than `mediaDeleteMonths` is deleted**, objects first and
  *    rows second.
- * 2. **Reports older than `incidentArchiveMonths` move to `ARCHIVED`**, which
- *    takes them off the map and out of the public list without destroying the
- *    record.
+ * 2. **Reports older than `incidentArchiveMonths` move to `ARCHIVED` and lose
+ *    their `rawDescription`**, which takes them off the map and out of the
+ *    public list, and deletes the reporter's verbatim words, without destroying
+ *    the record.
+ * 3. **Reports already archived by hand lose theirs too**, once they reach the
+ *    same age. A coordinator can archive a report the week it is filed, and it
+ *    would otherwise never be seen by step 2 again.
  *
  * ## Why this is the most dangerous route in the app
  *
@@ -45,9 +49,15 @@ import {
  * - **Nothing is deleted when storage is unconfigured.** A deployment with no
  *   service-role key cannot remove the objects, so it does not remove the rows
  *   that point at them either. It reports `skipped` and moves on.
- * - **Archiving is a status change, not a delete.** The incident, its audit
- *   trail and its reference survive; the map stops showing it. A parish that
- *   needs the year-old report for a police liaison meeting still has it.
+ * - **Archiving keeps the report and deletes the wording.** The incident, its
+ *   audit trail, its reference and its anonymised description survive; the map
+ *   stops showing it. A parish that needs the year-old report for a police
+ *   liaison meeting still has it. What does not survive is `rawDescription` —
+ *   the reporter's verbatim words, names and registrations and addresses
+ *   included (domain rule 1) — which `/privacy` §7 has always said goes at this
+ *   age and which nothing deleted until now. That half is irreversible, which
+ *   is why it is one statement with the status change rather than a second pass
+ *   that can half-run.
  *
  * ## What this deliberately does not do
  *
@@ -89,6 +99,17 @@ type MediaOutcome = {
 type VillageOutcome = {
   villageId: string;
   archived: number;
+  /**
+   * Reports whose `rawDescription` was deleted this run.
+   *
+   * Usually the same number as `archived` and deliberately not folded into it.
+   * A report a coordinator archived by hand is archived already, so the pass
+   * above never sees it — the catch-up in `clearArchivedRawWording` deletes its
+   * wording when it reaches the retention age, and that row adds to this count
+   * and not to `archived`. Two numbers, because they answer two questions and a
+   * regulator's is this one.
+   */
+  rawWordingDeleted: number;
   mediaRowsDeleted: number;
 };
 
@@ -110,8 +131,9 @@ async function runRetention(request: NextRequest) {
   // seconds are still available rather than after a long archive pass.
   const media = await deleteExpiredMedia(mediaCutoff);
   const archive = await archiveExpiredIncidents(archiveCutoff);
+  const cleared = await clearArchivedRawWording(archiveCutoff);
 
-  const villages = mergeOutcomes(archive, media.byVillage);
+  const villages = mergeOutcomes(archive, cleared, media.byVillage);
 
   await recordSweep({ villages, now, mediaCutoff, archiveCutoff });
 
@@ -137,6 +159,9 @@ async function runRetention(request: NextRequest) {
     archive: {
       cutoff: archiveCutoff.toISOString(),
       archived: villages.reduce((sum, v) => sum + v.archived, 0),
+      // Includes the reports a coordinator had already archived by hand, which
+      // is why it can exceed `archived` on a run and why it is reported.
+      rawWordingDeleted: villages.reduce((sum, v) => sum + v.rawWordingDeleted, 0),
     },
     media: {
       cutoff: mediaCutoff.toISOString(),
@@ -161,7 +186,8 @@ async function runRetention(request: NextRequest) {
 // ---------------------------------------------------------------------------
 
 /**
- * Moves reports past the archive age out of the public statuses.
+ * Moves reports past the archive age out of the public statuses, and deletes
+ * the reporter's verbatim words along with them.
  *
  * Keyed on `reportedAt`, not `occurredAt`. A retention period runs from when
  * the data was collected, and `occurredAt` is whatever the reporter typed —
@@ -171,6 +197,30 @@ async function runRetention(request: NextRequest) {
  * Per-village rather than one sweeping `updateMany` because the count each
  * village gets in its audit row has to be the number of rows this run actually
  * changed, not a count taken a moment earlier.
+ *
+ * ## Why `rawDescription: null` is in the same statement
+ *
+ * `/privacy` §7 states that the original wording goes when the report is
+ * archived, and for as long as this job has existed the archive step was a
+ * status flip that touched nothing else — so the words stayed, restricted but
+ * present, indefinitely. The notice was the thing that was wrong, and correcting
+ * it (13 August) was the honest half; this is the other half, and it is the one
+ * a resident was promised.
+ *
+ * Null rather than a placeholder. The tombstone in `src/lib/erasure.ts` writes
+ * `ERASED_TEXT` because a tombstone is read by somebody who opened the report
+ * and is owed a sentence; nothing opens an archived report's raw column except
+ * `readRawDescription()`, which now says so itself. A sentinel would also be a
+ * value a reporter could type, and this is the one column where the difference
+ * between "deleted" and "happens to say that" is worth a schema change.
+ *
+ * **What this does not delete is `description`** — the anonymised rewrite,
+ * which is the report as far as every other surface is concerned and stays for
+ * the pattern history the notice says archiving is for. Where the AI pass never
+ * ran, those two columns held the same text, so the reporter's own wording
+ * survives in the public column; it was published to the village the day it was
+ * filed and is the report itself rather than a restricted copy of it. `/privacy`
+ * §7 says that in as many words rather than leaving a resident to infer it.
  */
 async function archiveExpiredIncidents(cutoff: Date): Promise<VillageOutcome[]> {
   // Not `as const`: Prisma's generated `in` filter takes a mutable array, and a
@@ -191,19 +241,80 @@ async function archiveExpiredIncidents(cutoff: Date): Promise<VillageOutcome[]> 
   for (const group of groups) {
     const { count } = await prisma.incident.updateMany({
       where: { ...where, villageId: group.villageId },
-      data: { status: "ARCHIVED" },
+      // One statement, two effects. Not two `updateMany` calls: the second
+      // would be a separate pass that a timeout could leave un-run, giving a
+      // report that has left the map and kept its wording — the state this
+      // exists to end, and the one nobody would notice.
+      data: { status: "ARCHIVED", rawDescription: null },
     });
 
     if (count > 0) {
       outcomes.push({
         villageId: group.villageId,
         archived: count,
+        rawWordingDeleted: count,
         mediaRowsDeleted: 0,
       });
     }
   }
 
   return outcomes;
+}
+
+/**
+ * Deletes the wording of reports that were **already** archived — by a
+ * coordinator, by hand, before they reached the retention age.
+ *
+ * Without this the promise above has a hole in it wide enough to matter.
+ * `applyModeration` lets a coordinator archive a `PUBLISHED`, `RESOLVED` or
+ * `REJECTED` report at any time, to tidy a duplicate or a road closure that has
+ * since reopened. Those reports leave `PUBLIC_INCIDENT_STATUSES` on the day they
+ * are archived, so the pass above — which selects on exactly that list — never
+ * looks at them again, and their `rawDescription` would sit there for good. The
+ * hole is worst where it hurts most: a `REJECTED` report is the one most likely
+ * to be full of a resident's unedited words.
+ *
+ * **The deletion still happens at `RETENTION.incidentArchiveMonths`, not at the
+ * moment of archiving.** Tidying the map is a coordinator's housekeeping and
+ * destroying the reporter's words is not something it should quietly do — a
+ * duplicate archived a week after it was filed may be the one a complaint turns
+ * on. The retention period runs from `reportedAt` for every report in the
+ * system regardless of how it got where it is, which is also what makes this
+ * simple to explain in the notice: twelve months from filing, whoever pressed
+ * what.
+ *
+ * `rawDescription: { not: null }` is what makes it self-limiting. Every row it
+ * touches is a row it never touches again, so a village with a long archive
+ * does not write a `retention.sweep` audit row every night for the rest of
+ * time.
+ */
+async function clearArchivedRawWording(
+  cutoff: Date,
+): Promise<Map<string, number>> {
+  const byVillage = new Map<string, number>();
+
+  const where = {
+    status: "ARCHIVED" as const,
+    reportedAt: { lt: cutoff },
+    rawDescription: { not: null },
+  };
+
+  const groups = await prisma.incident.groupBy({
+    by: ["villageId"],
+    where,
+    _count: { _all: true },
+  });
+
+  for (const group of groups) {
+    const { count } = await prisma.incident.updateMany({
+      where: { ...where, villageId: group.villageId },
+      data: { rawDescription: null },
+    });
+
+    if (count > 0) byVillage.set(group.villageId, count);
+  }
+
+  return byVillage;
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +439,10 @@ async function recordSweep(input: {
   archiveCutoff: Date;
 }): Promise<void> {
   const rows = input.villages.filter(
-    (village) => village.archived > 0 || village.mediaRowsDeleted > 0,
+    (village) =>
+      village.archived > 0 ||
+      village.rawWordingDeleted > 0 ||
+      village.mediaRowsDeleted > 0,
   );
 
   if (rows.length === 0) return;
@@ -344,6 +458,12 @@ async function recordSweep(input: {
         entityId: village.villageId,
         after: {
           archivedIncidents: village.archived,
+          // The half that cannot be undone, under its own name. A regulator
+          // reading the trail is entitled to see that the wording was deleted
+          // rather than infer it from a status change — and the number differs
+          // from `archivedIncidents` on any run that catches up a report a
+          // coordinator had archived by hand.
+          rawDescriptionsDeleted: village.rawWordingDeleted,
           deletedMedia: village.mediaRowsDeleted,
           archiveCutoff: input.archiveCutoff.toISOString(),
           mediaCutoff: input.mediaCutoff.toISOString(),
@@ -366,19 +486,37 @@ async function recordSweep(input: {
 
 function mergeOutcomes(
   archive: readonly VillageOutcome[],
+  cleared: ReadonlyMap<string, number>,
   media: ReadonlyMap<string, number>,
 ): VillageOutcome[] {
   const merged = new Map<string, VillageOutcome>();
+
+  const forVillage = (villageId: string): VillageOutcome => {
+    const existing = merged.get(villageId);
+
+    if (existing) return existing;
+
+    const blank: VillageOutcome = {
+      villageId,
+      archived: 0,
+      rawWordingDeleted: 0,
+      mediaRowsDeleted: 0,
+    };
+
+    merged.set(villageId, blank);
+    return blank;
+  };
 
   for (const village of archive) {
     merged.set(village.villageId, { ...village });
   }
 
-  for (const [villageId, mediaRowsDeleted] of media) {
-    const existing = merged.get(villageId);
+  for (const [villageId, rawWordingDeleted] of cleared) {
+    forVillage(villageId).rawWordingDeleted += rawWordingDeleted;
+  }
 
-    if (existing) existing.mediaRowsDeleted += mediaRowsDeleted;
-    else merged.set(villageId, { villageId, archived: 0, mediaRowsDeleted });
+  for (const [villageId, mediaRowsDeleted] of media) {
+    forVillage(villageId).mediaRowsDeleted += mediaRowsDeleted;
   }
 
   return [...merged.values()];

@@ -431,13 +431,16 @@ BACKLOG.md                    The numbered items of work and their status
 
 These are not style preferences. Breaking them leaks residents' personal data.
 
-1. **`Incident.rawDescription` is never public.** It holds the reporter's
-   verbatim words — names, plates, addresses. Only the reporter, coordinators
-   and moderators may read it, and every read writes an `AuditLog` row. The
-   public surface is `Incident.description`, the anonymised rewrite. Read
-   incidents through `PUBLIC_INCIDENT_SELECT` in `src/lib/incidents.ts`, which
-   omits the column entirely — no page or list should be able to reach it by
-   accident.
+1. **`Incident.rawDescription` is never public, and it does not survive
+   archiving.** It holds the reporter's verbatim words — names, plates,
+   addresses. Only the reporter, coordinators and moderators may read it, and
+   every read writes an `AuditLog` row. The public surface is
+   `Incident.description`, the anonymised rewrite. Read incidents through
+   `PUBLIC_INCIDENT_SELECT` in `src/lib/incidents.ts`, which omits the column
+   entirely — no page or list should be able to reach it by accident. The column
+   is **nullable, and null means deleted**: `/api/cron/retention` clears it at
+   `RETENTION.incidentArchiveMonths`, which is what `/privacy` §7 promises. See
+   The retention job.
 2. **Coordinates are fuzzed before they are stored.** Jitter by
    `LOCATION_FUZZ_METERS` on the way in. The exact reported point is never
    persisted, so it cannot leak later.
@@ -711,11 +714,12 @@ linked from `SiteFooter` and the registration form.
 - `DATA_CONTROLLER` in `src/lib/constants.ts` is **placeholders**. A privacy
   notice that does not name a controller does not satisfy Article 13 — fill it
   in before a single real resident registers.
-- The privacy notice makes five claims that are statements about how the code
+- The privacy notice makes six claims that are statements about how the code
   behaves: on-device blur with no server-side fallback (domain rule 3),
   coordinate jitter (domain rule 2), report text going to Anthropic, what the
-  Slack staff channel is told, and whether a human sees a report before it is
-  published. If any of those changes, `/privacy` changes in the same commit.
+  Slack staff channel is told, whether a human sees a report before it is
+  published, and that the reporter's original wording is deleted when the report
+  is archived. If any of those changes, `/privacy` changes in the same commit.
 - **The fifth one is now conditional, and both documents say so.** `/privacy`
   §"It is not a decision about you" used to rest the Article 22 position on a
   coordinator reviewing every report; `Village.autoApprove` made that false for
@@ -724,7 +728,8 @@ linked from `SiteFooter` and the registration form.
   saved — which is true in both configurations. `/terms` §7 opened with the same
   claim and carries the same qualification. See Auto-approve.
 - `RETENTION` describes the schedule the policy states, and
-  `/api/cron/retention` now enforces the first two figures nightly. The other
+  `/api/cron/retention` now enforces the first two figures nightly, plus the
+  deletion of `rawDescription` that rides on the archive statement. The other
   two — audit log expiry and dormant account closure — are still schedule-only;
   see The retention job for why neither belongs in that route.
 
@@ -741,9 +746,14 @@ so the policy and the job cannot disagree.
   errors the rows stay and tomorrow's run retries them.
 - **Unconfigured storage deletes nothing** — not the objects, and therefore not
   the rows either. It reports `skipped: "storage_not_configured"`.
-- **Archiving is a status change**, keyed on `reportedAt` rather than
-  `occurredAt`: a retention period runs from when the data was collected, and
-  `occurredAt` is whatever the reporter typed.
+- **Archiving is a status change *and* a deletion**, keyed on `reportedAt`
+  rather than `occurredAt`: a retention period runs from when the data was
+  collected, and `occurredAt` is whatever the reporter typed. The same
+  `updateMany` sets `status: "ARCHIVED"` and `rawDescription: null` — one
+  statement, because a second pass is one a timeout can leave un-run, and the
+  state it would leave behind is a report off the map with the reporter's words
+  still in it, which is precisely the thing nobody notices. See Deleting the
+  original wording.
 - **One `AuditLog` row per village per run**, action `retention.sweep`, written
   only when something changed. Per incident would bury every human action in the
   trail for that month.
@@ -757,6 +767,55 @@ so the policy and the job cannot disagree.
 
 `src/lib/cron.ts` holds the `CRON_SECRET` check both scheduled routes share.
 Constant time, fails closed with no secret set.
+
+## Deleting the original wording
+
+`Incident.rawDescription` is `String?` and null is the deletion. Two things
+write it: `/api/cron/retention`, at `RETENTION.incidentArchiveMonths`, and
+nothing else. Erasure is the other direction and does not use null —
+`src/lib/erasure.ts` writes `ERASED_TEXT`.
+
+- **The notice was right and the code was not.** `/privacy` §7 stated that the
+  verbatim submission went when a report was archived, and for as long as the
+  retention job has existed its archive step was `status: "ARCHIVED"` and
+  nothing else. The 13 August audit corrected the notice, which was the honest
+  half; this is the half a resident was actually promised. `20260820100000_archive_deletes_raw_description`
+  drops the NOT NULL and clears the rows already sitting archived.
+- **Null, not a placeholder.** A sentinel string is a value a reporter could
+  have typed, and this is the one column in the schema holding a resident's
+  unedited words. The tombstone gets a placeholder because somebody opens an
+  erased report and is owed a sentence; nobody opens an archived report's raw
+  column except `readRawDescription()`, which returns
+  `RAW_DESCRIPTION_DELETED_MESSAGE` instead — **and writes no
+  `incident.raw_viewed` row**, because an entry against a report with no wording
+  left reads, to the only audience the trail has, as a coordinator having looked
+  at somebody's words.
+- **`description` is untouched.** The anonymised rewrite is the report as far as
+  every other surface is concerned, and archiving is a retention step rather
+  than an erasure. Where the AI pass never ran the two columns held the same
+  text, so the reporter's own wording survives in the public column — it was on
+  the map from the day it was filed, so that is the report itself rather than a
+  restricted copy being kept. `/privacy` §7 says so rather than leaving a
+  resident to infer more than the promise covers.
+- **A coordinator can archive by hand, which is the hole the one-line fix
+  leaves.** `applyModeration` archives from `PUBLISHED`, `RESOLVED` or
+  `REJECTED` at any time; such a report leaves `PUBLIC_INCIDENT_STATUSES` that
+  day, so the archive pass — which selects on exactly that list — never sees it
+  again and its wording would sit there for good. `clearArchivedRawWording` is
+  the catch-up, and it is worst where it matters most: a `REJECTED` report is
+  the one most likely to be full of a resident's unedited words.
+- **The catch-up still waits for the retention age.** Tidying the map is
+  housekeeping; destroying the reporter's words is not something housekeeping
+  should quietly do, and a duplicate archived a week after filing may be the one
+  a complaint turns on. Twelve months from `reportedAt`, whoever pressed what —
+  which is also the only version of this that fits in a sentence of the notice.
+- **`rawDescription: { not: null }` is what makes the catch-up self-limiting.**
+  Every row it touches is a row it never touches again, so a village with a long
+  archive does not write a `retention.sweep` audit row every night for the rest
+  of time describing a deletion that already happened.
+- **The audit row carries `rawDescriptionsDeleted` separately from
+  `archivedIncidents`.** They differ on any run that catches one up, and the
+  number a regulator asks about is the first.
 
 ## PWA and the two service workers
 
@@ -834,14 +893,15 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Eighteen files, 293 tests, covering the
+between the typecheck and the build. Nineteen files, 303 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
 formula-injection guard, the compliance gate's three states, the three legal
 documents loading and parsing, the Markdown parser the compliance page renders
 them through, the per-village face redaction level, the heat intensity scale,
-the two date-range resolvers, the PDF's layout and the invite link.
+the two date-range resolvers, the PDF's layout, the invite link and the nightly
+retention sweep's archive pass.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -887,8 +947,17 @@ the two date-range resolvers, the PDF's layout and the invite link.
   comma, a quote and a CRLF — the three things that break a naive reader. The
   formula payloads are a table, each one behind the whitespace and control-
   character prefixes that used to launder it.
-- **What is deliberately not covered**: no route handler, no server action, no
-  React component, no RLS policy. Those need a database, a request context or a
+- **`tests/retention.test.ts` is the one route handler in the suite**, and it
+  earns the exception the same way `compliance-documents.test.ts` does. The
+  archive pass deletes a resident's verbatim words on a schedule with nobody
+  watching, it needs no secret and no database once Prisma, the cron check,
+  Storage and the rate-limit sweep are mocked at their boundaries, and the
+  regression it catches — the wording surviving an archive — is invisible from
+  every screen in the app. It asserts the predicate and the `data` object rather
+  than a row count, because what matters is *which* rows are matched and which
+  columns are written.
+- **What is deliberately not covered**: no other route handler, no server
+  action, no React component, no RLS policy. Those need a database, a request context or a
   browser, and a suite that needed any of them would stop being the thing CI can
   run on every push. The gap that matters most is named in Not built yet —
   nothing asserts that a `PENDING_REVIEW` village still queues.
@@ -2462,8 +2531,12 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates, the onboarding tour and the ONS village directory pipeline. Still
 open:
 
-- The Supabase project exists (eu-west-2) and **all ten migrations are now
-  applied**, with `postgis.sql` and `rls_policies.sql` re-run after them. This
+- The Supabase project exists (eu-west-2) and **ten of the eleven migrations
+  are applied**, with `postgis.sql` and `rls_policies.sql` re-run after them.
+  The eleventh is `20260820100000_archive_deletes_raw_description`, which is new
+  and has not been through `database.yml` yet — it drops a NOT NULL and clears
+  the wording of reports already archived, which is nothing on this deployment
+  because no report has ever reached twelve months. This
   entry said "1–5 of the nine" until 3 August 2026 and was stale: the run that
   applied `20260803120000_incident_village_numbering` reported every other
   migration already present and finished `Database schema is up to date!`, so 6
@@ -2578,10 +2651,14 @@ open:
   the same commit. What is still open is the paperwork rather than the notice —
   a signed agreement, or moving the alert somewhere covered by one, before the
   service grows past a single parish.
-- **Two of the four retention figures are still unenforced.** The nightly job
-  archives at 12 months and deletes media at 6; nothing expires audit rows at 24
-  months (the append-only trigger forbids it from application code) and nothing
-  closes dormant accounts. The privacy policy states all four.
+- **Two of the retention figures are still unenforced.** The nightly job
+  archives at 12 months, deletes the reporter's original wording in the same
+  statement, and deletes media at 6; nothing expires audit rows at 24 months
+  (the append-only trigger forbids it from application code) and nothing closes
+  dormant accounts. The privacy policy states all of them. The wording deletion
+  was a third unenforced figure until 20 August 2026 — see Deleting the original
+  wording — and it has never run against real data, like everything else in that
+  job.
 - The community guidelines in `/terms` §5 are the common village-watch set,
   not any particular parish's. Swap in the group's own wording if it has any.
 - **The OneSignal app exists**, so `skipped: "not_configured"` is no longer the

@@ -34,7 +34,7 @@ export const metadata: Metadata = {
 /**
  * The privacy notice, written to Articles 13 and 14 of the UK GDPR.
  *
- * **Five** things here are statements about how the code actually behaves, and
+ * **Six** things here are statements about how the code actually behaves, and
  * they have to keep matching it. If any of them changes, this page changes in
  * the same commit. It said three for as long as there were five, which is the
  * kind of drift that ends with a notice nobody re-reads:
@@ -65,13 +65,25 @@ export const metadata: Metadata = {
  *     on submit, so the human the Article 22 paragraph rests on is the reporter,
  *     who reads the rewrite and accepts it before anything is saved — true in
  *     both configurations. See "Auto-approve" in CLAUDE.md.
+ *   - §7's promise that the original wording is deleted when the report is
+ *     archived (`/api/cron/retention`, `RETENTION.incidentArchiveMonths`). It is
+ *     one `updateMany` with the status change, plus a catch-up for reports a
+ *     coordinator archived by hand — see "Deleting the original wording" in
+ *     CLAUDE.md. This was the claim that was false for months, which is why it
+ *     is on the list rather than left among the schedule figures below.
  *
  * The retention schedule is the section to watch. `/api/cron/retention` enforces
  * the first two figures nightly; the audit-log expiry and the dormant-account
  * closure are schedule-only, and the notice has to keep saying which is which.
- * **Archiving is a status change and nothing more** — see §7, which used to
- * claim the original wording was deleted at that point and is the reason this
- * paragraph names the difference rather than leaving it to be inferred.
+ * **Archiving now deletes the original wording as well as flipping the status**
+ * — the sweep clears `rawDescription` in the same statement, which is what §7
+ * has always claimed and what nothing did until 20 August 2026. The sentence
+ * that had to be added with it is the one about a report the rewrite never ran
+ * on: those two columns held the same text, so the reporter's own wording
+ * survives in the published description. It was on the map from the day it was
+ * filed, so this is a fact about the report rather than a restricted copy being
+ * kept — and a resident reading a promise of deletion is entitled to know that
+ * before they infer more than it says.
  */
 
 const SECTIONS = [
@@ -437,14 +449,21 @@ export default function PrivacyPage() {
             deleted: the record is kept for the pattern history a village needs
             to see year-on-year trends.
           </Definition>
-          <Definition term="Original report wording — kept with the report">
-            Your original wording is <strong>not</strong> deleted when a report
-            is archived. It stays with the report, restricted to your
-            coordinators, and every single read of it is recorded in the audit
-            trail — which is what it has been from the moment you filed. It is
-            erased when the report itself is erased: delete the report, or close
-            your account, and it goes with it, along with the photos. Both are
-            in your hands and neither waits for a retention period.
+          <Definition
+            term={`Original report wording — deleted at ${RETENTION.incidentArchiveMonths} months`}
+          >
+            Your original wording is deleted twelve months after you file it,
+            in the same overnight step that archives the report and takes it off
+            the map. That is twelve months from filing however the report got
+            there — if a coordinator archives it sooner, the wording still goes
+            at twelve months and not before. Until then it stays with the
+            report, restricted to your coordinators, and every single read of it
+            is recorded in the audit trail. You do not have to wait: delete the
+            report, or close your account, and it goes immediately, along with
+            the photos. One thing to know — if the rewrite described in section
+            4 did not run on your report, the published description is your own
+            wording, and that is the report itself rather than a restricted copy
+            of it, so it stays with the archived record.
           </Definition>
           <Definition term={`Audit records — ${RETENTION.auditLogMonths} months`}>
             Kept longer than the reports they describe, because their whole

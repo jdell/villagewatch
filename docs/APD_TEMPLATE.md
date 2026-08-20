@@ -186,13 +186,17 @@ event described.
 | Data | Retained for | Then |
 |---|---|---|
 | **Incident reports** | **12 months** | Archived — off the map, off the list, out of every surface a resident can see |
+| **Original wording of a report** | **12 months** | Deleted, in the same step that archives the report. Only the anonymised published version survives |
 | **Photographs and video** | **6 months** | Deleted from storage permanently |
 | **Audit trail** | **24 months** | Deleted by the controller as a deliberate administrative act |
 | Dormant accounts | 24 months without sign-in | Closed and anonymised |
 
-The first two periods are applied automatically by an overnight housekeeping
+The first three periods are applied automatically by an overnight housekeeping
 process, which takes them from the same single record that the privacy notice is
-written from, so the policy and the software cannot drift apart.
+written from, so the policy and the software cannot drift apart. Archiving a
+report and deleting its original wording are one instruction rather than two, so
+a report cannot leave the map while the words the reporter typed stay behind
+it.
 
 The audit trail is deliberately **not** deleted automatically. Entries can be
 added but never removed, and the database refuses deletion even at the request of

@@ -44,7 +44,8 @@ random distance before they are stored, so no exact location is ever held. An
 artificial intelligence model rewrites every report to remove names, vehicle
 registrations and addresses, and the reporter reads and accepts that rewrite
 before anything is saved. The reporter's original wording is kept apart from
-everything else and is never published. The database itself keeps one village's
+everything else, is never published, and is deleted outright when the report is
+archived at twelve months. The database itself keeps one village's
 reports away from another's. Reports are archived after 12 months and
 photographs deleted after 6, automatically and overnight. None of this needs
 switching on, configuring or maintaining.
@@ -131,7 +132,7 @@ Two terms used throughout this document:
 | Email address | Registration / sign-in provider | Coordinators, platform administrators | |
 | Address | Registration, optional | Coordinators | Free text |
 | Home location | Registration, optional | Never displayed to anyone | Shifted by up to 75 metres before storage. Used only to decide who is near enough to an incident to be alerted. |
-| Incident report — original wording | Reporter | **Reporter, coordinators and moderators only.** Never published. | Verbatim resident text; may contain names, vehicle registrations, addresses. Every occasion on which it is read is recorded. |
+| Incident report — original wording | Reporter | **Reporter, coordinators and moderators only.** Never published. | Verbatim resident text; may contain names, vehicle registrations, addresses. Every occasion on which it is read is recorded. **Deleted when the report is archived at 12 months** (§7). |
 | Incident report — published wording | The AI rewrite, accepted by the reporter | All signed-in residents of the village | The public version. |
 | Incident location | Reporter picks a point on a map | All signed-in residents of the village | Shifted by up to 100 metres before storage. The exact point the reporter chose is never stored. |
 | Incident landmark text | Reporter | All signed-in residents of the village | e.g. "the lane behind the village hall" |
@@ -467,18 +468,28 @@ authentication provider for a closed account is currently **not** deleted — se
 | Data | Policy | Enforcement |
 |---|---|---|
 | Published incident reports | Archived after **12 months** — off the map, off the list | **Automatic**, by an overnight housekeeping process, measured from the date the report was filed |
+| Original wording of a report | **Deleted after 12 months**, in the same step that archives the report | **Automatic**, same process. What remains is the anonymised published version. Where the AI rewrite did not run on a report, that published version is the reporter's own wording — it was on the map from the day the report was filed, so it is the report itself rather than a restricted copy |
 | Photographs and video | Deleted from storage after **6 months** | **Automatic**, same process; the file is deleted before the record that points to it |
 | Audit trail | **24 months** stated in the privacy notice | **Not enforced.** The trail is protected at the database level against deletion by anyone, including the developer, which is what makes it trustworthy. Removing old entries is therefore a deliberate, documented administrative act. **In practice the trail is currently kept indefinitely.** See §9, action A8. |
 | Dormant accounts | Closed and anonymised after **24 months** without sign-in | **Not enforced.** Nothing does this yet. See §9, action A8. |
 | Anti-abuse counters | 7 days | Automatic, same overnight process |
 | Account data | Life of the account, then erased on closure | At the resident's request |
 
-**The controller must know that two of the four figures its privacy notice
-states are not currently enforced by the software.** Both are the two that can
-only be exceeded in the resident's favour — nothing is published for longer than
-it should be — but a privacy notice stating a period the service does not keep
-to is a compliance gap in its own right. Either enforce them before launch or
-amend the notice to describe what actually happens.
+**The controller must know that two of the five figures its privacy notice
+states are not currently enforced by the software** — the audit trail and
+dormant accounts. Both are the two that can only be exceeded in the resident's
+favour — nothing is published for longer than it should be — but a privacy
+notice stating a period the service does not keep to is a compliance gap in its
+own right. Either enforce them before launch or amend the notice to describe
+what actually happens.
+
+The deletion of original wording was a third such gap until 20 August 2026: the
+notice stated it, and the overnight process changed the report's status without
+touching the wording, so a report archived at twelve months kept the names,
+registrations and addresses its reporter had typed. The software now deletes it
+in the same step, and the two cannot drift apart again — a report cannot leave
+the map with its wording intact, because it is one instruction rather than
+two.
 
 ---
 
