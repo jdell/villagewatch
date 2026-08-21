@@ -118,7 +118,14 @@ const HERO_PINS = [
 const PIN_COLOR = Object.fromEntries(SEVERITIES.map((s) => [s.value, s.pin]));
 
 /**
- * The four questions a parish clerk actually asks, in the order they ask them.
+ * The questions a coordinator or a parish clerk actually asks, in the order they
+ * ask them.
+ *
+ * "Do we need a parish council?" is first among the ones about running it,
+ * because it is the question that decides whether somebody reads any further.
+ * `Village.mode` defaults to `community` and most villages have no council at
+ * all, so a page that only spoke to parish clerks was describing the minority
+ * case as the only one — see "The two compliance models" in CLAUDE.md.
  *
  * Every answer here is a statement about how the code behaves, not a
  * reassurance — which means each one is a claim that has to stay true. If
@@ -139,6 +146,11 @@ const FAQS = [
     question: 'How does the AI work?',
     answer:
       'When you submit a report, the text goes to Claude, which rewrites it without the identifying details, sorts it into a category and suggests how serious it is. You see the result and can edit it before anything is saved. If the AI is unavailable your report still files in your own words, and the screen says so. Reports wait for a coordinator to approve them unless your village has turned that review off, which is a setting its coordinators control and which the app tells you about before you file.',
+  },
+  {
+    question: 'Do we need a parish council?',
+    answer:
+      'No, and most villages using this do not have one. A neighbourhood watch group, a residents’ association or a few neighbours who want to organise properly can run a village on their own — the coordinator becomes the data controller and accepts one agreement, written for a volunteer rather than a clerk, before the village takes its first report. Where a parish or town council has taken a village on, it is the controller instead and adopts the three documents a council is separately obliged to hold. Starting without a council does not shut the door on one: a village can be handed to a council later, and it keeps running while the council does its own paperwork.',
   },
   {
     question: 'How do I become a coordinator?',
@@ -337,13 +349,13 @@ export default function LandingPage() {
                     Trusted by {VILLAGES_LIVE.toLocaleString('en-GB')} villages
                   </span>{' '}
                   across England · Open source · UK data, London region · Built
-                  for parish councils
+                  for watch groups and parish councils
                 </>
               ) : (
                 <>
-                  Built for parish councils and neighbourhood watch schemes in
-                  England · Open source · UK data, hosted in London · Free for
-                  one village
+                  Built for neighbourhood watch groups and parish councils in
+                  England · No council needed to start · Open source · UK data,
+                  hosted in London · Free for one village
                 </>
               )}
             </p>
@@ -554,8 +566,17 @@ export default function LandingPage() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* For parish councils — pricing preview                             */}
+        {/* For whoever runs the village — pricing preview                    */}
         {/* ---------------------------------------------------------------- */}
+        {/*
+          The anchor is still `#parish-councils` on purpose: it is linked from
+          the header, and links to this section exist outside this repository.
+          What changed is the copy above it, which addressed a parish clerk as
+          though every village had one. Most do not — `Village.mode` defaults to
+          `community` — and a group of neighbours reading "For parish councils"
+          over the only pricing on the page reasonably concludes the product is
+          not for them.
+        */}
         <section
           id="parish-councils"
           className="scroll-mt-16 bg-slate-50 py-20 sm:py-28"
@@ -564,15 +585,17 @@ export default function LandingPage() {
             <div className="max-w-2xl">
               <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-sm font-medium text-brand-700 ring-1 ring-brand-100">
                 <Landmark className="size-4" aria-hidden />
-                For parish councils
+                For watch groups and parish councils
               </span>
               <h2 className="mt-5 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
                 Free for your village. Properly free.
               </h2>
               <p className="mt-4 text-lg leading-relaxed text-slate-600">
-                One parish, every resident, every feature — no card, no trial
-                window, no resident cap. {APP_NAME} is open source, so a council
-                that would rather run it themselves can.
+                One village, every resident, every feature — no card, no trial
+                window, no resident cap. You do not need a parish council behind
+                you to start; a watch group can run a village on its own.{" "}
+                {APP_NAME} is open source, so anyone who would rather run it
+                themselves can.
               </p>
             </div>
 
@@ -676,7 +699,7 @@ export default function LandingPage() {
                 Questions
               </span>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                The four everyone asks
+                The ones everyone asks
               </h2>
               <p className="mt-4 text-base leading-relaxed text-slate-600">
                 If yours is not here, the{' '}

@@ -5,7 +5,7 @@ import type {
   CommunityReportData,
   ReportNarrative,
 } from "@/lib/community-report";
-import { isCoordinatorRole } from "@/lib/constants";
+import { isCoordinatorRole, type VillageMode } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { RATE_LIMITS, rateLimit } from "@/lib/rate-limit";
 import { PDF_CONTENT_TYPE, pdfFilename, renderReportPdf } from "@/lib/report-pdf";
@@ -14,7 +14,7 @@ import {
   countedNarrative,
   resolveReportRange,
 } from "@/lib/reports";
-import { getVillageController } from "@/lib/villages";
+import { getVillageController, getVillageMode } from "@/lib/villages";
 
 /**
  * GET /api/reports/[villageId]/pdf — the community safety report as a file.
@@ -113,7 +113,16 @@ export async function GET(
       Object.fromEntries(request.nextUrl.searchParams),
     );
 
-    const village = await getVillageController(villageId);
+    /*
+      Two reads rather than one. `getVillageController` retries without
+      `parish_council` on a database missing it, so a `mode` column folded into
+      the same SELECT would take the controller's name down with it — see "The
+      two compliance models" in CLAUDE.md.
+    */
+    const [village, mode] = await Promise.all([
+      getVillageController(villageId),
+      getVillageMode(villageId),
+    ]);
 
     if (!village) {
       return NextResponse.json(
@@ -166,6 +175,7 @@ export async function GET(
         wantsAi: request.nextUrl.searchParams.get("analysis") === "ai",
         userId: session.user.id,
         villageName: village.name,
+        mode,
         days: range.days,
       }),
     });
@@ -224,6 +234,8 @@ async function narrativeFor(
     wantsAi: boolean;
     userId: string;
     villageName: string;
+    /** Who the prompt says is reading. The document is identical either way. */
+    mode: VillageMode;
     days: number;
   },
 ): Promise<ReportNarrative> {
@@ -242,6 +254,7 @@ async function narrativeFor(
     villageName: options.villageName,
     from: new Date(collected.from),
     to: new Date(collected.to),
+    mode: options.mode,
     previousPeriodCount: collected.previousTotal,
     incidents: collected.incidents.map((incident) => ({
       reference: incident.reference,

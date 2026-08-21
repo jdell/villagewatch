@@ -381,9 +381,12 @@ docs/                         The documents rendered from disk, not restated
                               repository, and nothing imports them
   E2E_VERIFICATION.md         What was checked by hand against the deployment,
                               and what its addenda got wrong afterwards
-  FUNDING.md                  The five tracked grant opportunities
+  FUNDING.md                  The five tracked grant opportunities, and the date
+                              each third-party figure in them was read
   GRANT_APPLICATION_NL_AI.md  The first application, drafted. Every claim in it
-                              is held to the rule /privacy is held to
+                              is held to the rule /privacy is held to — and the
+                              three word-capped sections are capped: check them
+                              before adding a sentence
 scripts/
   generate-icons.mjs          Authoring tool — renders the icons, run by hand
   download-ons-places.ts      Finds + fetches the newest IPN release, unzips it
@@ -439,8 +442,12 @@ tests/                        Vitest, unit only — see The test suite
                               string, normalisation, the legacy null, and status
                               refusing before the code is looked at
   village-mode.test.ts        The mode resolver — the prototype key, the
-                              fallback's direction, and the two document sets
-                              having nothing in common
+                              fallback's direction, the two document sets having
+                              nothing in common, and the one audit action whose
+                              label the mode moves
+  report-footer.test.ts       The AI claim on a report's footer — present over an
+                              AI narrative, absent over a counted one and over a
+                              single-incident summary, on both documents
   retention.test.ts           The nightly archive pass — the wording deleted in
                               the same statement, and the hand-archived catch-up
 vitest.config.ts              node environment, the `@/*` alias, no setup file
@@ -748,6 +755,24 @@ linked from `SiteFooter` and the registration form.
   the village's own coordinator, so `/privacy` §1 and `/terms` §1 describe both
   and the constant is the fallback where no village-specific controller is
   named. See The two compliance models.
+- **The placeholders are mode-neutral, and that was a real bug rather than a
+  wording preference.** `name` read `[Parish Council name]` and the address and
+  email matched it. That string is not decoration: it prints at the foot of a
+  community village's own police report, it is what `/reports`' amber warning
+  matches on, and `ParishCouncilForm` renders it under the field a volunteer is
+  meant to fill in. Most villages have no council — `community` is the default —
+  so the fallback was asking the majority for a body that does not exist, which
+  is precisely how the field stays empty and the placeholder ships. It names the
+  *role* now, which both models agree on. Still visibly a placeholder; it just
+  no longer describes the wrong kind of village.
+- **§4's lawful basis is Article 6(1)(f), and it used to be 6(1)(e).** Public
+  task is a basis a parish council has and a volunteer coordinator does not, and
+  the notice asserted it for every village — while `docs/DPIA.md` §4.1 has said
+  legitimate interests, with a documented balancing test at §4.2, since it was
+  written. Two documents disagreeing about the lawful basis for the same
+  processing is the kind of thing a regulator asks about first. Legitimate
+  interests is the stated basis; the public task is described beside it as what
+  a council may rely on instead. **Change one and change the other.**
 - The privacy notice makes six claims that are statements about how the code
   behaves: on-device blur with no server-side fallback (domain rule 3),
   coordinate jitter (domain rule 2), report text going to Anthropic, what the
@@ -927,7 +952,7 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Twenty-one files, 350 tests, covering the
+between the typecheck and the build. Twenty-two files, 360 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -935,8 +960,8 @@ formula-injection guard, the compliance gate's three states, the three legal
 documents loading and parsing, the Markdown parser the compliance page renders
 them through, the per-village face redaction level, the heat intensity scale,
 the two date-range resolvers, the date picker's month arithmetic, the PDF's
-layout, the invite link, the nightly retention sweep's archive pass and the two
-compliance models.
+layout, the invite link, the nightly retention sweep's archive pass, the two
+compliance models and the report footer's AI claim.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -1509,6 +1534,27 @@ the data controller is**. `VILLAGE_MODES`, `resolveVillageMode` and
   council" becomes "or your records". The *document* is untouched in both modes,
   because `formatIncidentSummary` names no recipient at all; only the panel
   around it reads the village.
+- **Three screens was not the whole of it, and the audit that found the other
+  thirteen is worth the paragraph.** N15 fixed the loudest ones; the rest were
+  scattered across surfaces nobody thinks of as copy. **Both AI prompts** take
+  the mode now (`report-narrative.ts`, `weekly-digest.ts`) — the audience shapes
+  the register, and a model told it is writing for a parish clerk writes a
+  committee paper for a group of neighbours. The **compliance and guide page
+  headers**, the **controller-field toasts**, the **join and invite pages'
+  pre-activation text**, the **Coordinator Guide's** pointer at the field, and
+  the **landing page**, which now says in as many words that a council is not
+  needed to start. The privacy notice is the one that could not branch — it is
+  public and sessionless — so every sentence in it either describes both models
+  or says "your village's data controller" and points at §1.
+- **The audit trail relabels one action and moves no data.**
+  `village.parish_council_changed` is the stored action and never changes, or a
+  village upgrading to the council model would find its own history rewritten
+  underneath it. What moves is what the viewer *calls* it — "Data controller
+  changed" in a community village, matching the dashboard field that wrote the
+  row. `auditActionLabel` in `constants.ts` is the one place that mapping lives,
+  and `tests/village-mode.test.ts` asserts the exception is exactly one entry
+  wide: a second one added without thinking fails there rather than on a
+  coordinator's screen.
 - **`getVillageMode` is the cheap read for copy, and `getVillageCompliance` is
   the read for the gate.** The second joins four acceptance relations to work out
   whether a village may accept a report; a page changing one sentence needs none
@@ -2018,6 +2064,24 @@ together. Two documents: one incident, and everything published over a period.
   append-only including to the owner (domain rule 7), so a row written on every
   press with no ceiling in front of it is a held button filling a table nothing
   can clear. `RATE_LIMITS.reportNarrative` is that ceiling.
+- **"Generated by VillageWatch AI" appears only where a model wrote the
+  analysis.** It was on the footer of every document this module produces —
+  including a period report whose only prose is `countedNarrative`, which is a
+  paragraph assembled from `SELECT count(*)`, and the single-incident summary,
+  which has no analysis section at all and is a formatting of one report a
+  coordinator is already looking at. That line is what a police officer reads to
+  decide how much of the document to trust, and printing it over arithmetic
+  invites them to discount the arithmetic. It is conditional on
+  `narrative.source` now — the field that already carried the distinction for
+  the paragraph on screen. **Three surfaces render it** — `footer()` in
+  `community-report.ts` (the clipboard and the share sheet), `report-view.tsx`
+  (the screen) and `report-pdf.tsx` (the file) — so the two sentences are
+  exported from `community-report.ts` as `GENERATED_BY` and `AI_ANALYSIS_NOTE`
+  rather than written out three times; three copies of a sentence is three
+  sentences the day somebody edits one. `tests/report-footer.test.ts` asserts
+  both directions on both documents. What is **not** conditional is
+  the rest of the footer: the data controller, the anonymisation and the
+  "not verified crime records" line are on every document either way.
 - **The narrative is a button, and the report is complete without it.** Every
   other section is counted from the database; this one is an Anthropic call over
   a month of a village's reports, and a page that spent it on render would spend
@@ -2983,7 +3047,7 @@ open:
   `/map` in a village with a handful of reports and check the blobs sit where the
   pins do: `leaflet.heat` reads `L` off the global scope, and the failure mode if
   that ever stops being true is a silent no-op layer rather than an error.
-- **There is a test suite, and it covers eighteen modules rather than the app.**
+- **There is a test suite, and it covers twenty modules rather than the app.**
   `npm run test` runs Vitest over `tests/`, and `.github/workflows/ci.yml` runs
   it between the typecheck and the build. See The test suite above for what is
   asserted and what is deliberately not. Nothing yet asserts that a village with

@@ -564,7 +564,8 @@ export async function checkVillageJoin(input: {
  * these are what a hand-crafted POST gets back, and they say the same thing.
  */
 const VILLAGE_JOIN_REFUSALS = {
-  PENDING: "This village is not yet active. Contact your parish council.",
+  PENDING:
+    "This village is not yet active. Ask whoever is setting it up to have it activated.",
   SUSPENDED: "Registration is temporarily closed for this village.",
   ARCHIVED: "This village is no longer on VillageWatch.",
   ACTIVE: "",

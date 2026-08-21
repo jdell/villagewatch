@@ -8,6 +8,7 @@ import {
 } from "@/lib/ai/weekly-digest";
 import { notifyCoordinatorsOfDigest } from "@/lib/notifications";
 import { logDigestAlert } from "@/lib/whatsapp-channel";
+import { getVillageMode } from "@/lib/villages";
 import {
   DIGEST_MAX_INCIDENTS,
   DIGEST_WINDOW_DAYS,
@@ -123,7 +124,15 @@ async function digestVillage(input: {
 }): Promise<VillageOutcome> {
   const { village, now, windowStart, previousStart } = input;
 
-  const [rows, previousPeriodCount] = await Promise.all([
+  /*
+    `getVillageMode` rather than a `mode` column on the sweep's own
+    `village.findMany` above, and the difference is what happens on a database
+    missing the column: a select would throw and take the whole night's sweep
+    with it, where this logs and describes the village as `community` — the
+    default, and the ordinary case. It costs one round trip and joins the pair
+    already in flight, so it costs no wall clock.
+  */
+  const [rows, previousPeriodCount, mode] = await Promise.all([
     prisma.incident.findMany({
       where: {
         villageId: village.id,
@@ -153,6 +162,7 @@ async function digestVillage(input: {
         occurredAt: { gte: previousStart, lt: windowStart },
       },
     }),
+    getVillageMode(village.id),
   ]);
 
   if (rows.length === 0) {
@@ -173,6 +183,9 @@ async function digestVillage(input: {
     villageName: village.name,
     incidents,
     previousPeriodCount,
+    // Whether the prompt describes a parish council meeting. Nothing else in
+    // the digest moves with it.
+    mode,
     now,
   });
 

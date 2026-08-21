@@ -137,7 +137,7 @@ export default async function ReportsPage({
       {/*
         `DATA_CONTROLLER` is placeholders until somebody fills it in, and
         `Village.parishCouncil` is what replaces it per village. A report whose
-        footer names "[Parish Council name]" is a document a coordinator would
+        footer names "[Data controller name]" is a document a coordinator would
         send to the police without noticing, so it says so here rather than only
         in the footer of the thing they are about to print.
 

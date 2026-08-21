@@ -1,6 +1,11 @@
 # VillageWatch — Funding Strategy & Grant Tracker
 
-Last updated: 29 July 2026
+Last updated: 21 August 2026
+
+> **Every pot, grant size and date below is a third party's figure, recorded
+> when it was read and not re-checked since.** Re-verify before an application
+> is written against any of them — see "External figures" at the foot of this
+> file. Nothing here is a claim about VillageWatch.
 
 ## Funding Opportunities
 
@@ -58,11 +63,13 @@ Last updated: 29 July 2026
 ## Key Messages for All Applications
 
 - Origin: 200-person village WhatsApp group in Histon, Cambridgeshire — messages buried, privacy concerns, no structure
-- Solution: AI-powered community safety platform with automatic face blurring, incident structuring, and pattern detection
+- Solution: AI-powered community safety platform with automatic face blurring, incident structuring, and clustering that flags recurring concerns
 - Privacy by design: client-side face detection (never leaves device), anonymised descriptions, coordinate fuzzing, per-village redaction levels, DPIA drafted, built to UK GDPR requirements
+- **No parish council needed to start**: the community model makes the coordinator the data controller and asks for one agreement; a council village accepts the three documents a council separately holds. Most watch groups have no council, and the council-shaped compliance pack is why they stay in WhatsApp
 - Community-driven: built from real resident needs, not top-down
 - Open to all villages: 270 Cambridgeshire parishes seeded from ONS open data; the same pipeline covers all 10,670 English parishes
-- Cost-efficient: ~£52/month to run, built on open-source stack
+- Cost-efficient: **infrastructure ~£52/month (£624/yr)**; year one including developer time is £3,524. Two different figures — do not divide the second by twelve
+- Data **stored** in the UK (Supabase London, Vercel `lhr1`); Anthropic, OneSignal and Slack are outside it, under SCCs with the UK IDTA — two of the three still marked `[verify]` in the DPIA
 - Impact: replaces unsafe WhatsApp groups with structured, privacy-respecting, police-shareable incident reporting
 
 ## Before any application is submitted
@@ -72,14 +79,41 @@ are statements about how the code behaves — the same rule `/privacy` is held t
 These are the ones to re-check on the day, because each is currently true only
 with a qualification:
 
-| Claim | Position on 29 Jul 2026 | Needed before submission |
+| Claim | Position on 21 Aug 2026 | Needed before submission |
 |-------|-------------------------|--------------------------|
-| "DPIA completed" | `docs/DPIA.md` is marked **DRAFT TEMPLATE — not yet reviewed or signed off** | Council review and signature, or say "drafted" |
-| "GDPR compliant" | `DATA_CONTROLLER` is placeholders, no ICO registration, processing agreement unsigned | L1/L2/L8 in `BACKLOG.md`, or claim "built to UK GDPR requirements" |
-| "Cambridgeshire seeded" | 270 of 298 parishes, all `PENDING`; the register picker filters to `ACTIVE`, so none is joinable yet | Activate the pilot villages, or state "seeded, activating from August" |
-| "Compliance gate protects every village" | Built and unit tested; its two migrations are not applied on the live database, and the missing-column state deliberately allows reporting | Apply migrations 7 and 9 together (see `BACKLOG.md` L6) |
+| "DPIA completed" | `docs/DPIA.md` is marked **DRAFT TEMPLATE — not yet reviewed or signed off**. `docs/COMMUNITY_DPA.md` was written from the code and read by no lawyer | Controller review and signature, or say "drafted" |
+| "GDPR compliant" | `DATA_CONTROLLER` is placeholders, no ICO registration, processing agreement unsigned, two transfer mechanisms marked `[verify]` (DPIA A9, A11) | L1/L2/L8 in `BACKLOG.md`, or claim "built to UK GDPR requirements" |
+| "All data held in the UK" | Data is **stored** in the UK — Supabase `eu-west-2`, Vercel `lhr1`. Anthropic, OneSignal and Slack are in the United States, under SCCs with the UK IDTA | Say "stored in the UK", name the three processors outside it, and do not describe A9/A11 as confirmed |
+| "Cambridgeshire seeded" | 270 of 298 parishes, all `PENDING`; the register picker filters to `ACTIVE`, so none is joinable yet | Activate the pilot villages, or state "seeded, none activated yet" |
+| "Compliance gate protects every village" | **All twelve migrations are applied**, so the gate is live and blocking on the deployed database. **No village has been through it** — no acceptance exists in either model | Say the gate is live and enforced in code, and that no village has completed it yet |
+| "Histon pilot" | **Not started.** No village has ever been activated; the only `ACTIVE` village is the seed script's placeholder | State it as the intended first pilot, in the future tense |
 | "Push notifications" | Code path complete; no push has ever been delivered to a real device (B3 / L4) | One verified delivery |
+| "Weekly digests" | The cron is wired in `vercel.json` and **has never fired**. It is the only thing that creates `PatternAlert` rows, and nothing renders those | Say a coordinator "receives an automatic weekly digest"; do not offer pattern alerts as a metric |
+| "Pattern detection" | The clustering is deterministic code — a 200m/30d radius query and a count in `src/lib/ai/detect-patterns.ts`, which does not call Claude. Claude is given the same history afterwards and may add to it | Describe the clustering as automatic, and the AI as the layer on top |
+| "Share any incident with police" | Coordinators only, published reports only. A resident has no such button | Say "any published incident, coordinators only" |
+| "Built in seven days" | The first seven days produced the scaffold and the core reporting flow. The compliance gate, the two models, PDF reports, QR invites, the heatmap and the test suite all landed in the month after | "An initial seven-day build, developed since" |
 | "1.4 million households" (Neighbourhood Watch) | Third-party figure, not verified here | Cite the Neighbourhood Watch Network source |
 
 `docs/GRANT_APPLICATION_NL_AI.md` is written against the right-hand column, not
 the left. If a claim is strengthened there, strengthen it here too.
+
+## External figures
+
+Everything in "Funding Opportunities" above is somebody else's number, read once
+and not re-checked. A pot that has closed, a grant ceiling that has moved or a
+delivery partner that has changed are all ordinary, and an application written
+against a stale figure reads as one nobody checked.
+
+| Figure | Where | Recorded | Re-verify against |
+|---|---|---|---|
+| £3m pot, ~50 organisations, autumn 2026 window, UKCF + CAST | P1 | 29 Jul 2026 | The TNLCF announcement linked in P1 |
+| £3.35m to 2028/29, £500–£35,000, rolling | P2 | 29 Jul 2026 | Cambridgeshire PCC office — the URL is a guess, not a link that was opened |
+| £15,000/year, £100–£300, annual rounds | P3 | 29 Jul 2026 | ourwatch.org.uk/communitygrants |
+| Up to £10,000, rolling | P4 | 29 Jul 2026 | tnlcommunityfund.org.uk — the England ceiling has moved before |
+| £25,000–£500,000, rolling competitions | P5 | 29 Jul 2026 | The live competition on the Innovate UK service |
+| 1.4 million households | Key messages, and the grant draft | 29 Jul 2026 | The Neighbourhood Watch Network's own published source, with the year it refers to |
+| £240 Supabase Pro, £192 Vercel Pro | The grant draft's budget | 29 Jul 2026 | Both suppliers' current list prices |
+
+The one figure in that draft that is **ours** and still a projection is the £180
+Anthropic line: it covers three call sites, no cron has fired and no coordinator
+has generated a report, so nothing has been billed against a real village.

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { ArrowLeft, BookOpen, LifeBuoy } from "lucide-react";
 import { MarkdownView } from "@/components/markdown-view";
 import { requireCoordinator } from "@/lib/auth";
+import { getVillageMode } from "@/lib/villages";
 import { COORDINATOR_GUIDE_FILE, loadDocument } from "@/lib/docs";
-import { SUPPORT_EMAIL } from "@/lib/constants";
+import { DEFAULT_VILLAGE_MODE, SUPPORT_EMAIL } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Coordinator Guide" };
 
@@ -29,9 +30,22 @@ export const metadata: Metadata = { title: "Coordinator Guide" };
  * in production while working perfectly in `npm run dev`. See `src/lib/docs.ts`.
  */
 export default async function CoordinatorGuidePage() {
-  await requireCoordinator("/dashboard/guide");
+  const session = await requireCoordinator("/dashboard/guide");
+  const villageId = session.profile?.villageId;
 
-  const guide = await loadDocument(COORDINATOR_GUIDE_FILE);
+  /*
+    One sentence of the header reads `Village.mode` and nothing else does — the
+    document itself is the same for every village, which is why there is no
+    village scoping to do below it. `getVillageMode` is the cheap read and it
+    falls back to `community` rather than throwing, so a coordinator with no
+    village attached still gets the guide rather than an error page.
+  */
+  const [guide, mode] = await Promise.all([
+    loadDocument(COORDINATOR_GUIDE_FILE),
+    villageId && process.env.DATABASE_URL
+      ? getVillageMode(villageId)
+      : Promise.resolve(DEFAULT_VILLAGE_MODE),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
@@ -51,8 +65,11 @@ export default async function CoordinatorGuidePage() {
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
           Everything you need to run VillageWatch for your village — the settings
           to choose before you open it to residents, how to handle the moderation
-          queue, what you can share with the police, and what you are responsible
-          for on your council&rsquo;s behalf.
+          queue, what you can share with the police, and{" "}
+          {mode === "community"
+            ? "what being your village’s data controller obliges you to do"
+            : "what you are responsible for on your council’s behalf"}
+          .
         </p>
       </header>
 

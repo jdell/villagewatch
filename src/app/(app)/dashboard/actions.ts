@@ -14,6 +14,7 @@ import {
   saveVillageChannel,
 } from "@/lib/whatsapp-channel";
 import {
+  getVillageMode,
   getVillageParishCouncil,
   getVillagePrivacyLevel,
   setVillageParishCouncil,
@@ -243,7 +244,14 @@ export type ParishCouncilState = {
 };
 
 /**
- * Names the parish, town or community council answerable for the village's data.
+ * Names whoever is answerable for the village's data.
+ *
+ * In a `council` village that is the parish, town or community council; in a
+ * `community` village — the default, and most villages — it is the coordinator
+ * or their group, and there is no council to name. The column is
+ * `Village.parishCouncil` either way; what moves with `Village.mode` is every
+ * word on screen about it, the labels in `ParishCouncilForm`, the messages
+ * returned from here and the label the audit trail files it under.
  *
  * `requireCoordinator()` and the village from the session profile, for the same
  * reason the other two settings here use them: this is a coordinator describing
@@ -295,9 +303,22 @@ export async function saveParishCouncilAction(
   }
 
   const { parishCouncil } = parsed.data;
-  // Read before the write, so the trail records what actually changed rather
-  // than what was submitted.
-  const before = await getVillageParishCouncil(villageId);
+
+  /*
+    Read before the write, so the trail records what actually changed rather
+    than what was submitted — and the mode alongside it, because every message
+    this action can return names either a council or a data controller, and
+    most villages have neither a council nor a reason to be told about one.
+    `ParishCouncilForm` already picks its labels the same way; a toast that
+    said "council name cleared" under a field headed "Data controller" is the
+    seam this closes.
+  */
+  const [before, mode] = await Promise.all([
+    getVillageParishCouncil(villageId),
+    getVillageMode(villageId),
+  ]);
+
+  const council = mode === "council";
 
   const written = await setVillageParishCouncil(villageId, parishCouncil);
 
@@ -310,7 +331,9 @@ export async function saveParishCouncilAction(
       message:
         written.reason === "unmigrated"
           ? "This village's database has not been updated for this setting yet. Ask an administrator to apply the pending migration."
-          : "Could not save the council name. Try again.",
+          : council
+            ? "Could not save the council name. Try again."
+            : "Could not save the name. Try again.",
     };
   }
 
@@ -349,7 +372,9 @@ export async function saveParishCouncilAction(
     ok: true,
     message: parishCouncil
       ? `Reports will name ${parishCouncil} as the data controller.`
-      : "Council name cleared. Reports fall back to the deployment-wide controller.",
+      : council
+        ? "Council name cleared. Reports fall back to the deployment-wide controller."
+        : "Name cleared. Reports fall back to the deployment-wide controller, which is placeholder text.",
   };
 }
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUDIT_ACTIONS,
+  auditActionLabel,
   DEFAULT_VILLAGE_MODE,
   VILLAGE_MODES,
   VILLAGE_MODE_META,
@@ -110,5 +112,46 @@ describe("villageModeFormSchema", () => {
     for (const mode of ["", "parish", "COUNCIL", "toString"]) {
       expect(villageModeFormSchema.safeParse({ mode }).success).toBe(false);
     }
+  });
+});
+
+/**
+ * The one audit action whose label reads differently in the two models.
+ *
+ * `village.parish_council_changed` is the stored action and never moves — a
+ * village upgrading to the council model must not find its history relabelled
+ * underneath it. What moves is what a screen calls it, and it has to match the
+ * dashboard field that wrote the row: a coordinator who has just changed a
+ * setting headed "Data controller" and goes looking for it in the trail should
+ * not have to know it is filed under a parish council they do not have.
+ */
+describe("auditActionLabel", () => {
+  it("names the council in a council village and the role in a community one", () => {
+    expect(auditActionLabel("village.parish_council_changed", "council")).toBe(
+      "Parish council changed",
+    );
+    expect(auditActionLabel("village.parish_council_changed", "community")).toBe(
+      "Data controller changed",
+    );
+  });
+
+  it("gives every other action the same label in both models", () => {
+    // The exception is meant to be exactly one entry wide. A second one added
+    // without thinking would show here rather than on a coordinator's screen.
+    const differing = AUDIT_ACTIONS.filter(
+      (action) =>
+        auditActionLabel(action.value, "community") !==
+        auditActionLabel(action.value, "council"),
+    ).map((action) => action.value);
+
+    expect(differing).toEqual(["village.parish_council_changed"]);
+  });
+
+  it("falls back to the stored string for an action this build does not know", () => {
+    // A row written by a later build, read by this one. The trail is
+    // append-only, so an unreadable row is a row that stays unreadable.
+    expect(auditActionLabel("village.something_new", "community")).toBe(
+      "village.something_new",
+    );
   });
 });
