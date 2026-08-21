@@ -16,6 +16,15 @@ name: Version
 # It also refuses to release nothing. standard-version bumps a patch even when
 # every commit since the last tag was a `chore`, so the first step works out
 # whether anything user-visible actually landed and stops if it did not.
+#
+# And it refuses to collide. standard-version computes the next version from
+# `package.json` and tags it; if that tag already exists the run dies at
+# `git tag` with "tag already exists", *after* it has written the changelog and
+# the bump commit. The version step below works the tag out first and steps past
+# any that are taken, so a repository whose tags and `package.json` have drifted
+# apart — a force-push over a release commit, a tag pushed by hand, a squashed
+# merge that dropped the bump — releases the next free version instead of failing
+# every push to main until somebody deletes a tag.
 
 on:
   push:
@@ -88,6 +97,72 @@ jobs:
         # client here would only make the job slower.
         run: npm ci --ignore-scripts
 
+      - name: Which version, and is that tag free?
+        id: version
+        if: steps.check.outputs.release == 'true'
+        run: |
+          set -euo pipefail
+
+          # `--dry-run` writes nothing — no bump, no changelog, no commit, no
+          # tag. It is the only way to ask standard-version what it *would*
+          # call this release without letting it do it, and the answer is the
+          # one thing this job cannot work out for itself: the bump depends on
+          # the commit types since the last tag.
+          next="$(
+            npx standard-version --dry-run 2>&1 \
+              | grep -oE 'tagging release v[0-9]+\.[0-9]+\.[0-9]+' \
+              | tail -1 \
+              | sed 's/^tagging release //' || true
+          )"
+
+          if [ -z "$next" ]; then
+            echo "::error::Could not work out the next version from standard-version's dry run."
+            exit 1
+          fi
+
+          echo "standard-version would tag $next."
+
+          # Both sides, because they fail differently. A local tag is what
+          # `git tag` refuses; a remote one is what `git push --follow-tags`
+          # refuses, several steps later and with a bump commit already made.
+          # `fetch-depth: 0` brings the remote tags down, so the first check
+          # usually catches both — the second is for a tag pushed between the
+          # checkout and now.
+          taken() {
+            git rev-parse -q --verify "refs/tags/$1" >/dev/null 2>&1 ||
+              [ -n "$(git ls-remote --tags origin "refs/tags/$1" 2>/dev/null)" ]
+          }
+
+          release_as=""
+
+          if taken "$next"; then
+            # Step the patch until something is free. Bumping past a taken
+            # version rather than skipping the release: the commits that earned
+            # it are real, and a job that quietly released nothing would leave
+            # them out of the changelog for good — the next push would compute
+            # the same taken version and skip again.
+            major="$(echo "${next#v}" | cut -d. -f1)"
+            minor="$(echo "${next#v}" | cut -d. -f2)"
+            patch="$(echo "${next#v}" | cut -d. -f3)"
+
+            for _ in $(seq 1 50); do
+              patch=$((patch + 1))
+              candidate="v${major}.${minor}.${patch}"
+              taken "$candidate" || break
+              candidate=""
+            done
+
+            if [ -z "${candidate:-}" ]; then
+              echo "::error::$next is taken and so are the next 50 patches. Something is wrong with this repository's tags."
+              exit 1
+            fi
+
+            echo "::warning::$next already exists — releasing ${candidate} instead."
+            release_as="${candidate#v}"
+          fi
+
+          echo "release_as=$release_as" >> "$GITHUB_OUTPUT"
+
       - name: Release
         if: steps.check.outputs.release == 'true'
         run: |
@@ -96,7 +171,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # Empty for the ordinary case, which is the whole point: standard-
+          # version works the version out itself unless the one it chose is
+          # already taken.
+          release_as="${{ steps.version.outputs.release_as }}"
+
           npx standard-version \
+            ${release_as:+--release-as "$release_as"} \
             --releaseCommitMessageFormat "chore(release): {{currentTag}} [skip ci]"
 
           git push --follow-tags origin HEAD:${{ github.ref_name }}
