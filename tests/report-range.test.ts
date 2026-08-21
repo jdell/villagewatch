@@ -116,6 +116,78 @@ describe("resolveReportRange — ?days=", () => {
   });
 });
 
+describe("resolveReportRange — this year", () => {
+  it("runs from 1 January to now", () => {
+    const range = resolveReportRange({ range: "year" }, NOW);
+
+    expect(range.preset).toBe("year");
+    expect(range.fromValue).toBe("2026-01-01");
+    expect(range.to).toEqual(NOW);
+    expect(range.notice).toBeNull();
+  });
+
+  it("is a different length every day, which is why it is not a preset day count", () => {
+    // The whole reason `year` has its own branch. Read off `REPORT_RANGES` like
+    // the others it would have `days: null`, fallen through to the custom
+    // branch, and produced a week.
+    const january = resolveReportRange(
+      { range: "year" },
+      new Date("2026-01-03T12:00:00.000Z"),
+    );
+    const december = resolveReportRange(
+      { range: "year" },
+      new Date("2026-12-31T12:00:00.000Z"),
+    );
+
+    expect(january.days).toBeLessThan(5);
+    expect(december.days).toBeGreaterThan(360);
+    expect(january.preset).toBe("year");
+    expect(december.preset).toBe("year");
+  });
+
+  it("is not clamped by the custom-range ceiling", () => {
+    // A leap year is 366 days and `REPORT_MAX_RANGE_DAYS` is 365. The ceiling
+    // bounds what somebody can type; clamping a named period would hand back a
+    // report a day shorter than "This year" with a notice about an adjustment
+    // nobody asked for.
+    const range = resolveReportRange(
+      { range: "year" },
+      new Date("2028-12-31T12:00:00.000Z"),
+    );
+
+    expect(range.fromValue).toBe("2028-01-01");
+    expect(range.notice).toBeNull();
+  });
+
+  it("ignores the dates beside it, like every other preset", () => {
+    const range = resolveReportRange(
+      { range: "year", from: "2020-01-01", to: "2020-02-01" },
+      NOW,
+    );
+
+    expect(range.fromValue).toBe("2026-01-01");
+  });
+});
+
+describe("resolveReportRange — ninety days", () => {
+  it("is a preset rather than a custom range", () => {
+    const range = resolveReportRange({ range: "90" }, NOW);
+
+    expect(range.preset).toBe("90");
+    expect(range.days).toBe(90);
+    expect(span(range.from, range.to)).toBe(90);
+  });
+
+  it("is the same period whether it arrives as a preset or as ?days=", () => {
+    // `?days=90` used to have no preset behind it and reported "custom", which
+    // left the picker on "Custom range" above dates the coordinator never typed.
+    const byDays = resolveReportRange({ days: "90" }, NOW);
+
+    expect(byDays.preset).toBe("90");
+    expect(byDays.from).toEqual(resolveReportRange({ range: "90" }, NOW).from);
+  });
+});
+
 describe("resolveReportRange — the branches days had to sit beside", () => {
   it("still defaults to the seven-day preset", () => {
     const range = resolveReportRange({}, NOW);

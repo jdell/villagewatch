@@ -5,10 +5,13 @@ import { isPlatformAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_PRIVACY_LEVEL,
+  DEFAULT_VILLAGE_MODE,
   JOIN_CODE_LENGTH,
   canApplyForCoordinator,
   resolvePrivacyLevel,
+  resolveVillageMode,
   type PrivacyLevel,
+  type VillageMode,
 } from "@/lib/constants";
 import { normalizeJoinCode } from "@/lib/validations";
 
@@ -624,6 +627,54 @@ export async function getVillageController(
     });
 
     return village ? { name: village.name, parishCouncil: null } : null;
+  }
+}
+
+/**
+ * Which compliance model this village runs, for the screens that only need the
+ * copy to be true.
+ *
+ * `getVillageCompliance` in `src/lib/compliance.ts` returns this too, and is the
+ * right call where the *state* of the gate matters — it joins four acceptance
+ * relations to work that out. A page changing one sentence does not need any of
+ * them, and `/reports` renders on every change of period.
+ *
+ * ## It falls back rather than throwing, and the fallback is the honest one
+ *
+ * `villages.mode` arrives with `20260820120000_village_community_mode`, which is
+ * new. On a database without it Prisma names the column in the SELECT list and
+ * Postgres rejects the whole statement with `42703` — the same trap
+ * `getVillageController` documents for `parish_council`. Caught, the answer is
+ * `community`, which is what that migration gives every existing village anyway,
+ * and it agrees with the `mode` on `compliance.ts`'s own unavailable state. A
+ * screen would otherwise have to choose between an error page and telling a
+ * volunteer their council is the data controller.
+ *
+ * Deliberately **not** returning an `available` flag, unlike
+ * `getVillageParishCouncil` and `getVillagePrivacyLevel`. Those two are settings
+ * a coordinator writes, and a form that will fail on Save has to say so. This is
+ * read-only copy: there is nothing for anybody to fix on the page that asks.
+ */
+export async function getVillageMode(villageId: string): Promise<VillageMode> {
+  try {
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      select: { mode: true },
+    });
+
+    // `resolveVillageMode`, not a cast — the column is a `String` with no CHECK
+    // constraint behind it.
+    return resolveVillageMode(village?.mode);
+  } catch (cause) {
+    console.error(
+      "Could not read mode for village %s — describing it as a %s village. " +
+        "Has 20260820120000_village_community_mode been applied?",
+      villageId,
+      DEFAULT_VILLAGE_MODE,
+      cause,
+    );
+
+    return DEFAULT_VILLAGE_MODE;
   }
 }
 

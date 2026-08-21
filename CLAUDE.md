@@ -229,6 +229,8 @@ src/
                               the clipboard. Coordinator, published only
     copy-alert.tsx            The three share buttons — copy, WhatsApp, Facebook
                               — over one alert text. Coordinator, published only
+    reports/report-period-picker.tsx  The period — one row, and the dates only
+                              when the preset is Custom. Still a GET form
     reports/download-pdf-button.tsx  Fetch, check the status, then save. Sends
                               analysis=ai only once one is on screen
     reports/report-view.tsx   The period report on screen, on the clipboard and
@@ -313,6 +315,8 @@ src/
                               client-safe, and the code never comes from the DB
     date-range.ts             The period behind /map, /incidents and /dashboard
                               — one resolver, client-safe, nothing rejects
+    calendar.ts               The month grid and the range chip behind /reports'
+                              date picker. Client-safe, pure, host zone
     structured-data.ts        The landing page's JSON-LD graph. Server or client;
                               every field in it is a claim that has to be true
     heatmap.ts                Severity × recency → heat intensity, plus the
@@ -424,8 +428,13 @@ tests/                        Vitest, unit only — see The test suite
   incident-csv.test.ts        The export, parsed back rather than string-matched
                               — and the formula guard behind its two laundering
                               prefixes
-  report-range.test.ts        /reports' own resolver — the clamp, `?days=`, and
-                              the round trip a date input has to survive
+  report-range.test.ts        /reports' own resolver — the clamp, `?days=`, the
+                              round trip a date input has to survive, and the
+                              two presets that are not a count of days back
+  calendar.test.ts            The picker's arithmetic — the Sunday that shifts a
+                              month, the 31st that skips February, the date that
+                              is shaped right and does not exist, and the year
+                              the chip prints only where it says something
   village-join.test.ts        checkVillageJoin — the blank code, the empty
                               string, normalisation, the legacy null, and status
                               refusing before the code is looked at
@@ -918,15 +927,16 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Twenty files, 328 tests, covering the
+between the typecheck and the build. Twenty-one files, 350 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
 formula-injection guard, the compliance gate's three states, the three legal
 documents loading and parsing, the Markdown parser the compliance page renders
 them through, the per-village face redaction level, the heat intensity scale,
-the two date-range resolvers, the PDF's layout, the invite link, the nightly
-retention sweep's archive pass and the two compliance models.
+the two date-range resolvers, the date picker's month arithmetic, the PDF's
+layout, the invite link, the nightly retention sweep's archive pass and the two
+compliance models.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -1048,6 +1058,20 @@ fallback when it is unset.
   `refactor` or `revert` lands on `main`. The release commit carries `[skip ci]`,
   which stops both the workflow re-triggering itself and Vercel spending a
   production deploy on a version bump.
+- **The release step works out its own tag first and steps past one that is
+  taken.** standard-version derives the next version from `package.json` and then
+  runs `git tag`; where the tags and `package.json` have drifted apart the run
+  dies at that line — *after* writing the changelog and the bump commit — and
+  every subsequent push to `main` computes the same taken version and dies the
+  same way. It is not hypothetical: `v0.1.30` is on the remote while
+  `package.json` on `main` reads `0.1.29`, which is one force-push or hand-made
+  tag away in any repository. The job asks `standard-version --dry-run` what it
+  would call the release, checks that tag locally **and** on the remote — a local
+  one is what `git tag` refuses, a remote one is what `git push --follow-tags`
+  refuses several steps later — and passes `--release-as` the next free patch.
+  Stepping past rather than skipping: the commits that earned the release are
+  real, and a job that quietly released nothing would leave them out of the
+  changelog for good.
 - Staging uses a separate Supabase project. Never point a preview deployment at
   the production database.
 - **Never run `prisma migrate deploy` against production by hand.** Migrations
@@ -1465,6 +1489,26 @@ the data controller is**. `VILLAGE_MODES`, `resolveVillageMode` and
   parish council is the data controller, which is now true of a minority of
   villages. `/terms` cannot read a village — it is public and sessionless — so it
   describes both and points at `/privacy` §1.
+- **The coordinator-facing copy follows the mode too, and that was N15.** Two
+  screens told every village it had a council: `/reports` said the document was
+  "for your PCSO or parish council", and the dashboard's controller field was
+  headed "Parish council" and asked for a council's legal name. In the community
+  model there is no council to name — the coordinator is the controller — so the
+  field a volunteer needs to fill in was asking them for something that does not
+  exist, which is how it stays empty and every report they send names
+  `DATA_CONTROLLER`, still placeholder text. The column is `Village.parishCouncil`
+  either way; only the labels move.
+- **`getVillageMode` is the cheap read for copy, and `getVillageCompliance` is
+  the read for the gate.** The second joins four acceptance relations to work out
+  whether a village may accept a report; a page changing one sentence needs none
+  of them, and `/reports` re-renders on every change of period. `/dashboard`
+  already calls the second, so it passes `compliance.mode` down rather than
+  asking twice.
+- **`mode` is deliberately not a column on `getVillageController`.** That
+  function's shape is a retry that drops `parish_council` when the database is
+  missing it; a second new column in the same SELECT would mean a database
+  missing `mode` losing the council name with it — an amber warning about an
+  unnamed data controller on a village that has named one.
 
 ## The compliance gate
 
@@ -1661,6 +1705,11 @@ setting, and the only one that changes nothing about how a report flows.
   through the share sheet — and, once `/privacy` reads it, the body a resident
   is told to take a UK GDPR complaint to. Named wrongly, a subject access
   request goes somewhere with no authority to answer it.
+- **What it is called depends on `Village.mode`.** "Parish council" in a council
+  village and "Data controller" in a community one, where there is no council and
+  the coordinator is the controller — one component with the mode passed in,
+  because this is one field and one sentence changing rather than two sets of
+  copy about who accepts what on whose behalf. See The two compliance models.
 - **The coordinator sets it because the coordinator is who knows.** The column
   already existed and `saveVillageAdminSettings` already wrote it, but that is
   platform-admin only, so a village whose coordinator could answer the question
@@ -2013,6 +2062,44 @@ together. Two documents: one incident, and everything published over a period.
   decides on — and this adds a routine one a coordinator drives. The notice now
   describes both, says what a summary carries, and says which of the two is
   recorded in the audit trail.
+- **The period is one row, and the dates are only on screen when they are being
+  used.** `ReportPeriodPicker` is a Client Component around the same
+  `<form method="get">` the page always had: a preset, a submit button, and — for
+  `custom` alone — a chip reading "22 Jul – 21 Aug" that opens a two-month
+  calendar. Both date inputs used to sit there permanently, doing nothing for
+  every preset but one, which is four controls for a screen whose answer is "last
+  month" nine times in ten. The presets gained "Last 90 days" and "This year"
+  with the room that freed up.
+- **Every preset still works with no JavaScript.** The `<select>` is a real one
+  named `range` and "Build report" is a real submit button, so the property the
+  GET form was built for — a period is a URL a coordinator can bookmark and send
+  to whoever asks for the same report every month — survives the redesign. What
+  needs JavaScript is the custom range, which was already the option that needed
+  a person to work out that two fields elsewhere governed it.
+- **`from` and `to` are submitted whatever is selected**, as hidden inputs. Two
+  parameters `resolveReportRange` ignores for every preset bar `custom`, and a
+  custom range that survives a trip through "Last 7 days" and back.
+- **"This year" has its own branch in the resolver**, because it is the one
+  preset whose span cannot be written as a number of days back from now — one day
+  long on 1 January, 365 on 31 December — and it is deliberately not clamped to
+  `REPORT_MAX_RANGE_DAYS`. That ceiling bounds what somebody can type; a leap year
+  would otherwise shorten a named period by a day and claim it had been adjusted.
+- **The grid disables what the resolver would have to fix**: days in the future,
+  and days more than `REPORT_MAX_RANGE_DAYS` back. The clamp and its `notice` stay
+  — they are what make a hand-edited URL safe — but a notice explaining that the
+  dates somebody just clicked have been moved is worse than not being able to
+  click them.
+- **`src/lib/calendar.ts` is the arithmetic, and it is a module rather than
+  three functions in the component** so the off-by-ones can be tested: the Sunday
+  that shifts a month a column left (`getDay()` is 0, so `weekday - 1` is -1), the
+  31st that skips February when a month is added to a day rather than to a month,
+  and `2026-02-30`, which is shaped like a date and rolls forward to 2 March
+  rather than failing. None of the three throws; each draws the wrong month.
+- **Everything in the picker is the host zone**, which is `dateInputValue`'s own
+  reasoning one layer up: a cell is built with `new Date(y, m, d)` and rendered
+  back with the exact inverse of how `resolveReportRange` parses it. Formatting a
+  cell in `Europe/London` would highlight a day either side of the one clicked on
+  a UTC host.
 - The date-range boundaries are the server's midnight, not London's. See
   `resolveReportRange` for why that hour is left alone.
 

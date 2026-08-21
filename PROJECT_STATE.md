@@ -1,8 +1,8 @@
 # VillageWatch — project state
 
-**Last updated:** 20 August 2026 · **Repo version:** `v0.1.29` · **Branch:**
-`feat/community-mode`, off `fix/archive-clears-raw-description` · **Domain:**
-https://villagewatch.app
+**Last updated:** 21 August 2026 · **Repo version:** `v0.1.29` · **Branch:**
+`feat/reports-period-picker`, off `feat/community-mode`, off
+`fix/archive-clears-raw-description` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -25,8 +25,8 @@ in `BACKLOG.md`.
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 12, `20260726161847_init` → `20260820120000_village_community_mode`. Ten applied; the last two are new on these branches and have not been through `database.yml` |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, unit only, **20 files, 328 tests**, all passing (~2s) — runs with no `.env.local` and no database |
-| CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump) |
+| Test suite | Vitest, unit only, **21 files, 350 tests**, all passing (~2s) — runs with no `.env.local` and no database |
+| CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, now stepping past a tag that already exists — `v0.1.30` is on the remote while `package.json` reads `0.1.29`) |
 
 ---
 
@@ -35,6 +35,7 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. Head is `8b1306b`, the `v0.1.29` release commit on top of the merged audit branch (PR #4). | — |
+| `feat/reports-period-picker` | **In review (N15).** Stacked on the community-mode branch, because the copy it makes conditional is conditional on `Village.mode`, which only exists there. Two things and a workflow fix: `/reports`' period control is one row with the dates behind "Custom range", and the two coordinator screens that told every village it had a parish council now read the village's own mode. | Merge into `feat/community-mode` |
 | `feat/community-mode` | **In review (N17).** Stacked on the T10 branch, which is stacked on `main` — both touch `PROJECT_STATE.md`, `BACKLOG.md`, `CLAUDE.md` and `prisma/schema.prisma`, so basing them side by side on `main` would conflict on four files for no reason. A two-tier compliance model behind `Village.mode`: a village with no parish council has its coordinator as data controller and accepts one agreement instead of three, and the activation screen and the community compliance screen both spell out what being a controller obliges somebody to do. | Merge into `fix/archive-clears-raw-description`, or into `main` once that lands |
 | `fix/archive-clears-raw-description` | **In review (T10).** The nightly sweep now deletes `rawDescription` in the same statement that archives a report, plus a catch-up pass for reports a coordinator archived by hand. `raw_description` is nullable (migration 11), `readRawDescription` says so instead of writing an audit row for nothing, and `tests/retention.test.ts` is the first route-handler test in the suite. | Merge to `main` |
 
@@ -68,6 +69,48 @@ PRs because they were asked for as PRs.
   so it should), that accepting the one agreement actually opens reporting, and
   that an upgrade leaves the village open. `docs/COMMUNITY_DPA.md` has been
   written from the code and read by no lawyer.
+
+- **`/reports`' period control, and mode-aware copy** — 21 August 2026, N15.
+  The filter is one row — a preset dropdown and "Build report" — and the dates
+  are on screen only when the preset is "Custom range", where they are a single
+  chip reading "22 Jul – 21 Aug" that opens a two-month calendar. Both date
+  inputs used to sit there permanently doing nothing for every preset but one.
+  The presets gained "Last 90 days" and "This year" with the space that freed up;
+  `year` has its own branch in `resolveReportRange` because it is the one period
+  that cannot be written as a number of days back from now. `ReportPeriodPicker`
+  is a Client Component around the same `<form method="get">`, so every preset
+  still works with no JavaScript, and `src/lib/calendar.ts` holds the month
+  arithmetic so the off-by-ones are testable — `tests/calendar.test.ts` is the
+  new file in the suite.
+
+  The copy half is N15. `/reports` said a report was "for your PCSO or parish
+  council" to every village, and the dashboard asked every coordinator for a
+  parish council's legal name; in the community model — the default — there is
+  no council and the coordinator is the data controller, so the field they need
+  to fill in was asking for something that does not exist. Both follow
+  `Village.mode` now, and `/reports`' amber warning links to the dashboard field
+  instead of telling a coordinator to ask a platform administrator about a
+  setting they own.
+
+  **Nothing has run against a database**, for the reason above it: `Village.mode`
+  arrives with an unapplied migration, so every village reads as `community`
+  through `getVillageMode`'s fallback — which is what the migration would give
+  them anyway. Worth watching once it is applied: that a council village gets the
+  council wording on both screens. The picker itself was driven by hand in a
+  browser — presets, the two-month grid, a range picked in reverse order, the
+  hidden inputs it submits, Escape, and the mobile layout — but never against a
+  village with reports in it.
+
+- **`version.yml` no longer dies on a tag that already exists** — 21 August 2026.
+  standard-version derives the next version from `package.json` and then tags it;
+  where the two have drifted the run fails at `git tag`, after writing the
+  changelog and the bump commit, and every later push to `main` computes the same
+  taken version and fails the same way. They *have* drifted here: `v0.1.30` is on
+  the remote and `package.json` on `main` reads `0.1.29`. The job now asks
+  `--dry-run` what it would tag, checks that locally and on the remote, and
+  passes `--release-as` the next free patch — so the next release off `main` will
+  be `v0.1.31`. **Not yet run**, like everything in that workflow since the last
+  release: the proof is the next releasable push to `main`.
 
 - **Archiving deletes the reporter's original wording** — 20 August 2026, T10.
   `/privacy` §7 said it happened at twelve months and nothing did it; the
