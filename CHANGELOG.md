@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.31](https://github.com/jdell/villagewatch/compare/v0.1.30...v0.1.31) (2026-08-21)
+
+
+### Features
+
+* **reports:** collapse the period control, and say who the report is for ([653b00c](https://github.com/jdell/villagewatch/commit/653b00cbacda913a02d5d6ee151a50d830f95f30))
+
+
+### CI
+
+* **version:** step past a release tag that already exists ([eb9cba4](https://github.com/jdell/villagewatch/commit/eb9cba48dc0e100e9feb99f99f7425233429d0ce))
+
 ### [0.1.30](https://github.com/jdell/villagewatch/compare/v0.1.29...v0.1.30) (2026-08-21)
 
 
