@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.32](https://github.com/jdell/villagewatch/compare/v0.1.31...v0.1.32) (2026-08-21)
+
+
+### Fixes
+
+* **share:** say who an incident summary is for by the village's mode ([c2f78ba](https://github.com/jdell/villagewatch/commit/c2f78bac6204619003fc5a4dc51a9b6b9c9a4289)), closes [#7](https://github.com/jdell/villagewatch/issues/7) [#5](https://github.com/jdell/villagewatch/issues/5) [#6](https://github.com/jdell/villagewatch/issues/6)
+
 ### [0.1.31](https://github.com/jdell/villagewatch/compare/v0.1.30...v0.1.31) (2026-08-21)
 
 
