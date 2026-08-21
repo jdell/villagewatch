@@ -154,6 +154,35 @@ export function resolveReportRange(
     };
   }
 
+  /*
+    "This year" — 1 January to now, in the host zone, which is the same midnight
+    every other boundary in this module is taken at.
+
+    Its own branch because it is the one preset whose span cannot be written as
+    a number of days back from now: it is 1 day long on 1 January and 365 on 31
+    December, so it has to be computed rather than looked up. `days` is the
+    elapsed length, which is what `collectVillageReport` compares against the
+    preceding period — for a report filed in March, that is the same stretch of
+    last year's winter rather than the whole of last year.
+
+    Deliberately not clamped to `REPORT_MAX_RANGE_DAYS`. See the note on that
+    constant: the ceiling bounds what somebody can type, and a leap year would
+    otherwise shorten a named period by a day and claim it was adjusted.
+  */
+  if (parsed.range === "year") {
+    const from = new Date(now.getFullYear(), 0, 1);
+
+    return {
+      preset: "year",
+      from,
+      to: now,
+      days: rangeDays(from, now),
+      fromValue: dateValue(from),
+      toValue: dateValue(now),
+      notice: null,
+    };
+  }
+
   const preset = REPORT_RANGES.find((r) => r.value === parsed.range);
 
   if (preset?.days) {
