@@ -193,6 +193,50 @@ model Village {
   /// follow-up, and until then the constant is still what that page shows.
   parishCouncil String? @map("parish_council")
 
+  /// Which compliance model this village runs under: `community` or `council`.
+  ///
+  /// **The two differ in who the data controller is**, and everything else
+  /// follows from that.
+  ///
+  /// - `community` (the default) — a neighbourhood group with no parish council
+  ///   behind it. Its **coordinator** is the controller and accepts one
+  ///   document, `docs/COMMUNITY_DPA.md`, which carries the Article 28(3)
+  ///   processing terms and the Schedule 1 paragraph 5 policy document in one
+  ///   agreement written for a volunteer.
+  /// - `council` — a parish or town council is the controller, and accepts the
+  ///   three documents it is separately obliged to hold: the DPIA (Article 35),
+  ///   the Appropriate Policy Document (Schedule 1 paragraph 5) and the
+  ///   processing agreement (Article 28(3)).
+  ///
+  /// A `String` and not an enum, and there is no CHECK constraint — the same
+  /// shape as `privacyLevel` and for the same reasons. `villageModeFormSchema`
+  /// in `src/lib/validations.ts` is the only thing in the application that
+  /// writes it, and `resolveVillageMode` in `src/lib/constants.ts` narrows
+  /// anything unrecognised back to `community` on the way out rather than
+  /// throwing in front of a resident filing a report.
+  ///
+  /// Upgrading community → council is a coordinator's decision on
+  /// `/dashboard/compliance`. There is deliberately no downgrade: it would mean
+  /// discarding a council's adopted documents from a settings screen.
+  mode String @default("community")
+
+  /// The coordinator's acceptance of the community agreement, in `community`
+  /// mode. The council's three are below.
+  ///
+  /// It is one signature and not half of one, which is the difference from
+  /// `dpaAcceptedAt`. The community agreement is offered by Yakasista Ltd on
+  /// standing terms and accepting it is what forms the contract — there is no
+  /// paper copy waiting on a second signature, because there is no council
+  /// clerk to send one to.
+  ///
+  /// It survives an upgrade to `council` mode and is deliberately never
+  /// cleared: the coordinator *was* the controller for that period, and it is
+  /// also what keeps a village's reporting open while its council works through
+  /// the three documents. See `src/lib/compliance.ts`.
+  communityDpaAcceptedAt   DateTime? @map("community_dpa_accepted_at")
+  communityDpaAcceptedById String?   @map("community_dpa_accepted_by_id") @db.Uuid
+  communityDpaAcceptedBy   User?     @relation("VillageCommunityDpaAcceptor", fields: [communityDpaAcceptedById], references: [id], onDelete: SetNull)
+
   // --- Legal compliance gate ------------------------------------------------
   // A village cannot accept a single report until its coordinator has read and
   // accepted all three documents. The DPIA is Article 35, the APD is DPA 2018
@@ -365,6 +409,10 @@ model User {
   dpiaAcceptedVillages Village[] @relation("VillageDpiaAcceptor")
   apdAcceptedVillages  Village[] @relation("VillageApdAcceptor")
   dpaAcceptedVillages  Village[] @relation("VillageDpaAcceptor")
+  /// And the community agreement, in a village running `community` mode — where
+  /// this person is the data controller rather than accepting on a council's
+  /// behalf.
+  communityDpaAcceptedVillages Village[] @relation("VillageCommunityDpaAcceptor")
   notifications      Notification[]
   auditLogs          AuditLog[]
 

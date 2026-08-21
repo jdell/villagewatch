@@ -10,6 +10,7 @@ import {
   REPORT_RANGE_VALUES,
   SEVERITY_VALUES,
   TIME_RANGE_VALUES,
+  VILLAGE_MODE_VALUES,
 } from "@/lib/constants";
 
 /**
@@ -764,12 +765,18 @@ export const villageAutoApproveFormSchema = z.object({
 });
 
 /**
- * Accepting the three compliance documents.
+ * Accepting the compliance documents — the council's three, or the community
+ * village's one.
  *
- * Three checkboxes rather than one, and the schema does **not** require all of
- * them: the action decides that, so it can say which box is missing rather than
- * rejecting the whole form with "invalid". `refine` here would turn "you have
- * not ticked the APD" into a validation error with nowhere useful to attach it.
+ * Four checkboxes in the schema and never four on a screen: `documentsForMode`
+ * decides which are rendered, and `acceptCompliance` drops a tick for a document
+ * the village's model does not ask for. The schema stays wide because narrowing
+ * it by mode would mean reading the village here, which is the action's job.
+ *
+ * The schema does **not** require any of them: the action decides that, so it
+ * can say which box is missing rather than rejecting the whole form with
+ * "invalid". `refine` here would turn "you have not ticked the APD" into a
+ * validation error with nowhere useful to attach it.
  *
  * The same unchecked-checkbox handling as `villageAutoApproveFormSchema` — an
  * unticked box is absent from the payload entirely, so "missing" has to mean
@@ -792,6 +799,27 @@ export const complianceAcceptFormSchema = z.object({
     .union([z.literal("on"), z.literal("")])
     .optional()
     .transform((value) => value === "on"),
+  community: z
+    .union([z.literal("on"), z.literal("")])
+    .optional()
+    .transform((value) => value === "on"),
+});
+
+/**
+ * Moving a village to the parish council model.
+ *
+ * A closed enum over both values even though only one of them is ever a valid
+ * submission — `setVillageMode` refuses anything but `council`, and refusing it
+ * *there* is what lets the refusal carry a sentence about why a village cannot
+ * move back. A one-value enum here would reject it as malformed input instead,
+ * which tells a coordinator nothing.
+ *
+ * No `villageId`. It comes from the session profile (domain rule 4): a village
+ * id in this payload would be a way to declare that somebody else's parish
+ * council has taken over their village.
+ */
+export const villageModeFormSchema = z.object({
+  mode: z.enum(VILLAGE_MODE_VALUES, { error: "Choose a compliance model" }),
 });
 
 /**

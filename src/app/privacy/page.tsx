@@ -122,10 +122,22 @@ export default function PrivacyPage() {
           at <strong>{APP_HOST}</strong>.
         </P>
         <P>
-          Your parish council is the <strong>data controller</strong> for
-          everything described here. They decide what {APP_NAME} is used for and
-          they answer for it. {APP_NAME} provides the software and processes data
-          on their instructions.
+          Every village has a <strong>data controller</strong> — the person or
+          body that decides what {APP_NAME} is used for there and answers for it.
+          Which one depends on how your village is run.{" "}
+          <strong>Where a parish or town council has taken the village on</strong>
+          , the council is the controller. <strong>Otherwise</strong> — and this
+          is the ordinary case for a neighbourhood group — your village
+          coordinator is the controller, and they have signed an agreement
+          setting out what that obliges them to do. Either way, {APP_NAME} itself
+          provides the software and processes data on the controller&rsquo;s
+          instructions.
+        </P>
+        <P>
+          Ask your coordinator which applies to your village if you are not sure;
+          they are also who to ask for the contact details of a council that has
+          taken it on. The details below are the deployment&rsquo;s own and are
+          the fallback where no village-specific controller has been named.
         </P>
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-base leading-relaxed text-slate-700">
           <p className="font-semibold text-slate-900">{DATA_CONTROLLER.name}</p>

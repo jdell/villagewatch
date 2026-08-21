@@ -40,15 +40,26 @@ alert when something serious is published.
 ### What being a coordinator means
 
 You are the person who decides what the village sees. In data protection terms
-you are acting on behalf of your parish or town council, which is the *data
-controller* — the body legally answerable for all of this. VillageWatch is the
-*processor*: we run the software on the council's behalf and do what the council
-tells us.
+somebody has to be the *data controller* — the person or body legally answerable
+for all of this — and which one you are depends on how your village is run.
+
+**Most villages have no parish council behind them.** In that case **you** are
+the controller. It is not a title you apply for; it is a description of what you
+are already doing, and it would be true whether or not anybody wrote it down. The
+Community Coordinator Agreement in the next section sets out what it obliges you
+to do, and the compliance screen lists the three duties with a deadline on them
+before it asks you to accept anything.
+
+**Where a parish or town council has taken the village on**, the council is the
+controller and you act on its behalf.
+
+Either way VillageWatch is the *processor*: we run the software and do what the
+controller tells us.
 
 That relationship is the reason for the paperwork in the next section, and it is
 worth understanding rather than clicking past. When a resident asks who holds
-their data, the answer is the council. When something goes wrong, the body the
-Information Commissioner writes to is the council.
+their data, the answer is you or the council. When something goes wrong, that is
+also who the Information Commissioner writes to.
 
 ### What you can do
 
@@ -75,8 +86,9 @@ Information Commissioner writes to is the council.
   an application is approved.
 - **Change or delete the audit trail.** Nothing can, including us. That is the
   point of it.
-- **Un-accept a compliance document.** Acceptances are a record of something
-  that happened on a date, so nothing on screen can rewrite them.
+- **Un-accept a compliance document, or move a village back off the council
+  model.** Acceptances are a record of something that happened on a date, so
+  nothing on screen can rewrite them.
 - **Recover a published report.** Once a report is published, residents have
   seen it and may have shared it. Think of publishing as final.
 
@@ -91,59 +103,104 @@ your village cannot accept a single report.
 
 Go to **Compliance** in the sidebar, or Dashboard then Compliance.
 
-You will find three documents, shown in full. Read them. They are written for a
-parish councillor rather than for a software engineer, and between them they run
-to a good half hour — put the kettle on.
+What you see there depends on how your village is run, and most villages get the
+first of these two.
+
+#### If there is no parish council behind your village — the community model
+
+You will find **one** document: the **Community Coordinator Agreement**. It is
+written for a volunteer rather than for a clerk and takes about ten minutes.
+
+It does two jobs. It is the contract between you and Yakasista Ltd, who run the
+software — a controller may only use a processor under a written contract. And
+it is the **policy document** the law requires before anyone may collect reports
+about suspected crime: reports are *criminal offence data*, which is treated more
+strictly than ordinary personal data, and processing it lawfully at all depends
+on having that document in place. Without one there is no lawful authorisation —
+not a paperwork gap, an actual absence of legal basis.
+
+**You are the data controller.** That is a description of what you are already
+doing rather than a title you apply for: you decide who is invited in, what gets
+published and what happens to a report. Three duties come with it and the screen
+sets them out above the agreement — answering a resident's request within one
+month, reporting a serious breach within 72 hours, and keeping a record of what
+the village processes. Sections 2 to 5 of the agreement are that record for
+everything the software does, and info@yakasista.com is where to go when one of
+the other two actually happens.
+
+One signature, and it is in force when you accept it. There is no paper copy
+waiting on a countersignature.
+
+#### If a parish or town council runs your village — the council model
+
+You will find **three** documents, shown in full. They are written for a parish
+councillor and between them run to a good half hour — put the kettle on.
 
 - **The Data Protection Impact Assessment (DPIA).** What the service does with
   residents' information, what could go wrong, and what has been built to stop
   it. UK GDPR Article 35 requires this before high-risk processing starts, not
   after.
-- **The Appropriate Policy Document (APD).** Reports about suspected crime are
-  *criminal offence data*, which the law treats more strictly than ordinary
-  personal data. Processing it lawfully at all depends on having this document
-  in place. Without it the council has no lawful authorisation — not a paperwork
-  gap, an actual absence of legal basis.
+- **The Appropriate Policy Document (APD).** The same policy document described
+  above, as a document of the council's own — which is what a council is
+  separately obliged to hold.
 - **The Data Processing Agreement (DPA).** The contract between your council and
-  Yakasista Ltd, who run the service. A controller may only use a processor
-  under a written contract, so a council using VillageWatch without one is in
-  breach from the first report filed.
+  Yakasista Ltd. A council using VillageWatch without one is in breach from the
+  first report filed.
 
 Tick all three and press **Accept and enable village**. Your name and the date
 are recorded against each one, and each is written to the audit trail
 separately.
 
-Three things worth knowing before you press it:
+#### Either way
 
 - **This blocks reporting until it is done.** A resident who opens the report
   form before you have finished this screen is told the village is not accepting
   reports yet and given the 999 and 101 numbers. That is deliberate.
-- **It cannot be undone from this screen.** A council that adopted a document on
-  a date did adopt it on that date. If the council later wants to withdraw, that
-  is a conversation with us, not a checkbox.
-- **The processing agreement takes two signatures and you are only providing
-  one.** Ticking the box records the council's acceptance of the terms. The
-  agreement is not in force until Yakasista Ltd has signed the paper copy too.
-  Send the signed copy to info@yakasista.com and keep the countersigned version
-  with the council's records.
+- **It cannot be undone from this screen.** A controller that adopted a document
+  on a date did adopt it on that date. If you or the council later want to
+  withdraw, that is a conversation with us, not a checkbox.
+- **The council's processing agreement takes two signatures and you would only
+  be providing one.** Ticking that box records the council's acceptance of the
+  terms; the agreement is not in force until Yakasista Ltd has signed the paper
+  copy too. Send the signed copy to info@yakasista.com and keep the
+  countersigned version with the council's records. The community agreement is
+  not like this — it takes one signature and is in force when you accept it.
 
-Take your own advice on the terms before accepting, and if the council has its
-own standard processing agreement, use that instead — tell us and we will sign
-it.
+Take your own advice on the terms before accepting, and if a council has its own
+standard processing agreement, use that instead — tell us and we will sign it.
 
-### 2. Set your parish council name
+#### If a council takes the village on later
+
+At the foot of the compliance screen there is a control for exactly that. It
+switches the village to the council model, and the council then adopts the three
+documents above and becomes the data controller from the date it does.
+
+Two things worth knowing. **Your village does not close while that happens** —
+reporting carries on under the agreement you accepted, because you are still the
+controller until the council has adopted its own, and nobody should have to wait
+for a parish meeting to file a report. And **your acceptance is not deleted**:
+you were the controller for that period, and the record of it is what shows the
+handover was orderly. It is one-way, so if a council later steps back, talk to us
+rather than switching it back.
+
+### 2. Set the name of whoever is answerable
 
 Go to **Dashboard** and find the parish council field in Village Settings.
 
-Type the council's full legal name, exactly as it appears on its own letterhead
-— "Histon and Impington Parish Council", not "Histon PC". There is no fixed
-format, because the real names are not uniform: parish meetings, town councils
-and Welsh community councils all differ.
+If a council runs your village, type its full legal name exactly as it appears
+on its own letterhead — "Histon and Impington Parish Council", not "Histon PC".
+There is no fixed format, because the real names are not uniform: parish
+meetings, town councils and Welsh community councils all differ.
+
+If no council runs your village, put the name people would recognise as the
+group — "Histon Neighbourhood Watch", or your own name if that is what the
+village would recognise. The field is free text and is not validated against
+anything.
 
 This name is printed at the foot of every document the app produces for your
-police contact or the council, and it is the body a resident is told to take a
-data protection complaint to. Get it wrong and a subject access request goes to
-somewhere with no authority to answer it.
+police contact or the council, and it is who a resident is told to take a data
+protection complaint to. Get it wrong and a subject access request goes somewhere
+with no authority to answer it.
 
 Do this before the first report is filed, not after.
 
@@ -556,17 +613,20 @@ resident that deletion unwinds publication, because it does not.
 
 ### Review the documents once a year
 
-The DPIA and the Appropriate Policy Document are due for review a year after the
-council accepted them. Put it in the council's calendar now — the same meeting
-each year is easiest.
+Whatever your village accepted is due for review a year after the date it was
+accepted — the Community Coordinator Agreement, or the DPIA and the Appropriate
+Policy Document. Put it in the diary now, or in the council's calendar; the same
+meeting each year is easiest.
 
 Reviewing means reading them again and asking whether they still describe what
 is happening: has the village changed the privacy level, turned auto-approve on,
 started posting to a WhatsApp Channel, grown by three hundred people. If the
 answer is yes, the assessment needs to say so.
 
-The review is a council act recorded in the council's minutes and a fresh
-signature on the paper document. Tell us and we will send updated copies.
+For a council that review is a council act recorded in its minutes and a fresh
+signature on the paper document. For a community village it is you re-reading the
+agreement and telling us if anything in it has stopped being true. Either way,
+tell us and we will send updated copies.
 
 ---
 

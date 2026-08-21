@@ -154,10 +154,12 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@react-pdf/renderer"],
 
   /**
-   * `/dashboard/compliance` renders `docs/DPIA.md`, `docs/APD_TEMPLATE.md` and
-   * `docs/DATA_PROCESSING_AGREEMENT.md` from disk — the coordinator accepts
-   * those documents on their council's behalf, so the page shows the real files
-   * rather than a restatement of them (see `src/lib/compliance-documents.ts`).
+   * `/dashboard/compliance` renders its documents from disk — the coordinator
+   * accepts them on the council's behalf, or in a community village as the
+   * controller themselves, so the page shows the real files rather than a
+   * restatement of them (see `src/lib/compliance-documents.ts`). Which set is
+   * rendered depends on `Village.mode`, so every file either mode can ask for
+   * is named here.
    *
    * None of them is imported by any module, so Next's file tracing has no way to
    * know the serverless function needs them and would not bundle them. Without
@@ -171,6 +173,13 @@ const nextConfig: NextConfig = {
       "./docs/DPIA.md",
       "./docs/APD_TEMPLATE.md",
       "./docs/DATA_PROCESSING_AGREEMENT.md",
+      /**
+       * The community model's single document. One route renders either set —
+       * which one depends on `Village.mode`, which is a database read the
+       * tracer cannot see — so all four are named here and the two a village
+       * does not use simply sit in the bundle unread.
+       */
+      "./docs/COMMUNITY_DPA.md",
     ],
     /**
      * `/dashboard/guide` renders `docs/COORDINATOR_GUIDE.md` the same way, and

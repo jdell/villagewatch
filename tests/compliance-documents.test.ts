@@ -3,10 +3,12 @@ import {
   COMPLIANCE_DOCUMENTS,
   loadComplianceDocuments,
 } from "@/lib/compliance-documents";
+import { documentsForMode } from "@/lib/constants";
 import { COORDINATOR_GUIDE_FILE, loadDocument } from "@/lib/docs";
 
 /**
- * The three documents the compliance page renders in full.
+ * The documents the compliance page renders in full — the council's three and
+ * the community model's one.
  *
  * This is the one test in the suite that touches the filesystem, and it earns
  * that because the failure it catches is invisible until a coordinator opens the
@@ -15,7 +17,7 @@ import { COORDINATOR_GUIDE_FILE, loadDocument } from "@/lib/docs";
  * acceptance form that still works. A council would be accepting a document it
  * was not shown.
  *
- * No secret, no database, no network — it reads three files out of the working
+ * No secret, no database, no network — it reads four files out of the working
  * tree, so CI runs it on a fresh clone like everything else.
  *
  * What it deliberately does **not** assert is the wording. These are legal
@@ -25,11 +27,12 @@ import { COORDINATOR_GUIDE_FILE, loadDocument } from "@/lib/docs";
  */
 
 describe("the compliance documents", () => {
-  it("registers three documents, each naming its legal instrument", () => {
+  it("registers every document either model can ask for", () => {
     expect(COMPLIANCE_DOCUMENTS.map((document) => document.id)).toEqual([
       "dpia",
       "apd",
       "dpa",
+      "community",
     ]);
 
     for (const document of COMPLIANCE_DOCUMENTS) {
@@ -38,8 +41,25 @@ describe("the compliance documents", () => {
     }
   });
 
+  it("loads exactly the documents a mode asks for", async () => {
+    // A mismatch here is a coordinator being asked to accept something they
+    // were not shown, or shown something they are not asked to accept.
+    const council = await loadComplianceDocuments("council");
+    const community = await loadComplianceDocuments("community");
+
+    expect(council.map((document) => document.id)).toEqual(
+      documentsForMode("council"),
+    );
+    expect(community.map((document) => document.id)).toEqual(
+      documentsForMode("community"),
+    );
+  });
+
   it("reads and parses every one of them", async () => {
-    const documents = await loadComplianceDocuments();
+    const documents = [
+      ...(await loadComplianceDocuments("council")),
+      ...(await loadComplianceDocuments("community")),
+    ];
 
     for (const document of documents) {
       // `ok: false` is what ships to the page as a red panel. On Vercel it means
@@ -57,26 +77,36 @@ describe("the compliance documents", () => {
     }
   });
 
-  it("gives the processing agreement the eight Article 28(3) obligations", async () => {
-    const documents = await loadComplianceDocuments();
-    const dpa = documents.find((document) => document.id === "dpa");
+  it.each([
+    ["council" as const, "dpa"],
+    ["community" as const, "community"],
+  ])(
+    "gives the %s agreement the eight Article 28(3) obligations",
+    async (mode, id) => {
+      const documents = await loadComplianceDocuments(mode);
+      const agreement = documents.find((document) => document.id === id);
 
-    expect(dpa?.ok).toBe(true);
-    if (!dpa?.ok) return;
+      expect(agreement?.ok).toBe(true);
+      if (!agreement?.ok) return;
 
-    // Article 28(3)(a) to (h). The sub-headings are lettered to match the
-    // Article, so a missing letter is a missing obligation rather than a
-    // formatting slip — and an agreement missing one of them does not meet
-    // Article 28(3) at all.
-    const headings = dpa.contents.map((entry) => entry.title);
+      // Article 28(3)(a) to (h). The sub-headings are lettered to match the
+      // Article, so a missing letter is a missing obligation rather than a
+      // formatting slip — and an agreement missing one of them does not meet
+      // Article 28(3) at all.
+      //
+      // Asserted against the community agreement too, and that is the point of
+      // running it twice: the community model exists to ask a volunteer for
+      // less *reading*, not to give them a contract with fewer terms in it.
+      const headings = agreement.contents.map((entry) => entry.title);
 
-    for (const letter of ["a", "b", "c", "d", "e", "f", "g", "h"]) {
-      expect(
-        headings.some((title) => title.startsWith(`(${letter})`)),
-        `Article 28(3)(${letter})`,
-      ).toBe(true);
-    }
-  });
+      for (const letter of ["a", "b", "c", "d", "e", "f", "g", "h"]) {
+        expect(
+          headings.some((title) => title.startsWith(`(${letter})`)),
+          `Article 28(3)(${letter})`,
+        ).toBe(true);
+      }
+    },
+  );
 });
 
 /**
