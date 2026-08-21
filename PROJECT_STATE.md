@@ -1,8 +1,8 @@
 # VillageWatch — project state
 
-**Last updated:** 21 August 2026 · **Repo version:** `v0.1.29` · **Branch:**
-`feat/reports-period-picker`, off `feat/community-mode`, off
-`fix/archive-clears-raw-description` · **Domain:** https://villagewatch.app
+**Last updated:** 21 August 2026 · **Repo version:** `v0.1.30` · **Branch:**
+`fix/share-summary-mode-aware`, off `main` — the three stacked branches below it
+are all merged · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -20,10 +20,10 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.29`, tagged, `package.json` on `main` reads `0.1.29` |
-| Version on screen | expect **v0.1.28** — the release commit carries `[skip ci]`, so production is built from the merge of the audit branch and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
+| Repo version | `v0.1.30`, tagged, `package.json` on `main` reads `0.1.30` |
+| Version on screen | expect **v0.1.29** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
-| Migrations in repo | 12, `20260726161847_init` → `20260820120000_village_community_mode`. Ten applied; the last two are new on these branches and have not been through `database.yml` |
+| Migrations in repo | 12, `20260726161847_init` → `20260820120000_village_community_mode`. **All twelve applied** — `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. So the compliance gate now reads a real `mode` column, and every village defaults to the community model |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
 | Test suite | Vitest, unit only, **21 files, 350 tests**, all passing (~2s) — runs with no `.env.local` and no database |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, now stepping past a tag that already exists — `v0.1.30` is on the remote while `package.json` reads `0.1.29`) |
@@ -34,10 +34,14 @@ in `BACKLOG.md`.
 
 | Branch | State | Action |
 | --- | --- | --- |
-| `main` | The working branch. Auto-deploys to production. Head is `8b1306b`, the `v0.1.29` release commit on top of the merged audit branch (PR #4). | — |
-| `feat/reports-period-picker` | **In review (N15).** Stacked on the community-mode branch, because the copy it makes conditional is conditional on `Village.mode`, which only exists there. Two things and a workflow fix: `/reports`' period control is one row with the dates behind "Custom range", and the two coordinator screens that told every village it had a parish council now read the village's own mode. | Merge into `feat/community-mode` |
-| `feat/community-mode` | **In review (N17).** Stacked on the T10 branch, which is stacked on `main` — both touch `PROJECT_STATE.md`, `BACKLOG.md`, `CLAUDE.md` and `prisma/schema.prisma`, so basing them side by side on `main` would conflict on four files for no reason. A two-tier compliance model behind `Village.mode`: a village with no parish council has its coordinator as data controller and accepts one agreement instead of three, and the activation screen and the community compliance screen both spell out what being a controller obliges somebody to do. | Merge into `fix/archive-clears-raw-description`, or into `main` once that lands |
-| `fix/archive-clears-raw-description` | **In review (T10).** The nightly sweep now deletes `rawDescription` in the same statement that archives a report, plus a catch-up pass for reports a coordinator archived by hand. `raw_description` is nullable (migration 11), `readRawDescription` says so instead of writing an audit row for nothing, and `tests/retention.test.ts` is the first route-handler test in the suite. | Merge to `main` |
+| `main` | The working branch. Auto-deploys to production. Head is `b0b050a`, the merge of the community-mode stack. | — |
+| `fix/share-summary-mode-aware` | **In review.** The third screen N15 missed, flagged in review on PR #7: the share panel on an incident told every village its summary was "for your PCSO or parish council". It reads `Village.mode` now, like `/reports` and the dashboard's controller field. | Merge to `main` |
+
+`feat/reports-period-picker` (N15, PR #7), `feat/community-mode` (N17, PR #6)
+and `fix/archive-clears-raw-description` (T10, PR #5) are all merged into `main`,
+and `database.yml` applied migrations 11 and 12 on the last two — so the whole
+stack this file described as "in review" is live. The local branches survive and
+can be deleted.
 
 `fix/audit-code-vs-docs` and `fix/database-workflow-environment-secret` are both
 merged and deleted on the remote. No other branches. Work normally happens on
@@ -61,10 +65,12 @@ PRs because they were asked for as PRs.
   one-way, audited, and **does not close the village** — the coordinator is still
   the controller until the council adopts its three.
 
-  **Nothing has run against a database.**
-  `20260820120000_village_community_mode` is unapplied, no village is on either
-  model in anger, and no acceptance of any kind has ever been recorded. Three
-  things to watch on the first village through: that the migration's backfill
+  **The migration is applied and nothing has run through it.**
+  `database.yml` applied `20260820120000_village_community_mode` on 21 August
+  when PR #6 merged, so every village now carries a real `mode` column reading
+  `community` — but no village is on either model in anger, and no acceptance of
+  any kind has ever been recorded. Three things to watch on the first village
+  through: that the migration's backfill
   leaves the seeded village on `community` (nothing has been accepted anywhere,
   so it should), that accepting the one agreement actually opens reporting, and
   that an upgrade leaves the village open. `docs/COMMUNITY_DPA.md` has been
@@ -92,14 +98,21 @@ PRs because they were asked for as PRs.
   instead of telling a coordinator to ask a platform administrator about a
   setting they own.
 
-  **Nothing has run against a database**, for the reason above it: `Village.mode`
-  arrives with an unapplied migration, so every village reads as `community`
-  through `getVillageMode`'s fallback — which is what the migration would give
-  them anyway. Worth watching once it is applied: that a council village gets the
-  council wording on both screens. The picker itself was driven by hand in a
-  browser — presets, the two-month grid, a range picked in reverse order, the
-  hidden inputs it submits, Escape, and the mobile layout — but never against a
-  village with reports in it.
+  **There was a third screen and the first pass missed it** — the share panel on
+  `/incidents/[id]`, which offered "a written summary of this report for your
+  PCSO or parish council" whatever the village. Flagged in review on PR #7 and
+  closed on `fix/share-summary-mode-aware`: `ShareSummary` takes a `mode` and
+  picks between two sets of copy, the police in both, because having no council
+  says nothing about having no PCSO. The document is unchanged in either model,
+  since `formatIncidentSummary` names no recipient.
+
+  **Nothing has been read off a real village yet.** The migration landed on 21
+  August, so `getVillageMode` is reading a column rather than falling back to
+  it — but every village in the database is `community`, and no council village
+  exists to prove the other half of any of the three screens. The picker itself
+  was driven by hand in a browser — presets, the two-month grid, a range picked
+  in reverse order, the hidden inputs it submits, Escape, and the mobile
+  layout — but never against a village with reports in it.
 
 - **`version.yml` no longer dies on a tag that already exists** — 21 August 2026.
   standard-version derives the next version from `package.json` and then tags it;
@@ -120,7 +133,8 @@ PRs because they were asked for as PRs.
   same age. `Incident.rawDescription` is nullable and null is the deletion —
   not a placeholder, which is a value a reporter could have typed.
   `20260820100000_archive_deletes_raw_description` drops the NOT NULL and
-  clears the rows already sitting archived (none on this deployment).
+  clears the rows already sitting archived (none on this deployment). Applied by
+  `database.yml` on 21 August, when PR #5 merged.
 
   **Never run.** No cron has ever fired here at all, so the first execution of
   this is also the first execution of the job. Read the response body: `archive.

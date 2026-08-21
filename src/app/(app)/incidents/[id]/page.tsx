@@ -18,7 +18,7 @@ import { NoVillage } from "@/components/no-village";
 import { ShareSummary } from "@/components/share-summary";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getVillageController } from "@/lib/villages";
+import { getVillageController, getVillageMode } from "@/lib/villages";
 import {
   formatIncidentSummary,
   reportController,
@@ -200,9 +200,25 @@ export default async function IncidentDetailPage({ params }: PageProps) {
     is nothing in it that is not already on the village map. `parishCouncil` is
     the one extra read: it names the data controller in the footer, which is
     what makes the document answerable to somebody outside the village.
+
+    `mode` is the other, and it is a separate call rather than a column on
+    `getVillageController` for the reason `/reports` documents: that function's
+    whole shape is a retry that drops `parish_council` on a database missing it,
+    and a second new column in the same SELECT would mean a database missing
+    `mode` losing the council name with it. It decides no part of the document —
+    `formatIncidentSummary` names no recipient — only the copy on the panel
+    around it, which told every village it had a parish council until now.
+
+    Both reads are behind the same gate as the summary, so a resident's page
+    still makes neither.
   */
-  const village =
-    isCoordinator && isPublic ? await getVillageController(villageId) : null;
+  const [village, mode] =
+    isCoordinator && isPublic
+      ? await Promise.all([
+          getVillageController(villageId),
+          getVillageMode(villageId),
+        ])
+      : [null, null];
 
   const summary = village
     ? formatIncidentSummary({
@@ -388,12 +404,13 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         </p>
       </section>
 
-      {summary && (
+      {summary && mode && (
         <section className="mt-6">
           <ShareSummary
             text={summary}
             shareTitle={`${incident.reference} — ${incident.title}`}
             anonymized={incident.anonymized}
+            mode={mode}
           />
         </section>
       )}
