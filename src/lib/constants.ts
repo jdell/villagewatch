@@ -1200,14 +1200,25 @@ export const MAX_CUSTOM_RANGE_DAYS = 730;
 /**
  * The periods `/reports` offers, plus the custom option.
  *
- * Seven and thirty days, because those are the two meetings a coordinator
- * actually attends: a police liaison call about the week, and a parish council
- * meeting about the month. Anything else is `custom`, which is a pair of date
- * inputs rather than a longer list of presets nobody would read.
+ * Seven and thirty days are the two meetings a coordinator actually attends: a
+ * police liaison call about the week, and a parish council meeting about the
+ * month. Ninety days and `year` are the two a coordinator writes rather than
+ * attends — a quarterly note to the council, and the figure somebody asks for
+ * every January. Anything else is `custom`, which is a date range picker rather
+ * than a longer list of presets nobody would read.
+ *
+ * `days: null` is not one thing, the same trap `TIME_RANGES` has: `year` is
+ * bounded and `custom` is whatever the picker says, so `resolveReportRange`
+ * branches on the **value** rather than on the number being absent. A preset
+ * whose span cannot be written as "n days back from now" has to be computed,
+ * and `year` is one — it runs from 1 January, so it is a different length every
+ * day of the year.
  */
 export const REPORT_RANGES = [
   { value: "7", label: "Last 7 days", days: 7 },
   { value: "30", label: "Last 30 days", days: 30 },
+  { value: "90", label: "Last 90 days", days: 90 },
+  { value: "year", label: "This year", days: null },
   { value: "custom", label: "Custom range", days: null },
 ] as const satisfies readonly {
   value: string;
@@ -1232,6 +1243,12 @@ export const DEFAULT_REPORT_RANGE: ReportRangePreset = "7";
  * incident log below is a table a person reads, and the whole document is
  * assembled in one render and held in one clipboard string. Somebody asking for
  * five years wants the spreadsheet, not this.
+ *
+ * It bounds the two spans somebody can type — a custom range and `?days=` — and
+ * deliberately not the presets. "This year" on 31 December of a leap year is 366
+ * days, and clamping a named period to make an arithmetic ceiling come out round
+ * would give a coordinator a report a day shorter than the one they asked for,
+ * with a notice explaining an adjustment nobody requested.
  */
 export const REPORT_MAX_RANGE_DAYS = 365;
 

@@ -624,7 +624,7 @@ export default async function DashboardPage({
         village has never had a channel — an empty form is how the first one
         gets set up, and there is nowhere else in the app to do it.
       */}
-      <section className="mt-8">
+      <section id="village-settings" className="mt-8">
         <h2 className="text-lg font-semibold text-slate-900">
           Village settings
         </h2>
@@ -633,14 +633,21 @@ export default async function DashboardPage({
         </p>
 
         {/*
-          The council first, because it is the one setting here that changes
+          The controller first, because it is the one setting here that changes
           nothing about how reports flow — it is a name on a document. Putting
           it above the other two also keeps them adjacent, which is the point
           of the ordering below.
+
+          `compliance.mode` decides what this card calls itself: a community
+          village has no parish council to name, and its coordinator is the
+          controller. Taken off the compliance read this page already does
+          rather than a second query — and it is defined on both halves of
+          `ComplianceStatus`, including the one where the column is missing.
         */}
         <ParishCouncilForm
           value={parishCouncil.value}
           available={parishCouncil.available}
+          mode={compliance.mode}
         />
 
         {/*

@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarRange, LayoutDashboard, TriangleAlert } from "lucide-react";
+import { LayoutDashboard, TriangleAlert } from "lucide-react";
 import { NoVillage } from "@/components/no-village";
+import { ReportPeriodPicker } from "@/components/reports/report-period-picker";
 import { ReportView } from "@/components/reports/report-view";
 import { requireCoordinator } from "@/lib/auth";
-import { getVillageController } from "@/lib/villages";
-import { DATA_CONTROLLER, REPORT_RANGES } from "@/lib/constants";
+import { getVillageController, getVillageMode } from "@/lib/villages";
+import { DATA_CONTROLLER } from "@/lib/constants";
+import { dateInputValue } from "@/lib/date-range";
 import { collectVillageReport, resolveReportRange } from "@/lib/reports";
 
 export const metadata: Metadata = { title: "Reports" };
@@ -28,8 +30,20 @@ export const metadata: Metadata = { title: "Reports" };
  * applied by the query that enforces the village and status scoping rather than
  * after it.
  *
+ * The controls themselves are `ReportPeriodPicker`, which is a Client Component
+ * around the same `<form method="get">`: a preset and a submit button, with the
+ * dates on screen only when "Custom range" is the preset. Every preset still
+ * works with no JavaScript at all.
+ *
  * `searchParams` is a Promise in Next.js 16 — awaited, never destructured in
  * the signature.
+ *
+ * ## Who the report is for depends on the village
+ *
+ * `Village.mode` decides it. A council village's report goes to a PCSO or the
+ * council; a community village's goes into the group's own records, and its
+ * coordinator is the data controller named in the footer. One read, one
+ * sentence, and the amber warning below says the same thing both ways.
  *
  * ## What renders immediately, and what costs a button
  *
@@ -54,9 +68,22 @@ export default async function ReportsPage({
   const params = await searchParams;
   const range = resolveReportRange(params);
 
-  const village = await getVillageController(villageId);
+  /*
+    `mode` is its own read rather than a column on `getVillageController`. That
+    function's whole shape is a retry that drops `parish_council` when the
+    database is missing it, and adding a second new column to the same SELECT
+    would mean a database missing `mode` losing the council name as well — an
+    amber warning about an unnamed data controller on a village that has named
+    one. See `getVillageMode`.
+  */
+  const [village, mode] = await Promise.all([
+    getVillageController(villageId),
+    getVillageMode(villageId),
+  ]);
 
   if (!village) return <NoVillage />;
+
+  const council = mode === "council";
 
   const collected = await collectVillageReport({
     villageId,
@@ -74,8 +101,6 @@ export default async function ReportsPage({
   const { range: _serverOnly, ...report } = collected;
   void _serverOnly;
 
-  const custom = range.preset === "custom";
-
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
       <div
@@ -86,9 +111,17 @@ export default async function ReportsPage({
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
             Reports
           </h1>
+          {/*
+            Who the document is *for* depends on `Village.mode`. Most villages
+            have no council behind them — the community model is the default —
+            and telling a volunteer with six neighbours and a WhatsApp group
+            that this is for their parish council is describing somebody else's
+            village to them. See "The two compliance models" in `CLAUDE.md`.
+          */}
           <p className="mt-1 text-sm text-slate-500">
-            A written report of what your village has published, for your PCSO
-            or parish council.
+            A written report of what your village has published, for{" "}
+            {council ? "your PCSO or parish council" : "your community records"}
+            .
           </p>
         </div>
 
@@ -107,6 +140,11 @@ export default async function ReportsPage({
         footer names "[Parish Council name]" is a document a coordinator would
         send to the police without noticing, so it says so here rather than only
         in the footer of the thing they are about to print.
+
+        Both halves of the sentence were wrong for a community village: the
+        controller there is the coordinator reading this rather than a council,
+        and the field has not been platform-admin-only since `/dashboard` grew
+        one. It names the person who can actually fix it, and links to where.
       */}
       {report.dataController === DATA_CONTROLLER.name && (
         <div
@@ -118,104 +156,35 @@ export default async function ReportsPage({
             <p className="font-medium">No data controller is named yet</p>
             <p className="mt-1 text-amber-800">
               The footer of this report will read
-              &ldquo;{report.dataController}&rdquo;. Ask your platform
-              administrator to set the parish council on your village before you
-              send this to anyone outside the village.
+              &ldquo;{report.dataController}&rdquo;.{" "}
+              {council
+                ? "Name your parish council in"
+                : "Your village runs the community model, so you are the data controller — put your group’s name in"}{" "}
+              <Link
+                href="/dashboard#village-settings"
+                className="font-medium underline underline-offset-2"
+              >
+                village settings
+              </Link>{" "}
+              before you send this to anyone outside the village.
             </p>
           </div>
         </div>
       )}
 
-      <form
-        method="get"
-        className="mt-6 rounded-2xl border border-slate-200 bg-white p-4"
-        data-print-hide
-      >
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-44 flex-1">
-            <label
-              htmlFor="report-range"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Period
-            </label>
-            <select
-              id="report-range"
-              name="range"
-              defaultValue={range.preset}
-              className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-            >
-              {REPORT_RANGES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/*
-            Both date inputs are always rendered and always submitted. Hiding
-            them behind the "Custom" option would need JavaScript to reveal, and
-            the point of a GET form is that it works without any; carrying them
-            costs two query parameters that `resolveReportRange` ignores unless
-            `range=custom`.
-          */}
-          <div className="min-w-36 flex-1">
-            <label
-              htmlFor="report-from"
-              className="block text-sm font-medium text-slate-700"
-            >
-              From
-            </label>
-            <input
-              id="report-from"
-              name="from"
-              type="date"
-              defaultValue={range.fromValue}
-              className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-            />
-          </div>
-
-          <div className="min-w-36 flex-1">
-            <label
-              htmlFor="report-to"
-              className="block text-sm font-medium text-slate-700"
-            >
-              To
-            </label>
-            <input
-              id="report-to"
-              name="to"
-              type="date"
-              defaultValue={range.toValue}
-              className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            <CalendarRange className="size-4" aria-hidden />
-            Build report
-          </button>
-        </div>
-
-        <p className="mt-2.5 text-xs text-slate-500">
-          {custom
-            ? "The dates are inclusive. Pick “Custom range” to use them."
-            : "Pick “Custom range” above to use the dates."}
-          {" "}
-          Published and resolved reports only — nothing still waiting for review,
-          and nothing you turned down.
-        </p>
-
-        {range.notice && (
-          <p className="mt-2 text-xs font-medium text-amber-700">
-            {range.notice}
-          </p>
-        )}
-      </form>
+      {/*
+        `today` is the server's, not the browser's. It is the bound the picker's
+        grid enforces and the clock `resolveReportRange` clamps against, and
+        reading it off `new Date()` inside a Client Component would be a
+        different answer on each side of hydration. See the component header.
+      */}
+      <ReportPeriodPicker
+        preset={range.preset}
+        from={range.fromValue}
+        to={range.toValue}
+        today={dateInputValue(new Date())}
+        notice={range.notice}
+      />
 
       <ReportView
         report={report}
