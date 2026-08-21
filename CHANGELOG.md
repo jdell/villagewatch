@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.30](https://github.com/jdell/villagewatch/compare/v0.1.29...v0.1.30) (2026-08-21)
+
+
+### Features
+
+* **compliance:** community mode — one agreement for a village with no council ([a474ef3](https://github.com/jdell/villagewatch/commit/a474ef31664e01f1118fcd7e0ccda16345c94cc1))
+
+
+### Fixes
+
+* **retention:** delete the reporter's original wording when a report is archived ([47e4ad3](https://github.com/jdell/villagewatch/commit/47e4ad3da9befb856333336e9a4f3db612e5734b))
+
 ### [0.1.29](https://github.com/jdell/villagewatch/compare/v0.1.28...v0.1.29) (2026-08-13)
 
 
