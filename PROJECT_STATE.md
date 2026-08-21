@@ -1,7 +1,8 @@
 # VillageWatch — project state
 
-**Last updated:** 13 August 2026 · **Repo version:** `v0.1.27` · **Branch:**
-`fix/audit-code-vs-docs`, off `2af3cb6` · **Domain:** https://villagewatch.app
+**Last updated:** 20 August 2026 · **Repo version:** `v0.1.29` · **Branch:**
+`fix/archive-clears-raw-description`, off `8b1306b` · **Domain:**
+https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -19,12 +20,12 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.27`, tagged, `package.json` on `main` reads `0.1.27` |
-| Version on screen | expect **v0.1.26** — the release commit carries `[skip ci]`, so production is built from `dbd85ee` and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
+| Repo version | `v0.1.29`, tagged, `package.json` on `main` reads `0.1.29` |
+| Version on screen | expect **v0.1.28** — the release commit carries `[skip ci]`, so production is built from the merge of the audit branch and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
-| Migrations in repo | 10, `20260726161847_init` → `20260803120000_incident_village_numbering`. All ten applied |
+| Migrations in repo | 11, `20260726161847_init` → `20260820100000_archive_deletes_raw_description`. Ten applied; the eleventh is new on this branch and has not been through `database.yml` |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, unit only, **18 files, 293 tests**, all passing (~2s) — runs with no `.env.local` and no database |
+| Test suite | Vitest, unit only, **19 files, 303 tests**, all passing (~2s) — runs with no `.env.local` and no database |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump) |
 
 ---
@@ -33,18 +34,35 @@ in `BACKLOG.md`.
 
 | Branch | State | Action |
 | --- | --- | --- |
-| `main` | The working branch. Auto-deploys to production. Head is `2af3cb6`, the Facebook share button. | — |
-| `fix/audit-code-vs-docs` | **In review.** The 13 August audit pass: the join code is actually enforced now, the two village modules are one, moderation's audit rows carry an address, and nineteen code-versus-documentation contradictions are reconciled across `CLAUDE.md`, this file, `BACKLOG.md`, `README.md`, `SETUP.md`, `docs/E2E_VERIFICATION.md`, `docs/DPIA.md` and `/privacy`. | Merge to `main` |
-| `fix/database-workflow-environment-secret` | **Stale.** Fully merged — `git log origin/main..origin/fix/database-workflow-environment-secret` is empty, so it carries nothing `main` does not already have. Its two commits (`5b76757` reading `DIRECT_URL` from the Production environment, `522270a` surviving a database without `parish_council`) are both in `main`. | Safe to delete, locally and on the remote |
+| `main` | The working branch. Auto-deploys to production. Head is `8b1306b`, the `v0.1.29` release commit on top of the merged audit branch (PR #4). | — |
+| `fix/archive-clears-raw-description` | **In review (T10).** The nightly sweep now deletes `rawDescription` in the same statement that archives a report, plus a catch-up pass for reports a coordinator archived by hand. `raw_description` is nullable (migration 11), `readRawDescription` says so instead of writing an audit row for nothing, and `tests/retention.test.ts` is the first route-handler test in the suite. | Merge to `main` |
 
-No other branches, local or remote. Work happens on `main` — see the push rule
-under Known Pitfalls in `CLAUDE.md`.
+`fix/audit-code-vs-docs` and `fix/database-workflow-environment-secret` are both
+merged and deleted on the remote. No other branches. Work normally happens on
+`main` — see the push rule under Known Pitfalls in `CLAUDE.md`; these two are
+PRs because they were asked for as PRs.
 
 ---
 
 ## Open items
 
 ### Done — landed, not yet exercised against real data
+
+- **Archiving deletes the reporter's original wording** — 20 August 2026, T10.
+  `/privacy` §7 said it happened at twelve months and nothing did it; the
+  archive step was a status flip. It is now one `updateMany` that sets
+  `status: "ARCHIVED"` and `rawDescription: null` together, with a second pass
+  that catches up reports a coordinator archived by hand once they reach the
+  same age. `Incident.rawDescription` is nullable and null is the deletion —
+  not a placeholder, which is a value a reporter could have typed.
+  `20260820100000_archive_deletes_raw_description` drops the NOT NULL and
+  clears the rows already sitting archived (none on this deployment).
+
+  **Never run.** No cron has ever fired here at all, so the first execution of
+  this is also the first execution of the job. Read the response body: `archive.
+  archived` and `archive.rawWordingDeleted` are separate numbers and the second
+  is the one that cannot be undone. `/privacy`, `docs/DPIA.md` and
+  `docs/APD_TEMPLATE.md` all changed in the same commit.
 
 - **Per-village incident numbering** — `35b9508`, v0.1.25. `VW-HIS-2026-0003`
   is the village's own count for the year rather than a platform-wide sequence.
@@ -83,9 +101,11 @@ under Known Pitfalls in `CLAUDE.md`.
   `20260728150000_village_dpa_gate`). The two documents that disagreed now
   agree: `docs/E2E_VERIFICATION.md`'s addendum was the older of the two and has
   been corrected to match the `database.yml` run that reported `Database schema
-  is up to date!` on 3 August. **All ten migrations are applied**, so the gate is
-  live and the seeded village is refusing reports until somebody accepts all
-  three documents on `/dashboard/compliance`.
+  is up to date!` on 3 August. **All ten migrations that existed then are
+  applied**, so the gate is live and the seeded village is refusing reports
+  until somebody accepts all three documents on `/dashboard/compliance`. The
+  eleventh, `20260820100000_archive_deletes_raw_description`, is new and is not
+  applied yet.
 
   That reconciles the record; it does not *verify* it, and the difference
   matters because it is visible to residents. **Confirm with `npx prisma migrate
@@ -254,8 +274,9 @@ landed in.
 
 | Date | Version | Change |
 | --- | --- | --- |
-| 13 Aug 2026 | unreleased | The join code is enforced — both auth routes call `checkVillageJoin`, which had never been called; the two village modules became one; moderation's audit rows carry an address; nineteen code-versus-documentation contradictions reconciled (`fix/audit-code-vs-docs`) |
-| 11 Aug 2026 | unreleased | Facebook share button beside the WhatsApp copy button (`2af3cb6`) |
+| 20 Aug 2026 | unreleased | Archiving deletes the reporter's original wording, and catches up the reports a coordinator archived by hand (T10, `fix/archive-clears-raw-description`) |
+| 13 Aug 2026 | v0.1.29 | The join code is enforced — both auth routes call `checkVillageJoin`, which had never been called; the two village modules became one; moderation's audit rows carry an address; nineteen code-versus-documentation contradictions reconciled (PR #4) |
+| 11 Aug 2026 | v0.1.28 | Facebook share button beside the WhatsApp copy button (`2af3cb6`) |
 | 4 Aug 2026 | v0.1.27 | Removed the print button from `/reports` — the server-rendered PDF replaces it (`dbd85ee`) |
 | 4 Aug 2026 | v0.1.26 | Download the community safety report as a PDF, rendered server-side so the file is identical every time (`3797e6f`) |
 | 3 Aug 2026 | v0.1.25 | Show the build version in the app sidebar, `/settings` and both footers (`fe89f41`) |
