@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Check, ClipboardCopy, Share2, ShieldAlert } from "lucide-react";
 import { copyText, shareText } from "@/lib/clipboard";
+import type { VillageMode } from "@/lib/constants";
 
 /**
- * One report, formatted for a PCSO or a parish clerk, and a button that opens
+ * One report, formatted to be sent outside the village, and a button that opens
  * whatever the device shares with.
  *
  * The text arrives as a prop, already built by `formatIncidentSummary` on the
@@ -22,7 +23,43 @@ import { copyText, shareText } from "@/lib/clipboard";
  * The summary carries only what is already on the village map — the anonymised
  * description, the category, the severity, the time and the landmark. No
  * coordinates and no verbatim text; `ReportIncident` has nowhere to put either.
+ *
+ * ## Who it is for depends on the village
+ *
+ * `Village.mode`, the same read `/reports` and the dashboard's controller field
+ * make. A council village sends this to its PCSO or its parish council; a
+ * community village — the default, and most of them — has no council to send it
+ * to, so the second half of that sentence names the group's own records
+ * instead. Telling a volunteer with six neighbours and a WhatsApp group that
+ * this is for their parish council is describing somebody else's village to
+ * them, which is what N15 fixed on the other two screens and missed here.
+ *
+ * The police are in both sets of copy, because a village having no council says
+ * nothing about whether it has a PCSO. What changes is the body beside them.
+ *
+ * The *text* is unaffected — `formatIncidentSummary` names no recipient, so
+ * both modes share one document and only the panel around it moves. One
+ * component with the mode passed in rather than two, for the reason
+ * `ParishCouncilForm` gives: this is a heading and a sentence changing, not two
+ * sets of copy about who is answerable for what.
  */
+
+/** Everything on this panel that depends on whether the village has a council. */
+const COPY = {
+  council: {
+    heading: "Share with police or the council",
+    description:
+      "A written summary of this report for your PCSO or parish council.",
+  },
+  community: {
+    heading: "Share with police or your records",
+    description:
+      "A written summary of this report for your PCSO, or for your group’s own records.",
+  },
+} as const satisfies Record<
+  VillageMode,
+  { heading: string; description: string }
+>;
 
 type ShareSummaryProps = {
   /** The formatted summary. Built by `formatIncidentSummary` on the server. */
@@ -35,6 +72,8 @@ type ShareSummaryProps = {
    * that hands it to a share sheet.
    */
   anonymized?: boolean;
+  /** Which model the village runs. Decides the copy, never the document. */
+  mode: VillageMode;
 };
 
 /** How long the button stays saying "Copied!" before going back. */
@@ -44,7 +83,9 @@ export function ShareSummary({
   text,
   shareTitle,
   anonymized = true,
+  mode,
 }: ShareSummaryProps) {
+  const copy = COPY[mode];
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -91,14 +132,13 @@ export function ShareSummary({
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
         <Share2 className="size-4 text-slate-400" aria-hidden />
-        Share with police or the council
+        {copy.heading}
       </h3>
 
       <p className="mt-1 text-xs leading-relaxed text-slate-500">
-        A written summary of this report for your PCSO or parish council. It
-        carries the anonymised description, the category, the severity, when it
-        happened and the landmark the reporter named — never their original
-        wording, their name or the map coordinates.
+        {copy.description} It carries the anonymised description, the category,
+        the severity, when it happened and the landmark the reporter named —
+        never their original wording, their name or the map coordinates.
       </p>
 
       {!anonymized && (

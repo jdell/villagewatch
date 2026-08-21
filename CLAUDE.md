@@ -1489,15 +1489,26 @@ the data controller is**. `VILLAGE_MODES`, `resolveVillageMode` and
   parish council is the data controller, which is now true of a minority of
   villages. `/terms` cannot read a village — it is public and sessionless — so it
   describes both and points at `/privacy` §1.
-- **The coordinator-facing copy follows the mode too, and that was N15.** Two
+- **The coordinator-facing copy follows the mode too, and that was N15.** Three
   screens told every village it had a council: `/reports` said the document was
-  "for your PCSO or parish council", and the dashboard's controller field was
-  headed "Parish council" and asked for a council's legal name. In the community
+  "for your PCSO or parish council", the dashboard's controller field was
+  headed "Parish council" and asked for a council's legal name, and the share
+  panel on `/incidents/[id]` offered "a written summary of this report for your
+  PCSO or parish council". In the community
   model there is no council to name — the coordinator is the controller — so the
   field a volunteer needs to fill in was asking them for something that does not
   exist, which is how it stays empty and every report they send names
   `DATA_CONTROLLER`, still placeholder text. The column is `Village.parishCouncil`
   either way; only the labels move.
+- **The share panel was the third screen and it was missed**, closed the day
+  after the other two. `ShareSummary` takes a `mode` and picks between two sets
+  of copy the way `ParishCouncilForm` does — one component, because it is a
+  heading and a sentence rather than two accounts of who is answerable for what.
+  **The police stay in both**: a village having no parish council says nothing
+  about whether it has a PCSO, so what moves is the body beside them — "or the
+  council" becomes "or your records". The *document* is untouched in both modes,
+  because `formatIncidentSummary` names no recipient at all; only the panel
+  around it reads the village.
 - **`getVillageMode` is the cheap read for copy, and `getVillageCompliance` is
   the read for the gate.** The second joins four acceptance relations to work out
   whether a village may accept a report; a page changing one sentence needs none
@@ -1978,6 +1989,13 @@ together. Two documents: one incident, and everything published over a period.
   the village, and a report still in the queue has not cleared moderation
   (domain rule 6) while a rejected one is a report somebody decided should not
   be published at all.
+- **Who the single-incident summary is for follows `Village.mode`**, the same
+  read `/reports` makes and for the same reason — see The two compliance models.
+  The page makes it inside the same `isCoordinator && isPublic` gate as
+  `getVillageController`, so a resident's page still reads neither, and
+  `ShareSummary` renders one of two sets of copy from it. Nothing about the text
+  changes: `formatIncidentSummary` addresses nobody, so both models share one
+  document.
 - **The single-incident summary is gated exactly like the WhatsApp alert** —
   coordinators, published reports only. The destination is different and the
   reasoning still carries: approving is the act that says a report is fit to
@@ -2730,14 +2748,14 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates, the onboarding tour and the ONS village directory pipeline. Still
 open:
 
-- The Supabase project exists (eu-west-2) and **ten of the twelve migrations
-  are applied**, with `postgis.sql` and `rls_policies.sql` re-run after them.
-  The eleventh and twelfth are
-  `20260820100000_archive_deletes_raw_description` and
-  `20260820120000_village_community_mode`, which are new
-  and have not been through `database.yml` yet. The first drops a NOT NULL and
-  clears the wording of reports already archived, which is nothing on this
-  deployment because no report has ever reached twelve months; the second adds
+- The Supabase project exists (eu-west-2) and **all twelve migrations are
+  applied**, with `postgis.sql` and `rls_policies.sql` re-run after them. The
+  eleventh and twelfth went in on 21 August 2026, through `database.yml` on the
+  merges of PR #5 and PR #6:
+  `20260820100000_archive_deletes_raw_description` drops a NOT NULL and
+  clears the wording of reports already archived, which was nothing on this
+  deployment because no report has ever reached twelve months; and
+  `20260820120000_village_community_mode` adds
   `mode` and the community acceptance, defaulting every village to the community
   model. This
   entry said "1–5 of the nine" until 3 August 2026 and was stale: the run that
@@ -2925,12 +2943,17 @@ open:
   three states, the one-way write, all three council documents being required and
   the community model's single agreement; what they cannot cover is the 403
   actually reaching a resident, which wants the route test named below.
-- **Community mode has a column, two screens, a document and no village behind
-  it.** `20260820120000_village_community_mode` is new and unapplied, so nothing
-  is on the community model yet and nothing has read `Village.mode` against a
-  real row. Watch three things on the first village through it: that the
-  migration's backfill leaves the seeded village where it should be (nothing has
-  been accepted anywhere, so it should stay `community`), that a coordinator
+- **Community mode has a column, three screens, a document and no village behind
+  it.** `20260820120000_village_community_mode` is applied, so every village in
+  the database carries `mode` and reads `community` — but nothing has been
+  accepted on that model and no council village exists, so the other half of
+  every mode-conditional sentence in the app is still unproven. The three screens
+  are `/reports`, the dashboard's controller field and the share panel on an
+  incident; the third was missed in the first pass and closed the day after.
+  Watch three things on the first village through it: that the
+  migration's backfill left the seeded village where it should be — it has run,
+  and nothing has been accepted anywhere, so that village should read
+  `community` — that a coordinator
   accepting the one agreement actually opens reporting, and — much later, and the
   one that is easiest to get wrong — that a village upgrading to the council
   model **stays open** rather than closing while the council reads three
