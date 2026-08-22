@@ -1850,14 +1850,22 @@ export const POLICE_API_BASE_URL = "https://data.police.uk/api";
 export const POLICE_DATA_URL = "https://data.police.uk/";
 
 /**
- * The ceiling data.police.uk asks callers to stay under.
+ * The pace every outbound call to data.police.uk is held to.
  *
- * Their documentation states no hard quota and asks for no more than 15
- * requests per second. That is a courtesy rather than an enforced limit, which
- * is precisely why it is written down here and enforced on our side: a service
- * that has to start rate limiting us is a service that starts by blocking us.
+ * Their documentation asks for no more than 15 requests per second and states
+ * no hard quota. **In practice the service is stricter than its own
+ * documentation**: the first scheduled run paced at 15/s came back 429
+ * `rate_limited` for every village it touched, so the documented figure is a
+ * ceiling the service does not itself honour and is not safe to pace against.
+ * One request per second is what this is set to, deliberately far under the
+ * stated limit — a service that has to start rate limiting us is a service that
+ * starts by blocking us, and there is no key here to identify us by if it does.
+ *
+ * This is a *pace*, not a quota: it costs a slow run and never a wrong figure.
+ * `POLICE_SYNC_MAX_REQUESTS` is sized against it — see the note there, because
+ * at this pace the pacer rather than the API's latency is what bounds a run.
  */
-export const POLICE_API_MAX_REQUESTS_PER_SECOND = 15;
+export const POLICE_API_MAX_REQUESTS_PER_SECOND = 1;
 
 /**
  * How long a single call is given before it is abandoned.
@@ -1922,13 +1930,24 @@ export const POLICE_MAX_CRIMES_PER_MONTH = 3_000;
 /**
  * Outbound calls one scheduled run will make.
  *
- * The route has 60 seconds and the pacer above holds it to 15 calls a second,
- * so the real bound is the API's own latency rather than this. It exists so
- * that a deployment which has just activated forty parishes drains over several
- * nights instead of timing out halfway through and leaving no record of where
- * it got to.
+ * It exists so that a deployment which has just activated forty parishes drains
+ * over several nights instead of timing out halfway through and leaving no
+ * record of where it got to.
+ *
+ * **This is now sized against the pacer, not against the API's latency**, and
+ * the two have to be read together. At the old 15 calls a second the route's 60
+ * seconds were never the binding constraint, so 120 was free. At
+ * `POLICE_API_MAX_REQUESTS_PER_SECOND` of 1 it is arithmetic: 120 calls is 120
+ * seconds of pacing alone inside a function that is killed at `maxDuration`,
+ * which is exactly the timed-out-halfway-through failure this constant exists
+ * to prevent — and being killed mid-run is the one outcome that leaves no
+ * record, because the response that reports where it got to is never sent.
+ *
+ * 40 leaves 40 seconds of pacing and 20 for the calls themselves, the
+ * availability call and the writes. Raise it only alongside `maxDuration` in
+ * `src/app/api/cron/police-data/route.ts`, or with the pace.
  */
-export const POLICE_SYNC_MAX_REQUESTS = 120;
+export const POLICE_SYNC_MAX_REQUESTS = 40;
 
 /**
  * The radius data.police.uk searches around a point, in metres.

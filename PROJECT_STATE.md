@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 22 August 2026 · **Repo version:** `v0.1.34` · **Branch:**
-`fix/dashboard-period-picker`, off `main` · **Domain:** https://villagewatch.app
+**Last updated:** 22 August 2026 · **Repo version:** `v0.1.35` · **Branch:**
+`main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -19,12 +19,12 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.34`, tagged, `package.json` on `main` reads `0.1.34` — the police-data branch landed as PR #10 on 22 August |
-| Version on screen | expect **v0.1.33** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
+| Repo version | `v0.1.35`, tagged — the period-picker branch landed as PR #11 on 22 August, after the police-data branch as PR #10 |
+| Version on screen | expect **v0.1.34** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
-| Migrations in repo | 13, `20260726161847_init` → `20260822120000_police_crime_data`. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one, and nothing a resident can do changes when it runs. **Confirm `database.yml`'s run on that merge, and that `rls_policies.sql` was re-run with it** — a new table arrives with RLS off, and until the file is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
+| Migrations in repo | 13, `20260726161847_init` → `20260822120000_police_crime_data`, and **all 13 are applied**. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, **27 files, 435 tests**, all passing (~2s) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
+| Test suite | Vitest, **27 files, 436 tests**, all passing (~3.5s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -34,7 +34,7 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
-| `fix/dashboard-period-picker` | **In review (PR to open).** The period control on `/dashboard` and `/incidents` collapses its two date inputs under a preset, the way `/reports` has since PR #7, and the calendar behind all three is now one component. No migration, no schema change. | Merge to `main` |
+| `fix/dashboard-period-picker` | Merged as PR #11, 22 August. | Delete |
 | `feat/police-data` | Merged as PR #10, 22 August. Migration 13 landed with it. | Delete; confirm `rls_policies.sql` re-ran |
 | `fix/share-summary-mode-aware` | Merged. | Delete |
 | `fix/community-mode-copy-and-grant-docs` | Merged. | Delete |
@@ -74,7 +74,7 @@ PRs because they were asked for as PRs.
 - **Official police data** — 22 August 2026. VillageWatch now shows the Home
   Office's own recorded-crime figures beside a village's reports, from
   `data.police.uk`. Four modules — `police-api.ts` (the client, typed failures,
-  a 15/s outbound pacer), `police-data.ts` (the Prisma half), `police-report.ts`
+  a 1/s outbound pacer), `police-data.ts` (the Prisma half), `police-report.ts`
   (client-safe types and words) and `GET|POST /api/cron/police-data` (weekly, and
   the on-demand endpoint) — three Prisma models, a dashboard panel, and a
   comparison section in all three renderings of the community safety report:
@@ -454,6 +454,49 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 ---
 
 ## Recent completions
+
+**The police-data cron ran for the first time, and it took two bugs to do it —
+22 August.** The first scheduled run of `/api/cron/police-data` failed for every
+village. Both faults are fixed and both now have a test that fails without the
+fix.
+
+- **`keepExistingCrimes` reached Prisma.** `recordSync` passed its whole
+  argument object to the `policeDataSync` upsert, and that object carries a flag
+  that is application logic — it decides whether the stored month is cleared —
+  and is on no model and in no migration. Prisma rejected the write as an
+  unknown field. It is destructured out now. **This was never schema drift**,
+  which is worth stating because it looked exactly like it: the column has never
+  existed anywhere, and the migration is applied. Nor could the typechecker have
+  caught it — excess-property checking applies to object literals, not to a
+  variable carrying more properties than the parameter type names, so
+  `npx tsc --noEmit` was clean throughout. `tests/police-data.test.ts` asserts
+  the written columns instead.
+- **It only fires on the failure path**, which is why it survived review and why
+  it took a real run to find. `recordSync` is called only when a fetch has
+  already failed, so the bug needed the second one to expose it.
+- **The pace is 1 request a second now, down from the documented 15.** Every
+  village came back 429, so data.police.uk is stricter in practice than its own
+  documentation says and 15/s is not a pace to build on.
+  `POLICE_SYNC_MAX_REQUESTS` came down with it, from 120 to 40, and that is the
+  part worth remembering: at 15/s the route's 60 seconds were never the binding
+  constraint, while at 1/s 120 calls is 120 seconds of pacing inside a function
+  killed at `maxDuration` — the timed-out-halfway-through failure the budget
+  exists to prevent, and the one that leaves no record, because the response
+  saying where the run got to never gets sent. The three figures are now coupled;
+  move one and check it against the other two.
+- **The suite stayed fast.** The pacer is module state that outlives a test, so
+  at 1/s every request in `police-api.test.ts` queued behind the last one and the
+  file went from 1.8s to 23s. The tests wind a fake clock forward instead of
+  sitting through a production politeness pace; the pacer keeps its real state,
+  so the one test that measures the wait still fails when the pacer is removed —
+  checked by removing it. 27 files, 436 tests, ~3.5s.
+
+**What this run did not settle.** The sync has still never completed against
+data.police.uk, so everything under "Built, but never exercised against reality"
+about the police figures stands: the neighbourhood lookup, the availability
+list, a real month's volume, and the two freehand fields. The next run is still
+the first real one.
+
 
 Newest first. Dates are the commit's, versions are the release the commit
 landed in.

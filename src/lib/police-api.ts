@@ -46,9 +46,14 @@ import {
  *
  * ## Rate limiting, and why it is a module variable
  *
- * `POLICE_API_MAX_REQUESTS_PER_SECOND` is what the service asks callers to stay
- * under. `reserve()` below holds every outbound call to that pace by chaining
- * them through one promise.
+ * `POLICE_API_MAX_REQUESTS_PER_SECOND` is the pace every outbound call is held
+ * to. `reserve()` below enforces it by chaining them through one promise.
+ *
+ * **It is under the documented figure rather than at it, and that is a finding
+ * rather than caution.** The service asks for no more than 15 a second; the
+ * first scheduled run paced at exactly that came back 429 for every village it
+ * touched, so the documented ceiling is not one the service itself honours. See
+ * the constant.
  *
  * **This is exactly the shape `src/lib/rate-limit.ts` says is wrong**, and the
  * difference is worth being explicit about, because a later reader who has
@@ -61,13 +66,13 @@ import {
  * This is a *politeness* pace on an *outbound* call, and the two properties
  * that make the table necessary there do not apply here:
  *
- * - There is no adversary. Nobody is trying to make us exceed 15 requests a
- *   second; the only thing that would is our own loop.
+ * - There is no adversary. Nobody is trying to make us exceed the pace; the only
+ *   thing that would is our own loop.
  * - The work is already serialised. `syncVillagePoliceData` walks villages and
  *   months in sequence inside one scheduled function, so in practice there is
  *   one instance making these calls at all.
  *
- * What this does **not** promise is a global 15/s across a fleet — two
+ * What this does **not** promise is that pace globally across a fleet — two
  * concurrent lambdas would each pace themselves and together exceed it. That is
  * a real limitation and it is bounded by `POLICE_SYNC_MAX_REQUESTS` and by the
  * cache: a run that finds every month fresh makes no calls at all. A shared

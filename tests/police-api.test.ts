@@ -77,12 +77,41 @@ const CRIME = {
   month: "2026-05",
 };
 
+/**
+ * How far the clock is wound on for each test, so no test inherits the last
+ * one's slot. Anything comfortably past `1 / POLICE_API_MAX_REQUESTS_PER_SECOND`
+ * does; a minute is unmistakable in a stack trace.
+ */
+const CLOCK_STEP_MS = 60_000;
+
+let clockOffsetMs = 0;
+
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
+
+  /*
+    The pacer in `police-api.ts` is module state and outlives a test, so every
+    request in this file queues behind the last one's slot. At the documented
+    15/s that cost nothing and was invisible; at the 1/s the service actually
+    enforces it turned a 1.8s file into a 23s one, with 21 of those seconds
+    bought for a property none of these tests is about.
+
+    Winding the clock on puts the next free slot in the past, so `reserve()`
+    takes it immediately and never sleeps. It is the clock that moves and not
+    the pacer: the module keeps its real state, so a pacer that had stopped
+    pacing still fails "the outbound pace" below, which measures the wait and is
+    the one test here that is about it. `shouldAdvanceTime` is what lets that
+    one still work — the fake clock tracks real time, so a real 1s wait reads as
+    1s elapsed.
+  */
+  clockOffsetMs += CLOCK_STEP_MS;
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(Date.now() + clockOffsetMs);
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 

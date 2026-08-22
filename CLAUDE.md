@@ -321,7 +321,7 @@ src/
     community-report.ts       The police/council documents — one incident and a
                               period. Client-safe, no rawDescription/lat/lng
     police-api.ts             The data.police.uk client — typed failures, never
-                              throws, and the 15/s outbound pacer. Server only
+                              throws, and the 1/s outbound pacer. Server only
     police-data.ts            The Prisma half: syncing a village-month, and the
                               two reads the dashboard and /reports make. Server
                               only, and every read degrades on a missing table
@@ -2418,7 +2418,13 @@ no quota.
   count no published figure agrees with, drifting further from the source on every
   refresh. **A failed refresh keeps what is held** — `keepExistingCrimes` — because
   a section vanishing from a report over a timeout is worse than a stale figure
-  that says when it was read.
+  that says when it was read. That flag is application logic and **not** a
+  column: `recordSync` destructures it out before the write, because handing the
+  argument object whole to the upsert put an unknown field in `create` and
+  Prisma rejected every failed month's bookkeeping. TypeScript cannot catch that
+  — excess-property checking applies to object literals, not to a variable
+  carrying more than the parameter type names — so `tests/police-data.test.ts`
+  asserts the written columns instead.
 - **The cache is the database and the window is 30 days.** `POLICE_REFRESH_DAYS`.
   Only `ok` earns it: `empty` is retried, because "not published yet" is a
   statement about the calendar that stops being true, and `failed` is retried
@@ -2429,16 +2435,27 @@ no quota.
   what a naive "last six months" loop would ask for. If that call fails the run
   carries on against the plain window and the response says `availability:
   "assumed"`; the cost of guessing is a wasted request, not a wrong figure.
-- **The 15/s pacer is a module variable, and that is exactly the shape
+- **The 1/s pacer is a module variable, and that is exactly the shape
   `rate-limit.ts` says is wrong.** The difference is worth stating, because a
   reader who has absorbed that file's argument will read this as the bug it warns
   against. That module counts in Postgres because it is a **security** limit on an
   **inbound** request, where per-instance counters meant a caller who could
   trigger scale-out got a multiple of the quota. This is a **politeness** pace on
   an **outbound** call: there is no adversary, and the work is already serialised
-  inside one scheduled function. What it does not promise is a global 15/s across
-  a fleet — bounded instead by `POLICE_SYNC_MAX_REQUESTS` and by the cache, since
-  a run that finds every month fresh makes no calls at all.
+  inside one scheduled function. What it does not promise is that pace globally
+  across a fleet — bounded instead by `POLICE_SYNC_MAX_REQUESTS` and by the
+  cache, since a run that finds every month fresh makes no calls at all.
+- **The pace is 1/s and the documented ceiling is 15/s, and the gap is a
+  finding.** The first scheduled run paced at the documented figure came back
+  429 `rate_limited` for *every* village it touched, so data.police.uk is
+  stricter in practice than its own documentation and 15/s is not a safe pace to
+  build on. **`POLICE_SYNC_MAX_REQUESTS` is sized against the pacer because of
+  it**: at 15/s the route's 60 seconds were never the binding constraint and 120
+  calls were free, while at 1/s 120 calls is 120 seconds of pacing inside a
+  function killed at `maxDuration` — the timed-out-halfway-through failure that
+  budget exists to prevent, and the one failure that leaves no record, because
+  the response saying where the run got to is never sent. It is 40. Move one of
+  the three and check it against the other two.
 - **No silent caps.** A village-month left unfetched because the budget ran out
   says so in the response. A run that quietly stopped covering the most recent
   months would look exactly like a village with no recent crime, which is the one

@@ -319,7 +319,10 @@ function syncUpsert(data: {
  * The count written is the count *this run* stored, which is zero; the figures
  * a reader sees still come from `police_crimes`.
  */
-async function recordSync(input: {
+async function recordSync({
+  keepExistingCrimes,
+  ...data
+}: {
   villageId: string;
   month: string;
   status: PoliceSyncStatus;
@@ -328,13 +331,24 @@ async function recordSync(input: {
   fetchedAt: Date;
   keepExistingCrimes: boolean;
 }): Promise<void> {
-  if (!input.keepExistingCrimes) {
+  if (!keepExistingCrimes) {
     await prisma.policeCrime.deleteMany({
-      where: { villageId: input.villageId, month: input.month },
+      where: { villageId: data.villageId, month: data.month },
     });
   }
 
-  await syncUpsert(input);
+  /*
+    Destructured rather than passed whole, and that is the fix for a bug that
+    took a whole run down. `keepExistingCrimes` is application logic — it decides
+    whether the stored month is cleared above — and there is no such column on
+    `PoliceDataSync`, so handing the argument object straight to `syncUpsert`
+    put an unknown field in the `create` block and Prisma rejected the write.
+
+    TypeScript could not catch it: excess-property checking applies to object
+    literals, not to a variable that happens to carry more properties than the
+    parameter type names. The separation has to be made here, in code.
+  */
+  await syncUpsert(data);
 }
 
 /**

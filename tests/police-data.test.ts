@@ -180,6 +180,44 @@ describe("syncVillageMonth", () => {
     expect(mocks.crimeDeleteMany).not.toHaveBeenCalled();
   });
 
+  it("writes only real columns when it records a failure", async () => {
+    /*
+      `keepExistingCrimes` decides whether the stored month is cleared. It is
+      application logic and there is no such column on `PoliceDataSync`, so it
+      must not reach the write — passing the argument object whole once put an
+      unknown field in the `create` block and Prisma rejected every failed
+      month's bookkeeping, on the one path that only runs when something has
+      already gone wrong.
+
+      Asserted here because nothing else can: excess-property checking applies
+      to object literals and not to a variable carrying more properties than the
+      parameter type names, so `npx tsc --noEmit` was clean throughout.
+    */
+    mocks.fetchStreetLevelCrimes.mockResolvedValue({
+      ok: false,
+      code: "rate_limited",
+      message: "data.police.uk asked us to slow down",
+    });
+
+    await syncVillageMonth({ village: VILLAGE, month: "2026-05", now: NOW });
+
+    expect(mocks.syncUpsert).toHaveBeenCalledTimes(1);
+
+    const { create, update } = mocks.syncUpsert.mock.calls[0][0];
+
+    expect(create).not.toHaveProperty("keepExistingCrimes");
+    expect(update).not.toHaveProperty("keepExistingCrimes");
+
+    // The columns that do exist are still written, or the guard above would be
+    // satisfied by a write that recorded nothing.
+    expect(create).toMatchObject({
+      villageId: VILLAGE.id,
+      month: "2026-05",
+      status: "failed",
+      crimeCount: 0,
+    });
+  });
+
   it("refuses a month that is not a month, without spending a request", async () => {
     const outcome = await syncVillageMonth({
       village: VILLAGE,
