@@ -5,6 +5,7 @@ import {
   BellRing,
   Check,
   ChevronRight,
+  CircleDashed,
   EyeOff,
   Landmark,
   Map,
@@ -600,11 +601,23 @@ export default function LandingPage() {
             </div>
 
             <div className="mt-14 grid gap-6 lg:grid-cols-2">
-              {PRICING.map((tier) => (
+              {PRICING.map((tier) => {
+                /*
+                  `featured` has always doubled as "you can have this today" —
+                  it is what picks "Available now" over "Planned" below. Named
+                  here because it now decides three more things: whether the
+                  feature list is introduced as a plan, whether each line wears
+                  a tick or a dashed marker, and what a screen reader is told.
+                  A tick against something nobody has built is the whole failure
+                  this section was carrying.
+                */
+                const isAvailable = tier.featured;
+
+                return (
                 <div
                   key={tier.name}
                   className={`flex flex-col rounded-2xl border p-7 sm:p-8 ${
-                    tier.featured
+                    isAvailable
                       ? 'border-brand-200 bg-white shadow-lg shadow-brand-900/5 ring-1 ring-brand-100'
                       : 'border-slate-200 bg-white/60'
                   }`}
@@ -613,7 +626,7 @@ export default function LandingPage() {
                     <h3 className="text-lg font-semibold text-slate-900">
                       {tier.name}
                     </h3>
-                    {tier.featured ? (
+                    {isAvailable ? (
                       <span className="rounded-full bg-safe-50 px-2.5 py-0.5 text-xs font-semibold text-safe-700 ring-1 ring-safe-200">
                         Available now
                       </span>
@@ -649,16 +662,41 @@ export default function LandingPage() {
                     {tier.lede}
                   </p>
 
-                  <ul className="mt-7 flex-1 space-y-3">
+                  {/*
+                    The heading is what carries the distinction to a screen
+                    reader, which the marker beside each line cannot — both
+                    icons are decorative. It is rendered for the planned tier
+                    only: "What you get today" over a list of things you get
+                    today is noise, and "Planned" over a list of things nobody
+                    has built is the sentence that stops somebody costing them.
+                  */}
+                  {!isAvailable && (
+                    <p className="mt-7 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Planned — none of this is built yet
+                    </p>
+                  )}
+
+                  <ul
+                    className={`flex-1 space-y-3 ${isAvailable ? 'mt-7' : 'mt-3'}`}
+                  >
                     {tier.features.map((feature) => (
                       <li key={feature} className="flex items-start gap-3">
-                        <Check
-                          className={`mt-0.5 size-5 shrink-0 ${
-                            tier.featured ? 'text-safe-600' : 'text-slate-400'
+                        {isAvailable ? (
+                          <Check
+                            className="mt-0.5 size-5 shrink-0 text-safe-600"
+                            aria-hidden
+                          />
+                        ) : (
+                          <CircleDashed
+                            className="mt-0.5 size-5 shrink-0 text-slate-400"
+                            aria-hidden
+                          />
+                        )}
+                        <span
+                          className={`text-sm leading-relaxed ${
+                            isAvailable ? 'text-slate-700' : 'text-slate-500'
                           }`}
-                          aria-hidden
-                        />
-                        <span className="text-sm leading-relaxed text-slate-700">
+                        >
                           {feature}
                         </span>
                       </li>
@@ -668,18 +706,19 @@ export default function LandingPage() {
                   <Link
                     href={tier.cta.href}
                     className={`mt-8 inline-flex h-12 items-center justify-center gap-2 rounded-xl px-6 text-base font-semibold transition ${
-                      tier.featured
+                      isAvailable
                         ? 'bg-brand-600 text-white shadow-sm hover:bg-brand-700'
                         : 'border border-slate-300 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
                     {tier.cta.label}
-                    {tier.featured && (
+                    {isAvailable && (
                       <ArrowRight className="size-4" aria-hidden />
                     )}
                   </Link>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/*

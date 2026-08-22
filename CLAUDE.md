@@ -488,6 +488,10 @@ tests/                        Vitest, unit only — see The test suite
   period-control.test.tsx     The only component test — the three period
                               controls rendered to a string: no date input under
                               a preset, a chip under Custom. See The test suite
+  pricing.test.ts             The landing page's two tiers — a planned tier
+                              states no price and no cadence, a cadence never
+                              appears without one, and the JSON-LD Offer never
+                              describes a tier nobody can buy. No wording
 vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
   ci.yml                      lint → typecheck → test → build, PRs and main
@@ -1007,7 +1011,7 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Twenty-seven files, 435 tests, covering the
+between the typecheck and the build. Twenty-eight files, 443 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1019,7 +1023,8 @@ layout, the invite link, the nightly retention sweep's archive pass, the two
 compliance models, the report footer's AI claim, the four files behind the
 police figures — the client's typed failures, the month arithmetic, the
 published-and-empty-versus-never-fetched distinction, and the caveat that has to
-travel with a comparison — and the markup of the three period controls.
+travel with a comparison — the markup of the three period controls, and the
+landing page's pricing promises.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -1086,6 +1091,16 @@ travel with a comparison — and the markup of the three period controls.
   before the other two, which is the kind of regression a diff review passes
   over. `include` widened to `.tsx` for it; a test that wanted to *click*
   something would want jsdom and is the test this suite still does not take.
+- **`tests/pricing.test.ts` asserts marketing copy and deliberately asserts no
+  wording.** The landing page's two tiers are the one place the product makes a
+  claim to somebody who has not signed up, and the failure worth catching is
+  structural rather than editorial: a tier the card badges "Planned" carrying a
+  price, a cadence with no figure in front of it, or a JSON-LD `Offer`
+  describing a plan nothing can sell. It reads `featured` as the availability
+  flag, because that is what the page reads it as. The feature lists themselves
+  are asserted only to be non-empty — they are text under revision, and a test
+  that failed whenever somebody improved a sentence is the one
+  `compliance-documents.test.ts` explains why this suite does not write.
 - **`tests/retention.test.ts` is the one route handler in the suite**, and it
   earns the exception the same way `compliance-documents.test.ts` does. The
   archive pass deletes a resident's verbatim words on a schedule with nobody
@@ -3233,6 +3248,25 @@ open:
   `tier.price` would stop type-checking at both call sites. Put a figure back
   when there is something behind it to charge with — and `structured-data.ts`
   still carries no `Offer` for it either way.
+
+  **The two feature lists are held to different rules, and `featured` is what
+  decides which.** `Village.features` is what a village gets today and every
+  line has to be a screen or a route somebody can reach; the list it replaced
+  had drifted, promising "pattern detection" for `PatternAlert` rows nothing
+  renders while saying nothing about on-device face blur, the PDF report, the
+  police figures or the compliance pack. `Pro.features` is the opposite —
+  nothing in it exists — so `featured: false` now also picks a dashed marker
+  over the tick, greys the text, and renders a "Planned — none of this is built
+  yet" heading above the list, which is what carries the distinction to a screen
+  reader that cannot see either icon. SMS came off that list: every other line
+  has a shape in the codebase to grow into, and SMS was one unused `notifySms`
+  boolean. Two lines on the *free* list are true and thin on mileage and are the
+  first thing to change if either turns out not to work — the Home Office
+  figures degrade to no section until a sync lands, and no push has reached a
+  real device. `tests/pricing.test.ts` asserts the promise and deliberately no
+  wording: a planned tier states no price and no cadence, a cadence never
+  appears without its price, and the JSON-LD `Offer` never describes a tier
+  nobody can buy.
 - **`VILLAGES_LIVE` is null**, so the landing page renders no "trusted by N
   villages" figure. Set it when somebody can point at the list, and not before:
   a made-up number there is a false statement to a parish clerk deciding whether

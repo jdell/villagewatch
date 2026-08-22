@@ -24,7 +24,7 @@ in `BACKLOG.md`.
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 13, `20260726161847_init` → `20260822120000_police_crime_data`, and **all 13 are applied**. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, **27 files, 436 tests**, all passing (~3.5s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
+| Test suite | Vitest, **28 files, 443 tests**, all passing (~3.5s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -55,6 +55,28 @@ PRs because they were asked for as PRs.
 ## Open items
 
 ### Done — landed, not yet exercised against real data
+
+- **Both pricing feature lists now describe what exists** — 22 August 2026, on
+  top of the price removal below. The free tier's list had drifted from the
+  codebase in both directions: it promised "pattern detection" for `PatternAlert`
+  rows nothing renders, and it was silent about four of the strongest things the
+  product actually does — on-device face blur, the PDF community safety report,
+  the Home Office crime figures and the UK GDPR compliance pack. It is nine
+  lines now and every one of them is a screen or a route somebody can reach.
+  Pro's list keeps its six directions and loses SMS, which was one unused
+  `notifySms` boolean and a word on a landing page; the card renders the rest
+  under "Planned — none of this is built yet", with a dashed marker instead of
+  the tick a delivered feature earns and greyed text, so nothing on it reads as
+  available to somebody skimming. `tests/pricing.test.ts` is new and asserts the
+  promise rather than the copy — a planned tier states no price or cadence, a
+  cadence never appears without one, and the JSON-LD `Offer` never describes a
+  tier nobody can buy.
+
+  **Two lines on the free list are true and thin on real-world mileage**, and
+  are the first thing to revisit if either turns out not to work: the Home
+  Office figures degrade to no section at all until a police sync actually
+  lands — the first scheduled run came back rate limited — and push alerts are
+  wired end to end but have never been delivered to a real device.
 
 - **The Pro tier states no price** — 22 August 2026. The landing page's pricing
   section printed "£15 / per month, per village" in the largest type on the Pro

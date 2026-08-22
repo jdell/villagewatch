@@ -1463,6 +1463,29 @@ export type PricingTier = {
  * enforcement at the point each limit bites, and terms that describe what is
  * being sold. None of those exist.
  *
+ * ## A feature list is a claim, and the two lists are held to different rules
+ *
+ * `Village.features` describes **what a village gets today**, and every line in
+ * it has to be a screen or a route somebody can reach. It is checked against
+ * the codebase rather than against what was intended — the list it replaced
+ * had drifted, promising "pattern detection" for `PatternAlert` rows nothing
+ * renders and staying silent about on-device face blur, the PDF report, the
+ * police figures and the compliance pack, which are four of the strongest
+ * things the product actually does.
+ *
+ * Two lines are true and thin on real-world mileage, and are worth knowing
+ * before defending them: the **Home Office figures** degrade to no section at
+ * all until a sync lands (see "Official police data" in CLAUDE.md — the first
+ * scheduled run came back rate limited), and **push alerts** are wired end to
+ * end but have never been delivered to a real device. Both are built and both
+ * fail quietly rather than wrongly. If either turns out not to work, this list
+ * is what changes first.
+ *
+ * `Pro.features` is the opposite: **nothing in it exists**, and the card says
+ * so in the badge, the lede, the marker beside each line and the footnote under
+ * the section. That is four statements of the same fact, which is the right
+ * number for a list a parish clerk might otherwise budget against.
+ *
  * **Which is why Pro states no price.** It carried "£15 per month, per village"
  * for as long as this constant has existed, in the largest type on the section,
  * over a tier the same paragraph calls planned — so the one number a reader
@@ -1477,13 +1500,19 @@ export const PRICING = [
     price: "Free",
     cadence: "for one village, always",
     lede: "Everything a parish needs to run a watch scheme. No card, no trial, no resident limit.",
+    // Every line here is a screen or a route that exists and is wired up. See
+    // the note above the constant for the two that are built and thin on
+    // real-world mileage, and what would have to be true to keep claiming them.
     features: [
       "One village, unlimited residents",
-      "AI anonymisation on every report",
-      "Live map, incident list and push alerts",
-      "Coordinator dashboard and moderation queue",
-      "Weekly digest and pattern detection",
-      "Full audit trail and CSV export",
+      "Faces blurred on your device before a photo uploads",
+      "AI anonymisation the reporter approves before it posts",
+      "Live map, heatmap and filtered incident list",
+      "Push alerts filtered by severity and distance",
+      "Coordinator dashboard, moderation queue and audit trail",
+      "Weekly AI digest and repeat-incident flags",
+      "PDF and CSV reports for your PCSO, with Home Office crime figures alongside",
+      "UK GDPR pack: DPIA, policy document and processing agreement",
     ],
     cta: { label: "Start your village", href: "/register" },
     featured: true,
@@ -1498,13 +1527,25 @@ export const PRICING = [
     // tier included.
     price: undefined,
     cadence: undefined,
-    lede: "For clusters of parishes and anyone answering to a council. Planned — not yet available.",
+    lede: "For clusters of parishes under one coordinator team. Nothing here is built yet — this is the direction, not a product.",
+    // **None of these exist**, which is why the card renders them under a
+    // "Planned" heading with a dashed marker rather than the tick the tier
+    // above earns. Keep it that way: the moment one of them ships it moves up
+    // to `Village`, because there is no plan enforcement to hold it back.
+    //
+    // SMS was on this list and is not any more. Every other line has at least a
+    // shape in the codebase to grow into — `src/lib/email/` renders five
+    // templates and wants only a transport, `RETENTION` is a constant that
+    // could become a column — whereas SMS was one unused `notifySms` boolean
+    // and a word on a landing page, with a per-message cost and a regulatory
+    // surface nobody has looked at. A plan is allowed to be unbuilt; it is not
+    // allowed to be a guess.
     features: [
       "Everything in Village",
-      "Multiple villages under one coordinator team",
-      "Cross-village pattern detection",
-      "Email and SMS alongside push",
-      "Longer retention and scheduled exports",
+      "Several villages under one coordinator team",
+      "Pattern detection across village boundaries",
+      "Email alerts alongside push",
+      "Scheduled exports and longer retention",
       "Priority support",
     ],
     cta: { label: "Register interest", href: "/register" },
