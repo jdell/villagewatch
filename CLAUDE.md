@@ -1533,6 +1533,18 @@ reporter reads and edits the result, and `POST /api/incidents` saves it.
 - Pattern detection reads **published incidents only**. Feeding pending reports
   in would let a pattern note describe something the queue has not cleared
   (domain rule 6).
+- **`PATTERN_RADIUS_METERS` (200) and `PATTERN_WINDOW_DAYS` (30) are quoted on
+  the landing page, so moving either is a copy change.** The "Pattern detection"
+  card in `FEATURES` (`src/app/page.tsx`) illustrated itself with "six vehicle
+  break-ins within 400 metres over four nights" from the day it was written —
+  twice the radius the detector searches and a window it does not use, offered
+  as proof that it finds exactly that. It quotes a real `patternNote` now. The
+  card also stops short of `PatternAlert`, which the weekly digest writes and
+  nothing renders: what it promises is the note on a report, which is the half a
+  resident sees. `prisma/schema.prisma` still carries the old example in the
+  `PatternAlert` doc comment — a comment rather than a claim on a public page,
+  and left alone here because a push touching `prisma/**` runs `database.yml`
+  against production.
 
 ## The two compliance models
 

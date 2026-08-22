@@ -56,6 +56,19 @@ PRs because they were asked for as PRs.
 
 ### Done — landed, not yet exercised against real data
 
+- **The pattern-detection card quotes the real detector** — 22 August 2026.
+  The landing page's `FEATURES` card illustrated itself with "six vehicle
+  break-ins within 400 metres over four nights" from the day it was written.
+  `detectPatternHeuristic` searches `PATTERN_RADIUS_METERS` (200) over
+  `PATTERN_WINDOW_DAYS` (30), so the example was a cluster the code would have
+  looked straight past, offered as proof that it finds them. It quotes a real
+  `patternNote` now — "4th report of antisocial behaviour within 200m in the
+  last 30 days" — and stops short of `PatternAlert`, which the digest writes and
+  nothing renders. Found while auditing the pricing lists below; the same stale
+  example survives in `prisma/schema.prisma`'s `PatternAlert` doc comment, which
+  is a comment rather than a public claim and was left alone because a push
+  touching `prisma/**` runs `database.yml` against the production database.
+
 - **Both pricing feature lists now describe what exists** — 22 August 2026, on
   top of the price removal below. The free tier's list had drifted from the
   codebase in both directions: it promised "pattern detection" for `PatternAlert`

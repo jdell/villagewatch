@@ -75,6 +75,25 @@ const STEPS = [
   },
 ] as const;
 
+/**
+ * The five things worth a card, and every `body` here is a claim about how the
+ * code behaves — the same rule `FAQS` below is held to, written down because
+ * this list is where it was broken.
+ *
+ * "Pattern detection" illustrated itself with "six vehicle break-ins within 400
+ * metres over four nights" for as long as it has existed. The detector is
+ * `PATTERN_RADIUS_METERS` (200) over `PATTERN_WINDOW_DAYS` (30), so the example
+ * was a cluster the code would have looked straight past — twice the radius it
+ * searches — offered as proof that it finds them. The card quotes a real
+ * `patternNote` now, from `detectPatternHeuristic` in
+ * `src/lib/ai/detect-patterns.ts`. **Move either constant and this changes with
+ * it.**
+ *
+ * Note also what it does *not* claim. `PatternAlert` rows — the cross-village
+ * cluster written by the weekly digest — are created and nothing renders them,
+ * so the promise here stops at the note on a report, which is the part a
+ * resident actually sees.
+ */
 const FEATURES = [
   {
     icon: Map,
@@ -89,7 +108,7 @@ const FEATURES = [
   {
     icon: Radar,
     title: 'Pattern detection',
-    body: 'Six vehicle break-ins within 400 metres over four nights is a pattern, not a coincidence. VillageWatch spots the cluster and names it before anyone has to join the dots by hand.',
+    body: 'Every report is checked against what has already been filed within 200 metres over the last 30 days. A repeat comes back named on the report itself — “4th report of antisocial behaviour within 200m in the last 30 days” — so the same corner turning up again reads as one thing rather than four unrelated notes.',
   },
   {
     icon: BellRing,
