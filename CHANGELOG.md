@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.38](https://github.com/jdell/villagewatch/compare/v0.1.37...v0.1.38) (2026-08-22)
+
+
+### Fixes
+
+* **pricing:** describe what is built on the free tier, and mark Pro's list as unbuilt ([a803912](https://github.com/jdell/villagewatch/commit/a8039127cf11064da77cd19af03515d3568845f4))
+
 ### [0.1.37](https://github.com/jdell/villagewatch/compare/v0.1.36...v0.1.37) (2026-08-22)
 
 
