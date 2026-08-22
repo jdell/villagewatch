@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 22 August 2026 · **Repo version:** `v0.1.33` · **Branch:**
-`feat/police-data`, off `main` · **Domain:** https://villagewatch.app
+**Last updated:** 22 August 2026 · **Repo version:** `v0.1.34` · **Branch:**
+`fix/dashboard-period-picker`, off `main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -19,12 +19,12 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.33`, tagged, `package.json` on `main` reads `0.1.33` — the community-mode copy stack landed as PRs #8 and #9 on 21–22 August |
-| Version on screen | expect **v0.1.32** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
+| Repo version | `v0.1.34`, tagged, `package.json` on `main` reads `0.1.34` — the police-data branch landed as PR #10 on 22 August |
+| Version on screen | expect **v0.1.33** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
-| Migrations in repo | 13, `20260726161847_init` → `20260822120000_police_crime_data`. **Twelve applied** — `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth is on `feat/police-data` and lands with it: three new tables, no change to any existing one, and nothing a resident can do changes when it runs. **`rls_policies.sql` has to be re-run with it** — a new table arrives with RLS off; `postgis.sql` does not, because there is no geography column in it |
+| Migrations in repo | 13, `20260726161847_init` → `20260822120000_police_crime_data`. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one, and nothing a resident can do changes when it runs. **Confirm `database.yml`'s run on that merge, and that `rls_policies.sql` was re-run with it** — a new table arrives with RLS off, and until the file is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, unit only, **26 files, 428 tests**, all passing (~3s) — runs with no `.env.local` and no database |
+| Test suite | Vitest, **27 files, 435 tests**, all passing (~2s) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -34,7 +34,8 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
-| `feat/police-data` | **In review.** The data.police.uk integration — the client, three Prisma models, the weekly sync, the dashboard panel and the comparison section in all three renderings of the community safety report. Carries migration 13. | Merge to `main`, then re-run `rls_policies.sql` |
+| `fix/dashboard-period-picker` | **In review (PR to open).** The period control on `/dashboard` and `/incidents` collapses its two date inputs under a preset, the way `/reports` has since PR #7, and the calendar behind all three is now one component. No migration, no schema change. | Merge to `main` |
+| `feat/police-data` | Merged as PR #10, 22 August. Migration 13 landed with it. | Delete; confirm `rls_policies.sql` re-ran |
 | `fix/share-summary-mode-aware` | Merged. | Delete |
 | `fix/community-mode-copy-and-grant-docs` | Merged. | Delete |
 
@@ -54,6 +55,21 @@ PRs because they were asked for as PRs.
 ## Open items
 
 ### Done — landed, not yet exercised against real data
+
+- **The period control collapses its dates** — 22 August 2026. `/dashboard` and
+  `/incidents` kept two date inputs on screen under every preset, ignored by
+  `resolveTimeRange` for all of them but `custom` — so a coordinator filling
+  them in under "Last 7 days" watched none of the figures move. They appear only
+  under "Custom range" now, behind the same chip and two-month calendar
+  `/reports` has had since PR #7. That calendar is one component rather than
+  three copies: `src/components/date-range-chip.tsx`, parameterised by the
+  ceiling each screen enforces. The row of preset pills became a `<select>` —
+  which keeps the no-JavaScript property a submit button gave it and adds the
+  one pills could not have, that a preset can be *chosen* without the page
+  navigating, which is what "Custom range" needs to reveal a picker rather than
+  submit a range nobody has typed. `/map` was never wrong and is untouched.
+  `tests/period-control.test.tsx` is the suite's first component test and
+  asserts the promise directly: no date input in the document under a preset.
 
 - **Official police data** — 22 August 2026. VillageWatch now shows the Home
   Office's own recorded-crime figures beside a village's reports, from

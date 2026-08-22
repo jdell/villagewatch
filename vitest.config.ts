@@ -13,12 +13,17 @@ import { defineConfig } from "vitest/config";
  *
  * `environment: "node"` because everything under test is server code or is
  * client-safe by construction (`format-alert.ts`, `validations.ts`). Nothing
- * touches the DOM, so jsdom would be a dependency bought for nothing.
+ * touches the DOM, so jsdom would be a dependency bought for nothing — and that
+ * is still true of the one component test in here: `period-control.test.tsx`
+ * renders to a string with `react-dom/server` and reads the markup, which is
+ * what a crawler and a reader with no JavaScript get. Widening `include` to
+ * `.tsx` buys that and nothing else; a test that wanted to *click* something
+ * would want jsdom, and would be the test this suite does not take.
  */
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
     // Explicit imports from "vitest" in every file rather than globals, so
     // `npm run typecheck` sees the same names the runner does without adding
     // `vitest/globals` to the tsconfig `types` array.
