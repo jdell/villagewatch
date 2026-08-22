@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.36](https://github.com/jdell/villagewatch/compare/v0.1.35...v0.1.36) (2026-08-22)
+
+
+### Fixes
+
+* **police:** stop sending a non-column to Prisma and pace the API at 1/s ([d5f1867](https://github.com/jdell/villagewatch/commit/d5f186747e1fb3b91ca1e9395a508d62c23b764e))
+
 ### [0.1.35](https://github.com/jdell/villagewatch/compare/v0.1.34...v0.1.35) (2026-08-22)
 
 
