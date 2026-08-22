@@ -185,7 +185,9 @@ rather than switching it back.
 
 ### 2. Set the name of whoever is answerable
 
-Go to **Dashboard** and find the parish council field in Village Settings.
+Go to **Dashboard** and find the data controller field in Village Settings. It
+is headed **Parish council** if a council runs your village and **Data
+controller** if one does not, but it is the same field either way.
 
 If a council runs your village, type its full legal name exactly as it appears
 on its own letterhead — "Histon and Impington Parish Council", not "Histon PC".

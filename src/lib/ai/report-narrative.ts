@@ -2,8 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { AI_MODEL, getAnthropic, isAiConfigured } from "@/lib/ai/client";
 import {
+  DEFAULT_VILLAGE_MODE,
   INCIDENT_TYPE_LABELS,
   SEVERITY_LABELS,
+  type VillageMode,
 } from "@/lib/constants";
 import { reportNarrativeSchema, type ReportNarrativeOutput } from "@/lib/validations";
 
@@ -70,6 +72,14 @@ export type NarrativeInput = {
   incidents: readonly NarrativeIncident[];
   /** Count over the same length of period immediately before this one. */
   previousPeriodCount: number;
+  /**
+   * Which compliance model the village runs. Decides who the prompt says is
+   * reading, and nothing else — the document is identical either way.
+   *
+   * Defaults to `community`, matching `DEFAULT_VILLAGE_MODE`, so a caller that
+   * cannot read the column describes the ordinary case rather than a council.
+   */
+  mode?: VillageMode;
 };
 
 const OUTPUT_SCHEMA = {
@@ -80,7 +90,7 @@ const OUTPUT_SCHEMA = {
     summary: {
       type: "string",
       description:
-        "Three to six sentences describing the period as a whole: what was reported, how it was distributed across the period, where it concentrated, and how the volume compares with the period before. Written for a police officer or a parish clerk reading it cold.",
+        "Three to six sentences describing the period as a whole: what was reported, how it was distributed across the period, where it concentrated, and how the volume compares with the period before. Written for somebody reading it cold, who has seen none of these reports before.",
     },
     patterns: {
       type: "array",
@@ -100,11 +110,42 @@ const OUTPUT_SCHEMA = {
   },
 } as const;
 
-const SYSTEM_PROMPT = `You are writing the pattern-analysis section of a Community Safety Report for VillageWatch, a neighbourhood watch service used by villages in the United Kingdom. A village coordinator sends this report to their local police officer (usually a PCSO) and to the parish council.
+/**
+ * Who the document is going to, by the village's model.
+ *
+ * `Village.mode` is the only thing that differs between the two prompts, and it
+ * matters more here than it looks: the audience shapes the register. Told the
+ * reader is a parish clerk, the model writes for a committee paper; told it is
+ * the coordinator's own record, it writes for the person who filed half the
+ * reports. Most villages have no council at all, so `community` is the default
+ * and describing a clerk to them is describing somebody else's village.
+ *
+ * **The police are in both.** A village having no parish council says nothing
+ * about whether it has a PCSO — the same split `ShareSummary` makes on screen.
+ */
+const AUDIENCE: Record<VillageMode, { sends: string; reads: string }> = {
+  community: {
+    sends:
+      "A village coordinator sends this report to their local police officer (usually a PCSO) and keeps a copy for the group's own records. There is no parish council behind this village; the coordinator is the data controller.",
+    reads:
+      "A police officer who has not seen any of these reports before and has no more than a couple of minutes, and the volunteer coordinator who will keep the copy.",
+  },
+  council: {
+    sends:
+      "A village coordinator sends this report to their local police officer (usually a PCSO) and to the parish council that runs the village.",
+    reads:
+      "A police officer or a parish clerk, neither of whom has seen any of these reports before, and neither of whom has more than a couple of minutes.",
+  },
+};
+
+function systemPrompt(mode: VillageMode): string {
+  const audience = AUDIENCE[mode];
+
+  return `You are writing the pattern-analysis section of a Community Safety Report for VillageWatch, a neighbourhood watch service used by villages in the United Kingdom. ${audience.sends}
 
 # Who reads this
 
-A police officer or a parish clerk, neither of whom has seen any of these reports before, and neither of whom has more than a couple of minutes. The counts, the breakdowns, the hotspot list and the full incident log are already in the document, laid out around what you write. Do not restate them. Your section is for the thing a table cannot say: what connects.
+${audience.reads} The counts, the breakdowns, the hotspot list and the full incident log are already in the document, laid out around what you write. Do not restate them. Your section is for the thing a table cannot say: what connects.
 
 # Rules
 
@@ -120,6 +161,7 @@ A police officer or a parish clerk, neither of whom has seen any of these report
 - British English: "antisocial behaviour", "neighbour", "vehicle", "999".
 - Factual and unexcited. This is a working document, not an appeal.
 - Plain sentences. No headings, no bullet markers, no markdown — the fields are already structured, and the document formats them.`;
+}
 
 export async function generateReportNarrative(
   input: NarrativeInput,
@@ -149,7 +191,7 @@ export async function generateReportNarrative(
     message = await getAnthropic().messages.create({
       model: AI_MODEL,
       max_tokens: 8_000,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt(input.mode ?? DEFAULT_VILLAGE_MODE),
       thinking: { type: "adaptive" },
       output_config: {
         // Same tier as the weekly digest. Nobody is standing outdoors waiting

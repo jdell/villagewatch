@@ -91,7 +91,7 @@ export default async function InvitePage({
                 Its status is{" "}
                 {VILLAGE_STATUS_LABELS[village.status].toLowerCase()}. The code
                 below will not work until the village is live — print it once
-                your parish council has been told it is.
+                the coordinator setting it up has been told it is.
               </p>
             </div>
           </div>

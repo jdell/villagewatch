@@ -7,10 +7,12 @@ import { prisma } from "@/lib/prisma";
 import {
   AUDIT_ACTIONS,
   AUDIT_ACTION_META,
+  auditActionLabel,
   AUDIT_LOG_PAGE_SIZE,
   USER_ROLE_LABELS,
 } from "@/lib/constants";
 import { formatDateTime, formatTimeAgo } from "@/lib/format";
+import { getVillageMode } from "@/lib/villages";
 import type { UserRole } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = { title: "Audit trail" };
@@ -83,7 +85,14 @@ export default async function AuditPage({
 
   const where = { villageId, action };
 
-  const [rows, total] = await Promise.all([
+  /*
+    The village's model, for one word on this screen: `village.parish_council_changed`
+    is filed as "Parish council changed" in a council village and "Data
+    controller changed" in a community one, matching the dashboard field that
+    writes it. The stored action never moves — see `auditActionLabel`.
+  */
+  const [mode, rows, total] = await Promise.all([
+    getVillageMode(villageId),
     prisma.auditLog.findMany({
       where,
       select: {
@@ -160,7 +169,7 @@ export default async function AuditPage({
               <option value="">Every action</option>
               {AUDIT_ACTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {auditActionLabel(option.value, mode)}
                 </option>
               ))}
             </select>
@@ -278,7 +287,7 @@ export default async function AuditPage({
                       >
                         {/* An action from an older build has no metadata. The
                             raw string is still the truth of what happened. */}
-                        {meta?.label ?? row.action}
+                        {auditActionLabel(row.action, mode)}
                       </span>
                     </td>
 

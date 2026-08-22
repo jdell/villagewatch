@@ -112,8 +112,10 @@ export default async function JoinPage({ params, searchParams }: JoinPageProps) 
                 <p className="mt-1">
                   {village.name} is{" "}
                   {VILLAGE_STATUS_LABELS[village.status].toLowerCase()} on{" "}
-                  {APP_NAME}. Your parish council can ask for it to be activated
-                  — until then there is nothing to sign up to.
+                  {APP_NAME}. Whoever is setting the village up — a
+                  neighbourhood watch coordinator, or a parish council where
+                  there is one — can ask for it to be activated. Until then
+                  there is nothing to sign up to.
                 </p>
               </div>
             </div>

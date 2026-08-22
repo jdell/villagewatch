@@ -359,9 +359,12 @@ export default async function CompliancePage() {
             <p className="mt-1">
               The Coordinator Guide covers the settings to choose before you
               invite residents, how to work the moderation queue, what you can
-              share with the police, and what you are responsible for on the
-              council&rsquo;s behalf. It takes about twenty minutes and it is
-              worth reading once before the first report arrives.
+              share with the police, and{" "}
+              {community
+                ? "what being the data controller obliges you to do"
+                : "what you are responsible for on the council’s behalf"}
+              . It takes about twenty minutes and it is worth reading once
+              before the first report arrives.
             </p>
             <Link
               href="/dashboard/guide"

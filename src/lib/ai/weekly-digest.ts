@@ -2,11 +2,13 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { AI_MODEL, getAnthropic, isAiConfigured } from "@/lib/ai/client";
 import {
+  DEFAULT_VILLAGE_MODE,
   DIGEST_WINDOW_DAYS,
   INCIDENT_TYPE_LABELS,
   SEVERITIES,
   SEVERITY_LABELS,
   SEVERITY_META,
+  type VillageMode,
 } from "@/lib/constants";
 import { weeklyDigestSchema, type WeeklyDigest } from "@/lib/validations";
 
@@ -60,6 +62,16 @@ export type WeeklyDigestInput = {
   incidents: readonly DigestIncident[];
   /** Count over the seven days before this one, for the trend sentence. */
   previousPeriodCount: number;
+  /**
+   * Which compliance model the village runs. Decides one sentence of the prompt
+   * — where a coordinator takes this — and nothing else.
+   *
+   * Defaults to `community`, matching `DEFAULT_VILLAGE_MODE`: the digest runs
+   * from a cron sweep across every active village, and one that cannot be read
+   * should describe the ordinary case rather than a parish council meeting most
+   * villages do not have.
+   */
+  mode?: VillageMode;
   /** Injected in tests; defaults to now. */
   now?: Date;
 };
@@ -118,11 +130,28 @@ const OUTPUT_SCHEMA = {
   },
 } as const;
 
-const SYSTEM_PROMPT = `You are writing the weekly summary for VillageWatch, a neighbourhood watch service used by villages in the United Kingdom. You are given every incident published in one village over the last ${DIGEST_WINDOW_DAYS} days. Write the readout its coordinators and residents will see.
+/**
+ * Where a coordinator takes the digest, by the village's model.
+ *
+ * The only sentence in this prompt that `Village.mode` moves, and it is worth
+ * moving: told the readout ends up in front of a parish council, the model
+ * writes towards a committee, and most villages have no council to write
+ * towards. **Police liaison stays in both** — a village with no council can
+ * still have a PCSO.
+ */
+const PURPOSE: Record<VillageMode, string> = {
+  community:
+    "Coordinators take this to police liaison meetings and keep it as the group's own record of the week; there is no parish council behind this village.",
+  council:
+    "Coordinators take this to parish council and police liaison meetings.",
+};
+
+function systemPrompt(mode: VillageMode): string {
+  return `You are writing the weekly summary for VillageWatch, a neighbourhood watch service used by villages in the United Kingdom. You are given every incident published in one village over the last ${DIGEST_WINDOW_DAYS} days. Write the readout its coordinators and residents will see.
 
 # What this is for
 
-Coordinators take this to parish council and police liaison meetings. Residents read it to decide whether to change anything about their week. It has to be worth the two minutes it takes to read.
+${PURPOSE[mode]} Residents read it to decide whether to change anything about their week. It has to be worth the two minutes it takes to read.
 
 # Rules
 
@@ -137,6 +166,7 @@ Coordinators take this to parish council and police liaison meetings. Residents 
 - British English: "antisocial behaviour", "neighbour", "vehicle", "999".
 - Calm and factual. This is read by neighbours, some of whom are already worried. No sensationalism, no speculation about who is responsible.
 - Plain sentences. No headings, no bullet markers, no markdown — the fields are already structured.`;
+}
 
 export async function generateWeeklyDigest(
   input: WeeklyDigestInput,
@@ -167,7 +197,7 @@ export async function generateWeeklyDigest(
     message = await getAnthropic().messages.create({
       model: AI_MODEL,
       max_tokens: 8_000,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt(input.mode ?? DEFAULT_VILLAGE_MODE),
       thinking: { type: "adaptive" },
       output_config: {
         // Higher than the per-report pass: this one runs weekly rather than

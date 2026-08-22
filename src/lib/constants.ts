@@ -387,7 +387,8 @@ export const JOIN_CODE_LENGTH = 8;
  * exhaustive when a status is added to the enum.
  */
 export const VILLAGE_JOIN_MESSAGES = {
-  PENDING: "This village is not yet active. Contact your parish council.",
+  PENDING:
+    "This village is not yet active. Ask whoever is setting it up to have it activated.",
   SUSPENDED: "Registration is temporarily closed for this village.",
   ARCHIVED: "This village is no longer on VillageWatch.",
   ACTIVE: "",
@@ -1118,6 +1119,43 @@ export const AUDIT_ACTION_META = Object.fromEntries(
   AUDIT_ACTIONS.map((a) => [a.value, a]),
 ) as Record<string, AuditActionMeta | undefined>;
 
+/**
+ * Audit actions whose *label* depends on the village reading the trail.
+ *
+ * One entry, and it is the same seam `ParishCouncilForm` and
+ * `saveParishCouncilAction` sit on: `village.parish_council_changed` is the
+ * action name, is written to the database, and never changes — but "Parish
+ * council changed" is a sentence about a village that has a parish council, and
+ * in the community model there is none. A coordinator filtering their own trail
+ * for the setting they just changed would be looking for the words their own
+ * dashboard used, which are "Data controller".
+ *
+ * The **stored action is untouched**. Only what a screen calls it moves, which
+ * is what keeps a village that upgrades to the council model from having its
+ * history relabelled underneath it — the rows say what happened, and the
+ * viewer says it in the words the village uses today.
+ */
+const MODE_AUDIT_LABELS: Partial<
+  Record<string, Partial<Record<VillageMode, string>>>
+> = {
+  "village.parish_council_changed": { community: "Data controller changed" },
+};
+
+/**
+ * What to call an audit action on screen, in this village's words.
+ *
+ * Falls back to the action's own label, and then to the stored string — a row
+ * written by a build that knew an action this one does not must still be
+ * readable, which is the reason `AUDIT_ACTION_META` is a partial record.
+ */
+export function auditActionLabel(action: string, mode: VillageMode): string {
+  return (
+    MODE_AUDIT_LABELS[action]?.[mode] ??
+    AUDIT_ACTION_META[action]?.label ??
+    action
+  );
+}
+
 /** Rows per page in the audit viewer. */
 export const AUDIT_LOG_PAGE_SIZE = 50;
 
@@ -1668,14 +1706,33 @@ export const CONTROLLER_RESPONSIBILITIES = [
   },
 ] as const;
 
+/**
+ * The deployment-wide fallback for the body answerable for a village's data.
+ *
+ * Placeholders, deliberately and visibly — nothing here is a real body, and
+ * `/reports` renders an amber warning while a document would print it. What
+ * changed is that the placeholders no longer say **council**.
+ *
+ * `Village.mode` defaults to `community`, where there is no council and the
+ * coordinator is the controller, so "[Parish Council name]" was the wrong
+ * question asked of most villages: a volunteer reading it on the foot of their
+ * own report is being told to go and find a council, and a coordinator reading
+ * it under a field they are meant to fill in learns that the field is not for
+ * them. The wording is mode-neutral instead — it names the *role* both models
+ * agree on and asks for a name rather than a kind of organisation.
+ *
+ * Read through `reportController` in `src/lib/community-report.ts`, which
+ * prefers `Village.parishCouncil` on a truthiness check. This is what prints
+ * when no village-specific controller has been named at all.
+ */
 export const DATA_CONTROLLER = {
-  name: "[Parish Council name]",
+  name: "[Data controller name]",
   addressLines: [
-    "[Parish Council address line 1]",
+    "[Data controller address line 1]",
     "[Town]",
     "[Postcode]",
   ],
-  email: "[clerk@parish-council.example.uk]",
+  email: "[contact@example.uk]",
   phone: "[01234 567890]",
   /** Registration number from the ICO's public register. */
   icoRegistration: "[ICO registration number]",

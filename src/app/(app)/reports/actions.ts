@@ -4,7 +4,7 @@ import { requireCoordinator } from "@/lib/auth";
 import { generateReportNarrative } from "@/lib/ai/report-narrative";
 import type { ReportNarrative } from "@/lib/community-report";
 import { prisma } from "@/lib/prisma";
-import { getVillageController } from "@/lib/villages";
+import { getVillageController, getVillageMode } from "@/lib/villages";
 import { RATE_LIMITS, formatRetryAfter, rateLimit } from "@/lib/rate-limit";
 import {
   collectVillageReport,
@@ -76,7 +76,18 @@ export async function generateNarrativeAction(
     to: String(formData.get("to") ?? ""),
   });
 
-  const village = await getVillageController(villageId);
+  /*
+    Two reads rather than one, and deliberately not a second column on
+    `getVillageController`. That function's shape is a retry that drops
+    `parish_council` when the database is missing it, so folding `mode` into the
+    same SELECT would mean a database missing `mode` losing the controller's
+    name with it. The cheap read is its own call — see "The two compliance
+    models" in CLAUDE.md.
+  */
+  const [village, mode] = await Promise.all([
+    getVillageController(villageId),
+    getVillageMode(villageId),
+  ]);
 
   if (!village) {
     return {
@@ -132,6 +143,8 @@ export async function generateNarrativeAction(
     villageName: village.name,
     from: range.from,
     to: range.to,
+    // Who the prompt says is reading. The document is identical either way.
+    mode,
     previousPeriodCount: report.previousTotal,
     incidents: report.incidents.map((incident) => ({
       reference: incident.reference,

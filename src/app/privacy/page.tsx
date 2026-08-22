@@ -72,6 +72,24 @@ export const metadata: Metadata = {
  *     CLAUDE.md. This was the claim that was false for months, which is why it
  *     is on the list rather than left among the schedule figures below.
  *
+ * ## It is one document for two models, so it names no council as a default
+ *
+ * `Village.mode` decides who the data controller is, and this page is public and
+ * sessionless — it cannot read a village, so it cannot pick. Every sentence that
+ * used to assume a parish council now either describes both models (§1, §4) or
+ * says "your village's data controller" and points at §1. `community` is the
+ * default and most villages have no council at all, so a notice that told every
+ * resident to complain to a parish clerk was describing the minority case as the
+ * only one.
+ *
+ * §4 is the sharpest of those. It named **Article 6(1)(e), public task** as the
+ * basis for publishing reports, which is a basis a parish council has and a
+ * volunteer does not — and it disagreed with `docs/DPIA.md` §4.1, which has said
+ * **6(1)(f), legitimate interests** with a documented balancing test since it was
+ * written. Legitimate interests is now the stated basis, with the public task
+ * described beside it as what a council may rely on instead. Change the basis in
+ * one of the two and change it in the other.
+ *
  * The retention schedule is the section to watch. `/api/cron/retention` enforces
  * the first two figures nightly; the audit-log expiry and the dormant-account
  * closure are schedule-only, and the notice has to keep saying which is which.
@@ -111,9 +129,11 @@ export default function PrivacyPage() {
     >
       <Callout tone="warning" title="Before this village goes live">
         The contact details and data controller named below are placeholders.
-        Your parish council must complete them, register with the ICO if it has
-        not already, and have this notice reviewed alongside its own data
-        protection policy before any resident signs up.
+        Whoever is the data controller for your village — your coordinator, or a
+        parish or town council that has taken it on — must complete them,
+        register with the ICO if they have not already, and have this notice
+        reviewed alongside their own data protection arrangements before any
+        resident signs up.
       </Callout>
 
       <LegalSection id="controller" title="1. Who is responsible for your data">
@@ -271,11 +291,25 @@ export default function PrivacyPage() {
             We need your name, email and village to give you an account, put your
             reports in the right place and let you sign in.
           </Definition>
-          <Definition term="Community safety reporting — public task, Article 6(1)(e)">
-            A parish council keeping its residents informed about local safety is
-            exercising a function in the public interest. This covers publishing
-            anonymised reports, showing them on the map and alerting nearby
-            residents.
+          <Definition term="Community safety reporting — legitimate interests, Article 6(1)(f)">
+            Keeping the people who live somewhere informed about local safety is
+            a legitimate interest, shared by the residents, the controller and
+            the local policing team. This covers publishing anonymised reports,
+            showing them on the map and alerting nearby residents. We have
+            carried out and documented the balancing test this basis requires,
+            and the mitigations it turns on are the ones described on this page:
+            your original wording is never published, map positions are shifted,
+            and faces are covered before a photograph leaves your device. This is
+            the basis in the ordinary case, where your village coordinator is the
+            controller.
+          </Definition>
+          <Definition term="Where a council runs your village — public task, Article 6(1)(e)">
+            A parish or town council keeping its residents informed about local
+            safety is also exercising a function in the public interest, and a
+            council that has taken your village on may rely on that instead for
+            the same processing. It changes nothing about what is collected, who
+            sees it, how long it is kept, or your right to object to it — see
+            &ldquo;Objection&rdquo; in section 8, which covers both bases.
           </Definition>
           <Definition term="Push notifications — consent, Article 6(1)(a)">
             Alerts only go to residents who have switched them on and granted
@@ -383,10 +417,11 @@ export default function PrivacyPage() {
             setting, so on a published report it is always one of the options in
             front of them.
           </Definition>
-          <Definition term="Your local police officer and parish council, in a summary from a coordinator">
+          <Definition term="Your local police officer, in a summary from a coordinator">
             Your village coordinator can produce a written summary — of one
             report, or of everything published over a period — and send it to
-            your PCSO or to the parish council. This is what a neighbourhood
+            your PCSO, or to a parish or town council where one runs your
+            village, or keep it for the group&rsquo;s own records. This is what a neighbourhood
             watch scheme is for, and it is the same information your neighbours
             already see: the anonymised description, the category, how serious
             it was, when it happened and the landmark the reporter named. Never
@@ -399,8 +434,9 @@ export default function PrivacyPage() {
           <Definition term="The police, on request">
             Separately from the above: where there is a lawful basis to
             disclose, such as a formal request in the investigation of a crime.
-            That can include your original wording. Your parish council decides
-            this, not {APP_NAME}, and the disclosure is logged.
+            That can include your original wording. Your village&rsquo;s data
+            controller decides this, not {APP_NAME}, and the disclosure is
+            logged.
           </Definition>
           <Definition term="The people who run this service">
             We keep an internal staff channel on Slack that is told when
@@ -499,9 +535,11 @@ export default function PrivacyPage() {
 
       <LegalSection id="rights" title="8. Your rights">
         <P>
-          Under the UK GDPR you have the following rights. Contact your parish
-          council using the details in section 13 to use any of them. They must
-          respond within one month, and it is free.
+          Under the UK GDPR you have the following rights. To use any of them,
+          contact your village&rsquo;s data controller — your coordinator, or the
+          council if one has taken the village on; section 1 explains which —
+          using the details in section 13. They must respond within one month,
+          and it is free.
         </P>
         <DefinitionList>
           <Definition term="Access">
@@ -579,7 +617,7 @@ export default function PrivacyPage() {
         </UL>
         <P>
           If you believe a published report identifies a child, contact your
-          coordinator or the council and it will be removed while it is reviewed.
+          coordinator and it will be removed while it is reviewed.
           If a parent or guardian asks us to remove data about their child, we
           will do so.
         </P>
@@ -639,9 +677,10 @@ export default function PrivacyPage() {
       <LegalSection id="contact" title="13. Contact and complaints">
         <P>
           For anything in this policy, including a request to exercise your
-          rights, contact your parish council at{" "}
+          rights, contact your village&rsquo;s data controller at{" "}
           <strong>{DATA_CONTROLLER.email}</strong> or write to them at the
-          address in section 1.
+          address in section 1. If your coordinator is the controller — the
+          ordinary case — they are who to ask.
         </P>
         <P>
           If you are not satisfied with the response, you can complain to the
