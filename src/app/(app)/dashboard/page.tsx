@@ -24,6 +24,7 @@ import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
 import { ExportCsvButton } from "@/components/dashboard/export-csv-button";
 import { InviteShare } from "@/components/dashboard/invite-share";
 import { ParishCouncilForm } from "@/components/dashboard/parish-council-form";
+import { PoliceCrimePanel } from "@/components/dashboard/police-crime-panel";
 import { PrivacyLevelForm } from "@/components/dashboard/privacy-level-form";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { WhatsAppChannelForm } from "@/components/dashboard/whatsapp-channel-form";
@@ -38,6 +39,10 @@ import {
   timeRangeFilter,
 } from "@/lib/date-range";
 import { getVillageAutoApprove } from "@/lib/moderation";
+import {
+  getVillagePoliceComparison,
+  getVillagePoliceTeam,
+} from "@/lib/police-data";
 import {
   getVillageParishCouncil,
   getVillagePrivacyLevel,
@@ -148,6 +153,8 @@ export default async function DashboardPage({
     parishCouncil,
     privacyLevel,
     compliance,
+    policeComparison,
+    policeTeam,
   ] = await Promise.all([
     prisma.incident.count({ where: inRange }),
     // `preceding` is null only for an unbounded range, which this page does not
@@ -270,6 +277,32 @@ export default async function DashboardPage({
     // and suppressed for "no columns to accept into", which is somebody else's
     // problem entirely.
     getVillageCompliance(villageId),
+    /*
+      The official figures for the calendar months this period overlaps, and the
+      neighbourhood team covering the village. Both read stored rows and neither
+      reaches data.police.uk — the fetching is
+      `GET|POST /api/cron/police-data`'s job, because a page render that waited
+      on a third party would put somebody else's uptime in front of a
+      coordinator's moderation queue.
+
+      Both return null on a database without
+      `20260822120000_police_crime_data` applied, and the panel renders nothing
+      for that — the same state a village that has never synced is in, which is
+      also true.
+
+      `range.from`/`range.to` are non-null for every period this page offers
+      (`all` is deliberately absent from `DASHBOARD_RANGE_VALUES`), but the type
+      allows null and a query for an unbounded period would ask for every month
+      since 2010.
+    */
+    range.from && range.to
+      ? getVillagePoliceComparison({
+          villageId,
+          from: range.from,
+          to: range.to,
+        })
+      : Promise.resolve(null),
+    getVillagePoliceTeam(villageId),
   ]);
 
   /**
@@ -526,6 +559,21 @@ export default async function DashboardPage({
           </ol>
         )}
       </section>
+
+      {/*
+        The independent series, under the village's own figures and above the
+        queue. Placed here because it answers the question the figures above it
+        raise — "is this getting worse, or are we just reporting more of it?" —
+        and because the queue is the thing actually waiting on a coordinator and
+        should not be pushed further down by a panel nobody has to act on.
+
+        Renders nothing at all until a sync has run. See `PoliceCrimePanel`.
+      */}
+      <PoliceCrimePanel
+        comparison={policeComparison}
+        team={policeTeam}
+        periodLabel={range.label}
+      />
 
       <section className="mt-8">
         <div className="flex flex-wrap items-center justify-between gap-2">

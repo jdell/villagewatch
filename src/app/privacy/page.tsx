@@ -71,6 +71,14 @@ export const metadata: Metadata = {
  *     coordinator archived by hand — see "Deleting the original wording" in
  *     CLAUDE.md. This was the claim that was false for months, which is why it
  *     is on the list rather than left among the schedule figures below.
+ *   - §6's paragraph on data.police.uk, which is the one entry here that
+ *     describes an outbound request carrying **nothing** about a resident
+ *     (`src/lib/police-api.ts`). It is a claim in the same sense as the rest —
+ *     it says a village's map centre and a calendar month are all that is sent —
+ *     and the day that stops being true it is a false sentence in a privacy
+ *     notice rather than a stale one. It is in §6 because a resident reading
+ *     "who else sees it" is entitled to know about every request made on their
+ *     behalf, including the ones with nothing of theirs in them.
  *
  * ## It is one document for two models, so it names no council as a default
  *
@@ -477,6 +485,33 @@ export default function PrivacyPage() {
           Map tiles come from OpenStreetMap and are fetched by your browser
           directly, so their servers see your IP address as they would for any
           website you visit. No report data is sent with those requests.
+        </P>
+        {/*
+          Not a disclosure, and it is in this section anyway because a resident
+          reading "who else sees it" is entitled to know about every outbound
+          request the service makes on their behalf — including the ones that
+          carry nothing about them. Nothing in a report, nothing about an
+          account and no IP address of a resident reaches data.police.uk: the
+          request is made by our server and it contains a village&rsquo;s map
+          centre, which is published by the Office for National Statistics, and
+          a calendar month.
+
+          This paragraph is a statement about how the code behaves in the same
+          sense the six named at the head of this file are. If
+          `src/lib/police-api.ts` ever sends anything else, this changes in the
+          same commit.
+        */}
+        <P>
+          {APP_NAME} also shows the official recorded-crime figures the Home
+          Office publishes for your area, so that your village&rsquo;s own
+          reports can be read against an independent number. Those figures are
+          fetched by our servers from data.police.uk, and nothing about you is
+          sent to get them &mdash; the request carries your village&rsquo;s map
+          centre and a calendar month, and nothing else. No report, no account,
+          no location of yours and not your IP address. What comes back is open
+          data published under the Open Government Licence, in which every crime
+          has already been anonymised by the police to a point &ldquo;on or
+          near&rdquo; a street rather than an address.
         </P>
         <P>
           Some of our processors operate outside the UK. Where data is

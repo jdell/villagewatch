@@ -17,6 +17,7 @@ import {
   SEVERITIES,
   type ReportRangePreset,
 } from "@/lib/constants";
+import { getVillagePoliceComparison } from "@/lib/police-data";
 import { prisma } from "@/lib/prisma";
 import { reportRangeSchema } from "@/lib/validations";
 
@@ -297,7 +298,7 @@ export async function collectVillageReport(input: {
   // The same length of period, ending where this one starts.
   const previousFrom = new Date(range.from.getTime() - range.days * DAY_MS);
 
-  const [total, previousTotal, byType, bySeverity, hotspotRows, rows] =
+  const [total, previousTotal, byType, bySeverity, hotspotRows, rows, police] =
     await Promise.all([
       prisma.incident.count({ where: inRange }),
       prisma.incident.count({
@@ -350,6 +351,25 @@ export async function collectVillageReport(input: {
         orderBy: { occurredAt: "desc" },
         take: REPORT_MAX_INCIDENTS,
       }),
+      /*
+        The Home Office's own figures for the calendar months this period
+        overlaps, or null when none are held. It joins the same `Promise.all`
+        as everything else rather than being awaited after it: it is three
+        cheap reads against tables this village owns, and a report that took
+        an extra round trip to say "no official data yet" would be paying for
+        the absence.
+
+        It never reaches data.police.uk. The fetching is the sync route's job
+        (`GET|POST /api/cron/police-data`) — a page render that called a third
+        party would put somebody else's uptime on the path of a document a
+        coordinator is waiting for, which is the same reasoning the pattern
+        analysis is a button rather than a render.
+      */
+      getVillagePoliceComparison({
+        villageId: input.villageId,
+        from: range.from,
+        to: range.to,
+      }),
     ]);
 
   const incidents: ReportIncident[] = rows.map((row) => ({
@@ -384,6 +404,7 @@ export async function collectVillageReport(input: {
         ? [{ location: row.locationText, count: row._count._all }]
         : [],
     ),
+    police,
     incidents,
     omitted: Math.max(0, total - incidents.length),
     range,

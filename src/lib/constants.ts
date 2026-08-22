@@ -1107,6 +1107,22 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    value: "police.sync",
+    label: "Police data updated",
+    description:
+      "The scheduled job fetched this village's official recorded-crime figures from data.police.uk",
+    /*
+      Neutral, alongside `retention.sweep`, and for the same reason: nobody did
+      it and nothing about the village's own reports changed. It is in the trail
+      because the figures it writes end up in a document sent to the police, and
+      "where did this number come from, and when was it read" is a question that
+      document invites. No personal data is involved in either direction — the
+      request carries a map centre and a month, and what comes back is open
+      data.
+    */
+    tone: "neutral",
+  },
+  {
     value: "retention.sweep",
     label: "Retention sweep",
     description:
@@ -1791,3 +1807,297 @@ export const RATE_LIMIT_RETENTION_DAYS = 7;
 
 /** Minimum age to hold an account. Reports about under-16s are still welcome. */
 export const MINIMUM_AGE = 16;
+
+// ---------------------------------------------------------------------------
+// Police recorded crime (data.police.uk)
+// ---------------------------------------------------------------------------
+
+/**
+ * The official crime figures VillageWatch shows beside its own.
+ *
+ * `data.police.uk` is the Home Office's open data service. It publishes, per
+ * calendar month, every crime recorded by every Home Office force in England,
+ * Wales and Northern Ireland, snapped to an anonymised map point and stripped
+ * of everything that could identify anybody. There is no key, no account and no
+ * quota — the only thing it asks for is reasonable use, which is what
+ * `POLICE_API_MAX_REQUESTS_PER_SECOND` below is.
+ *
+ * ## What it is for here
+ *
+ * A coordinator's hardest question at a parish meeting is "is this getting
+ * worse, or are we just reporting more of it?", and VillageWatch on its own
+ * cannot answer it — its numbers move with how many residents have installed
+ * it. The police figures are the independent series. Put beside each other they
+ * answer the question; folded together they would answer nothing, which is why
+ * they are never folded together. See `POLICE_COMPARISON_NOTE`.
+ *
+ * ## Why nothing here maps a police category onto `IncidentType`
+ *
+ * It is the obvious thing to build and it would be wrong. A police
+ * "burglary" is a crime an officer recorded after an investigation decision;
+ * a VillageWatch `BURGLARY` is what a resident thought they saw at the time.
+ * They are counted over different areas, on different definitions, with a
+ * two-month gap between them. A single bar chart with both in it invites a
+ * reading neither series supports, in a document that goes to the police — so
+ * the two breakdowns are rendered side by side and the note between them says
+ * what differs.
+ */
+
+/** No key, no account, no quota. Everything is under `/api`. */
+export const POLICE_API_BASE_URL = "https://data.police.uk/api";
+
+/** Where a reader is sent to check a figure for themselves. */
+export const POLICE_DATA_URL = "https://data.police.uk/";
+
+/**
+ * The ceiling data.police.uk asks callers to stay under.
+ *
+ * Their documentation states no hard quota and asks for no more than 15
+ * requests per second. That is a courtesy rather than an enforced limit, which
+ * is precisely why it is written down here and enforced on our side: a service
+ * that has to start rate limiting us is a service that starts by blocking us.
+ */
+export const POLICE_API_MAX_REQUESTS_PER_SECOND = 15;
+
+/**
+ * How long a single call is given before it is abandoned.
+ *
+ * Generous, because a month of street-level crime for a busy area is a large
+ * JSON body and this runs on a cron with nobody waiting. Bounded, because the
+ * sync loops over villages and months inside one 60-second function.
+ */
+export const POLICE_API_TIMEOUT_MS = 20_000;
+
+/**
+ * Identifies us to data.police.uk.
+ *
+ * An open API with no key has no other way to tell one caller from another, and
+ * a service that cannot tell who is misbehaving blocks by IP range. A contact
+ * address in the agent is what makes a conversation possible instead.
+ */
+export const POLICE_API_USER_AGENT = `${APP_NAME}/1.0 (+${APP_ORIGIN}; ${SUPPORT_EMAIL})`;
+
+/**
+ * How far behind the present the published data runs.
+ *
+ * The Home Office releases a month's figures roughly two months after it ends,
+ * so a report covering "the last 30 days" will find no official data for most
+ * of it. That is not a fault to be worked around, it is a fact to be stated:
+ * every surface that renders these figures says which months it actually has.
+ */
+export const POLICE_DATA_LAG_MONTHS = 2;
+
+/**
+ * Months a scheduled sync reaches back over.
+ *
+ * Six covers the widest period the dashboard offers, gives `/reports` a full
+ * quarter of overlap, and lets a month that was empty on first fetch — because
+ * it had not been published yet — be picked up on a later run without a backfill
+ * script. Months already fetched inside `POLICE_REFRESH_DAYS` are skipped, so
+ * the usual run costs one or two calls a village.
+ */
+export const POLICE_SYNC_MONTHS = 6;
+
+/**
+ * How long a stored month is trusted before it is fetched again.
+ *
+ * The source is monthly, so re-fetching more often than this buys nothing — but
+ * it is not zero either, because a month's *outcomes* are revised after
+ * publication as investigations close. Thirty days means every month held is
+ * refreshed roughly when the next one lands.
+ */
+export const POLICE_REFRESH_DAYS = 30;
+
+/**
+ * Crimes stored for one village-month.
+ *
+ * The API itself returns a 503 for any point with more than 10,000 crimes in
+ * the month, which no village approaches — the search is a one-mile radius of a
+ * parish centre. This is the second bound, and it is here because a village
+ * beside a town centre could still return thousands and this table has no other
+ * ceiling. Exceeding it is reported rather than silently truncated.
+ */
+export const POLICE_MAX_CRIMES_PER_MONTH = 3_000;
+
+/**
+ * Outbound calls one scheduled run will make.
+ *
+ * The route has 60 seconds and the pacer above holds it to 15 calls a second,
+ * so the real bound is the API's own latency rather than this. It exists so
+ * that a deployment which has just activated forty parishes drains over several
+ * nights instead of timing out halfway through and leaving no record of where
+ * it got to.
+ */
+export const POLICE_SYNC_MAX_REQUESTS = 120;
+
+/**
+ * The radius data.police.uk searches around a point, in metres.
+ *
+ * One mile, and it is theirs rather than ours — the street-level endpoint takes
+ * a `lat`/`lng` and applies it. It is not configurable, it does not follow a
+ * parish boundary, and it is why these figures cover a different area from
+ * everything else in VillageWatch. Stated on every surface that renders them.
+ */
+export const POLICE_SEARCH_RADIUS_METERS = 1_609;
+
+/**
+ * How officers' details are shown, and what is deliberately not stored.
+ *
+ * The neighbourhood team endpoint returns a `bio` alongside each officer, and
+ * it is a block of force-authored HTML. Nothing here stores it: rendering HTML
+ * from a third party is a stored-XSS surface that this codebase does not have
+ * anywhere else (`MarkdownView` exists precisely so the compliance documents
+ * need no `dangerouslySetInnerHTML`), and a paragraph about an officer's
+ * hobbies is not what a coordinator opened the dashboard for. Name, rank and
+ * a published contact address are.
+ */
+export const POLICE_TEAM_MAX_MEMBERS = 12;
+
+/**
+ * The Open Government Licence acknowledgement, which is a licence condition.
+ *
+ * data.police.uk is published under OGL v3.0, the same licence the ONS place
+ * directory carries, and it asks for this wherever the data is shown — so it
+ * belongs under the dashboard panel and in the footer of a report, not only in
+ * a credits page nobody opens. `ONS_LICENCE_URL` above is the same licence text
+ * and is reused rather than restated.
+ */
+export const POLICE_ATTRIBUTION =
+  "Contains public sector information licensed under the Open Government Licence v3.0. Source: data.police.uk (Home Office).";
+
+/**
+ * The sentence that has to travel with every comparison of the two series.
+ *
+ * One constant, because four surfaces render this comparison — the dashboard,
+ * the report on screen, the report on the clipboard and the report as a PDF —
+ * and four copies of a caveat is four caveats the day somebody edits one. The
+ * same reasoning `GENERATED_BY` and `AI_ANALYSIS_NOTE` are exported from
+ * `community-report.ts` on.
+ *
+ * Every clause in it is load-bearing. The area differs, the definition differs,
+ * and the period differs; a recipient who reads "8 police crimes, 3
+ * VillageWatch reports" without those three facts has been told something
+ * false by arithmetic that is individually correct.
+ */
+export const POLICE_COMPARISON_NOTE =
+  "Police figures are crimes recorded by the force, published monthly by the Home Office about two months in arrears. They cover a one-mile radius of the village centre rather than the parish boundary, and they count recorded crime rather than resident reports — so the two columns are two different measurements of the same place, not the same measurement twice.";
+
+/**
+ * Display names for the API's category slugs.
+ *
+ * The service publishes these itself at `/crime-categories`, and
+ * `fetchCrimeCategories` reads them — but a label has to render on a dashboard
+ * whose only job is to draw a stored row, and a network call to find out what
+ * to call `bicycle-theft` is a network call on a page render. This is the
+ * offline copy; anything not in it is title-cased from the slug by
+ * `policeCategoryLabel`, so a category the Home Office adds next year renders
+ * as "Wildlife Crime" rather than as nothing at all.
+ */
+export const POLICE_CATEGORY_LABELS: Record<string, string> = {
+  "all-crime": "All crime",
+  "anti-social-behaviour": "Anti-social behaviour",
+  "bicycle-theft": "Bicycle theft",
+  burglary: "Burglary",
+  "criminal-damage-arson": "Criminal damage and arson",
+  drugs: "Drugs",
+  "other-theft": "Other theft",
+  "possession-of-weapons": "Possession of weapons",
+  "public-order": "Public order",
+  robbery: "Robbery",
+  shoplifting: "Shoplifting",
+  "theft-from-the-person": "Theft from the person",
+  "vehicle-crime": "Vehicle crime",
+  "violent-crime": "Violence and sexual offences",
+  "other-crime": "Other crime",
+};
+
+/**
+ * What to call a category on screen.
+ *
+ * Falls back to the slug title-cased rather than to the slug itself or to
+ * "Unknown". The Home Office has changed this list before — "violent-crime"
+ * covered a narrower set of offences until 2013 — and a category added after
+ * this constant was written should read as a category, not as a bug.
+ */
+export function policeCategoryLabel(category: string): string {
+  const known = Object.hasOwn(POLICE_CATEGORY_LABELS, category)
+    ? POLICE_CATEGORY_LABELS[category]
+    : undefined;
+
+  if (known) return known;
+
+  return category
+    .split("-")
+    .filter(Boolean)
+    .map((word, index) =>
+      index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word,
+    )
+    .join(" ");
+}
+
+/** How many police categories a comparison lists before it stops. */
+export const POLICE_CATEGORY_LIMIT = 6;
+
+/**
+ * Whether a month string is one this codebase will accept.
+ *
+ * `YYYY-MM`, which is the only shape the API uses and the shape stored in
+ * `PoliceCrime.month`. Checked rather than assumed because the month reaches
+ * the database from a query string on the sync route, and a stored month that
+ * is not this shape sorts wrongly against every other row for good.
+ */
+export function isPoliceMonth(value: string): boolean {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return false;
+
+  const year = Number(value.slice(0, 4));
+  return year >= 2010 && year <= 2100;
+}
+
+/**
+ * `YYYY-MM` for an instant, in UTC.
+ *
+ * UTC rather than `Europe/London`, and it is the same call `resolveReportRange`
+ * makes about its own boundaries: the published data is labelled by calendar
+ * month with no zone attached to it, and moving a boundary by an hour would
+ * change which month a report at midnight on the 1st was counted in without
+ * making any figure more true.
+ */
+export function policeMonthOf(value: Date): string {
+  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Every `YYYY-MM` from `from` to `to` inclusive, oldest first.
+ *
+ * The months a period overlaps, which is the unit the police data is published
+ * in — a report covering 12 July to 5 August needs both months and neither in
+ * full. Bounded at 24 so a hand-edited range cannot ask for a thousand.
+ */
+export function policeMonthsBetween(from: Date, to: Date): string[] {
+  const months: string[] = [];
+
+  const cursor = new Date(
+    Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1),
+  );
+  const last = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), 1);
+
+  while (cursor.getTime() <= last && months.length < 24) {
+    months.push(policeMonthOf(cursor));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+
+  return months;
+}
+
+/** "July 2026" — a stored `YYYY-MM` as a person reads it. */
+export function formatPoliceMonth(month: string): string {
+  const [year, index] = month.split("-").map(Number);
+
+  if (!year || !index) return month;
+
+  return new Date(Date.UTC(year, index - 1, 1)).toLocaleDateString("en-GB", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
