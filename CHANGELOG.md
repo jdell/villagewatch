@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.35](https://github.com/jdell/villagewatch/compare/v0.1.34...v0.1.35) (2026-08-22)
+
+
+### Fixes
+
+* **period:** hide the date range unless a custom period is selected ([1f4739a](https://github.com/jdell/villagewatch/commit/1f4739afd049570555a923265ecec726c3c2973c)), closes [#7](https://github.com/jdell/villagewatch/issues/7)
+
 ### [0.1.34](https://github.com/jdell/villagewatch/compare/v0.1.33...v0.1.34) (2026-08-22)
 
 
