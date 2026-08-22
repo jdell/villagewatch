@@ -624,14 +624,26 @@ export default function LandingPage() {
                     )}
                   </div>
 
-                  <p className="mt-5 flex items-baseline gap-2">
-                    <span className="text-4xl font-semibold tracking-tight text-slate-900">
-                      {tier.price}
-                    </span>
-                    <span className="text-sm text-slate-500">
-                      {tier.cadence}
-                    </span>
-                  </p>
+                  {/*
+                    A tier with no price renders no price line at all — not an
+                    empty one, and not a placeholder. Pro is the case: nothing
+                    on this site takes payment, so a figure in the largest type
+                    on the card would be the one thing a reader carried away
+                    from a section that calls the tier planned. See PRICING in
+                    src/lib/constants.ts.
+                  */}
+                  {tier.price && (
+                    <p className="mt-5 flex items-baseline gap-2">
+                      <span className="text-4xl font-semibold tracking-tight text-slate-900">
+                        {tier.price}
+                      </span>
+                      {tier.cadence && (
+                        <span className="text-sm text-slate-500">
+                          {tier.cadence}
+                        </span>
+                      )}
+                    </p>
+                  )}
 
                   <p className="mt-4 text-base leading-relaxed text-slate-600">
                     {tier.lede}

@@ -40,10 +40,13 @@ const WEBSITE_ID = `${APP_ORIGIN}/#website`;
  * The free tier, which is the only one that can actually be taken up.
  *
  * Matched on the rendered string, because that is what `PricingTier.price` is —
- * it carries its own currency and period ("Free", "£15"), so there is no number
- * here to compare against. If a tier ever stops being called "Free" this finds
- * nothing and the `Offer` is omitted, which is the right way to be wrong: no
- * price in the structured data rather than a made-up one.
+ * it carries its own currency and period, so there is no number here to compare
+ * against. If a tier ever stops being called "Free" this finds nothing and the
+ * `Offer` is omitted, which is the right way to be wrong: no price in the
+ * structured data rather than a made-up one.
+ *
+ * The Pro tier's `price` is `undefined` and always has been in this sense — it
+ * states no price on the page either — so it cannot match here by accident.
  */
 const freeTier = PRICING.find((tier) => tier.price === "Free");
 

@@ -56,6 +56,19 @@ PRs because they were asked for as PRs.
 
 ### Done — landed, not yet exercised against real data
 
+- **The Pro tier states no price** — 22 August 2026. The landing page's pricing
+  section printed "£15 / per month, per village" in the largest type on the Pro
+  card, over a tier its own badge calls "Planned" and its own footnote says
+  cannot be bought — so the single number a reader carried away from that
+  section was the one thing on it nobody can honour. There is no payment
+  provider, no plan column and no enforcement anywhere in the codebase. The card
+  is now the feature list and the "Register interest" button; `PricingTier.price`
+  and `.cadence` are optional and Pro's are written out as `undefined` (omitting
+  them would drop the keys from the `as const` union member and break
+  `tier.price` at both call sites). `structured-data.ts` carried no `Offer` for
+  Pro before this and still does not. Nothing to exercise against real data —
+  it removes a claim rather than adding a path.
+
 - **The period control collapses its dates** — 22 August 2026. `/dashboard` and
   `/incidents` kept two date inputs on screen under every preset, ignored by
   `resolveTimeRange` for all of them but `custom` — so a coordinator filling

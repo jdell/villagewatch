@@ -3219,10 +3219,20 @@ open:
   push has been delivered to a real device yet.** `notifyCoordinatorsOfPendingReport`
   is the newest dispatch and the one most likely to surprise: it now fires on
   every report filed into a queue.
-- **No billing.** `PRICING` in `src/lib/constants.ts` renders a Pro tier on the
-  landing page marked "Planned", and the section says in as many words that
-  nothing takes payment. There is no provider, no plan column and no enforcement
-  — a Pro village and a free one are the same rows in the same tables.
+- **No billing, and the Pro tier now states no price.** `PRICING` in
+  `src/lib/constants.ts` renders a Pro tier on the landing page marked
+  "Planned", and the section says in as many words that nothing takes payment.
+  There is no provider, no plan column and no enforcement — a Pro village and a
+  free one are the same rows in the same tables. It carried "£15 per month, per
+  village" in the largest type on the card until 22 August 2026, which is the
+  one number a reader took away from a section whose own footnote says the plan
+  cannot be bought; `PricingTier.price` and `.cadence` are optional now and
+  Pro's are `undefined`, so the card is the feature list and the "Register
+  interest" button. Written out as `undefined` rather than omitted, because
+  `as const` would otherwise drop the keys from the union member and
+  `tier.price` would stop type-checking at both call sites. Put a figure back
+  when there is something behind it to charge with — and `structured-data.ts`
+  still carries no `Offer` for it either way.
 - **`VILLAGES_LIVE` is null**, so the landing page renders no "trusted by N
   villages" figure. Set it when somebody can point at the list, and not before:
   a made-up number there is a false statement to a parish clerk deciding whether

@@ -1432,9 +1432,17 @@ export const VILLAGES_LIVE: number | null = null;
 
 export type PricingTier = {
   name: string;
-  /** Rendered as-is. Includes the currency and the period. */
-  price: string;
-  cadence: string;
+  /**
+   * Rendered as-is. Includes the currency and the period.
+   *
+   * **Optional, and undefined is a tier with no price on the page at all** —
+   * not a tier that is free, which is the string "Free". A plan nothing can
+   * charge for has no price to state, and inventing one for the layout's sake
+   * is a figure a parish clerk budgets against. `cadence` goes with it: a
+   * period with no amount in front of it describes nothing.
+   */
+  price?: string;
+  cadence?: string;
   lede: string;
   features: readonly string[];
   cta: { label: string; href: string };
@@ -1454,6 +1462,14 @@ export type PricingTier = {
  * Before any of this becomes real it needs: a payment provider, a plan column,
  * enforcement at the point each limit bites, and terms that describe what is
  * being sold. None of those exist.
+ *
+ * **Which is why Pro states no price.** It carried "£15 per month, per village"
+ * for as long as this constant has existed, in the largest type on the section,
+ * over a tier the same paragraph calls planned — so the one number a reader
+ * takes away from the page was the only thing on it nobody can honour. What is
+ * left is the feature list and the button that registers interest, which is the
+ * whole of what a preview can truthfully offer. Put a price back when there is
+ * something behind it to charge with.
  */
 export const PRICING = [
   {
@@ -1474,8 +1490,14 @@ export const PRICING = [
   },
   {
     name: "Pro",
-    price: "£15",
-    cadence: "per month, per village",
+    // Written out as `undefined` rather than omitted, the same reason
+    // `featured` is written out below: `as const` narrows each entry to its own
+    // literal type, so a key that is absent here is absent from the union
+    // member and `tier.price` stops type-checking at every call site — the
+    // landing page's own render and `structured-data.ts`'s search for the free
+    // tier included.
+    price: undefined,
+    cadence: undefined,
     lede: "For clusters of parishes and anyone answering to a council. Planned — not yet available.",
     features: [
       "Everything in Village",
@@ -1485,9 +1507,6 @@ export const PRICING = [
       "Longer retention and scheduled exports",
       "Priority support",
     ],
-    // Written out rather than omitted: `as const` narrows each entry to its own
-    // literal type, so an absent optional key is absent from the union member
-    // and `tier.featured` stops type-checking at the call site.
     cta: { label: "Register interest", href: "/register" },
     featured: false,
   },
