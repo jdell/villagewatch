@@ -80,6 +80,10 @@ function report(
     byType: [{ key: "VEHICLE_CRIME", count: 1 }],
     bySeverity: [{ key: "HIGH", count: 1 }],
     hotspots: [{ location: "The lay-by on Mill Road", count: 1 }],
+    // Off by default. The layout assertions below are about the log and the
+    // column widths, and every case that wants the police section passes one
+    // through `overrides`.
+    police: null,
     incidents: [incident()],
     omitted: 0,
     narrative: NARRATIVE,

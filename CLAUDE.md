@@ -185,6 +185,10 @@ src/
                               The id in the path decides nothing — see The PDF
     api/digest/               Weekly cron — Claude summary, PatternAlert, push
     api/cron/retention/       Nightly cron — archives reports, deletes old media
+    api/cron/police-data/     Weekly cron — the Home Office's recorded-crime
+                              figures for each active village, and the
+                              neighbourhood team. Also the on-demand endpoint:
+                              ?village=, ?months=, ?force=1
   components/                 Shared UI (logo, app-shell, placeholder, auth forms)
     auth/google-button.tsx    "Continue with Google" + the or-divider, shared
     auth/login-form.tsx       Email and password, plus the Google button
@@ -263,6 +267,9 @@ src/
                               posting switch, severity floor
     dashboard/privacy-level-form.tsx  How the village covers faces — four
                               levels, each with a preview of what it looks like
+    dashboard/police-crime-panel.tsx  The Home Office's figures beside the
+                              village's own, and the neighbourhood policing
+                              team. Two counts, never one chart
     dashboard/invite-share.tsx  The invite: link, code, copy, WhatsApp, QR. The
                               one screen that shows a village's join code
     severity-badge.tsx        green / amber / red / purple pill
@@ -309,6 +316,14 @@ src/
                               hyphenation callback is registered
     community-report.ts       The police/council documents — one incident and a
                               period. Client-safe, no rawDescription/lat/lng
+    police-api.ts             The data.police.uk client — typed failures, never
+                              throws, and the 15/s outbound pacer. Server only
+    police-data.ts            The Prisma half: syncing a village-month, and the
+                              two reads the dashboard and /reports make. Server
+                              only, and every read degrades on a missing table
+    police-report.ts          The types and the words for the comparison —
+                              client-safe, so the browser can assemble the
+                              report's police section like every other one
     incident-reference.ts     VW-HIS-2026-0003 — the village's code, the year and
                               the village's own count. Client-safe, one format
     invite.ts                 buildJoinUrl / buildInviteUrl / readJoinCodeParam —
@@ -450,6 +465,22 @@ tests/                        Vitest, unit only — see The test suite
                               single-incident summary, on both documents
   retention.test.ts           The nightly archive pass — the wording deleted in
                               the same statement, and the hand-archived catch-up
+  police-api.test.ts          The data.police.uk client over a stubbed fetch —
+                              every failure a value rather than a throw, a 404
+                              read as "not published", one bad record costing
+                              one record, `bio` never arriving, and the pacer
+  police-months.test.ts       The calendar arithmetic and the labels — the two
+                              months a period straddles, UTC boundaries, the
+                              24-month bound, and a category the Home Office
+                              adds next year
+  police-data.test.ts         The honesty rules — a published-and-empty month
+                              against one nobody fetched, a month replaced
+                              rather than merged, a failed refresh keeping what
+                              is held, and the cache window
+  police-report.test.ts       The comparison inside the report — both counts,
+                              the caveat that must travel with them, the months
+                              named as missing, and no section at all when
+                              nothing is held
 vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
   ci.yml                      lint → typecheck → test → build, PRs and main
@@ -657,6 +688,18 @@ counted from the database, and `countedNarrative` writes the summary instead.
 `GET /api/reports/[villageId]/pdf` shares that rule when the button asks for
 `?analysis=ai`, and falls back rather than failing the download.
 
+**There is a second limiter in the codebase and it is deliberately nothing like
+this one.** `src/lib/police-api.ts` paces *outbound* calls to data.police.uk at
+`POLICE_API_MAX_REQUESTS_PER_SECOND`, and it does it with a module variable —
+the exact shape this file spends the next paragraph explaining is wrong. The
+difference is what is being defended against: this table is a security limit on
+an inbound request, where a caller who could trigger scale-out got a multiple of
+the stated quota; that pacer is a courtesy to a service with no key, on work
+that is already serialised inside one scheduled function, with no adversary to
+outwit. A tidying pass that gave the police pacer a Postgres counter would buy a
+guarantee against a caller that does not exist, at the cost of a round trip in
+front of every outbound request. See Official police data.
+
 - **Counted after the body validates**, not at the top of the handler. A
   malformed request costs a Zod parse; burning a slot on one would let a
   client-side bug spend a reporter's quota without a single call reaching
@@ -773,12 +816,17 @@ linked from `SiteFooter` and the registration form.
   processing is the kind of thing a regulator asks about first. Legitimate
   interests is the stated basis; the public task is described beside it as what
   a council may rely on instead. **Change one and change the other.**
-- The privacy notice makes six claims that are statements about how the code
+- The privacy notice makes seven claims that are statements about how the code
   behaves: on-device blur with no server-side fallback (domain rule 3),
   coordinate jitter (domain rule 2), report text going to Anthropic, what the
   Slack staff channel is told, whether a human sees a report before it is
-  published, and that the reporter's original wording is deleted when the report
-  is archived. If any of those changes, `/privacy` changes in the same commit.
+  published, that the reporter's original wording is deleted when the report
+  is archived, and that a village's map centre and a calendar month are all that
+  is sent to data.police.uk. If any of those changes, `/privacy` changes in the
+  same commit. The seventh is the only one describing an outbound request with
+  **nothing** of a resident's in it, and it is in §6 anyway — a resident reading
+  "who else sees it" is entitled to know about every request made on their
+  behalf. See Official police data.
 - **The fifth one is now conditional, and both documents say so.** `/privacy`
   §"It is not a decision about you" used to rest the Article 22 position on a
   coordinator reviewing every report; `Village.autoApprove` made that false for
@@ -952,7 +1000,7 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Twenty-two files, 360 tests, covering the
+between the typecheck and the build. Twenty-six files, 428 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -961,7 +1009,10 @@ documents loading and parsing, the Markdown parser the compliance page renders
 them through, the per-village face redaction level, the heat intensity scale,
 the two date-range resolvers, the date picker's month arithmetic, the PDF's
 layout, the invite link, the nightly retention sweep's archive pass, the two
-compliance models and the report footer's AI claim.
+compliance models, the report footer's AI claim, and the four files behind the
+police figures — the client's typed failures, the month arithmetic, the
+published-and-empty-versus-never-fetched distinction, and the caveat that has to
+travel with a comparison.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -1007,6 +1058,16 @@ compliance models and the report footer's AI claim.
   comma, a quote and a CRLF — the three things that break a naive reader. The
   formula payloads are a table, each one behind the whitespace and control-
   character prefixes that used to launder it.
+- **The four police files assert honesty rather than plumbing.** `police-api`
+  stubs `fetch` and pins the contract — nothing throws, a 404 is "not published"
+  rather than a failure, one bad record costs one record, and `bio` never
+  arrives. `police-data` mocks Prisma at its boundary and pins the two rules a
+  wrong figure would come from: a published-and-empty month is not a month
+  nobody fetched, and a failed refresh keeps what is already held.
+  `police-report` asserts the document — both counts, the caveat that must
+  travel with them, the months named as missing, and **no section at all** when
+  nothing is held, which is what keeps a deployment that never runs the sync
+  producing exactly the report it produced before.
 - **`tests/retention.test.ts` is the one route handler in the suite**, and it
   earns the exception the same way `compliance-documents.test.ts` does. The
   archive pass deletes a resident's verbatim words on a schedule with nobody
@@ -2266,6 +2327,135 @@ same document the page already renders, as a file.
   behind it to carry three fields. It wins over `range`, clamps to
   `REPORT_MAX_RANGE_DAYS` and says so in `notice`.
 
+## Official police data
+
+`src/lib/police-api.ts` fetches it, `src/lib/police-data.ts` stores and reads
+it, `src/lib/police-report.ts` is the types and the words, and
+`GET|POST /api/cron/police-data` is what actually runs. Two surfaces render it:
+a panel on `/dashboard` and a section of everything `/reports` produces.
+
+The source is `data.police.uk`, the Home Office's open data service. Every crime
+recorded by every Home Office force in England, Wales and Northern Ireland, one
+calendar month at a time, under the Open Government Licence. No key, no account,
+no quota.
+
+- **What it is for is one question.** "Is this getting worse, or are we just
+  reporting more of it?" is the hardest thing a coordinator is asked at a parish
+  meeting, and VillageWatch on its own cannot answer it — its numbers move with
+  how many residents have installed it. The police series is the independent
+  one. Put beside each other the two answer the question; folded together they
+  answer nothing.
+- **Nothing maps a police category onto `IncidentType`, and that is the design.**
+  It is the obvious thing to build. A police "burglary" is a crime an officer
+  recorded after a decision; a VillageWatch `BURGLARY` is what a resident thought
+  they saw at the time. They are counted over different areas, on different
+  definitions, with about two months between them. One bar chart with both in it
+  would look like a comparison and be an assertion — in a document that goes to
+  the police. So there are two breakdowns side by side and
+  `POLICE_COMPARISON_NOTE` between them, which names all three differences and is
+  one constant because four surfaces render it.
+- **The area is theirs, not ours.** The street-level endpoint takes a `lat`/`lng`
+  and searches about a mile around it. It does not follow a parish boundary and
+  cannot be narrowed, which is the single most important fact about these figures
+  and is why the caveat travels with every rendering of them. The point sent is
+  `Village.centerLat`/`centerLng` — the ONS map centre, published data about a
+  place.
+- **No resident data leaves, and `/privacy` §6 says so.** The request carries a
+  village's map centre and a calendar month. That paragraph is a claim about how
+  the code behaves in the same sense the other six are — it is the seventh, and
+  the only one describing an outbound request with nothing of a resident's in it.
+  It is in §6 anyway, because a resident reading "who else sees it" is entitled to
+  know about every request made on their behalf.
+- **`PoliceDataSync` is what makes the figures honest, and it is the whole reason
+  there are three tables rather than one.** A `count(*)` over `police_crimes`
+  returns zero both for a month the police published with nothing in it and for a
+  month nobody ever fetched. Printing "0 recorded crimes" for the second, in a
+  document addressed to a PCSO, is a false statement made by arithmetic that is
+  individually correct — and it is the exact shape of error nobody notices. Every
+  read carries `months` (what is held) and `missingMonths` (what is not), and both
+  are rendered. A month whose fetch **failed** counts as missing rather than as
+  empty: we do not know what it holds.
+- **`police` being null omits the section entirely.** A heading reading "Police
+  recorded crime" over a zero reads, in a police document, as a section that
+  failed. A deployment that never runs the sync produces exactly the report it
+  produced before — asserted in `tests/police-report.test.ts`.
+- **A month is replaced, never merged.** `syncVillageMonth` deletes the
+  village-month and re-inserts it in one transaction. The Home Office withdraws
+  records and revises outcomes as investigations close, so a merged month is a
+  count no published figure agrees with, drifting further from the source on every
+  refresh. **A failed refresh keeps what is held** — `keepExistingCrimes` — because
+  a section vanishing from a report over a timeout is worse than a stale figure
+  that says when it was read.
+- **The cache is the database and the window is 30 days.** `POLICE_REFRESH_DAYS`.
+  Only `ok` earns it: `empty` is retried, because "not published yet" is a
+  statement about the calendar that stops being true, and `failed` is retried
+  because a timeout says nothing about the data.
+- **The publication lag is asked about, not assumed.** `GET /crimes-street-dates`
+  says which months the service holds. One call at the top of a run, and it saves
+  a call per village per unpublished month — which at a two-month lag is most of
+  what a naive "last six months" loop would ask for. If that call fails the run
+  carries on against the plain window and the response says `availability:
+  "assumed"`; the cost of guessing is a wasted request, not a wrong figure.
+- **The 15/s pacer is a module variable, and that is exactly the shape
+  `rate-limit.ts` says is wrong.** The difference is worth stating, because a
+  reader who has absorbed that file's argument will read this as the bug it warns
+  against. That module counts in Postgres because it is a **security** limit on an
+  **inbound** request, where per-instance counters meant a caller who could
+  trigger scale-out got a multiple of the quota. This is a **politeness** pace on
+  an **outbound** call: there is no adversary, and the work is already serialised
+  inside one scheduled function. What it does not promise is a global 15/s across
+  a fleet — bounded instead by `POLICE_SYNC_MAX_REQUESTS` and by the cache, since
+  a run that finds every month fresh makes no calls at all.
+- **No silent caps.** A village-month left unfetched because the budget ran out
+  says so in the response. A run that quietly stopped covering the most recent
+  months would look exactly like a village with no recent crime, which is the one
+  way this feature could mislead somebody with nothing appearing to be wrong.
+- **One bad record costs that record.** A month is thousands of objects published
+  by somebody else, parsed one at a time; `dropped` comes back with the crimes so
+  a *rising* number is visible in the cron log rather than invisible.
+- **An officer's `bio` never reaches the database**, because `policeOfficerSchema`
+  does not describe the field. It is force-authored HTML, and nothing in this
+  codebase renders third-party HTML — `src/lib/markdown.ts` exists precisely so
+  the compliance documents need no `dangerouslySetInnerHTML`. Stopping it at the
+  parse is what stops a later "just render the bio" finding it there. A force's
+  neighbourhood `description` arrives with markup too and is **stripped**, not
+  sanitised: tags removed rather than an allow-list to get wrong. `url_force` and
+  the social links go through the same `http(s)`-only guard `getVillageChannel`
+  puts in front of a stored channel link — these end up in an `href` and they came
+  out of somebody else's CMS.
+- **The comparison is over whole calendar months, both sides.** The published data
+  has no finer grain, so `PoliceComparison.villageReports` counts VillageWatch's
+  own published reports over exactly the months held — not the report's `total`,
+  which covers the requested period. Two numbers side by side measured over
+  different spans is arithmetic about nothing.
+- **It is a third cron, and Vercel's Hobby plan allows two.** `0 4 * * 1` in
+  `vercel.json`. On Hobby, drop the entry and call the route from an external
+  scheduler — it is `CRON_SECRET`-guarded and works on demand, which is the same
+  thing the `?village=` / `?months=` / `?force=1` parameters are for. Weekly
+  rather than monthly because the cache makes most runs cost one availability
+  call and nothing else, and a month published late is then picked up within a
+  week instead of a month.
+- **There is deliberately no coordinator-facing refresh button.** The figures are
+  the same for everybody in a village and change once a month; a button is a way
+  for twenty coordinators to spend twenty requests on a month that has not moved.
+- **No PostGIS column, unlike `Incident.locationPoint`.** Nothing queries these
+  tables by radius — the radius was applied upstream when the month was fetched —
+  so a geography column and its trigger would be maintained for no reader.
+  `prisma/sql/postgis.sql` does not need re-running after the migration.
+  `prisma/sql/rls_policies.sql` **does**: three new tables, each arriving with RLS
+  off. They get a village-scoped SELECT and nothing else — no INSERT, UPDATE or
+  DELETE to anybody, because a client that could write here could put a fabricated
+  figure into a document that says on its face the figures came from the Home
+  Office.
+- **`police.sync` is the audit action**, toned neutral beside `retention.sweep`,
+  one row per village per run and only when a month was actually fetched. A
+  nightly run finding everything cached leaves no trace, or a village with six
+  fresh months would write a row a night describing nothing.
+- **Attribution is a licence condition.** `POLICE_ATTRIBUTION` — Open Government
+  Licence v3.0, the same licence `ONS_ATTRIBUTION` carries, and it asks for the
+  acknowledgement wherever the data is shown. It is under the dashboard panel and
+  in every report section, not in a credits page nobody opens.
+
 ## The village invite
 
 `src/lib/invite.ts` builds the link, `src/components/qr-invite.tsx` draws it,
@@ -2812,8 +3002,15 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates, the onboarding tour and the ONS village directory pipeline. Still
 open:
 
-- The Supabase project exists (eu-west-2) and **all twelve migrations are
-  applied**, with `postgis.sql` and `rls_policies.sql` re-run after them. The
+- The Supabase project exists (eu-west-2) and **twelve of the thirteen
+  migrations are applied**, with `postgis.sql` and `rls_policies.sql` re-run
+  after them. The thirteenth is
+  `20260822120000_police_crime_data`, which is new on this branch and adds three
+  tables and no column to any existing one — nothing a resident can do changes
+  when it lands, and every read on top of it degrades to "no official data"
+  until it does. `rls_policies.sql` **must** be re-run with it: a new table
+  arrives with RLS off and every row readable by the anon key. `postgis.sql`
+  need not be — there is no geography column in it, on purpose. The
   eleventh and twelfth went in on 21 August 2026, through `database.yml` on the
   merges of PR #5 and PR #6:
   `20260820100000_archive_deletes_raw_description` drops a NOT NULL and
@@ -2833,8 +3030,9 @@ open:
   earlier entries in this section said there had been no production deployment;
   they were written before there was one and were never corrected, which is how
   a file ends up contradicting itself twice in the same list. What has **not**
-  happened is that **no cron has ever fired** — neither the weekly digest nor the
-  nightly retention sweep.
+  happened is that **no cron has ever fired** — not the weekly digest, not the
+  nightly retention sweep, and not the weekly police-data sync, which is the
+  third of them and the newest.
 - **Applying migrations 7 and 9 closes every village's reporting** until a
   coordinator has been through `/dashboard/compliance`. That is the gate working
   as designed — see The compliance gate — but they are the only migrations in
@@ -3053,6 +3251,30 @@ open:
   asserted and what is deliberately not. Nothing yet asserts that a village with
   auto-approve off still queues — that needs a route test with a database behind
   it, and it is still the regression worth having one for.
+- **The police figures have three tables, four modules, two surfaces and no
+  request ever made.** `20260822120000_police_crime_data` is unapplied, no sync
+  has run, and nothing in this deployment has spoken to data.police.uk. The unit
+  tests cover the client against a stubbed `fetch` and the data layer against a
+  mocked Prisma; what they cannot cover is the service itself. Four things to
+  watch on the first real run, in the order they are likely to surprise:
+  **the neighbourhood lookup** — `locate-neighbourhood` is the one call whose
+  answer decides whether the PCSO panel exists at all, and a village centre
+  that resolves to a neighbouring parish's team is wrong in a way only somebody
+  local would spot; **the availability list**, because the whole month-selection
+  strategy rests on `crimes-street-dates` being what it looks like; **a real
+  month's volume**, since `POLICE_MAX_CRIMES_PER_MONTH` was chosen against a
+  parish and a village beside a town centre is the case that finds it; and
+  **`description` and the team**, which are the two fields a force writes
+  freehand and therefore the two where the tag-stripping either works or
+  visibly does not. None of the four can fail the page — every one of them
+  degrades — which is exactly why they want looking at rather than waiting for
+  a bug report.
+- **The third cron has never fired, and it is the third cron.** `0 4 * * 1` in
+  `vercel.json`. Vercel's Hobby plan allows two, so if this deployment is on
+  Hobby the entry has to go and the route be called from an external scheduler —
+  it is `CRON_SECRET`-guarded and works on demand, which is what `?village=`,
+  `?months=` and `?force=1` are for. Worth settling before the first deploy of
+  this branch rather than after it.
 - The README's screenshots are placeholder text. Capture them after the first
   seeded deploy.
 - `aiSummary` is still unused; the AI pass fills `aiModel`, `aiConfidence`,

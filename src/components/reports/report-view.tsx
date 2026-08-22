@@ -20,8 +20,16 @@ import { copyText, shareText } from "@/lib/clipboard";
 import {
   APP_NAME,
   INCIDENT_TYPE_LABELS,
+  POLICE_ATTRIBUTION,
+  POLICE_COMPARISON_NOTE,
   SEVERITY_LABELS,
 } from "@/lib/constants";
+import type { PoliceComparison } from "@/lib/police-report";
+import {
+  policeMissingMonthsNote,
+  policeMonthsLabel,
+  policeSourceLabel,
+} from "@/lib/police-report";
 import { formatDate, formatDateTime } from "@/lib/format";
 
 /**
@@ -336,6 +344,21 @@ export function ReportView({
           )}
         </Section>
 
+        {/*
+          The official figures, between the village's own counts and the
+          analysis of them — the same place the copied text and the PDF put
+          them, because the three are one document.
+
+          Rendered only when something is held. See `CommunityReportData.police`
+          for why an empty section would be worse than none in a document a
+          coordinator sends to a PCSO.
+        */}
+        {report.police && (
+          <Section title="Police recorded crime">
+            <PoliceSection police={report.police} />
+          </Section>
+        )}
+
         <Section title="Pattern analysis" printHidden={!state.narrative}>
           {!state.narrative ? (
             <p className="text-sm text-slate-500">
@@ -566,6 +589,85 @@ function Section({
       </h2>
       <div className="mt-2">{children}</div>
     </section>
+  );
+}
+
+/**
+ * The official police figures beside the village's own.
+ *
+ * Two numbers and a paragraph, and the paragraph is the load-bearing half.
+ * `POLICE_COMPARISON_NOTE` says what differs between the two columns — the
+ * area, the definition and the period — and it is rendered here, in the PDF and
+ * in the copied text from the one constant, because four copies of a caveat is
+ * four caveats the day somebody edits one.
+ *
+ * The two figures are deliberately **not** a chart. A bar of police burglaries
+ * beside a bar of VillageWatch burglaries invites a reading neither series
+ * supports: one is a crime an officer recorded after a decision, the other is
+ * what a resident thought they saw at the time, and they are counted over
+ * different areas. Side by side with the difference stated is the most a reader
+ * can safely be given.
+ */
+function PoliceSection({ police }: { police: PoliceComparison }) {
+  const source = policeSourceLabel(police);
+  const missing = policeMissingMonthsNote(police);
+
+  if (police.months.length === 0) {
+    return (
+      <>
+        <p className="text-sm leading-relaxed text-slate-600">
+          No official police figures are held for this period yet. Police data is
+          published about two months after the month it covers.
+        </p>
+        {source && (
+          <p className="mt-2 text-xs text-slate-500">Neighbourhood: {source}</p>
+        )}
+        <p className="mt-2 text-xs text-slate-400">{POLICE_ATTRIBUTION}</p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <p className="text-sm leading-relaxed text-slate-700">
+        Covering{" "}
+        <strong className="font-semibold text-slate-900">
+          {policeMonthsLabel(police.months)}
+        </strong>
+        , as published by the police.
+      </p>
+
+      <div className="mt-4 grid gap-6 sm:grid-cols-2">
+        <CountTable
+          heading="The two counts"
+          rows={[
+            { label: "Police recorded crimes", count: police.total },
+            { label: "VillageWatch reports", count: police.villageReports },
+          ]}
+        />
+        <CountTable
+          heading="By police category"
+          rows={police.byCategory.map((row) => ({
+            label: row.label,
+            count: row.count,
+          }))}
+        />
+      </div>
+
+      {missing && (
+        <p className="mt-3 text-xs leading-relaxed text-slate-500">{missing}</p>
+      )}
+
+      {source && (
+        <p className="mt-2 text-xs text-slate-500">Neighbourhood: {source}</p>
+      )}
+
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">
+        {POLICE_COMPARISON_NOTE}
+      </p>
+
+      <p className="mt-2 text-xs text-slate-400">{POLICE_ATTRIBUTION}</p>
+    </>
   );
 }
 

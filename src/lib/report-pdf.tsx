@@ -17,10 +17,18 @@ import {
 import {
   APP_NAME,
   INCIDENT_TYPE_LABELS,
+  POLICE_ATTRIBUTION,
+  POLICE_COMPARISON_NOTE,
   REPORT_DESCRIPTION_MAX_CHARS,
   SEVERITY_LABELS,
   SEVERITY_PIN_COLORS,
 } from "@/lib/constants";
+import type { PoliceComparison } from "@/lib/police-report";
+import {
+  policeMissingMonthsNote,
+  policeMonthsLabel,
+  policeSourceLabel,
+} from "@/lib/police-report";
 import { truncateWords } from "@/lib/format-alert";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -291,6 +299,20 @@ const styles = StyleSheet.create({
   countLabel: { flex: 1, color: COLOURS.body },
   countValue: { fontFamily: "Helvetica-Bold", color: COLOURS.ink },
 
+  // Police recorded crime ---------------------------------------------------
+  /**
+   * The caveat under the two counts.
+   *
+   * Set at the footer's own size rather than `note`'s, and it is the only place
+   * in this document a paragraph that small carries something a reader has to
+   * act on. That is deliberate: it is a long sentence, it must fit under a
+   * two-column block without pushing the incident log to a second page on a
+   * quiet month, and it is the sentence that stops two numbers side by side
+   * being read as one comparison.
+   */
+  policyNote: { fontSize: 7, color: COLOURS.muted, marginTop: 6, lineHeight: 1.4 },
+  policeSource: { fontSize: 7.5, color: COLOURS.body, marginTop: 6 },
+
   // Hotspots ----------------------------------------------------------------
   hotspotRow: { flexDirection: "row", gap: 6, paddingVertical: 1.5 },
   hotspotIndex: { width: 12, color: COLOURS.faint },
@@ -396,6 +418,73 @@ function CountTable({
         ))
       )}
     </View>
+  );
+}
+
+/**
+ * The official police figures beside the village's own.
+ *
+ * Wrapped in `Section`, so it carries `wrap={false}` and stays on one page. It
+ * is a short block — two counts, a category list capped at
+ * `POLICE_CATEGORY_LIMIT`, and two paragraphs — and splitting a comparison
+ * across a page break would put the caveat that explains it on a different
+ * sheet from the numbers it explains. The incident log is still the one section
+ * allowed to run past a page.
+ *
+ * Every sentence here is rendered from a constant shared with the screen and
+ * the clipboard. `POLICE_COMPARISON_NOTE` in particular is not decoration: the
+ * two columns are measured over different areas, on different definitions, in
+ * different months, and a recipient who reads the numbers without it has been
+ * told something false by arithmetic that is individually correct.
+ */
+function PoliceSection({ police }: { police: PoliceComparison }) {
+  const source = policeSourceLabel(police);
+  const missing = policeMissingMonthsNote(police);
+
+  if (police.months.length === 0) {
+    return (
+      <Section title="Police recorded crime">
+        <Text style={{ color: COLOURS.body }}>
+          No official police figures are held for this period yet. Police data is
+          published about two months after the month it covers.
+        </Text>
+        {source && <Text style={styles.policeSource}>Neighbourhood: {source}</Text>}
+        <Text style={styles.policyNote}>{POLICE_ATTRIBUTION}</Text>
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Police recorded crime">
+      <Text style={styles.lead}>
+        Covering{" "}
+        <Text style={styles.strong}>{policeMonthsLabel(police.months)}</Text>, as
+        published by the police.
+      </Text>
+
+      <View style={styles.columns}>
+        <CountTable
+          heading="The two counts"
+          rows={[
+            { label: "Police recorded crimes", count: police.total },
+            { label: `${APP_NAME} reports`, count: police.villageReports },
+          ]}
+        />
+        <CountTable
+          heading="By police category"
+          rows={police.byCategory.map((row) => ({
+            label: row.label,
+            count: row.count,
+          }))}
+        />
+      </View>
+
+      {missing && <Text style={styles.policyNote}>{missing}</Text>}
+      {source && <Text style={styles.policeSource}>Neighbourhood: {source}</Text>}
+
+      <Text style={styles.policyNote}>{POLICE_COMPARISON_NOTE}</Text>
+      <Text style={styles.policyNote}>{POLICE_ATTRIBUTION}</Text>
+    </Section>
   );
 }
 
@@ -583,6 +672,22 @@ export function CommunityReportDocument({
             </>
           )}
         </Section>
+
+        {/*
+          The Home Office's own figures for the months this period overlaps.
+
+          Between the village's counts and the analysis of them, which is where
+          the on-screen report and the copied text put it — the three are one
+          document, and a section that appeared in a different place in the file
+          would be the first thing a coordinator noticed and the last thing
+          anybody could explain.
+
+          Rendered only when something is held. A heading reading "Police
+          recorded crime" over a zero, in a document addressed to a PCSO, is a
+          claim about their own figures that this deployment cannot make; see
+          `CommunityReportData.police`.
+        */}
+        {report.police && <PoliceSection police={report.police} />}
 
         {/*
           The analysis the route asked for. `narrative` is never null on this

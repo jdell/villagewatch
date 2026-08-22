@@ -1,8 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 21 August 2026 · **Repo version:** `v0.1.30` · **Branch:**
-`fix/share-summary-mode-aware`, off `main` — the three stacked branches below it
-are all merged · **Domain:** https://villagewatch.app
+**Last updated:** 22 August 2026 · **Repo version:** `v0.1.33` · **Branch:**
+`feat/police-data`, off `main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -20,13 +19,13 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.30`, tagged, `package.json` on `main` reads `0.1.30` |
-| Version on screen | expect **v0.1.29** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
+| Repo version | `v0.1.33`, tagged, `package.json` on `main` reads `0.1.33` — the community-mode copy stack landed as PRs #8 and #9 on 21–22 August |
+| Version on screen | expect **v0.1.32** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
-| Migrations in repo | 12, `20260726161847_init` → `20260820120000_village_community_mode`. **All twelve applied** — `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. So the compliance gate now reads a real `mode` column, and every village defaults to the community model |
+| Migrations in repo | 13, `20260726161847_init` → `20260822120000_police_crime_data`. **Twelve applied** — `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth is on `feat/police-data` and lands with it: three new tables, no change to any existing one, and nothing a resident can do changes when it runs. **`rls_policies.sql` has to be re-run with it** — a new table arrives with RLS off; `postgis.sql` does not, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, unit only, **22 files, 360 tests**, all passing (~2s) — runs with no `.env.local` and no database |
-| CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, now stepping past a tag that already exists — `v0.1.30` is on the remote while `package.json` reads `0.1.29`) |
+| Test suite | Vitest, unit only, **26 files, 428 tests**, all passing (~3s) — runs with no `.env.local` and no database |
+| CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
 
@@ -34,9 +33,10 @@ in `BACKLOG.md`.
 
 | Branch | State | Action |
 | --- | --- | --- |
-| `main` | The working branch. Auto-deploys to production. Head is `b0b050a`, the merge of the community-mode stack. | — |
-| `fix/share-summary-mode-aware` | **In review.** The third screen N15 missed, flagged in review on PR #7: the share panel on an incident told every village its summary was "for your PCSO or parish council". It reads `Village.mode` now, like `/reports` and the dashboard's controller field. | Merge to `main` |
-| `fix/community-mode-copy-and-grant-docs` | **In review**, stacked on the branch above. The rest of the mode-aware copy — thirteen places that still described a parish council to every village, the privacy notice's lawful basis among them — plus the two grant documents, rewritten against sixteen review findings. | Merge to `main` |
+| `main` | The working branch. Auto-deploys to production. | — |
+| `feat/police-data` | **In review.** The data.police.uk integration — the client, three Prisma models, the weekly sync, the dashboard panel and the comparison section in all three renderings of the community safety report. Carries migration 13. | Merge to `main`, then re-run `rls_policies.sql` |
+| `fix/share-summary-mode-aware` | Merged. | Delete |
+| `fix/community-mode-copy-and-grant-docs` | Merged. | Delete |
 
 `feat/reports-period-picker` (N15, PR #7), `feat/community-mode` (N17, PR #6)
 and `fix/archive-clears-raw-description` (T10, PR #5) are all merged into `main`,
@@ -54,6 +54,46 @@ PRs because they were asked for as PRs.
 ## Open items
 
 ### Done — landed, not yet exercised against real data
+
+- **Official police data** — 22 August 2026. VillageWatch now shows the Home
+  Office's own recorded-crime figures beside a village's reports, from
+  `data.police.uk`. Four modules — `police-api.ts` (the client, typed failures,
+  a 15/s outbound pacer), `police-data.ts` (the Prisma half), `police-report.ts`
+  (client-safe types and words) and `GET|POST /api/cron/police-data` (weekly, and
+  the on-demand endpoint) — three Prisma models, a dashboard panel, and a
+  comparison section in all three renderings of the community safety report:
+  screen, clipboard and PDF. It also answers "who is our PCSO", which nothing in
+  the app could do before: the neighbourhood team is resolved from the village's
+  map centre and stored.
+
+  **Two decisions worth knowing before reading the diff.** Nothing maps a police
+  category onto `IncidentType`, deliberately — the two series count different
+  things over different areas two months apart, so they render side by side with
+  one shared caveat constant rather than in one chart that would look like a
+  comparison and be an assertion. And `PoliceDataSync` exists so that "the police
+  published nothing" is distinguishable from "we never asked": a `count(*)`
+  returns zero for both, and printing that zero in a document addressed to a PCSO
+  would be a false statement produced by arithmetic that is individually correct.
+  Every surface names the months it holds and the months it does not.
+
+  **Nothing has ever spoken to the service.** Migration 13 is unapplied, no sync
+  has run, and the tests stub `fetch` and mock Prisma. Four things to watch on
+  the first run — the neighbourhood lookup (a village centre resolving to a
+  neighbouring parish's team is wrong in a way only somebody local spots), the
+  availability list the month-selection strategy rests on, a real month's volume
+  against `POLICE_MAX_CRIMES_PER_MONTH`, and the two freehand fields whose markup
+  is stripped. None can fail a page; all four degrade, which is why they want
+  looking at.
+
+  **It is a third Vercel cron and Hobby allows two.** If this deployment is on
+  Hobby the `vercel.json` entry has to go and the route be called from an
+  external scheduler — it is `CRON_SECRET`-guarded and takes `?village=`,
+  `?months=` and `?force=1`. Settle it before the first deploy of this branch.
+
+  `/privacy` §6 gained a paragraph in the same commit. It is the seventh claim
+  that file makes about how the code behaves, and the only one describing an
+  outbound request with nothing of a resident's in it: a village's ONS map centre
+  and a calendar month is all that is sent.
 
 - **Community Mode** — 20 August 2026, N17. `Village.mode` is `community` or
   `council`, defaulting to `community`. A community village's coordinator is the

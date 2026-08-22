@@ -208,6 +208,9 @@ ALTER TABLE public.pattern_alerts           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.coordinator_requests     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rate_limit               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.police_crimes            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.police_data_syncs        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.police_neighbourhoods    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."_PatternAlertIncidents" ENABLE ROW LEVEL SECURITY;
 
 -- Nothing in this schema is public. `anon` is the role a signed-out browser
@@ -1014,6 +1017,63 @@ CREATE TRIGGER audit_logs_append_only
   BEFORE UPDATE OR DELETE ON public.audit_logs
   FOR EACH ROW
   EXECUTE FUNCTION public.vw_audit_logs_append_only();
+
+-- ---------------------------------------------------------------------------
+-- police_crimes, police_data_syncs, police_neighbourhoods
+-- ---------------------------------------------------------------------------
+--
+-- Open data about a place, scoped to the village it was fetched for.
+--
+-- None of these three holds personal data. `data.police.uk` publishes recorded
+-- crime under the Open Government Licence with every record snapped to an
+-- anonymisation point, and `police_neighbourhoods` carries the team a force
+-- prints on its own website — a name, a rank and a published contact address.
+-- So the reasoning here is not the reasoning behind `incidents`: there is no
+-- column to withhold and no per-column grant, and SELECT is granted table-wide.
+--
+-- What is still scoped is the **village**, and for correctness rather than
+-- privacy. A row is the answer to a question asked about one village's map
+-- centre over the one-mile radius the API applies; served to a resident of a
+-- different parish it would be a figure about somewhere else, presented as a
+-- figure about here. Domain rule 4 holds for the same reason it holds
+-- everywhere, even where the data is public.
+--
+-- **No INSERT, UPDATE or DELETE to anybody.** These tables are written by
+-- `GET|POST /api/cron/police-data` alone, which runs through Prisma as the table
+-- owner and bypasses every policy in this file. A client that could write here
+-- could put a fabricated crime figure into a document a coordinator sends to
+-- the police — which is worse than a wrong number, because the document says on
+-- its face that the figures came from the Home Office.
+--
+-- `police_data_syncs` is granted SELECT alongside the crimes rather than held
+-- back, and that is deliberate: it is the row that says whether a month with no
+-- crimes in it was published-and-empty or never-fetched, and a client that could
+-- read the counts but not that distinction would be able to draw the one chart
+-- this feature exists to prevent.
+
+GRANT SELECT ON public.police_crimes TO authenticated;
+
+DROP POLICY IF EXISTS police_crimes_select_village ON public.police_crimes;
+CREATE POLICY police_crimes_select_village
+  ON public.police_crimes FOR SELECT
+  TO authenticated
+  USING (village_id = public.vw_current_village_id());
+
+GRANT SELECT ON public.police_data_syncs TO authenticated;
+
+DROP POLICY IF EXISTS police_data_syncs_select_village ON public.police_data_syncs;
+CREATE POLICY police_data_syncs_select_village
+  ON public.police_data_syncs FOR SELECT
+  TO authenticated
+  USING (village_id = public.vw_current_village_id());
+
+GRANT SELECT ON public.police_neighbourhoods TO authenticated;
+
+DROP POLICY IF EXISTS police_neighbourhoods_select_village ON public.police_neighbourhoods;
+CREATE POLICY police_neighbourhoods_select_village
+  ON public.police_neighbourhoods FOR SELECT
+  TO authenticated
+  USING (village_id = public.vw_current_village_id());
 
 -- ---------------------------------------------------------------------------
 -- Verify

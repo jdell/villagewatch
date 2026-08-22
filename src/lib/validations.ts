@@ -1017,6 +1017,146 @@ export const reportNarrativeSchema = z.object({
 export type ReportNarrativeOutput = z.output<typeof reportNarrativeSchema>;
 
 /**
+ * One street-level crime, as `data.police.uk` returns it.
+ *
+ * An external JSON body from a service nobody here controls, so it is validated
+ * on the way in for the same reason the AI outputs above are: the shape is a
+ * promise somebody else made, and a promise is not a type. This is the record
+ * schema rather than the array's — `src/lib/police-api.ts` parses element by
+ * element and drops what will not parse, because one malformed record in a
+ * month of open data should cost that record and not the month.
+ *
+ * ## Why almost everything is optional
+ *
+ * Because it almost all genuinely is. `persistent_id` is very often the empty
+ * string, `context` is nearly always empty, `outcome_status` is null for a
+ * crime still under investigation, and `location` is occasionally absent
+ * altogether. The two fields that are not optional are the ones without which a
+ * record means nothing: the category and the id that identifies it within its
+ * month.
+ *
+ * The coordinates arrive as **strings** — `"52.6394"` — which is what
+ * `z.coerce.number()` is doing here rather than defensive parsing at the call
+ * site. They are an anonymisation point, not a location: the published position
+ * of a crime is a notional point "on or near" a street, chosen upstream so that
+ * no record can be tied to an address.
+ */
+export const policeCrimeSchema = z.object({
+  /** Numeric upstream, stored as text — see `PoliceCrime.crimeId`. */
+  id: z.union([z.number(), z.string()]).transform((value) => String(value)),
+  category: z.string().trim().min(1).max(80),
+  persistent_id: z.string().trim().max(120).optional().nullable(),
+  /** `YYYY-MM`. Present on every record; the caller uses the requested month. */
+  month: z.string().trim().regex(/^\d{4}-\d{2}$/).optional().nullable(),
+  location_type: z.string().trim().max(40).optional().nullable(),
+  location_subtype: z.string().trim().max(80).optional().nullable(),
+  context: z.string().trim().max(2000).optional().nullable(),
+  location: z
+    .object({
+      latitude: z.coerce.number().min(-90).max(90),
+      longitude: z.coerce.number().min(-180).max(180),
+      street: z
+        .object({
+          id: z.coerce.number().int().optional().nullable(),
+          name: z.string().trim().max(200).optional().nullable(),
+        })
+        .optional()
+        .nullable(),
+    })
+    .optional()
+    .nullable(),
+  outcome_status: z
+    .object({
+      category: z.string().trim().max(200).optional().nullable(),
+      date: z.string().trim().max(20).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+});
+
+export type PoliceCrimeRecord = z.output<typeof policeCrimeSchema>;
+
+/**
+ * `GET /api/locate-neighbourhood?q=lat,lng` — which force and neighbourhood a
+ * point falls in.
+ *
+ * The whole answer is two slugs, and neither is meaningful without the other:
+ * `NC04` is a neighbourhood of Leicestershire and of nothing else.
+ */
+export const policeLocateSchema = z.object({
+  force: z.string().trim().min(1).max(80),
+  neighbourhood: z.string().trim().min(1).max(80),
+});
+
+/**
+ * `GET /api/{force}/{neighbourhood}` — the team's own page, as data.
+ *
+ * `population` arrives as a string and is frequently `"0"`, which is a force
+ * that has not filled the field in rather than an empty neighbourhood; the
+ * client drops a zero rather than storing a figure that would render as a
+ * claim.
+ */
+export const policeNeighbourhoodSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(4000).optional().nullable(),
+  url_force: z.string().trim().max(500).optional().nullable(),
+  population: z.string().trim().max(20).optional().nullable(),
+  centre: z
+    .object({
+      latitude: z.coerce.number().min(-90).max(90),
+      longitude: z.coerce.number().min(-180).max(180),
+    })
+    .optional()
+    .nullable(),
+  contact_details: z
+    .object({
+      email: z.string().trim().max(200).optional().nullable(),
+      telephone: z.string().trim().max(80).optional().nullable(),
+      facebook: z.string().trim().max(500).optional().nullable(),
+      twitter: z.string().trim().max(500).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+});
+
+/**
+ * One member of a neighbourhood policing team.
+ *
+ * **`bio` is deliberately absent from this schema**, though the API returns it.
+ * It is force-authored HTML, and nothing in this codebase renders third-party
+ * HTML — `src/lib/markdown.ts` exists precisely so that even the compliance
+ * documents need no `dangerouslySetInnerHTML`. Leaving it out of the schema is
+ * what stops it reaching the database, which is where a later "just render the
+ * bio" would find it.
+ */
+export const policeOfficerSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  rank: z.string().trim().max(120).optional().nullable(),
+  contact_details: z
+    .object({ email: z.string().trim().max(200).optional().nullable() })
+    .optional()
+    .nullable(),
+});
+
+/** `GET /api/crime-categories?date=YYYY-MM` — the slug/label pairs. */
+export const policeCategorySchema = z.object({
+  url: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(200),
+});
+
+/**
+ * `GET /api/crimes-street-dates` — the months the service actually holds.
+ *
+ * The reason the sync does not simply assume "two months ago": the lag is
+ * roughly two months and is not a rule. Asking costs one call a run and turns
+ * "the API returned nothing, is that a fault?" into a fact.
+ */
+export const policeAvailabilitySchema = z.object({
+  date: z.string().trim().regex(/^\d{4}-\d{2}$/),
+});
+
+/**
  * The date range behind `/reports`.
  *
  * A GET form, so everything arrives as a string and anything unparseable is

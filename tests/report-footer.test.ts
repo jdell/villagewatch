@@ -73,6 +73,10 @@ function report(
     byType: [{ key: "VEHICLE_CRIME", count: 1 }],
     bySeverity: [{ key: "MEDIUM", count: 1 }],
     hotspots: [{ location: "Mill Lane", count: 1 }],
+    // The footer's AI claim is about the narrative and nothing else, so the
+    // police comparison is deliberately absent here — a fixture that carried
+    // one would be asserting the same sentence through a longer document.
+    police: null,
     narrative: narrativeValue,
     incidents: [INCIDENT],
     omitted: 0,

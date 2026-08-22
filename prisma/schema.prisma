@@ -338,6 +338,13 @@ model Village {
   auditLogs           AuditLog[]
   coordinatorRequests CoordinatorRequest[]
 
+  /// Official recorded-crime figures fetched from data.police.uk for this
+  /// village's map centre. Open data about a place, not data about a person —
+  /// see the models at the foot of this file.
+  policeCrimes        PoliceCrime[]
+  policeSyncs         PoliceDataSync[]
+  policeNeighbourhood PoliceNeighbourhood?
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -371,16 +378,16 @@ model User {
   verifiedById String?   @map("verified_by_id") @db.Uuid
 
   // Notification preferences.
-  notifyPush        Boolean  @default(true) @map("notify_push")
-  notifyEmail       Boolean  @default(true) @map("notify_email")
-  notifySms         Boolean  @default(false) @map("notify_sms")
-  notifyMinSeverity Severity @default(LOW) @map("notify_min_severity")
+  notifyPush         Boolean  @default(true) @map("notify_push")
+  notifyEmail        Boolean  @default(true) @map("notify_email")
+  notifySms          Boolean  @default(false) @map("notify_sms")
+  notifyMinSeverity  Severity @default(LOW) @map("notify_min_severity")
   /// Only alert about incidents within this many metres of `homeLat`/`homeLng`.
   /// Null means village-wide, which is also what applies when a resident has
   /// not told us where they live — there is nothing to measure from.
-  notifyRadiusMeters Int?    @map("notify_radius_meters")
+  notifyRadiusMeters Int?     @map("notify_radius_meters")
   /// Web Push subscription payload (endpoint + keys).
-  pushSubscription  Json?    @map("push_subscription")
+  pushSubscription   Json?    @map("push_subscription")
 
   onboardedAt  DateTime? @map("onboarded_at")
   lastActiveAt DateTime? @map("last_active_at")
@@ -406,15 +413,15 @@ model User {
   /// Villages whose compliance documents this person accepted. Almost always
   /// zero or one — a coordinator belongs to one village — but the relation is
   /// a list because nothing in the schema enforces that.
-  dpiaAcceptedVillages Village[] @relation("VillageDpiaAcceptor")
-  apdAcceptedVillages  Village[] @relation("VillageApdAcceptor")
-  dpaAcceptedVillages  Village[] @relation("VillageDpaAcceptor")
+  dpiaAcceptedVillages         Village[]      @relation("VillageDpiaAcceptor")
+  apdAcceptedVillages          Village[]      @relation("VillageApdAcceptor")
+  dpaAcceptedVillages          Village[]      @relation("VillageDpaAcceptor")
   /// And the community agreement, in a village running `community` mode — where
   /// this person is the data controller rather than accepting on a council's
   /// behalf.
-  communityDpaAcceptedVillages Village[] @relation("VillageCommunityDpaAcceptor")
-  notifications      Notification[]
-  auditLogs          AuditLog[]
+  communityDpaAcceptedVillages Village[]      @relation("VillageCommunityDpaAcceptor")
+  notifications                Notification[]
+  auditLogs                    AuditLog[]
 
   coordinatorRequests         CoordinatorRequest[] @relation("CoordinatorRequestApplicant")
   reviewedCoordinatorRequests CoordinatorRequest[] @relation("CoordinatorRequestReviewer")
@@ -514,7 +521,7 @@ model Incident {
   peopleCount Int? @map("people_count")
 
   /// Set when this report matches others nearby in the last 30 days.
-  recurring Boolean @default(false)
+  recurring   Boolean @default(false)
   /// The match in one line, e.g. "4th report of vehicle crime within 200m
   /// in the last 30 days". Public — it is derived from published incidents only.
   patternNote String? @map("pattern_note")
@@ -623,7 +630,7 @@ model IncidentTag {
   incidentId String   @map("incident_id") @db.Uuid
   incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
-  label String
+  label      String
   /// "ai" | "user" | "system"
   source     String @default("ai")
   confidence Float?
@@ -648,8 +655,8 @@ model Notification {
   patternAlertId String?       @map("pattern_alert_id") @db.Uuid
   patternAlert   PatternAlert? @relation(fields: [patternAlertId], references: [id], onDelete: Cascade)
 
-  title String
-  body  String
+  title   String
+  body    String
   /// "push" | "email" | "sms" | "in_app"
   channel String  @default("push")
   /// Deep link opened when the notification is tapped.
@@ -855,4 +862,231 @@ model AuditLog {
   @@index([actorId, createdAt(sort: Desc)])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Official police data (data.police.uk)
+// ---------------------------------------------------------------------------
+//
+// Three tables, and none of them holds personal data.
+//
+// `data.police.uk` publishes recorded crime under the Open Government Licence.
+// Every record is snapped to an anonymised map point — the published location is
+// a notional point "on or near" a street, chosen so that no crime can be tied to
+// an address — and it carries no victim, no suspect and no officer. That is what
+// makes it safe to store beside a village's own reports and to print in a
+// document. It is also why none of the domain rules about `rawDescription`,
+// coordinate fuzzing or the public status list has an analogue here: there is
+// nothing in these rows to restrict.
+//
+// What they *are* scoped by is the village (domain rule 4), and for a reason
+// that is about correctness rather than privacy. The figures are fetched for one
+// village's map centre over a one-mile radius, so a row is an answer to a
+// question asked about that village and means nothing detached from it.
+
+/// One crime as data.police.uk published it, for one village and one month.
+///
+/// Fetched by `GET|POST /api/cron/police-data` and read by the dashboard and
+/// `/reports`. Nothing in the application writes a row any other way, and
+/// nothing edits one — a month is replaced wholesale when it is re-fetched,
+/// because the upstream figures are revised as investigations close and a
+/// half-updated month is worse than a stale one.
+model PoliceCrime {
+  id String @id @default(uuid()) @db.Uuid
+
+  villageId String  @map("village_id") @db.Uuid
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  /// The API's own per-record id, kept as text.
+  ///
+  /// It arrives as a JSON number and is stored as a string on purpose: it is an
+  /// opaque token to us — we never sort it, compare it or do arithmetic on it —
+  /// and the published values passed 100 million some years ago. A 32-bit
+  /// column would be a migration nobody schedules until the day it overflows.
+  ///
+  /// **Not stable between months.** The API's own `persistent_id` is the stable
+  /// one and is very often an empty string, which is why the unique key below
+  /// is on this column instead: within one village-month it does identify a
+  /// record, which is all the deduplication a wholesale replace needs.
+  crimeId String @map("crime_id")
+
+  /// The API's `persistent_id`, where it has one. Frequently empty upstream —
+  /// stored when present so that a future feature which needs to follow one
+  /// crime across months has somewhere to look, and never relied on here.
+  persistentId String? @map("persistent_id")
+
+  /// `YYYY-MM`, exactly as published. Text rather than a date because that is
+  /// what it is: a calendar month with no day, no time and no zone attached.
+  /// `isPoliceMonth` in `src/lib/constants.ts` is what narrows anything written
+  /// into it.
+  month String
+
+  /// The API's category slug — `vehicle-crime`, `anti-social-behaviour`.
+  /// `policeCategoryLabel` turns it into words; the slug is stored because the
+  /// Home Office's own label for a category has changed before and the slug has
+  /// not.
+  category String
+
+  /// The published point, which is an anonymisation point rather than a
+  /// location. Nullable because a record occasionally arrives with none.
+  ///
+  /// There is deliberately **no PostGIS column beside these**, unlike
+  /// `Incident.locationPoint`. Nothing queries this table by radius — the
+  /// radius was applied upstream, by the API, when the month was fetched — so a
+  /// geography column and its trigger would be maintained for no reader.
+  lat Float?
+  lng Float?
+
+  streetId   Int?    @map("street_id")
+  streetName String? @map("street_name")
+
+  /// "Force" or "BTP" — which body recorded it. British Transport Police
+  /// figures cover the railway and are published alongside the local force's.
+  locationType    String? @map("location_type")
+  locationSubtype String? @map("location_subtype")
+
+  /// The force's own free-text note. Almost always empty; stored because when
+  /// it is not, it is the only sentence on the record a person wrote.
+  context String?
+
+  /// What happened to it, as at the last fetch — "Under investigation",
+  /// "Court result unavailable". Revised upstream after publication, which is
+  /// why a stored month is re-fetched at `POLICE_REFRESH_DAYS` rather than kept
+  /// forever.
+  outcomeCategory String? @map("outcome_category")
+  /// `YYYY-MM` again, and the month the outcome was recorded rather than the
+  /// month of the crime.
+  outcomeDate     String? @map("outcome_date")
+
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+
+  /// What makes a re-fetch idempotent. A month is deleted and re-inserted in one
+  /// transaction, so this is a backstop rather than the mechanism — but without
+  /// it, two sync runs racing on the same village-month would double every
+  /// figure in a document sent to the police, which is the one failure here that
+  /// would not look like one.
+  @@unique([villageId, month, crimeId], map: "police_crimes_village_month_crime_key")
+  @@index([villageId, month])
+  @@index([villageId, category])
+  @@map("police_crimes")
+}
+
+/// What one sync run did to one village-month, and when.
+///
+/// The bookkeeping that makes the cache a cache. Two things depend on it:
+///
+///  1. **Skipping work.** A month fetched inside `POLICE_REFRESH_DAYS` is not
+///     fetched again, which is what keeps a nightly-ish job from asking the Home
+///     Office for the same unchanged month every run.
+///  2. **Telling "none" apart from "not yet".** A village-month with no row has
+///     never been fetched; a row with `status = "ok"` and `crimeCount = 0` is a
+///     month the police published with nothing in it. Printing "0 recorded
+///     crimes" for the first of those, in a document addressed to the police,
+///     would be a false statement — and it is exactly the shape of false
+///     statement that a `count(*)` returning zero produces silently. Every
+///     surface that renders these figures names the months it actually holds.
+model PoliceDataSync {
+  id String @id @default(uuid()) @db.Uuid
+
+  villageId String  @map("village_id") @db.Uuid
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  /// `YYYY-MM`.
+  month String
+
+  /// `ok` — fetched, whatever the count. `empty` — the API had no data for this
+  /// month yet, which is the ordinary state of the last two months.
+  /// `unavailable` — the area holds more crimes than the API will return.
+  /// `failed` — a timeout, a network error or an unreadable body.
+  ///
+  /// A `String` and not an enum, the same shape as `Village.mode` and
+  /// `Village.privacyLevel` and for the same reason: it is an operational note
+  /// rather than a domain concept anything branches on, and a fifth value
+  /// should not cost an `ALTER TYPE` in a hand-written migration.
+  status String
+
+  /// Rows stored for this village-month. Zero is a real answer; see above.
+  crimeCount Int @map("crime_count")
+
+  /// Whatever the failure was, in one line, for whoever reads the cron log.
+  detail String?
+
+  fetchedAt DateTime @map("fetched_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([villageId, month])
+  @@index([villageId, month(sort: Desc)])
+  @@map("police_data_syncs")
+}
+
+/// The policing neighbourhood a village sits in, and the team that covers it.
+///
+/// One row per village — this is the answer to "who is our PCSO", which every
+/// coordinator needs and which nothing in VillageWatch could tell them before.
+/// Resolved from the village's map centre through `locate-neighbourhood` and
+/// then filled in from the force's own published team list.
+///
+/// ## The officers named here are published by the force
+///
+/// A neighbourhood team page is public, on the force's own website, precisely so
+/// that residents can contact the officers on it. What is stored is name, rank
+/// and the contact address the force publishes for them — the working details of
+/// a public office, which is why this sits comfortably beside open crime data
+/// rather than under the rules that govern a resident's row.
+///
+/// What is deliberately **not** stored is the `bio` the API returns alongside
+/// each officer. It is force-authored HTML, and rendering third-party HTML is a
+/// stored-XSS surface this codebase does not otherwise have — `MarkdownView`
+/// exists so that even the compliance documents need no `dangerouslySetInnerHTML`.
+model PoliceNeighbourhood {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// One per village, which is what makes the relation on `Village` a `?`
+  /// rather than a list.
+  villageId String  @unique @map("village_id") @db.Uuid
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  /// The force slug — `cambridgeshire`. Cambridgeshire Constabulary is the
+  /// pilot, and the only thing that makes it the pilot is which village was
+  /// activated first; nothing in this schema is force-specific.
+  forceId   String  @map("force_id")
+  forceName String? @map("force_name")
+
+  /// The force's own identifier for the neighbourhood — `NC04`, `CN1`. Unique
+  /// within a force and meaningless outside it, which is why the pair is always
+  /// carried together.
+  neighbourhoodId String @map("neighbourhood_id")
+
+  name        String
+  description String?
+
+  /// The force's page for this neighbourhood, for a coordinator who wants the
+  /// detail this table deliberately does not hold.
+  urlForce String? @map("url_force")
+
+  centreLat Float? @map("centre_lat")
+  centreLng Float? @map("centre_lng")
+
+  /// Published contact points for the team. Every one of these is an address a
+  /// force prints on a poster.
+  email     String?
+  telephone String?
+  facebook  String?
+  twitter   String?
+
+  /// The team, as `[{ name, rank, email }]`, capped at
+  /// `POLICE_TEAM_MAX_MEMBERS`. JSON rather than a fourth table because nothing
+  /// queries an officer — the whole list is read together, rendered together and
+  /// replaced together on every refresh.
+  team Json?
+
+  fetchedAt DateTime @map("fetched_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([forceId, neighbourhoodId])
+  @@map("police_neighbourhoods")
 }

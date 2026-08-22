@@ -3,9 +3,17 @@ import {
   APP_NAME,
   DATA_CONTROLLER,
   INCIDENT_TYPE_LABELS,
+  POLICE_ATTRIBUTION,
+  POLICE_COMPARISON_NOTE,
   REPORT_DESCRIPTION_MAX_CHARS,
   SEVERITY_LABELS,
 } from "@/lib/constants";
+import type { PoliceComparison } from "@/lib/police-report";
+import {
+  policeMissingMonthsNote,
+  policeMonthsLabel,
+  policeSourceLabel,
+} from "@/lib/police-report";
 import { appBaseUrl, truncateWords } from "@/lib/format-alert";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -127,6 +135,18 @@ export type CommunityReportData = {
   byType: readonly ReportCount<IncidentType>[];
   bySeverity: readonly ReportCount<Severity>[];
   hotspots: readonly ReportHotspot[];
+  /**
+   * The Home Office's own recorded-crime figures for the months this period
+   * overlaps, or null when this deployment holds none for the village.
+   *
+   * **Null omits the section entirely**, rather than rendering it empty. A
+   * heading reading "Police recorded crime" over a zero, in a document a
+   * coordinator sends to a PCSO, is a claim about the officer's own figures
+   * that VillageWatch is in no position to make — and it is a claim made
+   * silently, by a `count(*)` that is individually correct. See
+   * `src/lib/police-report.ts`.
+   */
+  police: PoliceComparison | null;
   /** Null until the coordinator asks for one. The rest of the report stands. */
   narrative: ReportNarrative | null;
   /** Newest first, capped at `REPORT_MAX_INCIDENTS`. */
@@ -246,6 +266,66 @@ function trendLine(total: number, previous: number, days: number): string {
   return `The ${period} saw ${previous} — ${Math.abs(change)} ${
     change > 0 ? "fewer" : "more"
   } than this period.`;
+}
+
+/**
+ * The police comparison, as lines of the plain-text document.
+ *
+ * Beside `countLines` rather than in `police-report.ts` because it is built out
+ * of this module's own house style — the label column, the rule, the widths —
+ * and a version living elsewhere would have to be handed those, which is a
+ * seam that exists only to move code out of a file. What *is* in
+ * `police-report.ts` is everything the three rendered surfaces also need: the
+ * types, the month label, the missing-months sentence and the source line.
+ *
+ * Both branches carry `POLICE_COMPARISON_NOTE`. A section that printed the
+ * figures without it would be two numbers in a police document with nothing
+ * saying they were measured over different areas, on different definitions, in
+ * different months.
+ */
+function policeLines(police: PoliceComparison): string[] {
+  const lines: string[] = [];
+  const source = policeSourceLabel(police);
+
+  if (police.months.length === 0) {
+    lines.push(
+      "No official police figures are held for this period yet. Police data is",
+      "published about two months after the month it covers.",
+    );
+
+    if (source) lines.push("", `Neighbourhood: ${source}`);
+    lines.push("", POLICE_ATTRIBUTION);
+
+    return lines;
+  }
+
+  lines.push(
+    `Covering ${policeMonthsLabel(police.months)}, as published by the police.`,
+    "",
+    ...countLines([
+      { label: "Police recorded crimes", count: police.total },
+      { label: "VillageWatch reports", count: police.villageReports },
+    ]),
+  );
+
+  if (police.byCategory.length > 0) {
+    lines.push(
+      "",
+      "By police category",
+      ...countLines(
+        police.byCategory.map((row) => ({ label: row.label, count: row.count })),
+      ),
+    );
+  }
+
+  const missing = policeMissingMonthsNote(police);
+  if (missing) lines.push("", missing);
+
+  if (source) lines.push("", `Neighbourhood: ${source}`);
+
+  lines.push("", POLICE_COMPARISON_NOTE, "", POLICE_ATTRIBUTION);
+
+  return lines;
 }
 
 /** Whole days between two instants, rounded up. Never zero. */
@@ -421,6 +501,21 @@ export function formatCommunityReport(
       "",
       "Grouped by the landmark residents typed, so wording varies between reports.",
     );
+  }
+
+  /*
+    The official figures, between the village's own numbers and the analysis of
+    them. Placed here because it is counted data and the analysis should follow
+    every count in the document — and because a recipient who reads the
+    VillageWatch totals above then immediately meets the sentence explaining
+    what the police series measures differently, rather than three sections
+    later.
+
+    Omitted entirely when there is nothing held. See `CommunityReportData.police`
+    for why an empty section would be worse than none.
+  */
+  if (report.police) {
+    lines.push("", RULE, "POLICE RECORDED CRIME", RULE, "", ...policeLines(report.police));
   }
 
   lines.push("", RULE, "PATTERN ANALYSIS", RULE, "");
