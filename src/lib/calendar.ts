@@ -5,9 +5,10 @@ import { dateInputValue } from "@/lib/date-range";
  *
  * **Client-safe** — same import budget as `format-alert.ts`, `date-range.ts` and
  * `community-report.ts`: nothing here touches Prisma, a secret or `node:*`. It
- * is drawn by `src/components/reports/report-period-picker.tsx`, which is a
- * Client Component, and it is a separate module so the parts with an off-by-one
- * in them can be tested without rendering a calendar.
+ * is drawn by `src/components/date-range-chip.tsx`, which is a Client Component
+ * and is the one calendar `/reports`, `/dashboard` and `/incidents` all open,
+ * and it is a separate module so the parts with an off-by-one in them can be
+ * tested without rendering a calendar.
  *
  * ## Everything here is the host zone, deliberately
  *

@@ -218,8 +218,11 @@ src/
                               ssr:false. `mode` picks pins / heat / both
     map-view.tsx              Client wrapper: dynamic import, date range incl.
                               the custom pair, and the layer toggle in localStorage
-    time-range-fields.tsx     The period control on /incidents and /dashboard.
-                              Renders inside the caller's own GET form
+    time-range-fields.tsx     The period control on /incidents and /dashboard —
+                              a select, and the dates only under Custom. Renders
+                              inside the caller's own GET form
+    date-range-chip.tsx       The "22 Jul – 21 Aug" chip and the two-month grid
+                              behind it. Shared by all three period controls
     map/heatmap-layer.tsx     leaflet.heat as a react-leaflet child. The plugin
                               is imported dynamically inside the effect
     map/hotspot-heatmap.tsx   The dashboard's density thumbnail — heat only,
@@ -234,7 +237,8 @@ src/
     copy-alert.tsx            The three share buttons — copy, WhatsApp, Facebook
                               — over one alert text. Coordinator, published only
     reports/report-period-picker.tsx  The period — one row, and the dates only
-                              when the preset is Custom. Still a GET form
+                              when the preset is Custom. Still a GET form. The
+                              calendar itself is date-range-chip.tsx
     reports/download-pdf-button.tsx  Fetch, check the status, then save. Sends
                               analysis=ai only once one is on screen
     reports/report-view.tsx   The period report on screen, on the clipboard and
@@ -481,6 +485,9 @@ tests/                        Vitest, unit only — see The test suite
                               the caveat that must travel with them, the months
                               named as missing, and no section at all when
                               nothing is held
+  period-control.test.tsx     The only component test — the three period
+                              controls rendered to a string: no date input under
+                              a preset, a chip under Custom. See The test suite
 vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
   ci.yml                      lint → typecheck → test → build, PRs and main
@@ -1000,7 +1007,7 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Twenty-six files, 428 tests, covering the
+between the typecheck and the build. Twenty-seven files, 435 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1009,10 +1016,10 @@ documents loading and parsing, the Markdown parser the compliance page renders
 them through, the per-village face redaction level, the heat intensity scale,
 the two date-range resolvers, the date picker's month arithmetic, the PDF's
 layout, the invite link, the nightly retention sweep's archive pass, the two
-compliance models, the report footer's AI claim, and the four files behind the
+compliance models, the report footer's AI claim, the four files behind the
 police figures — the client's typed failures, the month arithmetic, the
 published-and-empty-versus-never-fetched distinction, and the caveat that has to
-travel with a comparison.
+travel with a comparison — and the markup of the three period controls.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -1068,6 +1075,17 @@ travel with a comparison.
   travel with them, the months named as missing, and **no section at all** when
   nothing is held, which is what keeps a deployment that never runs the sync
   producing exactly the report it produced before.
+- **`tests/period-control.test.tsx` is the one component test**, and it is the
+  third file to earn an exception rather than a fourth kind of test. It renders
+  `TimeRangeFields` and `ReportPeriodPicker` to a string with `react-dom/server`
+  and reads the markup — no secret, no database and no DOM, which is why
+  `environment: "node"` is untouched and jsdom is still not a dependency. What
+  it pins is the promise rather than the implementation: **no date input exists
+  in the document** under a preset, and a chip that opens one exists under
+  Custom. That fault shipped on three screens and was fixed on one of them a PR
+  before the other two, which is the kind of regression a diff review passes
+  over. `include` widened to `.tsx` for it; a test that wanted to *click*
+  something would want jsdom and is the test this suite still does not take.
 - **`tests/retention.test.ts` is the one route handler in the suite**, and it
   earns the exception the same way `compliance-documents.test.ts` does. The
   archive pass deletes a resident's verbatim words on a schedule with nobody
@@ -1078,7 +1096,8 @@ travel with a comparison.
   than a row count, because what matters is *which* rows are matched and which
   columns are written.
 - **What is deliberately not covered**: no other route handler, no server
-  action, no React component, no RLS policy. Those need a database, a request context or a
+  action, no RLS policy, and no component beyond the one above — nothing
+  interactive, nothing behind a click. Those need a database, a request context or a
   browser, and a suite that needed any of them would stop being the thing CI can
   run on every push. The gap that matters most is named in Not built yet —
   nothing asserts that a `PENDING_REVIEW` village still queues.
@@ -2232,6 +2251,20 @@ together. Two documents: one incident, and everything published over a period.
   — they are what make a hand-edited URL safe — but a notice explaining that the
   dates somebody just clicked have been moved is worse than not being able to
   click them.
+- **The chip and the grid are `src/components/date-range-chip.tsx` now, and
+  three screens open the same one.** They lived inside `ReportPeriodPicker`
+  until `/dashboard` and `/incidents` wanted the same collapse; the second
+  screen to want a calendar would otherwise have copied two hundred lines of it,
+  and two calendars with the same off-by-ones in them diverge on the day
+  somebody fixes one. The three differ in the ceiling they enforce
+  (`REPORT_MAX_RANGE_DAYS` against `MAX_CUSTOM_RANGE_DAYS`) and in nothing else,
+  so that is the prop. It renders a **fragment** rather than a wrapper, because
+  the popover is positioned against the caller's row: anchored to the chip
+  instead it starts wherever the chip sits, which on a phone is a third of the
+  way across, and a 34rem panel from there runs off the screen. `open` stays the
+  caller's state, because two things open it and only one is inside — the chip,
+  and choosing "Custom range" from the select beside it, which is a request to
+  pick dates rather than to reveal a button that picks them.
 - **`src/lib/calendar.ts` is the arithmetic, and it is a module rather than
   three functions in the component** so the off-by-ones can be tested: the Sunday
   that shifts a month a column left (`getDay()` is 0, so `weekday - 1` is -1), the
@@ -2895,19 +2928,33 @@ the one list of them, and three screens read it: `/map`, `/incidents` and
   `MAX_CUSTOM_RANGE_DAYS` — every one produces a period, and `notice` is how the
   adjustment is admitted rather than applied silently. This runs on a page
   render; a throw here is an error page in front of somebody looking at a map.
-- **The two server forms use submit buttons rather than a `<select>`**, because
-  a submit button carries its own `name`/`value` and the map's control is a row
-  of pills. `TimeRangeFields` renders **inside the caller's form**, which is what
+- **The two date inputs are gone unless a custom range is selected**, which is
+  the same fault `/reports` fixed and the same fix. They sat on both rows
+  permanently, ignored by this resolver for every preset but `custom`, so a
+  coordinator filling them in under "Last 7 days" watched nothing move. `/map`
+  never had the fault — it has revealed its pair only under Custom since the
+  control was written, and says why in a comment — which left these two as the
+  outliers. What replaced them is `TimeRangeFields` rendering the chip from
+  `date-range-chip.tsx`, the same component `/reports` opens its calendar with;
+  three screens, one grid, one set of off-by-ones.
+- **The pills became a `<select>`, and the no-JavaScript property survived
+  that.** A submit button carried its own `name`/`value`, which is what made a
+  row of pills work with no JavaScript; a `<select name="range">` beside a real
+  submit button has the same property. What it buys is the thing pills could
+  not: a preset can be *chosen* without the page navigating, which is what
+  "Custom range" needs if it is to reveal a picker rather than submit a range
+  nobody has typed yet. `from` and `to` ride along as hidden inputs whatever is
+  selected, so a custom range survives a trip through "Last 7 days" and back.
+- **`TimeRangeFields` still renders inside the caller's form**, which is what
   lets a change of period on `/incidents` carry the type and severity selects
-  through the same submission. The list's own Apply button carries
-  `name="range"` with the resolved preset for the mirror-image reason: every
-  other control in that form is named `range`, so a bare Apply would send none
-  and drop the reader back to the default month while they were filtering by
-  type.
-- **The first submit button in each form is a hidden `range=custom`.** A browser
-  presses the first one on Enter, and somebody typing in a date field and
-  pressing Enter means "use these dates" — without it they would get whichever
-  preset happened to be leftmost, discarding what they just typed.
+  through the same submission. It renders a submit button only where the caller
+  has none — `/dashboard`, whose form holds the control and nothing else. The
+  list's Apply button used to carry `name="range"` with the resolved preset,
+  because every period control in that form was a submit button named `range`
+  and a bare Apply would have sent none, dropping the reader back to the default
+  month while they were filtering by type. The `<select>` carries it now, so
+  that trick went with the pills — along with the hidden first `range=custom`
+  button that made Enter in a date field mean "use these dates".
 - **The dashboard's second stat card changed rather than gaining a window.**
   "This week" and "this month" were two fixed windows because there was no
   control; with one, a second window on the same number says nothing. It counts

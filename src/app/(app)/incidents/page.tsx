@@ -7,7 +7,11 @@ import { IncidentCard } from "@/components/incident-card";
 import { NoVillage } from "@/components/no-village";
 import { TimeRangeFields } from "@/components/time-range-fields";
 import { requireSession } from "@/lib/auth";
-import { resolveTimeRange, timeRangeFilter } from "@/lib/date-range";
+import {
+  dateInputValue,
+  resolveTimeRange,
+  timeRangeFilter,
+} from "@/lib/date-range";
 import { prisma } from "@/lib/prisma";
 import {
   BROWSE_RANGE_VALUES,
@@ -146,12 +150,17 @@ export default async function IncidentsPage({
         className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-4"
       >
         {/*
-          One form, three filters. The period control is a row of submit buttons
-          rather than its own form precisely so that changing it carries the type
+          One form, three filters. The period control renders inside this form
+          rather than owning one precisely so that changing it carries the type
           and severity selects along in the same submission — see
-          `TimeRangeFields`.
+          `TimeRangeFields`. It has no submit button of its own for the same
+          reason: Apply below is this form's, and it applies all three.
         */}
-        <TimeRangeFields range={range} presets={BROWSE_RANGE_VALUES} />
+        <TimeRangeFields
+          range={range}
+          presets={BROWSE_RANGE_VALUES}
+          today={dateInputValue(new Date())}
+        />
 
         <div className="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
           <div className="min-w-44 flex-1">
@@ -200,15 +209,14 @@ export default async function IncidentsPage({
 
           <div className="flex gap-2">
             {/*
-              Carries the resolved period rather than submitting bare. Every
-              preset control in this form is a submit button named `range`, so a
-              plain Apply would send no `range` at all and silently drop the
-              reader back to the default month while they were filtering by type.
+              Submits bare, which it could not while the period control was a row
+              of submit buttons named `range` — a plain Apply then sent no
+              `range` at all and silently dropped the reader back to the default
+              month while they were filtering by type. The `<select>` above
+              carries it now, on every submission this form makes.
             */}
             <button
               type="submit"
-              name="range"
-              value={range.preset}
               className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               <Filter className="size-4" aria-hidden />

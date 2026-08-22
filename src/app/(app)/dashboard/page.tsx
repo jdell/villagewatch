@@ -34,6 +34,7 @@ import { TimeRangeFields } from "@/components/time-range-fields";
 import { requireCoordinator } from "@/lib/auth";
 import { getVillageCompliance } from "@/lib/compliance";
 import {
+  dateInputValue,
   previousPeriod,
   resolveDashboardRange,
   timeRangeFilter,
@@ -456,6 +457,9 @@ export default async function DashboardPage({
         same reasons the incident list's filters are one: it works before
         JavaScript loads, and every period is a URL a coordinator can bookmark
         or paste into a parish council email.
+
+        This form holds the control and nothing else, so the control renders the
+        submit button — on `/incidents` the caller already has one.
       */}
       <form
         method="get"
@@ -464,7 +468,8 @@ export default async function DashboardPage({
         <TimeRangeFields
           range={range}
           presets={DASHBOARD_RANGE_VALUES}
-          idPrefix="dashboard-range"
+          today={dateInputValue(new Date())}
+          submitLabel="Apply"
         />
       </form>
 

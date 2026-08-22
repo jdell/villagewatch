@@ -4,6 +4,7 @@ import {
   DASHBOARD_RANGE_VALUES,
   DEFAULT_TIME_RANGE,
   MAX_CUSTOM_RANGE_DAYS,
+  TIME_RANGES,
 } from "@/lib/constants";
 import {
   previousPeriod,
@@ -102,6 +103,33 @@ describe("resolveTimeRange — presets", () => {
 
     expect(range.preset).toBe(DEFAULT_TIME_RANGE);
     expect(range.from).not.toBeNull();
+  });
+});
+
+/**
+ * Both screens' preset lists have to keep offering `custom`, and that is not a
+ * tidy-mindedness assertion.
+ *
+ * Since `TimeRangeFields` collapsed the two date inputs, "Custom range" in the
+ * `<select>` is the *only* way to reach a date picker on `/incidents` or
+ * `/dashboard`. Drop the value from one of these lists and the option stops
+ * being rendered, the chip can never be revealed, and a hand-edited `?range=`
+ * is narrowed back to the default by `resolveTimeRange` — a screen that
+ * quietly cannot be given a date range, with nothing failing anywhere to say
+ * so.
+ */
+describe("the presets each surface offers", () => {
+  it("lets both screens reach a custom range", () => {
+    expect(BROWSE_RANGE_VALUES).toContain("custom");
+    expect(DASHBOARD_RANGE_VALUES).toContain("custom");
+  });
+
+  it("offers nothing the one list of periods does not define", () => {
+    const known = TIME_RANGES.map((option) => option.value);
+
+    for (const value of [...BROWSE_RANGE_VALUES, ...DASHBOARD_RANGE_VALUES]) {
+      expect(known).toContain(value);
+    }
   });
 });
 
