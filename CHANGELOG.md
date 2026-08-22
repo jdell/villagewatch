@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.33](https://github.com/jdell/villagewatch/compare/v0.1.32...v0.1.33) (2026-08-22)
+
+
+### Fixes
+
+* **copy:** follow the village's mode everywhere, and correct the grant documents ([5caa2d9](https://github.com/jdell/villagewatch/commit/5caa2d9a5357bb20875e4da019f0d84797d6f12c))
+
 ### [0.1.32](https://github.com/jdell/villagewatch/compare/v0.1.31...v0.1.32) (2026-08-21)
 
 
