@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.34](https://github.com/jdell/villagewatch/compare/v0.1.33...v0.1.34) (2026-08-22)
+
+
+### Features
+
+* **police:** show the Home Office's own crime figures beside the village's ([b53e76b](https://github.com/jdell/villagewatch/commit/b53e76b0cca0e0425b6e9f0f91330eac1b06ab4e))
+
 ### [0.1.33](https://github.com/jdell/villagewatch/compare/v0.1.32...v0.1.33) (2026-08-22)
 
 
