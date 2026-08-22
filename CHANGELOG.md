@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.39](https://github.com/jdell/villagewatch/compare/v0.1.38...v0.1.39) (2026-08-22)
+
+
+### Fixes
+
+* **landing:** quote the real detector on the pattern-detection card ([f1db014](https://github.com/jdell/villagewatch/commit/f1db01441736948f727d052cc8217611e603f98a))
+
 ### [0.1.38](https://github.com/jdell/villagewatch/compare/v0.1.37...v0.1.38) (2026-08-22)
 
 
