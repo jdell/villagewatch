@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.40](https://github.com/jdell/villagewatch/compare/v0.1.39...v0.1.40) (2026-08-23)
+
+
+### Fixes
+
+* **auth:** stop the raw "email rate limit exceeded" popup reaching residents ([6b9bfae](https://github.com/jdell/villagewatch/commit/6b9bfae48c854b170f56fa4bf6d58650b4db2024))
+
 ### [0.1.39](https://github.com/jdell/villagewatch/compare/v0.1.38...v0.1.39) (2026-08-22)
 
 
