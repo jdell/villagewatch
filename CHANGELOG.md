@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.41](https://github.com/jdell/villagewatch/compare/v0.1.40...v0.1.41) (2026-08-23)
+
+
+### Features
+
+* **votes:** residents rate how serious a report is, and email finally sends ([77537f2](https://github.com/jdell/villagewatch/commit/77537f2f727db05ff10c5e266de64b1aab1d5b99))
+
 ### [0.1.40](https://github.com/jdell/villagewatch/compare/v0.1.39...v0.1.40) (2026-08-23)
 
 
