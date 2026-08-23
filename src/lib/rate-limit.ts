@@ -95,7 +95,52 @@ export const RATE_LIMITS = {
    * and is unaffected: being limited here costs the prose, not the document.
    */
   reportNarrative: { name: "report-narrative", limit: 12, windowMs: HOUR_MS },
+
+  /**
+   * Changing your vote on one report.
+   *
+   * The odd one out in this table twice over, and both are worth reading before
+   * copying its shape.
+   *
+   * **It is scoped to one incident**, through {@link incidentVoteRule}, which is
+   * what "one change per report per ten seconds" actually needs — a per-resident
+   * limit would mean voting on the second report in a list was refused because
+   * you had just voted on the first, which is the normal way somebody reads a
+   * page of reports. The scoping goes in the rule *name* rather than the
+   * subject, so `user_id` stays a Supabase auth user id everywhere in this table
+   * and the `action` column keeps saying what was limited.
+   *
+   * **What it defends against is not cost.** A vote is one small write; nothing
+   * here spends Anthropic credit or a coordinator's attention. It is the toggle:
+   * up, down, up, down is four rows' worth of churn from one finger, and the
+   * button is the only control in the app whose *repeated* press is meaningful
+   * rather than accidental. Ten seconds is long enough that a held button
+   * achieves nothing and short enough that changing your mind after reading the
+   * description is not refused.
+   *
+   * A limit of 1 with a fixed window means the worst case is two changes a few
+   * milliseconds apart, at a window boundary — see the header on fixed windows.
+   * That is an acceptable imprecision here for the same reason it is everywhere
+   * else in this file: the thing being defended against is a stuck finger, not a
+   * caller pacing themselves against the clock.
+   */
+  incidentVote: { name: "incident-vote", limit: 1, windowMs: 10_000 },
 } as const satisfies Record<string, RateLimitRule>;
+
+/**
+ * The vote rule for one report.
+ *
+ * The window and the limit come from `RATE_LIMITS.incidentVote`; only the
+ * namespace moves. Old windows are swept nightly at `RATE_LIMIT_RETENTION_DAYS`
+ * like every other row here, so the per-incident cardinality is bounded by a
+ * week of votes rather than growing forever.
+ */
+export function incidentVoteRule(incidentId: string): RateLimitRule {
+  return {
+    ...RATE_LIMITS.incidentVote,
+    name: `${RATE_LIMITS.incidentVote.name}:${incidentId}`,
+  };
+}
 
 export type RateLimitResult = {
   ok: boolean;

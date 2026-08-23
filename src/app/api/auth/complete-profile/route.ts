@@ -5,6 +5,7 @@ import { completeProfileSchema, fieldErrors } from "@/lib/validations";
 import { fuzzCoordinates } from "@/lib/geo";
 import { HOME_LOCATION_FUZZ_METERS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { sendWelcomeEmail } from "@/lib/email/send";
 import { notifySlack } from "@/lib/slack";
 import { checkVillageJoin } from "@/lib/villages";
 
@@ -128,12 +129,33 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // The provider half of the same event the register route announces. Both
-  // paths create a resident, so both tell the staff channel — an alert that
-  // fired only for password sign-ups would quietly under-count the village.
+  /*
+    The provider half of the same two calls the register route makes. Both paths
+    create a resident of a village, so both tell the staff channel and both send
+    the welcome — an alert or an email that fired only for password sign-ups
+    would quietly under-count the village and leave half of it never told what
+    happens to a report.
+
+    Neither can throw. See `sendWelcomeEmail`, and the note in the register
+    route about why a failure here is logged rather than returned.
+  */
   await notifySlack(
     `🆕 New user: ${fullName} (${email}) joined ${village.name}`,
   );
+
+  const welcome = await sendWelcomeEmail({
+    to: email,
+    fullName,
+    villageName: village.name,
+  });
+
+  if (!welcome.sent && welcome.skipped !== "not_configured") {
+    console.warn(
+      "Welcome email for %s was not sent: %s",
+      session.user.id,
+      welcome.error ?? welcome.skipped,
+    );
+  }
 
   return NextResponse.json({ ok: true, redirectTo: "/map" }, { status: 201 });
 }

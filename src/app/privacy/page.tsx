@@ -79,6 +79,21 @@ export const metadata: Metadata = {
  *     notice rather than a stale one. It is in §6 because a resident reading
  *     "who else sees it" is entitled to know about every request made on their
  *     behalf, including the ones with nothing of theirs in them.
+ *   - §6's paragraph on Resend, which is the newest and the first one about
+ *     email this service actually sends. `src/lib/email/send.ts` is the one
+ *     transport and `welcomeEmail` is the one message; what it carries — a
+ *     first name and a village name, and never a report's contents — is a claim
+ *     in the same sense as the rest. `IncidentEmailInput` has no field that
+ *     could carry `rawDescription`, so the promise is structural, but nothing
+ *     stops a future caller handing `sendEmail` something else and this
+ *     paragraph is what would then be false.
+ *   - §§2, 6 and 7 on votes (`src/lib/votes.ts`, `IncidentVote`). Three claims,
+ *     and the second is the one worth guarding: the totals are public within the
+ *     village and **no screen anywhere puts a name against a vote**. That is
+ *     true because no query in the app selects a voter, which is a property a
+ *     single well-meaning "who voted?" panel would end. The third is that a vote
+ *     goes with the report and with the account — enforced in
+ *     `src/lib/erasure.ts` rather than by the foreign keys, which never fire.
  *
  * ## It is one document for two models, so it names no council as a default
  *
@@ -248,6 +263,14 @@ export default function PrivacyPage() {
             If you turn on push notifications, an anonymous device identifier
             held by our notification provider so that a message can reach your
             phone.
+          </LI>
+          <LI>
+            <strong>Your votes on published reports.</strong> Every published
+            report carries a thumbs up and a thumbs down, meaning &ldquo;more
+            serious than it looks&rdquo; and &ldquo;less&rdquo;. We record which
+            way you voted so that pressing the button again can take it back —
+            so the record is linked to your account, not anonymous to us. Your
+            neighbours only ever see the totals. See section 6.
           </LI>
         </UL>
       </LegalSection>
@@ -439,6 +462,18 @@ export default function PrivacyPage() {
             report&rsquo;s summary is the same text already on the village map,
             so it is not recorded separately.
           </Definition>
+          <Definition term="Nobody, in the case of how you voted on a report">
+            The totals are shown to everyone in your village and to your
+            coordinator — &ldquo;four residents rated this more serious than it
+            looks&rdquo; — and they can appear in a summary a coordinator sends
+            to your PCSO. Who voted which way is shown to nobody: there is no
+            screen in this service, for a resident or a coordinator, that puts a
+            name against a vote. Your coordinator can reach the underlying
+            records, in the same way they can already read original report
+            wording, and nothing displays them. Your vote goes when you take it
+            back, when you close your account, and when the report itself is
+            deleted.
+          </Definition>
           <Definition term="The police, on request">
             Separately from the above: where there is a lawful basis to
             disclose, such as a formal request in the investigation of a crime.
@@ -459,9 +494,20 @@ export default function PrivacyPage() {
           <Definition term="Our processors">
             Supabase (database, authentication and file storage, in the UK or
             EU), Vercel (hosting), Anthropic (the AI pass described above),
-            OneSignal (push notification delivery), and Slack (the staff channel
-            above). Each acts only on our instructions, under a written data
-            processing agreement in every case but Slack — see below.
+            OneSignal (push notification delivery), Resend (email delivery — see
+            below), and Slack (the staff channel above). Each acts only on our
+            instructions, under a written data processing agreement in every
+            case but Slack — see below.
+          </Definition>
+          <Definition term="Resend, which delivers our email">
+            Your email address, your first name and your village&rsquo;s name,
+            so that the message can be addressed and sent. Two kinds of email go
+            out: the sign-up confirmation and password reset links, which are
+            sent when you ask for them; and a welcome message when you join a
+            village, which explains what happens to a report once you file one.
+            We send no marketing. A report&rsquo;s contents never appear in an
+            email — an inbox is forwarded and searched, and a report is not ours
+            to put there.
           </Definition>
           <Definition term="Slack (Salesforce), and why it is listed separately">
             Administrative notifications only, to a private channel that only
@@ -547,6 +593,12 @@ export default function PrivacyPage() {
             4 did not run on your report, the published description is your own
             wording, and that is the report itself rather than a restricted copy
             of it, so it stays with the archived record.
+          </Definition>
+          <Definition term="Votes on reports — until the report goes">
+            How you voted is kept while the report is. It goes when you take the
+            vote back, when the report is deleted by the person who filed it, and
+            when you close your own account — in that last case, every vote you
+            have ever cast, on every report.
           </Definition>
           <Definition term={`Audit records — ${RETENTION.auditLogMonths} months`}>
             Kept longer than the reports they describe, because their whole

@@ -73,6 +73,11 @@ function report(
     byType: [{ key: "VEHICLE_CRIME", count: 1 }],
     bySeverity: [{ key: "MEDIUM", count: 1 }],
     hotspots: [{ location: "Mill Lane", count: 1 }],
+    // Empty for the same reason `police` is: the footer's AI claim is about the
+    // narrative and nothing else, and a fixture carrying a section this test
+    // does not assert would be asserting one sentence through a longer
+    // document.
+    mostConcerning: [],
     // The footer's AI claim is about the narrative and nothing else, so the
     // police comparison is deliberately absent here — a fixture that carried
     // one would be asserting the same sentence through a longer document.

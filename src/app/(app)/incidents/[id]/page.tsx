@@ -16,6 +16,7 @@ import { IncidentCard } from "@/components/incident-card";
 import { IncidentLocationMap } from "@/components/incident-location-map";
 import { NoVillage } from "@/components/no-village";
 import { ShareSummary } from "@/components/share-summary";
+import { VoteButtons } from "@/components/vote-buttons";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getVillageController, getVillageMode } from "@/lib/villages";
@@ -26,6 +27,7 @@ import {
 import { PUBLIC_INCIDENT_STATUSES, isCoordinatorRole } from "@/lib/constants";
 import { canReporterErase } from "@/lib/erasure";
 import { formatIncidentAlert } from "@/lib/format-alert";
+import { readVoteStates } from "@/lib/incident-votes";
 import { PUBLIC_INCIDENT_SELECT, toMapIncident } from "@/lib/incidents";
 import { signedMediaUrls } from "@/lib/media/storage";
 import { getVillageChannel } from "@/lib/whatsapp-channel";
@@ -220,6 +222,27 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         ])
       : [null, null];
 
+  /*
+    The village's own view of how serious this is.
+
+    Published and resolved reports only, which is the same gate
+    `POST /api/incidents/[id]/vote` applies — a report still in the queue has not
+    cleared moderation (domain rule 6), and offering its reporter a control to
+    push it up an ordering before a coordinator has looked at it would be a
+    button that does nothing but mislead the person pressing it.
+
+    `myVote` is this reader's own and nothing else comes back. There is no
+    surface here — or anywhere — that says who voted which way.
+  */
+  const votes = isPublic
+    ? (
+        await readVoteStates({
+          incidentIds: [incident.id],
+          userId: session.user.id,
+        })
+      ).get(incident.id) ?? null
+    : null;
+
   const summary = village
     ? formatIncidentSummary({
         villageName: village.name,
@@ -283,6 +306,17 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             locationText: incident.locationText,
             tags: incident.tags.map((tag) => tag.label),
           }}
+          footer={
+            votes ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <VoteButtons incidentId={incident.id} initial={votes} />
+                <p className="text-xs text-slate-500">
+                  How serious your village thinks this is. Your neighbours see
+                  the totals, never who voted.
+                </p>
+              </div>
+            ) : undefined
+          }
         />
       </div>
 

@@ -1179,6 +1179,74 @@ export const AUDIT_LOG_PAGE_SIZE = 50;
 export const HOTSPOT_COUNT = 3;
 
 // ---------------------------------------------------------------------------
+// What the village made of a report
+// ---------------------------------------------------------------------------
+
+/**
+ * How many reports the dashboard's concern panel lists.
+ *
+ * Longer than `HOTSPOT_COUNT` because a coordinator scans this one looking for
+ * something to act on rather than reading it as a summary figure, and short
+ * enough that it is still a shortlist. The same figure bounds the "most
+ * concerning" section of the report that goes to a PCSO — one number, so a
+ * coordinator who has read the panel recognises the section.
+ */
+export const CONCERN_LIST_SIZE = 5;
+
+/**
+ * The orderings the dashboard's concern panel offers.
+ *
+ * All three are the same two counts read differently, which is deliberate:
+ * there is no "recent" option here, because the list beside it is a list of
+ * reports the *village weighed in on*, and ordering those by date would make it
+ * a worse copy of `/incidents`.
+ *
+ * `overstated` is the one worth keeping. A report the village thinks is
+ * overblown is as much a moderation signal as one it thinks is serious — more
+ * so, in the case a coordinator most needs to catch, which is a report that
+ * should not have been published in the words it was.
+ */
+export const CONCERN_SORTS = [
+  {
+    value: "concern",
+    label: "Most concerning",
+    /** Descending net score — the village saying "this matters". */
+    description: "Reports your village rated more serious than they look",
+  },
+  {
+    value: "discussed",
+    label: "Most voted on",
+    description: "Reports the most neighbours had a view about, either way",
+  },
+  {
+    value: "overstated",
+    label: "Rated less serious",
+    description: "Reports your village thinks were overstated",
+  },
+] as const;
+
+export type ConcernSort = (typeof CONCERN_SORTS)[number]["value"];
+
+export const CONCERN_SORT_VALUES = CONCERN_SORTS.map(
+  (sort) => sort.value,
+) as readonly ConcernSort[];
+
+export const DEFAULT_CONCERN_SORT: ConcernSort = "concern";
+
+/**
+ * Narrows a query-string value to one of the orderings.
+ *
+ * Falls back rather than rejecting, the same forgiveness every other filter on
+ * these screens applies: a hand-edited or stale URL should render the panel,
+ * not an error page in front of a coordinator.
+ */
+export function resolveConcernSort(value: unknown): ConcernSort {
+  return CONCERN_SORT_VALUES.includes(value as ConcernSort)
+    ? (value as ConcernSort)
+    : DEFAULT_CONCERN_SORT;
+}
+
+// ---------------------------------------------------------------------------
 // Looking at a period
 // ---------------------------------------------------------------------------
 

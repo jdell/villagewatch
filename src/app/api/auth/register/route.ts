@@ -5,6 +5,7 @@ import { fieldErrors, registerSchema } from "@/lib/validations";
 import { fuzzCoordinates } from "@/lib/geo";
 import { HOME_LOCATION_FUZZ_METERS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { sendWelcomeEmail } from "@/lib/email/send";
 import { notifySlack } from "@/lib/slack";
 import { checkVillageJoin } from "@/lib/villages";
 import { describeAuthError } from "@/lib/auth-errors";
@@ -187,11 +188,40 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Staff channel, after the profile row is safely written — an alert about a
-  // registration that then failed would be worse than none. Cannot throw.
+  /*
+    Both after the profile row is safely written — an alert or a welcome about
+    a registration that then failed would be worse than none. Neither can throw
+    and neither can block: `sendWelcomeEmail` resolves to a result on a missing
+    key, a refused sender and a timeout alike, because the account exists by
+    this point and a 500 here would tell somebody their sign-up failed when it
+    succeeded.
+
+    Awaited rather than left floating, which on Vercel is what fire-and-forget
+    has to mean — the instance is frozen the moment this response returns.
+    Sequential rather than `Promise.all` for no better reason than that both are
+    bounded and the log reads in order.
+
+    This is a *different* email from the confirmation Supabase has just sent.
+    That one carries the token and only Supabase can mint it; this one is the
+    village's, and it says what happens to a report once it is filed.
+  */
   await notifySlack(
     `🆕 New user: ${fullName} (${email}) joined ${village.name}`,
   );
+
+  const welcome = await sendWelcomeEmail({
+    to: email,
+    fullName,
+    villageName: village.name,
+  });
+
+  if (!welcome.sent && welcome.skipped !== "not_configured") {
+    console.warn(
+      "Welcome email for %s was not sent: %s",
+      data.user.id,
+      welcome.error ?? welcome.skipped,
+    );
+  }
 
   // With email confirmation enabled, signUp returns a user but no session.
   const needsEmailConfirmation = data.session === null;

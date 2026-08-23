@@ -12,6 +12,7 @@ import { DownloadPdfButton } from "@/components/reports/download-pdf-button";
 import type { CommunityReportData } from "@/lib/community-report";
 import {
   AI_ANALYSIS_NOTE,
+  CONCERN_NOTE,
   formatCommunityReport,
   GENERATED_BY,
   rangeDays,
@@ -343,6 +344,53 @@ export function ReportView({
             </>
           )}
         </Section>
+
+        {/*
+          What the village made of its own reports.
+
+          Rendered only when somebody has voted — see
+          `CommunityReportData.mostConcerning` for why an empty section would be
+          worse than none in a document a coordinator sends to a PCSO. Between
+          the village's counts and the police's, the same place the copied text
+          and the PDF put it, because the three are one document.
+        */}
+        {report.mostConcerning.length > 0 && (
+          <Section title="Most concerning to residents">
+            <ol className="space-y-2 text-sm text-slate-700">
+              {report.mostConcerning.map((item, index) => (
+                <li key={item.reference} className="flex gap-2">
+                  <span className="tabular-nums text-slate-400">
+                    {index + 1}.
+                  </span>
+                  <span className="flex-1">
+                    <span className="font-medium text-slate-900">
+                      {item.title}
+                    </span>{" "}
+                    <span className="font-mono text-xs text-slate-500">
+                      {item.reference}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-slate-500">
+                      {INCIDENT_TYPE_LABELS[item.type]} ·{" "}
+                      {SEVERITY_LABELS[item.severity]} ·{" "}
+                      {item.locationText?.trim() || "location not given"}
+                    </span>
+                    {/*
+                      Both counts in words. "+5" in a police document is a
+                      number with no unit, and the difference between 5–0 and
+                      9–4 is the whole signal.
+                    */}
+                    <span className="mt-0.5 block text-xs text-slate-600">
+                      {item.votes.up} resident
+                      {item.votes.up === 1 ? "" : "s"} rated this more serious
+                      than it looks, {item.votes.down} less.
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-2 text-xs text-slate-500">{CONCERN_NOTE}</p>
+          </Section>
+        )}
 
         {/*
           The official figures, between the village's own counts and the

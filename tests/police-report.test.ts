@@ -58,6 +58,8 @@ function report(police: PoliceComparison | null): CommunityReportData {
     previousTotal: 3,
     byType: [{ key: "VEHICLE_CRIME", count: 4 }],
     bySeverity: [{ key: "MEDIUM", count: 4 }],
+    // This file asserts the police section and nothing else.
+    mostConcerning: [],
     hotspots: [{ location: "Mill Lane", count: 2 }],
     police,
     narrative: null,

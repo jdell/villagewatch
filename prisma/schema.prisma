@@ -123,6 +123,19 @@ enum CoordinatorRequestStatus {
   @@map("coordinator_request_status")
 }
 
+/// Which way a resident voted on how serious a published report is.
+///
+/// Two values and no NEUTRAL. "I have no opinion" is the absence of a row —
+/// `POST /api/incidents/[id]/vote` deletes the row when somebody presses the
+/// button they already pressed — so a third value would be a second way to
+/// spell the same thing, and the tallies would have to remember to exclude it.
+enum VoteDirection {
+  UP
+  DOWN
+
+  @@map("vote_direction")
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -408,6 +421,9 @@ model User {
 
   reportedIncidents  Incident[]     @relation("IncidentReporter")
   moderatedIncidents Incident[]     @relation("IncidentModerator")
+  /// How this resident voted on the seriousness of published reports. Deleted
+  /// outright when the account closes — see `src/lib/erasure.ts`.
+  incidentVotes      IncidentVote[] @relation("IncidentVoter")
   acknowledgedAlerts PatternAlert[] @relation("PatternAlertAcknowledger")
 
   /// Villages whose compliance documents this person accepted. Almost always
@@ -560,6 +576,7 @@ model Incident {
 
   media         IncidentMedia[]
   tags          IncidentTag[]
+  votes         IncidentVote[]
   notifications Notification[]
   patternAlerts PatternAlert[]  @relation("PatternAlertIncidents")
 
@@ -640,6 +657,70 @@ model IncidentTag {
   @@unique([incidentId, label])
   @@index([label])
   @@map("incident_tags")
+}
+
+/// One resident's view of how serious a published report is.
+///
+/// The severity on an incident is the reporter's own assessment, sharpened by
+/// the AI pass and left alone by everybody else. This is the village's — a
+/// thumbs up meaning "this matters more than it looks" and a thumbs down "less".
+/// It moves nothing automatically: no status, no severity, no alert. What it
+/// produces is an ordering, on the coordinator's dashboard and in the "most
+/// concerning" section of the report that goes to a PCSO, so the two people who
+/// decide what to act on can see what the village actually thinks.
+///
+/// ## Privacy
+///
+/// A vote is a named opinion about a specific report, which is a more personal
+/// thing than it looks — in a village, "who thought my report was overblown" is
+/// a question with social consequences. So:
+///
+/// - **No screen in the app names a voter.** Not the incident card, not the
+///   detail page, not the dashboard's concern list, not the report that goes to
+///   a PCSO. Every one of them renders a count. That is the promise a resident
+///   is actually making a decision about, and it is enforced by there being no
+///   query anywhere that selects a voter's name.
+/// - **Another resident cannot read the rows either.** `rls_policies.sql`
+///   grants a resident SELECT on their own votes and nothing else, so the anon
+///   key cannot enumerate who thought what.
+/// - **A coordinator can read their own village's rows**, in the same sense
+///   they can already read `raw_description`: they are the village's moderator
+///   and the accountable person in it. They are still not *shown* a voter
+///   anywhere, because an ordering needs the aggregate and nothing else.
+/// - **Erasure takes votes with it**, both directions: closing an account
+///   deletes every vote that account cast, and erasing a report deletes every
+///   vote cast on it (`src/lib/erasure.ts`).
+///
+/// `ON DELETE CASCADE` on both sides for the same reason: neither a vote on a
+/// row that is gone nor a vote by a person who is gone is a record of anything.
+/// Unlike `Incident.reporterId`, there is no audit-trail argument for keeping
+/// the link — no `AuditLog` row points at a vote, because a vote is not a
+/// decision anybody is accountable for.
+model IncidentVote {
+  id String @id @default(uuid()) @db.Uuid
+
+  incidentId String   @map("incident_id") @db.Uuid
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation("IncidentVoter", fields: [userId], references: [id], onDelete: Cascade)
+
+  vote VoteDirection
+
+  createdAt DateTime @default(now()) @map("created_at")
+  /// When the resident last changed their mind. Not in the original sketch of
+  /// this table and worth having: a vote is editable, and a `created_at` that
+  /// silently means "first voted" is a column two readers disagree about.
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// One vote per resident per report. This is the whole concurrency story —
+  /// the route upserts against it rather than reading then writing, so two taps
+  /// in the same second cannot leave a resident holding two opinions.
+  @@unique([incidentId, userId])
+  /// Serves the tallies: `groupBy(["incidentId", "vote"])` on a set of reports.
+  @@index([incidentId, vote])
+  @@index([userId])
+  @@map("incident_votes")
 }
 
 /// One delivery of one message to one user on one channel.

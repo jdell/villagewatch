@@ -1,6 +1,6 @@
 # VillageWatch — project state
 
-**Last updated:** 23 August 2026 · **Repo version:** `v0.1.39` · **Branch:**
+**Last updated:** 23 August 2026 · **Repo version:** `v0.1.40` · **Branch:**
 `main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
@@ -19,12 +19,12 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.39` in `package.json` on `main`; this auth-email fix bumps it to `v0.1.40` when `version.yml` runs. Was `v0.1.35`, tagged — the period-picker branch landed as PR #11 on 22 August, after the police-data branch as PR #10 |
-| Version on screen | expect **v0.1.34** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
+| Repo version | `v0.1.40` in `package.json` on `main` — `version.yml` released the auth-email fix as 0.1.40 while this change was being written; voting, the email transport and the Supabase templates bump it to `v0.1.41` when it next runs. Was `v0.1.35`, tagged — the period-picker branch landed as PR #11 on 22 August, after the police-data branch as PR #10 |
+| Version on screen | expect **v0.1.39** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
-| Migrations in repo | 13, `20260726161847_init` → `20260822120000_police_crime_data`, and **all 13 are applied**. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
+| Migrations in repo | 14, `20260726161847_init` → `20260823120000_incident_votes`. **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, **29 files, 460 tests**, all passing (~3.5s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
+| Test suite | Vitest, **33 files, 525 tests**, all passing (~3.5s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -77,12 +77,94 @@ PRs because they were asked for as PRs.
   Supabase documents as being for development.
   `docs/SUPABASE_EMAIL_SETUP.md` is the procedure — raise the hourly limit under
   Auth → Rate Limits, and set Resend as the custom SMTP sender under Auth →
-  Emails → SMTP Settings. Both are dashboard settings; neither is in this
-  repository, and Resend is still used nowhere in the codebase. Until somebody
-  does it, a village onboarding a dozen households in one evening will exhaust
-  the quota — the difference is that they are now told to wait rather than shown
+  Emails → SMTP Settings. Both are dashboard settings and neither is in this
+  repository. **Resend is now used in the codebase as well**, through
+  `src/lib/email/send.ts` — a separate thing entirely, sending the emails
+  VillageWatch itself renders, with no effect on Supabase's quota; see the entry
+  below. Until somebody does the two dashboard settings, a village onboarding a
+  dozen households in one evening will exhaust the quota — the difference is that they are now told to wait rather than shown
   a quota they have no part in. **Nothing here has been watched against a real
   sign-up wave**, which is the one thing that would confirm the 429 path.
+
+- **Residents can rate how serious a published report is** — 23 August 2026.
+  Two buttons and two counts on every published report, in the incident list and
+  on the detail page. It answers the question the dashboard's figures cannot —
+  *which of these did the street actually care about* — and it is the only
+  signal on that screen coming from neither the reporter nor a coordinator.
+
+  It is deliberately **advisory**: no status moves, no severity moves, nothing
+  is published and no alert is sent. Severity drives the push audience and the
+  WhatsApp Channel's floor, so a control that moved it would let a handful of
+  taps decide who gets woken up. What it produces is an ordering — a "what your
+  village thinks" panel on `/dashboard` with three sortings, and a "most
+  concerning" section in everything `/reports` produces, on screen, on the
+  clipboard and in the PDF.
+
+  Three states and no `NEUTRAL`: up, down, and the absence of a row, which is
+  what pressing the same button again leaves behind. `nextVote` is that rule and
+  both the browser and the route call it, so the optimistic count and the row
+  written cannot disagree. `POST /api/incidents/[id]/vote` is rate limited **per
+  incident** — one change per ten seconds — because a per-resident window would
+  refuse a vote on the second report in a list.
+
+  **Nobody's name is rendered anywhere**, and it is structural rather than
+  remembered: no query in the app selects a voter. RLS gives a resident their
+  own rows and a coordinator their village's, matching what a coordinator can
+  already reach. Erasure takes votes in both directions, explicitly — neither
+  foreign-key cascade ever fires, because `eraseAccount` keeps the `users` row
+  and `removeIncident` keeps the `incidents` row. `/privacy` §§2, 6 and 7 and
+  `/terms` §7 changed with it. 36 new tests across `votes.test.ts` and
+  `incident-vote-route.test.ts`, the second route handler the suite has taken.
+
+  **Migration 14 is not applied.** Until it is, the buttons render zeroes and
+  every read degrades — which is the same thing a village where nobody has voted
+  sees. **Re-run `rls_policies.sql` with it.**
+
+- **Email sends, for the first time** — 23 August 2026. `src/lib/email/send.ts`
+  is the transport the barrel's header has promised since the templates were
+  written, over Resend, and **not one line of a template changed to wire it in**
+  — which was the whole argument for keeping the two apart. `welcomeEmail` is
+  its only caller and it fires on both registration paths, password and Google.
+
+  Its contract is `notifications.ts`'s: **nothing throws and nothing waits
+  long.** It is awaited *after* the auth user and the profile row exist, so a
+  throw would tell somebody their sign-up failed when it succeeded; a missing
+  key, a refused sender, a rate limit and a timeout all resolve to a value the
+  caller logs and ignores. With no `RESEND_API_KEY` the message is logged
+  instead, the state OneSignal and Slack already have.
+
+  `/privacy` §6 names Resend as a processor and says what an email carries — a
+  first name and a village name, never a report's contents. `.env.example` and
+  SETUP step 7d document `RESEND_API_KEY` and `RESEND_FROM_EMAIL`; **both have
+  to reach Vercel**, and with neither set the deployment looks healthy right up
+  until somebody asks why they never got a welcome. **No email has been
+  delivered to a real inbox.**
+
+  The other three templates still have no caller: village news is push only.
+
+- **The four Supabase auth emails have branded templates** — 23 August 2026, and
+  they are the answer to a real gap rather than a polish pass. Confirmation,
+  magic link, email change and password recovery are the most-read emails this
+  service sends, they are minted by Supabase because only Supabase can mint the
+  token, and they were its stock ones: grey, unbranded, signed by a company no
+  resident has heard of. The first email a village ever received from
+  VillageWatch was the one that looked least like it.
+
+  `src/lib/email/supabase-templates/` holds four `.html` files to paste into
+  Authentication → Emails → Templates, rendered through the same shell as every
+  other email in the product. They are **generated** from the module beside them
+  by `npm run generate:supabase-templates`, and a test fails if a committed file
+  and the module drift — editing the HTML by hand reproduces the state the
+  directory exists to prevent, which is wording that lives only in a form nobody
+  can review.
+
+  `{{ .ConfirmationURL }}` is in each one twice, behind the button and as
+  visible text beneath it, and no other Supabase variable is used: one a project
+  does not populate renders as an empty string, and a blank line where an
+  address should be reads as broken. Both asserted.
+
+  **Nothing has been pasted into the dashboard yet**, so residents are still
+  getting Supabase's own. `docs/SUPABASE_EMAIL_SETUP.md` §3 is the procedure.
 
 - **The pattern-detection card quotes the real detector** — 22 August 2026.
   The landing page's `FEATURES` card illustrated itself with "six vehicle
@@ -391,7 +473,8 @@ PRs because they were asked for as PRs.
   `/privacy` names no controller.
 - No push has been delivered to a real device; the retention job has never run;
   erasure has never touched a real bucket; no WhatsApp alert has been pasted
-  into a real channel.
+  into a real channel; no email has reached a real inbox; nobody has voted on a
+  report.
 - No staging environment — CI, unit tests and auto-versioning exist, but there
   is nowhere to run a migration before production sees it.
 
@@ -421,6 +504,9 @@ as working — to anybody, and least of all in a grant application.
 | Password recovery | No email has ever been sent through it | Supabase's redirect URL must be allow-listed or the link dead-ends |
 | OG image, `robots.txt`, `sitemap.xml` | Never fetched by a crawler | — |
 | The coordinator flow end to end | Never run | Nothing in the suite asserts that a village with auto-approve **off** still queues. This is the regression worth a route test |
+| Incident votes | Nobody has voted; migration 14 is unapplied | The toggle across two devices, the concern panel's ordering, and a village with one vote producing **no** report section rather than one with a single line in it |
+| Email from the app | No message has reached a real inbox | An unverified Resend sending domain is refused and the refusal is only in the server log; both env vars have to reach Vercel |
+| The Supabase auth templates | Never pasted into the dashboard | Outlook's Word engine is the one that surprises people; the fallback link under the button is what a client that eats the button table leaves behind |
 
 ---
 
@@ -530,6 +616,55 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 ---
 
 ## Recent completions
+
+**The coordinator guide caught up with the code, and there is a printable copy
+of it — 23 August 2026.** `docs/COORDINATOR_GUIDE.md` had not moved since the
+community-mode work, so it described a version of the app that is several
+features behind. What was missing was a whole section's worth: the period
+control the Dashboard, the incident list and the map now share; the Dashboard's
+figures, breakdowns and hotspot list; the map's pins/heatmap toggle; what a
+pattern note on a report actually means and what its thresholds are; the weekly
+summary, which the guide mentioned once in a tip and never explained; the Home
+Office's recorded-crime panel and the neighbourhood policing team beside it —
+the largest gap, and the one a coordinator is most likely to be asked about at a
+parish meeting; the invite panel, QR code and printable sheet, which the guide
+did not know existed; and the audit trail, which it referred to five times and
+never described. All of it is in a new **Reading your village** section.
+
+Four corrections to what was already there, one of which was a real fault:
+
+- **"You are acting for the council" said every coordinator acts for a parish
+  council**, which has been false for the majority of villages since community
+  mode shipped — the community model makes the *coordinator* the data
+  controller, with nobody above them. It is mode-aware now, like the rest of the
+  guide already was. This is the sort of stale sentence the Definition of Done's
+  documentation rule exists to prevent, and it survived the mode work because it
+  sits in a section nobody was editing.
+- **Reading a reporter's original wording** now says what happens after twelve
+  months: the wording is deleted with the archive, the button says so rather
+  than showing anything, and that press writes no audit row.
+- **Getting started gained a sixth step** — inviting the village, which is what
+  actually puts residents in it and was buried in "Managing your community".
+- **How residents join** now covers the two emails a new resident gets, the
+  welcome among them, and the hourly quota a village onboarding twenty
+  households in one evening can reach.
+
+**The vote buttons are in it too**, as "What the village makes of a report" —
+the buttons themselves, the fact that a vote deliberately moves nothing, that
+nobody is ever named, the Dashboard panel and its three orderings, and the
+"Most concerning to residents" section of the period report with the caveat that
+has to travel with it.
+
+**`scripts/generate-guide-pdf.tsx` is the printable copy** — 23 A4 pages,
+committed as `docs/VillageWatch-Coordinator-Guide.pdf`. It parses the guide with
+`src/lib/markdown.ts`, the same parser `/dashboard/guide` renders through, so
+the two cannot describe different software; see "The coordinator guide, on
+paper" in `CLAUDE.md` for why that mattered more than reaching for a
+markdown-to-PDF dependency. **It is a build artefact and goes stale silently —
+rebuild it in the same commit as any change to the Markdown.**
+
+Nothing in the application changed. `npm run build`, `npx tsc --noEmit`,
+`npm run lint` and `npm run test` all pass.
 
 **The police-data cron ran for the first time, and it took two bugs to do it —
 22 August.** The first scheduled run of `/api/cron/police-data` failed for every

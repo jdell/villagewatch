@@ -26,6 +26,7 @@ flags clusters before anyone joins the dots by hand.
 | PDF        | `@react-pdf/renderer` — server only, `serverExternalPackages` |
 | AI         | `@anthropic-ai/sdk`, `claude-sonnet-5` (`ANTHROPIC_MODEL`)   |
 | Push       | OneSignal — `@onesignal/node-onesignal` server, v16 web SDK   |
+| Email      | Resend — `src/lib/email/send.ts`; auth email is Supabase's     |
 | Toasts     | sonner                                                       |
 | Hosting    | Vercel, `lhr1` (two crons in `vercel.json`)                   |
 | Domain     | `villagewatch.app` — see The canonical origin                 |
@@ -177,6 +178,10 @@ src/
     api/coordinator-requests/[id]/  PATCH approve or reject — admin only
     api/incidents/            POST create report (writes AI fields + tags)
     api/incidents/[id]/       DELETE the reporter's own report — 204/403/404
+    api/incidents/[id]/vote/  POST a resident's view of how serious a published
+                              report is — up, down, or the same button again to
+                              take it back. The one route with a per-incident
+                              rate limit
     api/incidents/process/    POST run a draft through Claude; writes nothing
     api/incidents/media/      POST blurred upload, DELETE abandoned attachment
     api/notifications/        POST re-send a published incident's alert
@@ -235,6 +240,9 @@ src/
                               download, `[data-print-region]` for the sheet
     incident-location-map.tsx Client wrapper for the detail page's single pin
     incident-card.tsx         One incident, used by preview, list and detail
+    vote-buttons.tsx          Thumbs up / thumbs down and two counts, on every
+                              published report. Optimistic, and it puts the
+                              count back when the request fails
     incident-actions.tsx      Detail-page actions — reporter and coordinator
     share-summary.tsx         One report for a PCSO — navigator.share, then
                               the clipboard. Coordinator, published only
@@ -255,6 +263,9 @@ src/
     service-worker.tsx        Registers /sw.js in production only
     dashboard/stat-card.tsx   One figure with its trend against last period
     dashboard/breakdown-bar.tsx  CSS bars — no charting dependency
+    dashboard/concern-list.tsx   What the village made of its own reports —
+                              voted reports only, and its own GET form for the
+                              ordering
     dashboard/moderation-card.tsx  Queue row; audited raw-text reveal
     dashboard/moderation-queue.tsx  Wraps the cards and holds the alert panel,
                               which has to outlive the card that produced it
@@ -345,6 +356,12 @@ src/
                               date picker. Client-safe, pure, host zone
     structured-data.ts        The landing page's JSON-LD graph. Server or client;
                               every field in it is a claim that has to be true
+    votes.ts                  The toggle rule, the tally arithmetic and the
+                              concern ordering. Client-safe, so the button and
+                              the route run the same code
+    incident-votes.ts         The Prisma half — tallies for a page, and one
+                              reader's own votes. Server only, degrades on a
+                              missing table
     heatmap.ts                Severity × recency → heat intensity, plus the
                               layer's config. Client-safe
     reports.ts                Resolves the date range, counts the period, and
@@ -352,9 +369,15 @@ src/
     clipboard.ts              copyText + shareText, browser only, shared by the
                               three surfaces that copy
     cron.ts                   Constant-time CRON_SECRET check, shared by both jobs
-    email/                    Templates only — no transport. layout, welcome,
-                              weekly-digest, incident-notification,
-                              coordinator-decision
+    email/                    layout, welcome, weekly-digest,
+                              incident-notification, coordinator-decision — pure
+                              functions to `{ subject, text, html }`
+    email/send.ts             The transport, over Resend. Never throws, logs the
+                              message with no key set. The welcome is the one
+                              thing anything sends today
+    email/supabase-templates/ The four auth emails Supabase sends, as branded
+                              HTML to paste into its dashboard. Generated from
+                              `index.ts`; the `.html` files are the artefact
     ai/weekly-digest.ts       Claude weekly summary, structured, typed failures
     ai/report-narrative.ts    Claude pattern analysis for a date range — same
                               contract, written for a PCSO rather than residents
@@ -416,8 +439,20 @@ docs/                         The documents rendered from disk, not restated
                               is held to the rule /privacy is held to — and the
                               three word-capped sections are capped: check them
                               before adding a sentence
+  VillageWatch-Coordinator-Guide.pdf   The guide as a printed booklet, built by
+                              scripts/generate-guide-pdf.tsx and committed.
+                              Rendered by nothing, so unlike the five above it
+                              needs **no** `outputFileTracingIncludes` line —
+                              rebuild it in the same commit as the Markdown
 scripts/
   generate-icons.mjs          Authoring tool — renders the icons, run by hand
+  generate-supabase-templates.ts  The other authoring tool — writes the four
+                              auth email `.html` files from the module beside
+                              them. A test fails if they drift
+  generate-guide-pdf.tsx      The other authoring tool. Parses the coordinator
+                              guide with src/lib/markdown.ts — the same tree
+                              /dashboard/guide renders — and draws it with
+                              @react-pdf/renderer. Run by hand
   download-ons-places.ts      Finds + fetches the newest IPN release, unzips it
   convert-grid-refs.ts        OSGB36 → WGS84 via geodesy; library + CLI
   clean-seed-data.ts          Removes the sample village's invented incidents —
@@ -507,6 +542,21 @@ tests/                        Vitest, unit only — see The test suite
                               states no price and no cadence, a cadence never
                               appears without one, and the JSON-LD Offer never
                               describes a tier nobody can buy. No wording
+  votes.test.ts               The toggle, the optimistic tally agreeing with it,
+                              the ordering's tiebreak between an argued-over
+                              report and one nobody voted on, and the threshold
+                              that keeps one tap out of a police document
+  incident-vote-route.test.ts The second route handler in the suite — the two
+                              domain rules it enforces, the 404 that is not a
+                              403, the quota that is not spent on a report the
+                              caller cannot see, and a response naming nobody
+  email-send.test.ts          The transport — a missing key logging rather than
+                              sending, every Resend failure resolving to a value
+                              rather than throwing, and the timeout that stops a
+                              registration hanging on somebody else's outage
+  supabase-templates.test.ts  The four auth templates — `{{ .ConfirmationURL }}`
+                              present, no other Go variable, and the committed
+                              `.html` matching the module that generates it
 vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
   ci.yml                      lint → typecheck → test → build, PRs and main
@@ -702,15 +752,20 @@ configuration rather than code.
   password or Google. Both are in `AuthFlow` because the limit they would hit is
   the same one, and a flow added later that reached for its own wording is how
   the pass-through comes back.
-- **Nothing here changes what the deployment can send.** Raising the quota is
-  two settings in the Supabase dashboard — the hourly limit, and Resend as the
-  custom SMTP sender — and `docs/SUPABASE_EMAIL_SETUP.md` is the procedure.
-  **Resend is used nowhere in this codebase**: `src/lib/email/` still renders
-  four templates with no transport behind it, notifications still go out as
-  OneSignal push, and the Resend API key lives in the Supabase dashboard as an
-  SMTP password rather than in an environment variable here. That document
-  is read by a person and rendered by nothing, so unlike the four the compliance
-  gate renders it needs **no** `outputFileTracingIncludes` entry.
+- **Nothing in the application changes what the deployment can send.** Raising
+  the quota is two settings in the Supabase dashboard — the hourly limit, and
+  Resend as the custom SMTP sender — and `docs/SUPABASE_EMAIL_SETUP.md` is the
+  procedure. That document is read by a person and rendered by nothing, so
+  unlike the four the compliance gate renders it needs **no**
+  `outputFileTracingIncludes` entry.
+- **Resend is now used twice over, and only one of the two touches this quota.**
+  `src/lib/email/send.ts` sends the emails VillageWatch renders — today the
+  welcome — using `RESEND_API_KEY` from the environment. Supabase sends the auth
+  emails, over whatever SMTP the *project* is configured with. One Resend
+  account can serve both and they are otherwise unrelated: setting
+  `RESEND_API_KEY` here does nothing whatever for the confirmation email, and
+  pointing Supabase at Resend does nothing for the welcome. Confusing the two is
+  the obvious mistake and it fails silently in both directions.
 - Google sign-in takes email out of the sign-up path altogether, which is the
   cheapest mitigation of the three and is already documented at SETUP.md 7b.
 
@@ -780,6 +835,7 @@ line often enough that an IP limit would silence a household.
 | `POST /api/incidents/process`      | `aiProcess`       | 5 per hour  |
 | `POST /api/incidents`              | `incidentCreate`  | 10 per day  |
 | `generateNarrativeAction` (`/reports`) | `reportNarrative` | 12 per hour |
+| `POST /api/incidents/[id]/vote`    | `incidentVote`    | 1 per 10s, **per incident** |
 
 The third is the most expensive single call in the app — a month of a village's
 reports goes into the prompt — and the only one a *coordinator* triggers by hand,
@@ -789,6 +845,18 @@ Being limited there costs the prose and not the document: every other section is
 counted from the database, and `countedNarrative` writes the summary instead.
 `GET /api/reports/[villageId]/pdf` shares that rule when the button asks for
 `?analysis=ai`, and falls back rather than failing the download.
+
+**The fourth is the odd one out twice over and is worth reading before copying
+its shape.** It is scoped to one incident rather than to the resident —
+`incidentVoteRule(id)` puts the id in the rule *name*, so `user_id` stays a
+Supabase auth user id everywhere in the table and the `action` column keeps
+saying what was limited. A per-resident window would refuse a vote on the second
+report in a list because you had just voted on the first, which is how somebody
+reads a page of them. And what it defends against is not cost: a vote is one
+small write, and nothing about it spends Anthropic credit or a coordinator's
+attention. It is the toggle — up, down, up, down is four rows' worth of churn
+from one finger, and the vote button is the only control in the app whose
+*repeated* press is meaningful rather than accidental.
 
 **There is a second limiter in the codebase and it is deliberately nothing like
 this one.** `src/lib/police-api.ts` paces *outbound* calls to data.police.uk at
@@ -854,6 +922,14 @@ filed and can close their account. Two entry points, one implementation:
   The consequence is worth knowing rather than discovering: the reporter cannot
   see their own tombstone afterwards, because every reporter-scoped query keys
   on that column.
+- **Votes go in both directions, explicitly.** `removeIncident` deletes every
+  vote cast on the erased report; `eraseAccount` deletes every vote the account
+  ever cast as well as the votes on its reports. `IncidentVote`'s two foreign
+  keys are `ON DELETE CASCADE` and **neither ever fires here** — this module
+  keeps the `incidents` row as a tombstone and does not delete the `users` row
+  at all — so the cascade is a backstop and the `deleteMany` is the mechanism.
+  A tombstone with eleven votes still hanging off it would be the village's
+  opinion of something nobody can read, keeping eleven residents linked to it.
 - **Clearing `lat`/`lng` clears the PostGIS point for free** — the trigger in
   `postgis.sql` nulls `location_point` whenever either coordinate is null.
 - **Objects before rows**, the same order the retention job uses. Deleting the
@@ -918,14 +994,15 @@ linked from `SiteFooter` and the registration form.
   processing is the kind of thing a regulator asks about first. Legitimate
   interests is the stated basis; the public task is described beside it as what
   a council may rely on instead. **Change one and change the other.**
-- The privacy notice makes seven claims that are statements about how the code
+- The privacy notice makes nine claims that are statements about how the code
   behaves: on-device blur with no server-side fallback (domain rule 3),
   coordinate jitter (domain rule 2), report text going to Anthropic, what the
   Slack staff channel is told, whether a human sees a report before it is
   published, that the reporter's original wording is deleted when the report
-  is archived, and that a village's map centre and a calendar month are all that
-  is sent to data.police.uk. If any of those changes, `/privacy` changes in the
-  same commit. The seventh is the only one describing an outbound request with
+  is archived, that a village's map centre and a calendar month are all that
+  is sent to data.police.uk, what an email carries and who delivers it
+  (`src/lib/email/send.ts`, Resend), and that no screen puts a name against a
+  vote. If any of those changes, `/privacy` changes in the same commit. The seventh is the only one describing an outbound request with
   **nothing** of a resident's in it, and it is in §6 anyway — a resident reading
   "who else sees it" is entitled to know about every request made on their
   behalf. See Official police data.
@@ -1062,12 +1139,13 @@ offline page or no push, with nothing on screen to say which.
   this set puts it. The file that used to be there was Create Next App's default
   and was what every tab actually showed until Day 8.
 
-## Email templates
+## Email
 
-`src/lib/email/` renders; it does not send. Every export is a pure function from
-typed data to `{ subject, text, html }`. There is no transport, no provider and
-no dependency — when one is chosen it goes in a `send.ts` alongside these and
-every caller keeps handing it the same objects.
+`src/lib/email/` renders and `src/lib/email/send.ts` sends. The split is the one
+the barrel's header has promised since the templates were written: the templates
+stayed pure functions from typed data to `{ subject, text, html }`, the provider
+stayed an open question, and **nothing in the four templates changed when one
+was finally wired in** — which is the whole argument for having kept them apart.
 
 - **Every interpolation goes through `escapeHtml`.** Incident titles and
   descriptions are resident-written; an apostrophe is the common case and a `<`
@@ -1076,9 +1154,74 @@ every caller keeps handing it the same objects.
 - `IncidentEmailInput` has no field that could carry `rawDescription`. An inbox
   is barely more private than a lock screen, and an email is the one place a
   leak is permanent and forwarded.
-- Sign-up confirmation is Supabase's and has to be — only Supabase Auth can mint
-  the token. `SUPABASE_EMAIL_TEMPLATES` holds that wording as constants to paste
-  into the dashboard, so it lives in a diff rather than in an unversioned form.
+
+### The transport
+
+`send.ts`, over Resend, and its contract is `notifications.ts`'s deliberately:
+**nothing throws, and nothing waits long.**
+
+- **A resident's registration must not fail because an email did.** It is
+  awaited in `POST /api/auth/register` and `POST /api/auth/complete-profile`
+  *after* the auth user and the profile row exist, so a throw there would tell
+  somebody their sign-up failed when it succeeded, with no way to tell the
+  difference and no safe retry. A missing key, a refused sender, a rate limit
+  and a timeout all resolve to a result the caller logs and ignores.
+- **With no `RESEND_API_KEY` the message is logged instead**, the same state
+  OneSignal and Slack have — what makes a fresh clone usable and lets the
+  wording be checked without an account. The **text** part is logged, because
+  the text part is the message and a table layout in a terminal is noise.
+- **Callers `await` it**, which on Vercel is what fire-and-forget has to mean:
+  the instance is frozen when the response returns, so a detached promise is not
+  "sent later", it is "sometimes never sent". Same reasoning as `slack.ts`.
+- **The timeout is a race, not a cancellation.** The SDK takes no
+  `AbortSignal`, so a message that times out at `EMAIL_TIMEOUT_MS` may still be
+  delivered. That is the right way round: a duplicate welcome email is an
+  annoyance and a registration hanging on somebody else's outage is not.
+- **The welcome fires on both registration paths and is not gated on
+  `notifyEmail`.** That column is a preference about *village news*, it defaults
+  to true on a row the call has just created, and reading it here would be
+  asking somebody whether they want the message that explains how to change the
+  setting. It is transactional: once, at the moment they join.
+- **`/privacy` §6 names Resend as a processor and says what an email carries** —
+  a first name and a village name, never a report's contents. That is a claim
+  about how the code behaves in the same sense the others are.
+
+### The Supabase auth templates
+
+`src/lib/email/supabase-templates/`. Four emails — confirm signup, magic link,
+change email address, reset password — that **this codebase cannot send and
+never will**: each carries a token only Supabase Auth can mint. What lives here
+is the wording and the branded HTML to paste into
+Authentication → Emails → Templates.
+
+- **The problem it solves is that a dashboard is not version controlled.** A
+  template edited in a form is a change nobody can review, diff or find again —
+  and these are the most-read emails the service sends. Until now they were
+  Supabase's stock ones: grey, unbranded, signed by a company no resident has
+  heard of. The first email a village ever received from VillageWatch was the
+  one that looked least like it.
+- **The `.html` files are generated, not hand-edited.**
+  `npm run generate:supabase-templates` writes them from `index.ts`, and
+  `tests/supabase-templates.test.ts` fails when a committed file and the module
+  disagree. Editing the HTML directly reproduces exactly the state this
+  directory exists to prevent.
+- **`{{ .ConfirmationURL }}` is in every one of them, twice** — behind the
+  button and as visible text under it, because a client that strips the button
+  table must still leave something clickable. Anything else in that position is
+  a delivered email with a dead link, which fails *silently* and reads to the
+  resident as an address they mistyped. Asserted rather than trusted.
+- **No other Supabase variable is used.** `{{ .Email }}`, `{{ .NewEmail }}` and
+  `{{ .Token }}` render as an empty string where a project does not populate
+  them, and a blank line where an address should be reads as broken to the one
+  person who cannot tell whether it is. The change-of-address template is
+  therefore worded to be true of both copies Supabase sends — the old address
+  and the new — rather than naming either. Asserted too.
+- **The footer links are Privacy and Terms, not Notification settings.** The
+  reader has not signed in and, for the confirmation, cannot; the default row
+  offers the one page to the one person it will not let through. That is the
+  only reason `renderEmail` takes a `links` option.
+- `docs/SUPABASE_EMAIL_SETUP.md` §3 is the paste procedure, beside the two
+  settings that lift the sending quota.
 
 ## The onboarding tour
 
@@ -1102,7 +1245,7 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Twenty-nine files, 460 tests, covering the
+between the typecheck and the build. Thirty-three files, 525 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1115,16 +1258,18 @@ compliance models, the report footer's AI claim, the four files behind the
 police figures — the client's typed failures, the month arithmetic, the
 published-and-empty-versus-never-fetched distinction, and the caveat that has to
 travel with a comparison — the markup of the three period controls, the
-landing page's pricing promises, and the mapper in front of every Supabase auth
-failure.
+landing page's pricing promises, the mapper in front of every Supabase auth
+failure, the email transport's failure modes, the four Supabase auth templates,
+and the vote — its toggle, its ordering, and the two domain rules its route
+enforces.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
   no `.env.local` — the same property the lint, typecheck and build steps rely
   on, and the reason CI needs no environment at all. A test that wanted a
   database would be a test CI could not run.
-- **`compliance-documents.test.ts` is the one that touches the disk**, and it
-  earns the exception: it reads three files out of the working tree, needs no
+- **`compliance-documents.test.ts` and `supabase-templates.test.ts` are the two
+  that touch the disk.** The first earns the exception: it reads three files out of the working tree, needs no
   secret, and catches a failure that is otherwise invisible until a coordinator
   opens the page — a renamed or unparseable document renders as a red panel
   beside an acceptance form that still works, so a council would accept a
@@ -1209,6 +1354,29 @@ failure.
   which is the distinction `/forgot-password` rests its enumeration guard on.
   The messages themselves are copy under revision and are deliberately not
   asserted, for the reason `compliance-documents.test.ts` gives.
+- **`supabase-templates.test.ts` is the second disk-reading file**, and what it
+  catches is otherwise invisible until a resident cannot get into their account:
+  the committed `.html` and the module that generates it having drifted. It also
+  pins the two properties an auth email cannot be wrong about —
+  `{{ .ConfirmationURL }}` is present, and **no other Go template variable is**,
+  because one a project does not populate renders as an empty string rather than
+  an error. The sentences are deliberately not asserted, for the reason
+  `compliance-documents.test.ts` gives.
+- **`email-send.test.ts` asserts a contract, not a delivery.** Every failure
+  Resend has — no key, a refused message, a thrown network error, a blank
+  address, a provider that never answers — resolves to a *value*. That is the
+  property both registration routes depend on: `sendEmail` is awaited after the
+  auth user and the profile row exist, so a throw would tell somebody their
+  sign-up failed when it succeeded.
+- **`incident-vote-route.test.ts` is the second route handler in the suite**,
+  and it is there for the domain rules rather than the arithmetic — `votes.ts`
+  is pure and is tested on its own. What it pins is the village coming off the
+  session and never the request (rule 4), the queue not being votable (rule 6),
+  the 404 that is deliberately not a 403, the quota that is *not* spent on a
+  report the caller cannot see, and a response with no field that could name a
+  voter. The limiter is left real with its Postgres counter mocked, the way
+  `rate-limit.test.ts` does it, so "per incident and not per resident" is
+  exercised against the key rather than against a stub.
 - **What is deliberately not covered**: no other route handler, no server
   action, no RLS policy, and no component beyond the one above — nothing
   interactive, nothing behind a click. Those need a database, a request context or a
@@ -1328,6 +1496,8 @@ npm run db:clean-village -- --slug <slug>   # Empty one village — dry run firs
 npx prisma studio        # Browse data
 npm run release:patch    # Bump version + changelog by hand (CI usually does it)
 node scripts/generate-icons.mjs   # Re-render the favicons + PWA icons from the mark
+npm run generate:supabase-templates   # Re-render the four Supabase auth email templates
+npx tsx scripts/generate-guide-pdf.tsx   # Rebuild the coordinator guide PDF from the Markdown
 psql "$DIRECT_URL" -f prisma/sql/postgis.sql        # PostGIS triggers + indexes
 psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql  # Row-level security
 ```
@@ -1461,7 +1631,10 @@ replacement for them.
   goes through it, and the exhausted-quota message reaching the registration
   form as a raw toast is the bug it was written for. Raising the limit is two
   settings in the Supabase dashboard and neither is in this repository — see
-  `docs/SUPABASE_EMAIL_SETUP.md`.
+  `docs/SUPABASE_EMAIL_SETUP.md`. **`RESEND_API_KEY` in this app's environment
+  is a different thing entirely**: it sends the emails VillageWatch renders and
+  has no effect at all on Supabase's quota. Same provider, two unrelated uses,
+  and confusing them fails silently either way.
 - **`ADMIN_EMAILS=info@yakasista.com` is what gates `/admin`.** An administrator
   is an email address on the revalidated JWT, not a role: `UserRole.ADMIN` no
   longer opens anything (it survives because `vw_is_admin()` in the RLS policies
@@ -2495,6 +2668,50 @@ same document the page already renders, as a file.
   behind it to carry three fields. It wins over `range`, clamps to
   `REPORT_MAX_RANGE_DAYS` and says so in `notice`.
 
+## The coordinator guide, on paper
+
+`docs/COORDINATOR_GUIDE.md` is the source, `/dashboard/guide` renders it on
+screen, and `scripts/generate-guide-pdf.tsx` renders the same file as
+`docs/VillageWatch-Coordinator-Guide.pdf` — an A4 booklet a coordinator can
+print for the parish papers or email to a fellow volunteer. An authoring tool
+run by hand, in the category `scripts/generate-icons.mjs` is in: nothing in the
+app imports it and no route serves its output.
+
+- **One tree, two renderers, and that is the whole argument for the script
+  existing.** It parses with `src/lib/markdown.ts` — the same parser
+  `MarkdownView` renders through — so the components in it turn the *identical*
+  tree into PDF primitives that the app turns into React elements. A
+  markdown-to-PDF dependency would have been a third grammar to keep in step
+  with the other two, and it would have accepted constructs the on-screen
+  renderer silently drops: that is how a heading that reads correctly on paper
+  turns out to be missing from the app.
+- **Which means the guide is held to that parser's grammar**, which is narrower
+  than Markdown: no nested lists, no `_underscore_` emphasis, no images, no HTML.
+  Write outside it and both renderers are wrong together, which is the failure
+  mode to prefer.
+- **The PDF is committed and is a build artefact, so it goes stale silently.**
+  Rebuild it in the same commit as any change to the Markdown. It is the one
+  file in `docs/` that is not itself the source of anything.
+- **It needs no `outputFileTracingIncludes` line.** The Markdown does, because
+  `/dashboard/guide` reads it from disk at run time; the PDF is read by a person
+  out of the repository and by nothing on Vercel.
+- **No page numbers, and it is the same trade `report-pdf.tsx` documents.** A
+  dynamic `render` node beside an absolutely positioned `fixed` one corrupts the
+  layout past about eight pages, and this document is twenty-three. The fixed
+  footer is what every page is entitled to carry, so the numbers went — which is
+  why the contents page lists sections rather than pages, and why every level-2
+  heading starts a new page: a section can then be pulled out and handed to
+  somebody on its own.
+- **The version on the cover is read from `package.json` at run time**, not from
+  `APP_VERSION` in `constants.ts` — that one is filled by `next.config.ts` from
+  the environment and is an empty string outside a Next build. A guide with no
+  version on it is a guide nobody can tell apart from the copy they printed in
+  March.
+- The mark on the cover is the shield from `src/components/logo.tsx`, the same
+  two paths on the same 24-unit viewbox, and the brand blues are written out as
+  hex — the duplication `report-pdf.tsx` and `opengraph-image.tsx` already
+  carry, with the same failure mode of not following a change to the palette.
+
 ## Official police data
 
 `src/lib/police-api.ts` fetches it, `src/lib/police-data.ts` stores and reads
@@ -2693,6 +2910,105 @@ nothing shared it.
   Ctrl+P on whatever page it renders on — intended, since the sheet is the only
   thing on either page anybody wants on paper, and worth knowing before a second
   print region joins it.
+
+## The incident vote
+
+`src/lib/votes.ts` holds the rules, `src/lib/incident-votes.ts` reads the rows,
+`POST /api/incidents/[id]/vote` writes them, and `VoteButtons` is the two
+buttons on every published report. Four surfaces render the result: the incident
+list, the detail page, the dashboard's concern panel, and the "most concerning"
+section of everything `/reports` produces.
+
+- **What it is for.** `Incident.severity` is the reporter's own assessment,
+  sharpened by the AI pass and left alone by everyone else. This is the
+  village's. It answers the question a coordinator cannot get from the figures —
+  *which of these did the street actually care about* — and it is the only
+  signal on the dashboard that comes from neither the reporter nor a
+  coordinator.
+- **It is advisory, and that restraint is the design.** Nothing here writes a
+  status, moves a severity, publishes anything or sends an alert. A vote that
+  moved severity would be a different feature and a worse one: severity drives
+  the push audience (`notifyMinSeverity`) and the WhatsApp Channel's floor
+  (`whatsappMinSeverity`), so a handful of taps would decide who gets woken up —
+  and the obvious failure is not malice but a popular report about a lost dog
+  outranking an unpopular one about a neighbour. What it produces is an
+  *ordering*, in front of the people who decide.
+- **Three states and no `NEUTRAL`.** Up, down, and no opinion — and the third is
+  the absence of a row. Pressing the button you already pressed deletes it. A
+  third enum value would be a second way to spell the same thing and every tally
+  in the codebase would have to remember to exclude it.
+- **The toggle rule is one function and both sides call it.** `nextVote` decides
+  what the route writes; `applyVote` is derived from it and is what the button
+  draws before the request lands. Two implementations would disagree the first
+  time somebody fixed one, and the symptom is a number that flicks to the wrong
+  value and then corrects itself — the kind of bug that is only ever seen and
+  never reproduced.
+- **The response is the village's count, re-read.** The route re-aggregates
+  after the write rather than adjusting the optimistic figure, so two neighbours
+  voting in the same minute each get the total as it stands instead of their own
+  guess confirmed back to them.
+- **Published and resolved reports only, in the caller's own village.** Domain
+  rules 4 and 6, and the village comes off the session profile. A report the
+  caller cannot see is a **404 and not a 403**, because a 403 confirms that a
+  report with that id exists somewhere — and no quota is spent on it, so a stale
+  page cannot cost somebody their window on the reports they *can* vote on.
+- **No `AuditLog` row.** The trail records decisions somebody is accountable for
+  — publishing, rejecting, reading a reporter's verbatim words — and a row per
+  tap would bury every one of those. It would also be a trail naming who voted
+  which way on their neighbour's report, readable by every coordinator in the
+  village, which is the one thing this feature promises not to expose.
+- **Nobody's name is rendered anywhere.** Not on a card, not on the detail page,
+  not in the dashboard panel, not in the report. The promise is structural
+  rather than remembered: **no query in the app selects a voter**, and
+  `incident-votes.ts` exposes no function that could answer "who voted on this".
+  A single well-meaning "who voted?" panel is what would end that.
+- **RLS gives a resident their own rows and a coordinator their village's.** The
+  counts residents see are computed by the application, which runs as the table
+  owner, so withholding the rows through PostgREST costs the product nothing.
+  The coordinator grant matches what they can already reach — they read
+  `raw_description` — and pretending otherwise in a policy would be a
+  distinction without a difference.
+- **Erasure takes votes in both directions**, and does it explicitly rather than
+  through the foreign keys. `removeIncident` deletes every vote cast on an
+  erased report; `eraseAccount` deletes every vote the account ever cast, plus
+  the votes on its reports. **Neither cascade would ever fire** — that function
+  does not delete the `users` row and this one keeps the `incidents` row as a
+  tombstone — so `ON DELETE CASCADE` on both sides is a backstop and not the
+  mechanism.
+- **The dashboard panel lists only reports somebody voted on.** A report with no
+  votes is unrated rather than "least concerning", and padding the list would
+  turn an ordering into a ranking of things nobody ranked. That is also why the
+  sort offers no "recent" option: ordering voted reports by date makes it a
+  worse copy of `/incidents`. `overstated` is the one worth keeping — a report
+  the village thinks was overblown is as much a moderation signal as one it
+  thinks is serious.
+- **The report's section is filtered as well as ordered.** `MIN_VOTES_TO_FEATURE`
+  and a positive score, because a "most concerning" section in a document
+  addressed to a PCSO, topped by a report one neighbour nudged, is a claim put
+  in a village's mouth that the village did not make. **Empty omits the section**
+  — the same rule `police` follows, and for the same reason: a heading over
+  nothing reads as a section that failed. A deployment where the buttons have
+  never been pressed produces exactly the report it produced before.
+- **`CONCERN_NOTE` travels with that section on all three surfaces**, the way
+  `POLICE_COMPARISON_NOTE` travels with the police figures. A ranked list in a
+  police document looks like an assessment and this one is a show of hands, and
+  the obvious misreading of "7 residents rated this more serious" is "seven
+  people saw it". One constant, because the screen, the clipboard and the PDF
+  all render it.
+- **Both counts are shown, never the net score alone.** "+3" hides whether the
+  village agreed or argued, and the difference between 3–0 and 7–4 is the whole
+  reason a coordinator is looking.
+- **Every read degrades on a missing table.** `20260823120000_incident_votes`
+  may not be applied, and the buttons are on every published report — an
+  exception would take out the incident list, the detail page, the dashboard and
+  the report at once for an optional feature. A village on a database that is
+  behind sees no vote counts, which is what a village where nobody has voted
+  sees.
+- **`/privacy` §§2, 6 and 7 and `/terms` §7 changed in the same commit**, for
+  the reason the legal-pages section gives. A vote is personal data — an opinion
+  linked to an account — and the notice says what is recorded, that the totals
+  are public within the village while the voter is not, and that it goes with
+  the report and with the account.
 
 ## The heatmap
 
@@ -2907,8 +3223,8 @@ check against the other, and a third would be one too many.
   `notifyAdminsOfCoordinatorRequest` is the only dispatch in
   `notifications.ts` whose audience is not a village.
 - `src/lib/email/coordinator-decision.ts` renders the same decision as an email.
-  Nothing sends it — there is still no transport — so push is what actually
-  runs.
+  Nothing sends it — `send.ts` exists but the welcome is its only caller — so
+  push is what actually runs.
 - The administrator still needs a `User` row to receive the **push**: the
   audience is resolved by looking their email up in the database. The gate
   itself does not — somebody in `ADMIN_EMAILS` who has never joined a village
@@ -3201,15 +3517,18 @@ viewer, security headers, the error pages, the retention cron, the seed script,
 templates, the onboarding tour and the ONS village directory pipeline. Still
 open:
 
-- The Supabase project exists (eu-west-2) and **twelve of the thirteen
+- The Supabase project exists (eu-west-2) and **twelve of the fourteen
   migrations are applied**, with `postgis.sql` and `rls_policies.sql` re-run
-  after them. The thirteenth is
-  `20260822120000_police_crime_data`, which is new on this branch and adds three
-  tables and no column to any existing one — nothing a resident can do changes
-  when it lands, and every read on top of it degrades to "no official data"
-  until it does. `rls_policies.sql` **must** be re-run with it: a new table
-  arrives with RLS off and every row readable by the anon key. `postgis.sql`
-  need not be — there is no geography column in it, on purpose. The
+  after them. The two outstanding are
+  `20260822120000_police_crime_data` and `20260823120000_incident_votes`, both
+  new on a branch and both of the same harmless shape: new tables, no column
+  added to any existing one, nothing a resident can do changing when they land,
+  and every read on top of them degrading — to "no official data" and to "no
+  votes yet". `rls_policies.sql` **must** be re-run with each: a new table
+  arrives with RLS off and every row readable by the anon key, and for the votes
+  that means the anon key reading who thought which of their neighbours' reports
+  was overblown. `postgis.sql`
+  need not be — there is no geography column in either, on purpose. The
   eleventh and twelfth went in on 21 August 2026, through `database.yml` on the
   merges of PR #5 and PR #6:
   `20260820100000_archive_deletes_raw_description` drops a NOT NULL and
@@ -3459,6 +3778,20 @@ open:
   §6(d) states that plainly rather than claiming cover it does not have. Its
   §6(c) is a list of the security measures actually in place, in a contract:
   removing one of them is a breach, not a stale sentence.
+- **Nobody has ever voted on a report.** `20260823120000_incident_votes` is new
+  on this branch and unapplied, so the buttons render with zero counts and every
+  read on top of the table degrades to "no votes yet" until it lands. **Re-run
+  `prisma/sql/rls_policies.sql` with it** — a new table arrives with RLS off, and
+  here that would mean the anon key could read who in a village thought which of
+  their neighbours' reports was overblown. Three things to look at on the first
+  real votes, in the order they are likely to surprise: **the toggle across two
+  devices**, since the optimistic count is per browser and the reconciliation is
+  what makes it the village's; **the concern panel's ordering**, which is
+  arithmetic done in JavaScript over a `groupBy` and is the one place a wrong
+  sort would look plausible; and **the report's "most concerning" section**,
+  which is the only one of the four surfaces that leaves the village — check
+  that a village with one vote on one report produces no section at all rather
+  than a section with one line in it.
 - **The invite has never been scanned and the heatmap has never been drawn over
   real reports.** Both build, both are unit tested where there is logic to test,
   and neither has been exercised against a database — the only `ACTIVE` village is
@@ -3510,10 +3843,26 @@ open:
 - `PatternAlert` rows are created by the digest but nothing renders them —
   acknowledge and dismiss have no UI, and the dashboard does not list them.
   (The RLS UPDATE policy for them is already in place, waiting on the screen.)
-- **Email has templates but no transport.** `src/lib/email/` renders welcome,
-  weekly digest, incident notification and the coordinator decision; nothing
-  sends them, `notifyEmail` is absent from the settings screen, and no dispatch
-  honours it. SMS has neither templates nor transport.
+- **Email has a transport now, and one caller.** `src/lib/email/send.ts` goes
+  out over Resend, and `welcomeEmail` fires on both registration paths. The
+  other three templates — weekly digest, incident notification, coordinator
+  decision — still have no caller: `notifyEmail` is absent from the settings
+  screen and no dispatch honours it, so village news is still push only. SMS has
+  neither templates nor transport. **No email has been delivered to a real
+  inbox through this**; with no `RESEND_API_KEY` set the welcome is logged, which
+  looks exactly like a working deployment until somebody asks why they never got
+  one. Two things to watch on the first real send, both of which fail quietly:
+  whether the sending domain is verified in Resend (an unverified one is refused
+  and the refusal is only in the server log), and whether `RESEND_FROM_EMAIL`
+  reached Vercel rather than only `.env.local`.
+- **The four Supabase auth templates have never been pasted into the
+  dashboard.** They build, they are asserted, and the project is still sending
+  Supabase's stock grey ones — so the branded HTML in
+  `src/lib/email/supabase-templates/` is, until somebody does step 3 of
+  `docs/SUPABASE_EMAIL_SETUP.md`, a file nobody has read. Check the rendering in
+  a real client before pasting all four: Outlook's Word engine is the one that
+  surprises people, and the fallback link under the button is what a client that
+  eats the button table leaves behind.
 
   **The auth emails are the exception and are not ours.** Confirmation and
   recovery are minted and sent by Supabase Auth, because only Supabase can mint

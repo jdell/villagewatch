@@ -132,6 +132,8 @@ export type RemoveIncidentResult =
       /** `IncidentMedia` rows dropped once their objects were gone. */
       mediaRowsDeleted: number;
       tagsDeleted: number;
+      /** Votes the village had cast on it. See below for why they go. */
+      votesDeleted: number;
       /** Set when storage could not be reached and the files are still there. */
       mediaSkipped?: "storage_not_configured" | "storage_error";
     }
@@ -292,6 +294,25 @@ export async function removeIncident(input: {
     where: { incidentId: incident.id },
   });
 
+  /*
+    Every vote the village cast on this report.
+
+    Not because a vote says anything about the reporter — it does not — but
+    because it is a row naming a person and a report, and the report is being
+    erased. A tombstone with eleven votes still attached to it would be the
+    village's opinion of something nobody can read any more, hanging off an id
+    that resolves to "Erased report", and it would keep eleven residents linked
+    to it. Nothing counts them afterwards either: every ordering that reads
+    votes is narrowed to `PUBLIC_INCIDENT_STATUSES`, which `REMOVED` is not in.
+
+    The foreign key cascades, and that is a backstop rather than the mechanism —
+    the `incidents` row deliberately survives (domain rule 7), so the cascade
+    never fires here.
+  */
+  const { count: votesDeleted } = await prisma.incidentVote.deleteMany({
+    where: { incidentId: incident.id },
+  });
+
   // Conditional on the status just read, so a coordinator moderating the same
   // report at the same moment does not have their decision silently overwritten
   // — the loser of that race gets "could not be found" and can look again.
@@ -319,6 +340,7 @@ export async function removeIncident(input: {
     objectsDeleted: media.objectsDeleted,
     mediaRowsDeleted: media.mediaRowsDeleted,
     tagsDeleted,
+    votesDeleted,
     mediaSkipped: media.skipped,
   };
 }
@@ -330,6 +352,8 @@ export type EraseAccountResult =
       objectsDeleted: number;
       mediaRowsDeleted: number;
       tagsDeleted: number;
+      /** Votes cast by this account, plus votes cast on its reports. */
+      votesDeleted: number;
       mediaSkipped?: "storage_not_configured" | "storage_error";
     }
   | { ok: false; reason: ErasureFailure; error: string };
@@ -406,6 +430,29 @@ export async function eraseAccount(input: {
 
   let tagsDeleted = 0;
   let incidentsRemoved = 0;
+
+  /*
+    Both directions, in one statement.
+
+    `userId` is the resident's own opinions, which are theirs to withdraw and
+    are a row naming them against a list of their neighbours' reports —
+    precisely the shape of record Article 17 is about. `incidentId` is everybody
+    else's opinions of the reports being erased, which go for the reason
+    `removeIncident` gives.
+
+    Before the tombstone rather than after, so a failure leaves votes attached
+    to a report that still exists rather than to one that has already been
+    scrubbed. Neither foreign key cascade fires here: this function does not
+    delete the `users` row and it does not delete the `incidents` rows.
+  */
+  const { count: votesDeleted } = await prisma.incidentVote.deleteMany({
+    where: {
+      OR: [
+        { userId: session.user.id },
+        ...(incidentIds.length > 0 ? [{ incidentId: { in: incidentIds } }] : []),
+      ],
+    },
+  });
 
   if (incidentIds.length > 0) {
     ({ count: tagsDeleted } = await prisma.incidentTag.deleteMany({
@@ -507,6 +554,7 @@ export async function eraseAccount(input: {
     objectsDeleted: media.objectsDeleted,
     mediaRowsDeleted: media.mediaRowsDeleted,
     tagsDeleted,
+    votesDeleted,
     mediaSkipped: media.skipped,
   };
 }

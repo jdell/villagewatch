@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Your sign-in link</title>
+</head>
+<body style="margin:0;padding:0;background:#f8fafc;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Sign in to VillageWatch without a password.</div>
+
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f8fafc;">
+  <tr>
+    <td align="center" style="padding:24px 12px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+        <tr>
+          <td style="padding:22px 28px;background:#0f2557;">
+            <span style="font-size:17px;font-weight:600;color:#ffffff;letter-spacing:-0.01em;">VillageWatch</span>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:28px;">
+            <h1 style="margin:0 0 18px;font-size:21px;line-height:1.3;font-weight:600;color:#0f172a;letter-spacing:-0.01em;">Your sign-in link</h1>
+            <p style="margin:0 0 16px;font-size:15px;line-height:1.65;color:#0f172a;">Here is the link you asked for. It signs you in to VillageWatch on the device you open it on.</p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+    <tr>
+      <td align="center" bgcolor="#0f2557" style="border-radius:10px;">
+        <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:13px 26px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">Sign me in</a>
+      </td>
+    </tr>
+  </table>
+            <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#475569;">
+    If the button does not work, copy this link into your browser:<br>
+    <a href="{{ .ConfirmationURL }}" style="color:#0f2557;word-break:break-all;">{{ .ConfirmationURL }}</a>
+  </p>
+            <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#475569;">The link is good for one hour and can be used once.</p>
+            <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#475569;">If you did not ask to sign in, ignore this email. Nobody has been signed in and your account is unchanged.</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:20px 28px 26px;border-top:1px solid #e2e8f0;">
+            <p style="margin:0 0 8px;font-size:12px;line-height:1.6;color:#475569;">This email was sent by VillageWatch because somebody used this address to sign up or sign in.</p>
+            <p style="margin:0;font-size:12px;line-height:1.6;color:#475569;">
+              <a href="https://villagewatch.app/privacy" style="color:#475569;">Privacy</a>
+              &nbsp;&middot;&nbsp;
+              <a href="https://villagewatch.app/terms" style="color:#475569;">Terms</a>
+            </p>
+            <p style="margin:12px 0 0;font-size:12px;line-height:1.6;color:#475569;">
+              In an emergency always call 999. VillageWatch is not an emergency service.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

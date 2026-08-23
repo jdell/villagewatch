@@ -4,12 +4,13 @@ import { APP_NAME, APP_ORIGIN } from "@/lib/constants";
  * The shared shell every VillageWatch email is rendered into, and the helpers
  * that make one safe to build.
  *
- * **These are templates, not a mailer.** Nothing in `src/lib/email/` sends
- * anything: there is no transport, no provider and no dependency. Each module
- * exports a pure function from typed data to `{ subject, text, html }`, ready
- * for whatever gets wired in — Resend, Postmark, Supabase SMTP. Keeping the
- * rendering separate from the sending is what makes these testable at all, and
- * it means the decision about a provider is still open.
+ * **These are templates, and they still know nothing about the mailer.** Each
+ * module here exports a pure function from typed data to
+ * `{ subject, text, html }` and nothing more. The transport lives in
+ * `./send.ts`, over Resend, and takes those objects as they are — not one line
+ * of a template changed when it was wired in, which is what the split was for.
+ * Keeping the rendering separate is also what makes these testable without a
+ * key, which is what lets CI run them at all.
  *
  * ## Why the HTML looks like 2004
  *
@@ -150,10 +151,38 @@ export function renderEmail(input: {
   body: string;
   /** Ends the email. Almost always where to change preferences. */
   footer?: string;
+  /**
+   * The row of links under the footer line.
+   *
+   * Defaults to notification settings, privacy and terms, which is right for
+   * every email sent *to a resident of a village*. It is overridable for the
+   * one family that is not: the Supabase auth templates in
+   * `./supabase-templates/` are read by somebody who has not signed in — and
+   * for the confirmation email, by somebody whose account does not work yet.
+   * "Notification settings" there is a link to a sign-in wall, offered to the
+   * one person who cannot get past it.
+   *
+   * Paths, not URLs — `appUrl` is applied here so a caller cannot accidentally
+   * emit a relative href into an inbox that has no base to resolve it against.
+   */
+  links?: readonly { label: string; path: string }[];
 }): string {
   const footer =
     input.footer ??
     `You are receiving this because you are a member of a village on ${APP_NAME}.`;
+
+  const links = input.links ?? [
+    { label: "Notification settings", path: "/settings" },
+    { label: "Privacy", path: "/privacy" },
+    { label: "Terms", path: "/terms" },
+  ];
+
+  const linkRow = links
+    .map(
+      (link) =>
+        `<a href="${escapeHtml(appUrl(link.path))}" style="color:${MUTED};">${escapeHtml(link.label)}</a>`,
+    )
+    .join("\n              &nbsp;&middot;&nbsp;\n              ");
 
   return `<!doctype html>
 <html lang="en">
@@ -188,11 +217,7 @@ export function renderEmail(input: {
           <td style="padding:20px 28px 26px;border-top:1px solid ${BORDER};">
             <p style="margin:0 0 8px;font-size:12px;line-height:1.6;color:${MUTED};">${escapeHtml(footer)}</p>
             <p style="margin:0;font-size:12px;line-height:1.6;color:${MUTED};">
-              <a href="${escapeHtml(appUrl("/settings"))}" style="color:${MUTED};">Notification settings</a>
-              &nbsp;&middot;&nbsp;
-              <a href="${escapeHtml(appUrl("/privacy"))}" style="color:${MUTED};">Privacy</a>
-              &nbsp;&middot;&nbsp;
-              <a href="${escapeHtml(appUrl("/terms"))}" style="color:${MUTED};">Terms</a>
+              ${linkRow}
             </p>
             <p style="margin:12px 0 0;font-size:12px;line-height:1.6;color:${MUTED};">
               In an emergency always call 999. ${escapeHtml(APP_NAME)} is not an emergency service.

@@ -21,6 +21,10 @@ import {
 import type { QueuedIncident } from "@/components/dashboard/moderation-card";
 import { ModerationQueue } from "@/components/dashboard/moderation-queue";
 import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
+import {
+  ConcernList,
+  type ConcernRow,
+} from "@/components/dashboard/concern-list";
 import { ExportCsvButton } from "@/components/dashboard/export-csv-button";
 import { InviteShare } from "@/components/dashboard/invite-share";
 import { ParishCouncilForm } from "@/components/dashboard/parish-council-form";
@@ -54,6 +58,7 @@ import {
   getVillageChannelSettings,
 } from "@/lib/whatsapp-channel";
 import {
+  CONCERN_LIST_SIZE,
   DASHBOARD_RANGE_VALUES,
   HOTSPOT_COUNT,
   INCIDENT_TYPE_LABELS,
@@ -62,12 +67,14 @@ import {
   PUBLIC_INCIDENT_STATUSES,
   SEVERITIES,
   SEVERITY_META,
+  resolveConcernSort,
 } from "@/lib/constants";
 import {
   MAX_MAP_INCIDENTS,
   PUBLIC_INCIDENT_SELECT,
   toMapIncident,
 } from "@/lib/incidents";
+import { summariseVotes, tallyFor, type VoteTally } from "@/lib/votes";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -123,9 +130,22 @@ export default async function DashboardPage({
    * `all` is deliberately not offered here — see the note on `TIME_RANGES`. A
    * trend against the period preceding all time is a comparison with nothing.
    */
-  const range = resolveDashboardRange(await searchParams);
+  const params = await searchParams;
+
+  const range = resolveDashboardRange(params);
   const rangeFilter = timeRangeFilter(range);
   const preceding = previousPeriod(range);
+
+  /**
+   * How the concern panel is ordered.
+   *
+   * Narrowed rather than rejected, the same forgiveness every other filter on
+   * these screens applies — a hand-edited or stale `?sort=` should render the
+   * panel in its default order, not an error page.
+   */
+  const concernSort = resolveConcernSort(
+    Array.isArray(params.sort) ? params.sort[0] : params.sort,
+  );
 
   // Spread rather than `as const`: Prisma's generated `in` filter wants a
   // mutable array, and a readonly tuple will not satisfy it.
@@ -156,6 +176,7 @@ export default async function DashboardPage({
     compliance,
     policeComparison,
     policeTeam,
+    voteRows,
   ] = await Promise.all([
     prisma.incident.count({ where: inRange }),
     // `preceding` is null only for an unbounded range, which this page does not
@@ -304,6 +325,42 @@ export default async function DashboardPage({
         })
       : Promise.resolve(null),
     getVillagePoliceTeam(villageId),
+    /*
+      Every vote cast on a published report in this period, two rows per report
+      at most.
+
+      Counted from the votes rather than from the incidents on purpose: this
+      panel lists only reports somebody actually voted on, so starting from
+      `incident_votes` bounds the query by how many reports have an opinion on
+      them rather than by how many exist. A busy month with three voted reports
+      in it costs three rows here; the alternative — read every published
+      incident in the period and sort it — reads the whole period to show five
+      of it.
+
+      `where` filters through the relation, which is what keeps the tenant
+      boundary and the public-status rule on this query too (domain rules 4 and
+      6): `inRange` is the same predicate every other figure on this page is
+      counted over.
+
+      Wrapped, because `incident_votes` arrives with
+      `20260823120000_incident_votes` and a dashboard must not fail over an
+      unapplied migration — the same tolerance `getVillagePoliceComparison` has,
+      here inline because it is one query rather than a module of them.
+    */
+    prisma.incidentVote
+      .groupBy({
+        by: ["incidentId", "vote"],
+        where: { incident: inRange },
+        _count: { _all: true },
+      })
+      .catch((cause: unknown) => {
+        console.warn(
+          "Could not read incident votes for the dashboard; rendering " +
+            "without them. Has 20260823120000_incident_votes been applied?",
+          cause,
+        );
+        return [];
+      }),
   ]);
 
   /**
@@ -371,6 +428,74 @@ export default async function DashboardPage({
     tags: row.tags.map((tag) => tag.label),
     mediaCount: row._count.media,
   }));
+
+  /*
+    The concern panel.
+
+    Two steps rather than one query, because the ordering is arithmetic Postgres
+    would have to be asked for in raw SQL — `up - down` over a pivot of an enum
+    — and the set it runs over is already small: one row per voted report, which
+    is what the `groupBy` above returned.
+
+    The sort is applied *before* the incidents are fetched, so the second query
+    reads exactly the reports that end up on screen. The result then comes back
+    in whatever order Postgres liked, so it is put back into the sorted order by
+    id — a `findMany` with an `in` list makes no promise about ordering, and a
+    panel headed "Most concerning" listing them in insertion order would be
+    wrong in a way nobody would spot.
+  */
+  const tallies = summariseVotes(voteRows);
+
+  const rank = (id: string): VoteTally => tallyFor(tallies, id);
+
+  const concernIds = [...tallies.keys()]
+    .sort((a, b) => {
+      const left = rank(a);
+      const right = rank(b);
+
+      switch (concernSort) {
+        case "discussed":
+          // Both directions count. A report six neighbours argued over is the
+          // one worth reading, whichever way it came out.
+          return (
+            right.up + right.down - (left.up + left.down) ||
+            right.score - left.score
+          );
+        case "overstated":
+          // Ascending, so the reports the village rated *down* come first.
+          return left.score - right.score || right.down - left.down;
+        default:
+          return right.score - left.score || right.up - left.up;
+      }
+    })
+    .slice(0, CONCERN_LIST_SIZE);
+
+  const concernIncidents =
+    concernIds.length === 0
+      ? []
+      : await prisma.incident.findMany({
+          // `inRange` again rather than the ids alone: the votes were read
+          // through the relation, but re-stating the predicate is what keeps
+          // this query independently scoped to the village (domain rule 4)
+          // rather than trusting a list of ids assembled a few lines up.
+          where: { ...inRange, id: { in: concernIds } },
+          select: {
+            id: true,
+            reference: true,
+            type: true,
+            severity: true,
+            title: true,
+            locationText: true,
+            occurredAt: true,
+          },
+        });
+
+  const byId = new Map(concernIncidents.map((row) => [row.id, row]));
+
+  const concernRows: ConcernRow[] = concernIds.flatMap((id) => {
+    const row = byId.get(id);
+    return row ? [{ ...row, votes: rank(id) }] : [];
+  });
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
@@ -564,6 +689,26 @@ export default async function DashboardPage({
           </ol>
         )}
       </section>
+
+      {/*
+        What the village made of its own reports, between its own counts and the
+        independent series below.
+
+        Placed here on purpose: the two panels above it count what was *filed*,
+        this one counts what the village thought of it, and the police figures
+        below are somebody else's count of the same place. Three answers to
+        "what is going on here", in order of who is doing the counting.
+      */}
+      <ConcernList
+        rows={concernRows}
+        sort={concernSort}
+        period={{
+          range: range.preset,
+          from: range.fromValue,
+          to: range.toValue,
+        }}
+        periodLabel={range.label}
+      />
 
       {/*
         The independent series, under the village's own figures and above the

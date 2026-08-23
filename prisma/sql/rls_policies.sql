@@ -203,6 +203,7 @@ ALTER TABLE public.users                    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.incidents                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.incident_media           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.incident_tags            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.incident_votes           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pattern_alerts           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.coordinator_requests     ENABLE ROW LEVEL SECURITY;
@@ -705,6 +706,104 @@ CREATE POLICY incident_tags_delete_own
                           'PENDING_REVIEW'::public.incident_status)
     )
   );
+
+-- ---------------------------------------------------------------------------
+-- incident_votes
+-- ---------------------------------------------------------------------------
+--
+-- A vote is a named opinion about a named report, which in a village is a more
+-- personal thing than the two little buttons suggest: "who thought my report
+-- was overblown" is a question with social consequences on a street where
+-- everybody knows everybody. So the grants here are the narrowest in this file
+-- after `rate_limit`.
+--
+-- **A resident reads their own rows and nobody else's.** That is what
+-- `incident_votes_select_own` says, and it is deliberately not a village-wide
+-- SELECT. The counts a resident sees on a card are computed by the application,
+-- which connects as the table owner and bypasses every policy here — so
+-- withholding the rows costs the product nothing and closes the one read that
+-- would turn a count back into a list of names.
+--
+-- **A coordinator reads their own village's rows**, in the same sense they can
+-- already read `raw_description`: they are the village's moderator and the
+-- accountable person in it. Nothing in the application *shows* them a voter —
+-- the dashboard's concern list and the report's "most concerning" section are
+-- both aggregates — but the access is theirs, and pretending otherwise in a
+-- policy while the same person can read the reporter's verbatim words would be
+-- a distinction without a difference.
+--
+-- **Writes are own-rows-only and only on a report the resident can see.** The
+-- INSERT and UPDATE checks repeat the application's own gate — the caller's
+-- village, and `PUBLISHED` or `RESOLVED` (domain rules 4 and 6) — because a
+-- client that could vote on a queued report would be pushing something up a
+-- coordinator's ordering before the coordinator had decided it should exist.
+--
+-- DELETE is granted because "no opinion" is the absence of a row: pressing the
+-- button you already pressed removes it. Deliberately *not* narrowed by the
+-- incident's status, unlike INSERT — a report can be archived or rejected after
+-- somebody voted on it, and a resident who could no longer withdraw their own
+-- vote would be the one person unable to undo a thing they did.
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.incident_votes TO authenticated;
+
+DROP POLICY IF EXISTS incident_votes_select_own ON public.incident_votes;
+CREATE POLICY incident_votes_select_own
+  ON public.incident_votes FOR SELECT
+  TO authenticated
+  USING (user_id = (SELECT auth.uid()));
+
+DROP POLICY IF EXISTS incident_votes_select_coordinator ON public.incident_votes;
+CREATE POLICY incident_votes_select_coordinator
+  ON public.incident_votes FOR SELECT
+  TO authenticated
+  USING (
+    public.vw_is_coordinator()
+    AND EXISTS (
+      SELECT 1 FROM public.incidents i
+       WHERE i.id = incident_id
+         AND i.village_id = public.vw_current_village_id()
+    )
+  );
+
+DROP POLICY IF EXISTS incident_votes_insert_own ON public.incident_votes;
+CREATE POLICY incident_votes_insert_own
+  ON public.incident_votes FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    user_id = (SELECT auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.incidents i
+       WHERE i.id = incident_id
+         AND i.village_id = public.vw_current_village_id()
+         AND i.status IN ('PUBLISHED'::public.incident_status,
+                          'RESOLVED'::public.incident_status)
+    )
+  );
+
+DROP POLICY IF EXISTS incident_votes_update_own ON public.incident_votes;
+CREATE POLICY incident_votes_update_own
+  ON public.incident_votes FOR UPDATE
+  TO authenticated
+  USING (user_id = (SELECT auth.uid()))
+  -- The WITH CHECK keeps the row on the same user and the same report: without
+  -- it, an UPDATE is a way to move somebody else's vote onto your own id, or
+  -- your own vote onto a report you were never allowed to vote on.
+  WITH CHECK (
+    user_id = (SELECT auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.incidents i
+       WHERE i.id = incident_id
+         AND i.village_id = public.vw_current_village_id()
+         AND i.status IN ('PUBLISHED'::public.incident_status,
+                          'RESOLVED'::public.incident_status)
+    )
+  );
+
+DROP POLICY IF EXISTS incident_votes_delete_own ON public.incident_votes;
+CREATE POLICY incident_votes_delete_own
+  ON public.incident_votes FOR DELETE
+  TO authenticated
+  USING (user_id = (SELECT auth.uid()));
 
 -- ---------------------------------------------------------------------------
 -- notifications

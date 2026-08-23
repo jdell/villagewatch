@@ -157,14 +157,22 @@ working out what a database is missing.
 | 8 | `20260728120000_village_privacy_level` | `villages.privacy_level` — how heavily the village covers faces. |
 | 9 | `20260728150000_village_dpa_gate` | The two `villages.dpa_accepted_*` columns — the third document in step 8c. |
 | 10 | `20260803120000_incident_village_numbering` | `incidents.village_incident_number` and `.reference_year`, the per-village unique key, and a backfill that renumbers the rows already there. |
+| 11 | `20260820100000_archive_deletes_raw_description` | Drops the NOT NULL on `incidents.raw_description` and clears it on rows already archived — the deletion `/privacy` §7 has always promised. |
+| 12 | `20260820120000_village_community_mode` | `villages.mode` and the community acceptance columns. Defaults every village to the community model and backfills any village that has accepted a council document back to `council`. |
+| 13 | `20260822120000_police_crime_data` | The three `police_*` tables. Adds no column to any existing table and changes nothing a resident can do. |
+| 14 | `20260823120000_incident_votes` | The `incident_votes` table and the `vote_direction` enum. Adds no column to any existing table; every read on top of it degrades to "no votes yet". |
 
-**As of 3 August 2026 all ten are applied**, with both SQL files re-run after
-them. This section said "1–5 applied, 6 to 9 are not" until 13 August and was
-stale by five days: the run that applied 10 reported every earlier migration
-already present and finished `Database schema is up to date!`. **Read the
-workflow log or `npx prisma migrate status` rather than this paragraph** before
-planning around what a given database has — that is the record, and this is a
-note about it.
+**1 to 13 are applied**; 14 is new and lands with this change. This table listed
+ten migrations and said "all ten are applied" until 23 August 2026, by which
+point there were thirteen — the same staleness the paragraph below it warns
+about, in the paragraph doing the warning. **Read the workflow log or
+`npx prisma migrate status` rather than this section** before planning around
+what a given database has. That is the record; this is a note about it.
+
+Re-run `prisma/sql/rls_policies.sql` after 13 and 14. Each adds a table, a new
+table arrives with RLS **off**, and for 14 that would mean the anon key could
+read who in a village thought which of their neighbours' reports was overblown.
+Neither needs `postgis.sql` re-running — there is no geography column in either.
 
 What follows is what each one turns on, which is what you need when a database
 turns out to be behind. Without 6:
@@ -423,14 +431,48 @@ Supabase dashboard:
    password a Resend API key, sender an address on a domain verified in Resend.
 
 `docs/SUPABASE_EMAIL_SETUP.md` is the full procedure, including the three things
-that catch people out and how to check it is really sending. Neither setting is
-in this repository and neither is an environment variable — configuring Resend
-here adds no dependency to the app, which still has no email transport of its
-own.
+that catch people out and how to check it is really sending. Neither of those
+two settings is in this repository and neither is an environment variable.
+
+While you are in that dashboard, do step 3 of the same document: **paste the
+branded templates**. Supabase's stock confirmation email is grey, unbranded and
+signed by a company no resident has heard of, and it is the first thing a new
+resident ever receives from you. The four replacements are in
+`src/lib/email/supabase-templates/` as `.html` files to copy and paste, with
+their subject lines in the module beside them.
 
 Turning on Google sign-in (7b above) is the cheapest mitigation of all: it takes
 email out of the sign-up path entirely, so twenty households joining in one
 evening send nothing.
+
+---
+
+## 7d. Email from the app itself (optional)
+
+Separate from 7c, and worth not confusing with it. 7c is Supabase sending its
+own auth emails; this is **VillageWatch** sending the ones it renders — today
+one message, the welcome that goes out when somebody joins a village, on both
+the password and the Google path.
+
+Two environment variables, both server-only:
+
+```bash
+RESEND_API_KEY="re_..."                              # resend.com → API Keys
+RESEND_FROM_EMAIL="VillageWatch <noreply@villagewatch.app>"
+```
+
+The sending domain has to be verified in Resend (Domains → add → SPF, DKIM and
+the return-path record) or every send is refused. If you did 7c you have already
+done this, and the same API key works for both — or use two, so a leaked one can
+be rotated without taking the other out.
+
+**Skip it and everything still works.** With no key the message is written to
+the server console instead of being sent, which is the same supported state
+OneSignal and Slack have, and a resident's registration never fails because an
+email did. What you lose is the welcome message; what you do not lose is the
+sign-up confirmation, which is Supabase's and is 7c's business.
+
+Remember to add both to Vercel as well as `.env.local` — step 11.
 
 ---
 
@@ -859,6 +901,11 @@ with three changes:
   It is a credential in everything but name: anyone on that list can grant
   somebody the ability to read the original, un-anonymised wording of every
   report their village files. Changing it takes effect on the next deploy.
+- `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (step 7d) have to be here too, if you
+  want the app's own email to send in production. They are easy to set locally
+  and forget: with no key the welcome message is logged rather than sent, which
+  looks exactly like a working deployment right up until somebody asks why they
+  never got one.
 
 Vercel sends it as `Authorization: Bearer $CRON_SECRET`, and both routes compare
 it in constant time (`src/lib/cron.ts`).

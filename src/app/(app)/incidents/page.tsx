@@ -6,6 +6,7 @@ import { FlashToast } from "@/components/flash-toast";
 import { IncidentCard } from "@/components/incident-card";
 import { NoVillage } from "@/components/no-village";
 import { TimeRangeFields } from "@/components/time-range-fields";
+import { VoteButtons } from "@/components/vote-buttons";
 import { requireSession } from "@/lib/auth";
 import {
   dateInputValue,
@@ -22,6 +23,7 @@ import {
   SEVERITIES,
   SEVERITY_VALUES,
 } from "@/lib/constants";
+import { readVoteStates } from "@/lib/incident-votes";
 import { INCIDENT_PAGE_SIZE, PUBLIC_INCIDENT_SELECT } from "@/lib/incidents";
 import { signedMediaUrls } from "@/lib/media/storage";
 
@@ -114,6 +116,20 @@ export default async function IncidentsPage({
   const urls = await signedMediaUrls(
     rows.flatMap((row) => row.media[0]?.redactedPath ?? []),
   );
+
+  /*
+    And one for every vote on it. Two queries for the whole page rather than two
+    per card — see `readVoteStates`.
+
+    Every row here is already `PUBLIC_INCIDENT_STATUSES`, so every card gets the
+    buttons; there is no per-card gate to apply. A database without
+    `20260823120000_incident_votes` returns an empty map and the counts render
+    as zero, which is what a village where nobody has voted sees anyway.
+  */
+  const votes = await readVoteStates({
+    incidentIds: rows.map((row) => row.id),
+    userId: session.user.id,
+  });
 
   // The period counts as a filter once it is not the default, so the empty
   // state says "nothing matches" rather than "nothing reported yet" — the two
@@ -260,6 +276,15 @@ export default async function IncidentsPage({
                 <IncidentCard
                   compact
                   href={`/incidents/${row.id}`}
+                  footer={
+                    votes.has(row.id) ? (
+                      <VoteButtons
+                        compact
+                        incidentId={row.id}
+                        initial={votes.get(row.id)!}
+                      />
+                    ) : undefined
+                  }
                   incident={{
                     id: row.id,
                     reference: row.reference,

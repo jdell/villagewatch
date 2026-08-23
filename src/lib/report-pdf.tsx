@@ -10,6 +10,7 @@ import {
 import type { CommunityReportData } from "@/lib/community-report";
 import {
   AI_ANALYSIS_NOTE,
+  CONCERN_NOTE,
   GENERATED_BY,
   rangeDays,
   reportFileName,
@@ -318,6 +319,13 @@ const styles = StyleSheet.create({
   hotspotIndex: { width: 12, color: COLOURS.faint },
   hotspotName: { flex: 1, color: COLOURS.body },
   hotspotCount: { color: COLOURS.body },
+
+  // Most concerning ---------------------------------------------------------
+  concernRow: { flexDirection: "row", gap: 6, paddingVertical: 2.5 },
+  concernBody: { flex: 1 },
+  concernTitle: { fontFamily: "Helvetica-Bold", color: COLOURS.ink },
+  concernMeta: { fontSize: 7.5, color: COLOURS.muted, marginTop: 1 },
+  concernVotes: { fontSize: 7.5, color: COLOURS.body, marginTop: 1 },
 
   // The log -----------------------------------------------------------------
   logHead: {
@@ -672,6 +680,44 @@ export function CommunityReportDocument({
             </>
           )}
         </Section>
+
+        {/*
+          What the village made of its own reports, between its counts and the
+          Home Office's count of the same place.
+
+          Rendered only when somebody has voted. A heading reading "Most
+          concerning to residents" over nothing, in a document addressed to a
+          PCSO, reads as a section that failed rather than as a village where
+          the buttons have not been pressed — the same rule the police section
+          below follows, and the same reason.
+
+          `CONCERN_NOTE` is not decoration. A ranked list in a police document
+          looks like an assessment, and this one is a show of hands; the
+          sentence says who did the counting and that a vote is not a witness.
+        */}
+        {report.mostConcerning.length > 0 && (
+          <Section title="Most concerning to residents">
+            {report.mostConcerning.map((item, index) => (
+              <View key={item.reference} style={styles.concernRow}>
+                <Text style={styles.hotspotIndex}>{index + 1}.</Text>
+                <View style={styles.concernBody}>
+                  <Text style={styles.concernTitle}>{item.title}</Text>
+                  <Text style={styles.concernMeta}>
+                    {item.reference} · {INCIDENT_TYPE_LABELS[item.type]} ·{" "}
+                    {SEVERITY_LABELS[item.severity]} ·{" "}
+                    {item.locationText?.trim() || "location not given"}
+                  </Text>
+                  <Text style={styles.concernVotes}>
+                    {item.votes.up} resident{item.votes.up === 1 ? "" : "s"}{" "}
+                    rated this more serious than it looks, {item.votes.down}{" "}
+                    less.
+                  </Text>
+                </View>
+              </View>
+            ))}
+            <Text style={styles.note}>{CONCERN_NOTE}</Text>
+          </Section>
+        )}
 
         {/*
           The Home Office's own figures for the months this period overlaps.

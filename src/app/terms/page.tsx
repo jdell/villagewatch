@@ -341,6 +341,14 @@ export default function TermsPage() {
             Every moderation decision is logged. So is every read of a
             report&apos;s original wording.
           </LI>
+          <LI>
+            You can mark any published report as more or less serious than it
+            looks. That is a signal to your coordinator and nothing more: it
+            does not change a report&apos;s severity, does not publish or remove
+            anything, and does not decide who gets an alert. Your neighbours see
+            the totals and never who voted. Using it to gang up on a neighbour
+            is covered by section 4 like anything else here.
+          </LI>
         </UL>
       </LegalSection>
 

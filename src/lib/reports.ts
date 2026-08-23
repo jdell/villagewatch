@@ -1,12 +1,14 @@
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import type {
   CommunityReportData,
+  ReportConcern,
   ReportIncident,
   ReportNarrative,
 } from "@/lib/community-report";
 import { rangeDays, reportController } from "@/lib/community-report";
 import { dateInputValue } from "@/lib/date-range";
 import {
+  CONCERN_LIST_SIZE,
   DEFAULT_REPORT_RANGE,
   HOTSPOT_COUNT,
   INCIDENT_TYPE_LABELS,
@@ -20,6 +22,12 @@ import {
 import { getVillagePoliceComparison } from "@/lib/police-data";
 import { prisma } from "@/lib/prisma";
 import { reportRangeSchema } from "@/lib/validations";
+import {
+  MIN_VOTES_TO_FEATURE,
+  byConcern,
+  summariseVotes,
+  tallyFor,
+} from "@/lib/votes";
 
 /**
  * Assembling a community safety report. **Server only** — it reads across the
@@ -298,8 +306,16 @@ export async function collectVillageReport(input: {
   // The same length of period, ending where this one starts.
   const previousFrom = new Date(range.from.getTime() - range.days * DAY_MS);
 
-  const [total, previousTotal, byType, bySeverity, hotspotRows, rows, police] =
-    await Promise.all([
+  const [
+    total,
+    previousTotal,
+    byType,
+    bySeverity,
+    hotspotRows,
+    rows,
+    police,
+    voteRows,
+  ] = await Promise.all([
       prisma.incident.count({ where: inRange }),
       prisma.incident.count({
         where: {
@@ -370,7 +386,100 @@ export async function collectVillageReport(input: {
         from: range.from,
         to: range.to,
       }),
+      /*
+        Every vote cast on a published report in the period, two rows per report
+        at most. Counted from the votes rather than from the incidents for the
+        reason the dashboard gives: the section lists only reports somebody
+        voted on, so starting here bounds the query by how many reports have an
+        opinion on them.
+
+        Deliberately *not* read off `rows` above. That list is capped at
+        `REPORT_MAX_INCIDENTS`, so on a long period the report the village cared
+        about most could be the one the cap left out — and a "most concerning"
+        section that quietly excluded it would be wrong in exactly the way this
+        document must not be.
+
+        Tolerates the table not existing. `20260823120000_incident_votes` may
+        not be applied, and a coordinator's report must not fail over an
+        optional section; an empty result omits it, which is what a village
+        where nobody has voted gets anyway.
+      */
+      prisma.incidentVote
+        .groupBy({
+          by: ["incidentId", "vote"],
+          where: { incident: inRange },
+          _count: { _all: true },
+        })
+        .catch((cause: unknown) => {
+          console.warn(
+            "Could not read incident votes for the community report; " +
+              "omitting the most-concerning section. Has " +
+              "20260823120000_incident_votes been applied?",
+            cause,
+          );
+          return [];
+        }),
     ]);
+
+  /*
+    The reports the village itself flagged up.
+
+    Filtered before it is ordered: `score > 0` and at least
+    `MIN_VOTES_TO_FEATURE` votes, so a report one neighbour nudged never leads a
+    section in a document addressed to a police officer. Sorted by
+    `byConcern` — the same comparator the dashboard's default order uses, so a
+    coordinator who has read the panel recognises the section.
+
+    The incidents are fetched by id after the ordering, so the second query
+    reads exactly what ends up in the document, and the result is put back into
+    the sorted order — a `findMany` with an `in` list makes no promise about
+    ordering.
+  */
+  const tallies = summariseVotes(voteRows);
+
+  const concernIds = byConcern(
+    [...tallies.keys()].filter((id) => {
+      const votes = tallyFor(tallies, id);
+      return votes.up + votes.down >= MIN_VOTES_TO_FEATURE && votes.score > 0;
+    }),
+    (id) => tallyFor(tallies, id),
+  ).slice(0, CONCERN_LIST_SIZE);
+
+  const concernIncidents =
+    concernIds.length === 0
+      ? []
+      : await prisma.incident.findMany({
+          // The period predicate again rather than the ids alone, so this query
+          // is independently scoped to the village (domain rule 4).
+          where: { ...inRange, id: { in: concernIds } },
+          select: {
+            id: true,
+            reference: true,
+            type: true,
+            severity: true,
+            title: true,
+            locationText: true,
+          },
+        });
+
+  const concernById = new Map(concernIncidents.map((row) => [row.id, row]));
+
+  const mostConcerning: ReportConcern[] = concernIds.flatMap((id) => {
+    const row = concernById.get(id);
+
+    return row
+      ? [
+          {
+            reference: row.reference,
+            title: row.title,
+            type: row.type,
+            severity: row.severity,
+            locationText: row.locationText,
+            votes: tallyFor(tallies, id),
+          },
+        ]
+      : [];
+  });
 
   const incidents: ReportIncident[] = rows.map((row) => ({
     ...row,
@@ -404,6 +513,7 @@ export async function collectVillageReport(input: {
         ? [{ location: row.locationText, count: row._count._all }]
         : [],
     ),
+    mostConcerning,
     police,
     incidents,
     omitted: Math.max(0, total - incidents.length),
