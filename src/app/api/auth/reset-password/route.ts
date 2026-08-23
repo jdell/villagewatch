@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { fieldErrors, resetPasswordSchema } from "@/lib/validations";
+import { describeAuthError } from "@/lib/auth-errors";
 
 /**
  * POST /api/auth/reset-password — set a new password for the current session.
@@ -67,8 +68,9 @@ export async function POST(request: NextRequest) {
     /*
       The common case is Supabase's own "New password should be different from
       the old password", which is a fact about the password rather than about
-      the account, so it is safe to pass through. Anything else is reported
-      generically and logged.
+      the account, so it is safe to say in our own words. Anything else goes
+      through `describeAuthError`, which tells a rate limit apart from a real
+      failure and never passes the provider's wording on. Both are logged.
     */
     console.error("Password update failed for %s", session.user.id, error);
 
@@ -76,16 +78,33 @@ export async function POST(request: NextRequest) {
       .toLowerCase()
       .includes("should be different");
 
+    if (samePassword) {
+      return NextResponse.json(
+        {
+          error: "That is already your password. Choose a different one.",
+          fieldErrors: { password: "Choose a password you have not used" },
+        },
+        { status: 422 },
+      );
+    }
+
+    // A rate limit here is worse than it looks: the advice in the generic
+    // message is "ask for a new link", which spends an email out of whichever
+    // quota is already exhausted. `describeAuthError` says wait instead, and
+    // the session that got them here is still good in the meantime.
+    const described = describeAuthError(error, "reset-update");
+
     return NextResponse.json(
       {
-        error: samePassword
-          ? "That is already your password. Choose a different one."
-          : "Could not change your password. Ask for a new link and try again.",
-        ...(samePassword
-          ? { fieldErrors: { password: "Choose a password you have not used" } }
-          : {}),
+        error: described.message,
+        ...(described.retryAfter ? { retryAfter: described.retryAfter } : {}),
       },
-      { status: samePassword ? 422 : 500 },
+      {
+        status: described.rateLimited ? 429 : 500,
+        headers: described.retryAfter
+          ? { "Retry-After": String(described.retryAfter) }
+          : undefined,
+      },
     );
   }
 

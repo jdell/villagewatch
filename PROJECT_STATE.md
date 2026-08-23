@@ -1,6 +1,6 @@
 # VillageWatch — project state
 
-**Last updated:** 22 August 2026 · **Repo version:** `v0.1.35` · **Branch:**
+**Last updated:** 23 August 2026 · **Repo version:** `v0.1.39` · **Branch:**
 `main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
@@ -19,12 +19,12 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.35`, tagged — the period-picker branch landed as PR #11 on 22 August, after the police-data branch as PR #10 |
+| Repo version | `v0.1.39` in `package.json` on `main`; this auth-email fix bumps it to `v0.1.40` when `version.yml` runs. Was `v0.1.35`, tagged — the period-picker branch landed as PR #11 on 22 August, after the police-data branch as PR #10 |
 | Version on screen | expect **v0.1.34** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 13, `20260726161847_init` → `20260822120000_police_crime_data`, and **all 13 are applied**. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, **28 files, 443 tests**, all passing (~3.5s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
+| Test suite | Vitest, **29 files, 460 tests**, all passing (~3.5s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -55,6 +55,34 @@ PRs because they were asked for as PRs.
 ## Open items
 
 ### Done — landed, not yet exercised against real data
+
+- **The raw "email rate limit exceeded" popup is gone, and the dashboard half of
+  it is not done** — 23 August 2026. Residents signing up were shown Supabase's
+  own wording for an exhausted hourly mail quota, as a red toast on the
+  registration form: `POST /api/auth/register` returned
+  `error?.message ?? "Could not create your account"`, so the provider's message
+  went straight through. `src/lib/auth-errors.ts` is the one mapper now and no
+  provider message reaches a resident from any auth flow — sign-up, sign-in, the
+  reset request, the password change and the OAuth return leg. A rate limit is a
+  429 with `Retry-After`, `useAuthSubmit` gives every auth form a synchronous
+  double-click guard (the disabled attribute never was one — two clicks in a
+  frame both read the old state, and on `/register` each is an email), a
+  watchdog that aborts its own request rather than racing it, and a cooldown the
+  button counts down. `/forgot-password` surfaces the deployment-wide quota
+  only, never the per-address limit, which would say whether an address has an
+  account. 17 new tests.
+
+  **What has not been done is the part that stops the limit being hit**: the
+  project is still on Supabase's built-in mailer, whose quota is small and which
+  Supabase documents as being for development.
+  `docs/SUPABASE_EMAIL_SETUP.md` is the procedure — raise the hourly limit under
+  Auth → Rate Limits, and set Resend as the custom SMTP sender under Auth →
+  Emails → SMTP Settings. Both are dashboard settings; neither is in this
+  repository, and Resend is still used nowhere in the codebase. Until somebody
+  does it, a village onboarding a dozen households in one evening will exhaust
+  the quota — the difference is that they are now told to wait rather than shown
+  a quota they have no part in. **Nothing here has been watched against a real
+  sign-up wave**, which is the one thing that would confirm the 429 path.
 
 - **The pattern-detection card quotes the real detector** — 22 August 2026.
   The landing page's `FEATURES` card illustrated itself with "six vehicle

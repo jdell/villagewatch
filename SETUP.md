@@ -398,6 +398,42 @@ against the database (domain rule 5); nothing in the browser can ask for them.
 
 ---
 
+## 7c. Auth email — the sending quota (do this before real residents)
+
+Supabase Auth mints and sends the confirmation and recovery emails itself; only
+it can mint the token, so this app never sees them. They go out over whatever
+mailer the project is configured with, and they are counted against that
+project's hourly quota — **every** confirmation, reset and magic link, shared.
+
+Left on Supabase's built-in mailer that quota is small, and Supabase documents
+it as being for development rather than for a service with users. A village
+onboarding a dozen households in one evening exhausts it, and every resident
+after that is turned away.
+
+The application handles being turned away properly — a rate limit becomes "Too
+many sign-ups right now. Please try again in a few minutes", the button holds
+itself for as long as the server asked, and the provider's own wording goes to
+the log rather than to the resident (see "Auth email and its rate limits" in
+`CLAUDE.md`). What it cannot do is send more email. That is two settings in the
+Supabase dashboard:
+
+1. **Authentication → Rate Limits** → *Rate limit for sending emails*.
+2. **Authentication → Emails → SMTP Settings** → custom SMTP, pointed at Resend:
+   host `smtp.resend.com`, port `465`, username the literal word `resend`,
+   password a Resend API key, sender an address on a domain verified in Resend.
+
+`docs/SUPABASE_EMAIL_SETUP.md` is the full procedure, including the three things
+that catch people out and how to check it is really sending. Neither setting is
+in this repository and neither is an environment variable — configuring Resend
+here adds no dependency to the app, which still has no email transport of its
+own.
+
+Turning on Google sign-in (7b above) is the cheapest mitigation of all: it takes
+email out of the sign-up path entirely, so twenty households joining in one
+evening send nothing.
+
+---
+
 ## 8. OneSignal (optional)
 
 Skip this and everything still works: the audience is still resolved, the
@@ -1045,6 +1081,10 @@ None of these are optional, and none of them are code.
       and `/privacy` and `/terms` both render it.
 - [ ] **Register with the ICO.** The registration number goes in the same
       constant.
+- [ ] **Point Supabase Auth at a real SMTP sender.** The built-in mailer's
+      hourly quota is small and shared by every flow, so a village onboarding a
+      dozen households in one evening runs out and the rest are turned away. Step
+      7c above, and `docs/SUPABASE_EMAIL_SETUP.md` for the procedure.
 - [ ] **Have the council read `/privacy` and `/terms`.** The community
       guidelines in §5 are the common village-watch set, not any particular
       parish's.

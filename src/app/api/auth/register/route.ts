@@ -7,6 +7,7 @@ import { HOME_LOCATION_FUZZ_METERS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { notifySlack } from "@/lib/slack";
 import { checkVillageJoin } from "@/lib/villages";
+import { describeAuthError } from "@/lib/auth-errors";
 
 /**
  * POST /api/auth/register
@@ -111,16 +112,50 @@ export async function POST(request: NextRequest) {
       ?.toLowerCase()
       .includes("already registered");
 
+    if (alreadyRegistered) {
+      return NextResponse.json(
+        {
+          error: "An account with that email already exists",
+          fieldErrors: { email: "Try signing in instead" },
+        },
+        { status: 400 },
+      );
+    }
+
+    /*
+      Everything else is described by `describeAuthError`, and the provider's
+      own wording never leaves this function.
+
+      This branch used to be `error?.message ?? "Could not create your
+      account"`, which is how "email rate limit exceeded" — Supabase's phrase
+      for an exhausted hourly mail quota — reached residents as a red popup
+      while they were trying to join their village. It names a quota they have
+      no part in, at a moment when it reads as a fault in their details, and it
+      does not suggest the one thing that works: waiting.
+
+      The rate limit is a 429 rather than a 400, so the browser can tell it
+      apart without reading the sentence, and `Retry-After` carries the wait in
+      the header a rate limit is supposed to use. Nothing was created here — the
+      auth user is what `signUp` failed to make — so there is nothing to undo.
+    */
+    const described = describeAuthError(error, "signup");
+
+    // Logged rather than returned. An operator needs the provider's exact
+    // wording to tell an exhausted quota from a misconfigured SMTP sender;
+    // a resident needs neither.
+    console.error("Sign-up failed: %s", error?.message ?? "no user returned");
+
     return NextResponse.json(
       {
-        error: alreadyRegistered
-          ? "An account with that email already exists"
-          : (error?.message ?? "Could not create your account"),
-        ...(alreadyRegistered
-          ? { fieldErrors: { email: "Try signing in instead" } }
-          : {}),
+        error: described.message,
+        ...(described.retryAfter ? { retryAfter: described.retryAfter } : {}),
       },
-      { status: 400 },
+      {
+        status: described.rateLimited ? 429 : 400,
+        headers: described.retryAfter
+          ? { "Retry-After": String(described.retryAfter) }
+          : undefined,
+      },
     );
   }
 

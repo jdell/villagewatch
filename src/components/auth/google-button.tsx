@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authErrorMessage, requestErrorMessage } from "@/lib/auth-errors";
 
 /**
  * "Continue with Google", shared by the sign-in and registration screens.
@@ -75,14 +76,17 @@ export function GoogleButton({
       });
 
       if (error) {
-        toast.error("Could not reach Google — try again, or use your password");
+        // Rate limits reach the OAuth leg too, and "could not reach Google" is
+        // the wrong advice for one — it sends somebody to the password form,
+        // which is counted against the same limit.
+        toast.error(authErrorMessage(error, "oauth"));
         setPending(false);
       }
       // On success the browser is already navigating away. Deliberately leave
       // `pending` set: clearing it would flash an enabled button over the top
       // of a redirect in progress.
-    } catch {
-      toast.error("Network error — check your connection and try again");
+    } catch (cause) {
+      toast.error(requestErrorMessage(cause));
       setPending(false);
     }
   }

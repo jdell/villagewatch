@@ -199,6 +199,10 @@ src/
     auth/village-picker.tsx   Type-to-search village combobox + OGL attribution
     auth/forgot-password-form.tsx  Reset request — never reveals if an account exists
     auth/reset-password-form.tsx   New password; the session says whose
+    auth/use-auth-submit.ts   The submit lock every auth form shares — a
+                              synchronous double-click guard, a watchdog that
+                              aborts its own request, and the cooldown a 429
+                              counts down on the button
     site-footer.tsx           Public footer, incl. the legal links — shared
     legal-page.tsx            Shell + typography for /privacy and /terms
     status-screen.tsx         Shell behind not-found.tsx and error.tsx
@@ -284,6 +288,9 @@ src/
     auth.ts                   getSession / requireSession / requireRole /
                               requireCoordinator / requireAdmin
     admin.ts                  ADMIN_EMAILS — the platform admin allow-list
+    auth-errors.ts            Every Supabase auth failure, in words a resident
+                              can act on. Client-safe, and no provider message
+                              ever leaves it — see Auth email and its limits
     slack.ts                  Staff webhook, fire-and-forget, server only
     moderation.ts             applyModeration, audited readRawDescription, and
                               the village's auto-approve setting (fails closed)
@@ -395,11 +402,14 @@ docs/                         The documents rendered from disk, not restated
                               paragraph 5 policy document in one agreement
   COORDINATOR_GUIDE.md        How to run a village, for a coordinator
                               The five above are rendered by the app and need a
-                              line in `outputFileTracingIncludes`. The three
+                              line in `outputFileTracingIncludes`. The four
                               below are not — they are read by people, in the
                               repository, and nothing imports them
   E2E_VERIFICATION.md         What was checked by hand against the deployment,
                               and what its addenda got wrong afterwards
+  SUPABASE_EMAIL_SETUP.md     The two dashboard settings behind the auth email
+                              quota — raising the limit, and pointing Supabase
+                              at Resend as its SMTP sender. Read by an operator
   FUNDING.md                  The five tracked grant opportunities, and the date
                               each third-party figure in them was read
   GRANT_APPLICATION_NL_AI.md  The first application, drafted. Every claim in it
@@ -488,6 +498,11 @@ tests/                        Vitest, unit only — see The test suite
   period-control.test.tsx     The only component test — the three period
                               controls rendered to a string: no date input under
                               a preset, a chip under Custom. See The test suite
+  auth-errors.test.ts         The mapper in front of every Supabase auth
+                              failure — no provider message escaping, a rate
+                              limit recognised as a status, a code or a
+                              sentence, and the deployment-wide email quota
+                              told apart from the per-address one
   pricing.test.ts             The landing page's two tiers — a planned tier
                               states no price and no cadence, a cadence never
                               appears without one, and the JSON-LD Offer never
@@ -622,6 +637,82 @@ separately by everything else.
   Authentication → URL Configuration, or the link dead-ends. The wording is
   Supabase's own template, not `src/lib/email/` — same constraint as the sign-up
   confirmation, and for the same reason.
+
+---
+
+## Auth email and its rate limits
+
+`src/lib/auth-errors.ts` is the one mapper in front of every Supabase auth
+failure, `src/components/auth/use-auth-submit.ts` is the submit lock every auth
+form shares, and `docs/SUPABASE_EMAIL_SETUP.md` is the half of this that is
+configuration rather than code.
+
+- **The bug this closes was a pass-through.** `POST /api/auth/register` returned
+  `error?.message ?? "Could not create your account"`, so Supabase's own wording
+  for an exhausted hourly mail quota — the bare string "email rate limit
+  exceeded" — reached residents as a red toast on the registration form. It
+  names an internal quota they have no part in, and arriving on a form they have
+  just filled in it reads as a fault in what they typed, so the one action that
+  works is the one it does not suggest.
+- **No provider message reaches a resident from any auth flow.** Every path in
+  `describeAuthError` ends at a constant in that file. Supabase's auth errors
+  are written for whoever is reading the logs, and that is where they still go —
+  every call site logs the exact wording, because an operator needs it to tell
+  an exhausted quota apart from an SMTP sender being refused.
+- **A rate limit is recognised three ways**, because none is reliable alone: a
+  429 status, one of the SDK's `over_*_rate_limit` codes, and the wording. The
+  code field only arrives on recent SDKs, and a 429 from a proxy in front of
+  Supabase carries neither code nor recognisable sentence.
+- **Rate-limited responses are 429 with `Retry-After`**, not 400, so the browser
+  can tell them from a bad password without reading the sentence. `retryAfter`
+  rides in the body as well, because that is what the form reads.
+- **`/forgot-password` is the exception, and the distinction is load-bearing.**
+  That screen must not disclose whether an address has an account (see The
+  password reset), so it cannot use the general test: the per-address limit —
+  "you can only request this after 47 seconds" — is reachable *only* by an
+  address mail was actually sent to, and surfacing it would say an account
+  exists. `isEmailQuotaError` matches the deployment-wide quota alone, which is
+  the same answer for every address and so discloses nothing. It errs towards
+  false: a quota error carrying only the code is swallowed into the neutral
+  panel, which is the safe direction to be wrong in. Asserted in
+  `tests/auth-errors.test.ts`.
+- **Swallowing the quota error there would have been the wrong kind of safe.**
+  The resident is told the mail is on its way, it is not, so they wait and ask
+  again — and every attempt goes to the same exhausted quota. The panel names no
+  address and says the limit is the service's rather than theirs.
+- **The disabled attribute is not a double-submit guard, and that was the second
+  half of the bug.** `setPending(true)` schedules a render; two clicks in the
+  same frame both read the old state and both fire, and on `/register` each one
+  is an email out of the hourly quota. `useAuthSubmit`'s `begin()` takes a ref,
+  so the second handler is refused before React has rendered anything.
+- **The watchdog aborts its own request rather than racing it.** A hung fetch
+  used to leave the button disabled for good. It is released at
+  `AUTH_REQUEST_TIMEOUT_MS`, and the same `AbortController` is what `fetch` was
+  given — so there is never a second request in flight and never an orphaned
+  first one landing after the button is live again. The abort arrives as a
+  `TimeoutError`, which `requestErrorMessage` reports as "that took too long"
+  rather than as a network failure, because "check your connection" is unhelpful
+  to somebody whose connection is fine.
+- **The cooldown counts down on the button's own label.** A toast is gone in
+  seconds and the wait is measured in minutes; the label is what is still on
+  screen when somebody comes back to try again. It is set only by a 429 — a
+  cooldown on a mistyped password would be a form punishing a typo.
+- **The `otp` and `resend` flows have no caller.** There is no passwordless
+  sign-in and no "resend confirmation" button in this codebase; sign-in is
+  password or Google. Both are in `AuthFlow` because the limit they would hit is
+  the same one, and a flow added later that reached for its own wording is how
+  the pass-through comes back.
+- **Nothing here changes what the deployment can send.** Raising the quota is
+  two settings in the Supabase dashboard — the hourly limit, and Resend as the
+  custom SMTP sender — and `docs/SUPABASE_EMAIL_SETUP.md` is the procedure.
+  **Resend is used nowhere in this codebase**: `src/lib/email/` still renders
+  four templates with no transport behind it, notifications still go out as
+  OneSignal push, and the Resend API key lives in the Supabase dashboard as an
+  SMTP password rather than in an environment variable here. That document
+  is read by a person and rendered by nothing, so unlike the four the compliance
+  gate renders it needs **no** `outputFileTracingIncludes` entry.
+- Google sign-in takes email out of the sign-up path altogether, which is the
+  cheapest mitigation of the three and is already documented at SETUP.md 7b.
 
 ---
 
@@ -1011,7 +1102,7 @@ every caller keeps handing it the same objects.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Twenty-eight files, 443 tests, covering the
+between the typecheck and the build. Twenty-nine files, 460 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1023,8 +1114,9 @@ layout, the invite link, the nightly retention sweep's archive pass, the two
 compliance models, the report footer's AI claim, the four files behind the
 police figures — the client's typed failures, the month arithmetic, the
 published-and-empty-versus-never-fetched distinction, and the caveat that has to
-travel with a comparison — the markup of the three period controls, and the
-landing page's pricing promises.
+travel with a comparison — the markup of the three period controls, the
+landing page's pricing promises, and the mapper in front of every Supabase auth
+failure.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -1110,6 +1202,13 @@ landing page's pricing promises.
   every screen in the app. It asserts the predicate and the `data` object rather
   than a row count, because what matters is *which* rows are matched and which
   columns are written.
+- **`tests/auth-errors.test.ts` asserts a promise, not a sentence.** What it
+  pins is that no provider message escapes for any flow, that a rate limit is
+  recognised whether it arrives as a status, a code or a sentence, and that the
+  deployment-wide email quota is distinguishable from the per-address one —
+  which is the distinction `/forgot-password` rests its enumeration guard on.
+  The messages themselves are copy under revision and are deliberately not
+  asserted, for the reason `compliance-documents.test.ts` gives.
 - **What is deliberately not covered**: no other route handler, no server
   action, no RLS policy, and no component beyond the one above — nothing
   interactive, nothing behind a click. Those need a database, a request context or a
@@ -1354,6 +1453,15 @@ replacement for them.
   backfills any village that has accepted a council document back to `council`,
   which is what stops it re-closing a village mid-flow. See The two compliance
   models.
+- **Auth email is Supabase's, and its hourly quota is low.** Confirmation and
+  recovery are sent by Supabase Auth over whatever mailer the project is
+  configured with — on the built-in one that is a handful of emails an hour,
+  shared by every flow. Never pass a Supabase auth error straight to a resident:
+  `describeAuthError` in `src/lib/auth-errors.ts` is the one mapper, every flow
+  goes through it, and the exhausted-quota message reaching the registration
+  form as a raw toast is the bug it was written for. Raising the limit is two
+  settings in the Supabase dashboard and neither is in this repository — see
+  `docs/SUPABASE_EMAIL_SETUP.md`.
 - **`ADMIN_EMAILS=info@yakasista.com` is what gates `/admin`.** An administrator
   is an email address on the revalidated JWT, not a role: `UserRole.ADMIN` no
   longer opens anything (it survives because `vw_is_admin()` in the RLS policies
@@ -3406,6 +3514,18 @@ open:
   weekly digest, incident notification and the coordinator decision; nothing
   sends them, `notifyEmail` is absent from the settings screen, and no dispatch
   honours it. SMS has neither templates nor transport.
+
+  **The auth emails are the exception and are not ours.** Confirmation and
+  recovery are minted and sent by Supabase Auth, because only Supabase can mint
+  the token — so they go out over whatever mailer that project is configured
+  with, and they are counted against that project's hourly quota. Residents hit
+  it: "email rate limit exceeded" was reaching the registration form as a toast
+  until 23 August 2026. The application side is closed (see Auth email and its
+  rate limits); the **dashboard side has not been done** — the project is still
+  on Supabase's built-in mailer, which is documented as being for development,
+  and `docs/SUPABASE_EMAIL_SETUP.md` is the procedure for pointing it at Resend
+  instead. Until somebody does that, a village onboarding a dozen households in
+  one evening will exhaust the quota and every one of them will be told to wait.
 - Home location is captured at registration only, and it is optional. Both
   halves of registration ask for it through one shared
   `HomeLocationField` — `/register` and `/welcome` write the same two columns,

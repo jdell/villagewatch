@@ -6,6 +6,8 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Loader2, LogIn } from "lucide-react";
 import { fieldErrors as toFieldErrors, loginSchema } from "@/lib/validations";
+import { requestErrorMessage } from "@/lib/auth-errors";
+import { cooldownLabel, useAuthSubmit } from "@/components/auth/use-auth-submit";
 
 type LoginFormProps = {
   /** Where to send the user after a successful sign-in. */
@@ -14,7 +16,7 @@ type LoginFormProps = {
 
 export function LoginForm({ next }: LoginFormProps) {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
+  const submit = useAuthSubmit();
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -33,29 +35,39 @@ export function LoginForm({ next }: LoginFormProps) {
       return;
     }
 
-    setPending(true);
+    if (!submit.begin()) return;
+
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed.data),
+        signal: submit.signal(),
       });
       const result = await response.json();
 
       if (!response.ok) {
         setErrors(result.fieldErrors ?? {});
         toast.error(result.error ?? "Could not sign you in");
+
+        // Only ever set by a 429. A cooldown on a mistyped password would be
+        // this form punishing somebody for a typo.
+        if (response.status === 429 && typeof result.retryAfter === "number") {
+          submit.hold(result.retryAfter);
+        }
         return;
       }
 
       router.replace(result.redirectTo ?? next);
       router.refresh();
-    } catch {
-      toast.error("Network error — check your connection and try again");
+    } catch (cause) {
+      toast.error(requestErrorMessage(cause));
     } finally {
-      setPending(false);
+      submit.end();
     }
   }
+
+  const waiting = cooldownLabel(submit.cooldown);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
@@ -118,15 +130,16 @@ export function LoginForm({ next }: LoginFormProps) {
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={submit.disabled}
+        aria-busy={submit.pending}
         className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? (
+        {submit.pending ? (
           <Loader2 className="size-4 animate-spin" aria-hidden />
         ) : (
           <LogIn className="size-4" aria-hidden />
         )}
-        {pending ? "Signing in…" : "Sign in"}
+        {submit.pending ? "Signing in…" : (waiting ?? "Sign in")}
       </button>
     </form>
   );

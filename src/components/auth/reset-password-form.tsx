@@ -8,6 +8,8 @@ import {
   fieldErrors as toFieldErrors,
   resetPasswordSchema,
 } from "@/lib/validations";
+import { requestErrorMessage } from "@/lib/auth-errors";
+import { cooldownLabel, useAuthSubmit } from "@/components/auth/use-auth-submit";
 
 /**
  * Choosing the new password, once the recovery link has produced a session.
@@ -22,7 +24,7 @@ const inputClass =
 
 export function ResetPasswordForm() {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
+  const submit = useAuthSubmit();
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -40,30 +42,38 @@ export function ResetPasswordForm() {
       return;
     }
 
-    setPending(true);
+    if (!submit.begin()) return;
+
     try {
       const response = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed.data),
+        signal: submit.signal(),
       });
       const result = await response.json();
 
       if (!response.ok) {
         setErrors(result.fieldErrors ?? {});
         toast.error(result.error ?? "Could not change your password");
+
+        if (response.status === 429 && typeof result.retryAfter === "number") {
+          submit.hold(result.retryAfter);
+        }
         return;
       }
 
       toast.success("Password changed — you're signed in");
       router.replace(result.redirectTo ?? "/map");
       router.refresh();
-    } catch {
-      toast.error("Network error — check your connection and try again");
+    } catch (cause) {
+      toast.error(requestErrorMessage(cause));
     } finally {
-      setPending(false);
+      submit.end();
     }
   }
+
+  const waiting = cooldownLabel(submit.cooldown);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
@@ -124,15 +134,16 @@ export function ResetPasswordForm() {
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={submit.disabled}
+        aria-busy={submit.pending}
         className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? (
+        {submit.pending ? (
           <Loader2 className="size-4 animate-spin" aria-hidden />
         ) : (
           <KeyRound className="size-4" aria-hidden />
         )}
-        {pending ? "Saving…" : "Set new password"}
+        {submit.pending ? "Saving…" : (waiting ?? "Set new password")}
       </button>
     </form>
   );

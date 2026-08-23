@@ -12,6 +12,8 @@ import {
   VillagePicker,
 } from "@/components/auth/village-picker";
 import { fieldErrors as toFieldErrors, registerSchema } from "@/lib/validations";
+import { requestErrorMessage } from "@/lib/auth-errors";
+import { cooldownLabel, useAuthSubmit } from "@/components/auth/use-auth-submit";
 
 export type VillageOption = {
   id: string;
@@ -78,7 +80,7 @@ export function RegisterForm({
   initialJoinCode = "",
 }: RegisterFormProps) {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
+  const submit = useAuthSubmit();
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Controlled so the home-location map knows which village to open on. The
@@ -115,18 +117,34 @@ export function RegisterForm({
       return;
     }
 
-    setPending(true);
+    // The lock is taken here rather than by the disabled attribute, which a
+    // second click in the same frame gets past. Every press that does get past
+    // it on this form is a sign-up email out of the deployment's hourly quota.
+    if (!submit.begin()) return;
+
     try {
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed.data),
+        signal: submit.signal(),
       });
       const result = await response.json();
 
       if (!response.ok) {
         setErrors(result.fieldErrors ?? {});
         toast.error(result.error ?? "Could not create your account");
+
+        /*
+          A 429 holds the button for as long as the server asked. The toast is
+          gone in a few seconds and the wait is measured in minutes, so the
+          countdown on the button is the part that is still on screen when
+          somebody comes back to try again — and pressing through it would
+          spend a slot of a quota that is already exhausted.
+        */
+        if (response.status === 429 && typeof result.retryAfter === "number") {
+          submit.hold(result.retryAfter);
+        }
         return;
       }
 
@@ -139,12 +157,14 @@ export function RegisterForm({
       toast.success("Welcome to your village");
       router.replace(result.redirectTo ?? "/map");
       router.refresh();
-    } catch {
-      toast.error("Network error — check your connection and try again");
+    } catch (cause) {
+      toast.error(requestErrorMessage(cause));
     } finally {
-      setPending(false);
+      submit.end();
     }
   }
+
+  const waiting = cooldownLabel(submit.cooldown);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
@@ -329,15 +349,16 @@ export function RegisterForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={submit.disabled}
+        aria-busy={submit.pending}
         className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? (
+        {submit.pending ? (
           <Loader2 className="size-4 animate-spin" aria-hidden />
         ) : (
           <UserPlus className="size-4" aria-hidden />
         )}
-        {pending ? "Creating account…" : "Create account"}
+        {submit.pending ? "Creating account…" : (waiting ?? "Create account")}
       </button>
     </form>
   );

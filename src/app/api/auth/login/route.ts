@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { fieldErrors, loginSchema } from "@/lib/validations";
 import { prisma } from "@/lib/prisma";
+import { describeAuthError } from "@/lib/auth-errors";
 
 /**
  * POST /api/auth/login
@@ -45,7 +46,28 @@ export async function POST(request: NextRequest) {
   });
 
   if (error || !data.user) {
-    // Deliberately vague: do not reveal whether the email exists.
+    /*
+      A rate limit is not a wrong password, and saying it is sends somebody off
+      to reset a password that was correct — which spends an email out of the
+      same exhausted quota that caused this. It is also not an enumeration
+      oracle: the limit is counted per client rather than per account, so the
+      answer is the same for an address with no account behind it.
+
+      Everything else keeps the deliberate vagueness. Whether the email exists
+      is exactly what this response must not say.
+    */
+    const described = describeAuthError(error, "signin");
+
+    if (described.rateLimited) {
+      return NextResponse.json(
+        { error: described.message, retryAfter: described.retryAfter },
+        {
+          status: 429,
+          headers: { "Retry-After": String(described.retryAfter) },
+        },
+      );
+    }
+
     return NextResponse.json(
       { error: "Email or password is incorrect" },
       { status: 401 },

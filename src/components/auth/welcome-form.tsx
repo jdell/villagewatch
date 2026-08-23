@@ -12,6 +12,8 @@ import {
 import type { LocationValue } from "@/components/location-picker";
 import type { VillageOption } from "@/components/auth/register-form";
 import { HomeLocationField } from "@/components/auth/home-location-field";
+import { requestErrorMessage } from "@/lib/auth-errors";
+import { cooldownLabel, useAuthSubmit } from "@/components/auth/use-auth-submit";
 import {
   VillageAttribution,
   VillagePicker,
@@ -66,7 +68,7 @@ export function WelcomeForm({
   next,
 }: WelcomeFormProps) {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
+  const submit = useAuthSubmit();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [villageId, setVillageId] = useState("");
   const [home, setHome] = useState<LocationValue | null>(null);
@@ -96,30 +98,44 @@ export function WelcomeForm({
       return;
     }
 
-    setPending(true);
+    /*
+      This one sends no email, so it spends no mail quota — but it does create
+      the profile row, and it is the half of registration somebody arrives at
+      after a round trip through Google, on whatever connection they have. The
+      lock is here for the double-click rather than for the quota.
+    */
+    if (!submit.begin()) return;
+
     try {
       const response = await fetch("/api/auth/complete-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed.data),
+        signal: submit.signal(),
       });
       const result = await response.json();
 
       if (!response.ok) {
         setErrors(result.fieldErrors ?? {});
         toast.error(result.error ?? "Could not finish setting up your account");
+
+        if (response.status === 429 && typeof result.retryAfter === "number") {
+          submit.hold(result.retryAfter);
+        }
         return;
       }
 
       toast.success("Welcome to your village");
       router.replace(next || result.redirectTo || "/map");
       router.refresh();
-    } catch {
-      toast.error("Network error — check your connection and try again");
+    } catch (cause) {
+      toast.error(requestErrorMessage(cause));
     } finally {
-      setPending(false);
+      submit.end();
     }
   }
+
+  const waiting = cooldownLabel(submit.cooldown);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
@@ -255,15 +271,16 @@ export function WelcomeForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={submit.disabled}
+        aria-busy={submit.pending}
         className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? (
+        {submit.pending ? (
           <Loader2 className="size-4 animate-spin" aria-hidden />
         ) : (
           <UserPlus className="size-4" aria-hidden />
         )}
-        {pending ? "Joining…" : "Join your village"}
+        {submit.pending ? "Joining…" : (waiting ?? "Join your village")}
       </button>
     </form>
   );

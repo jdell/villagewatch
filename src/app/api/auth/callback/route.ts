@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { prisma } from "@/lib/prisma";
+import { authErrorMessage } from "@/lib/auth-errors";
 
 /**
  * GET /api/auth/callback — where an identity provider drops the resident back.
@@ -77,8 +78,14 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error || !data.user) {
+    // Rate limits reach this leg too — the exchange is a request to Supabase
+    // like any other, and a resident who has just been round Google and back
+    // deserves better than "try again" for a failure that needs them to wait.
+    // `authErrorMessage` never returns the provider's own wording, which
+    // matters more here than anywhere: this one is rendered from a query
+    // string, on a page a stranger can link somebody to.
     console.error("OAuth code exchange failed", error);
-    return toLogin(request, "That sign-in could not be completed. Try again.");
+    return toLogin(request, authErrorMessage(error, "oauth"));
   }
 
   const next = safeNext(params.get("next"));
