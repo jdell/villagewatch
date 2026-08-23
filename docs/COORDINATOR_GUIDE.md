@@ -5,7 +5,8 @@ knowledge is assumed. If you can run a parish noticeboard and a WhatsApp group,
 you can run this.
 
 Read it once end to end before you open the village to residents. After that,
-treat it as a reference — the section headings above are links.
+treat it as a reference: the contents list will take you to the section you
+want.
 
 ---
 
@@ -74,6 +75,11 @@ also who the Information Commissioner writes to.
   automatically.
 - Produce a report for your police contact or a council meeting, and download a
   spreadsheet of the village's reports.
+- Hand out the village's invite — a link, a code and a QR code you can print
+  and pin to the noticeboard.
+- See the Home Office's own recorded-crime figures for the area beside your
+  village's reports, and your neighbourhood policing team's contact details.
+- See which reports the village itself rated more serious than they look.
 - Read the village's audit trail — a record of what every coordinator has done.
 
 ### What you cannot do
@@ -96,8 +102,9 @@ also who the Information Commissioner writes to.
 
 ## Getting started
 
-Five things, in this order. The first one is not optional — until it is done
-your village cannot accept a single report.
+Six things, in this order. The first one is not optional — until it is done
+your village cannot accept a single report — and the last one is what actually
+puts residents in your village.
 
 ### 1. Accept the compliance documents
 
@@ -308,8 +315,36 @@ Two more things:
   yourself in an auto-approving village, you land on a screen with the alert
   already on it, having just read what it says.
 
-Every one of these five settings is recorded in the audit trail with your name
+Every one of these settings is recorded in the audit trail with your name
 against it.
+
+### 6. Invite the village
+
+Nothing above puts a single resident in your village. This does.
+
+At the foot of the Dashboard there is an invite panel holding four versions of
+the same invitation, all built from the same link so they cannot come apart:
+
+- **The link.** `villagewatch.app/join/your-village?code=XXXXXX`. Somebody who
+  opens it sees your village's name and what they are joining before they are
+  asked for anything, then goes on to register with the village and the code
+  already filled in.
+- **The join code on its own**, for reading down the phone or printing in a
+  newsletter next to the plain address.
+- **A WhatsApp message**, prewritten, for pasting into the group the village
+  already uses.
+- **A QR code**, with a **Download** button for a poster and a **Print** button
+  that produces a one-page invite sheet — the code, the village name and three
+  steps, and nothing else on the paper.
+
+**Print one sheet and look at it before you print a hundred.** The join code is
+printed as text beside the QR on purpose, because a camera that will not focus
+is common and typing six characters is the fallback.
+
+If the panel says the village has no join code yet, it has not been activated.
+Email info@yakasista.com — that is our job, not yours.
+
+See "How residents join" for where to put all this.
 
 ---
 
@@ -412,6 +447,251 @@ anybody read them is that nobody can read them quietly.
 Never copy those words anywhere. Not into an email, not into WhatsApp, not into
 a text to your PCSO. See "Privacy responsibilities".
 
+**After twelve months there is nothing to show.** When a report is archived on
+its twelfth birthday, the reporter's original wording is deleted in the same
+step — permanently, from us as well as from you. Pressing the button on an
+older report tells you the wording is gone rather than showing you anything, and
+that press is deliberately not recorded, because an entry saying a coordinator
+read somebody's words when there were no words to read is a worse record than
+none. The anonymised description stays.
+
+---
+
+## Reading your village
+
+The moderation queue is the work. This section is the part that tells you
+whether the work is achieving anything, and it is what you take to a parish
+meeting.
+
+### The period, and the three screens that share it
+
+The Dashboard, the incident list and the map each have a period control at the
+top: last 7 days, last 30 days, and so on, with **Custom range** opening a
+calendar if you want two specific dates.
+
+It is one control governing everything on the screen below it. Change the period
+on the Dashboard and the figures, the breakdowns, the hotspots and the official
+police figures all move together — there is no card quietly showing a different
+window from the one you selected.
+
+The period is in the address bar, which is more useful than it sounds. Once you
+have the report you want, bookmark it, or send the link to a fellow coordinator
+and they see exactly what you see.
+
+The Dashboard deliberately has no "all time" option. Every figure on it is a
+comparison against the period immediately before, and there is no period before
+all time.
+
+### The Dashboard figures
+
+**Two numbers at the top.** How many reports were published in the period, and
+how many of them were High or Critical. Each carries its change against the
+preceding period of the same length — thirty days against the thirty before it —
+so "eleven reports" becomes "eleven reports, up from four".
+
+**Two breakdowns.** *What was reported* by category, and *How serious* by
+severity. Plain bars, no chart library, and they print.
+
+**Where it keeps happening.** The three most reported places in the period,
+counted by the landmark residents typed, with a small density map of the same
+period above the list.
+
+Read those two together, because each covers the other's blind spot. The list
+counts words, so "Mill Lane" and "the bus stop on Mill Lane" are two rows and
+one place, and a report filed with no landmark at all is in neither. The map is
+the same period read off the map pins instead, so it knows nothing about what
+anybody typed.
+
+### What the village makes of a report
+
+Every published report carries two small buttons and a number — a thumbs up and
+a thumbs down — on the incident list and on the report's own page. Any resident
+of your village can press them.
+
+**Up means "this matters more than it looks". Down means "less".** The severity
+on a report is the reporter's own assessment of what they saw. This is
+everybody else's, and it is the only signal in the app that comes from neither
+the person who filed the report nor the person who reviewed it.
+
+It is a toggle with three states, and the third is having pressed nothing.
+Pressing the button you already pressed removes your vote. Pressing the other
+one changes your mind. One resident holds one opinion of one report.
+
+**A vote moves nothing.** It does not change a report's severity, its status or
+who it was sent to; it publishes nothing and it wakes nobody's phone up. That
+restraint is deliberate rather than unfinished. Severity decides who gets a
+phone alert and whether a report clears the WhatsApp Channel's threshold, so a
+control that moved it would let a handful of taps decide who gets woken at
+night — and the obvious failure is not malice, it is a popular report about a
+lost dog outranking an unpopular one about a neighbour.
+
+**Nobody is named, anywhere.** There is no screen in the app that says who voted
+which way — not for a resident, not for you, and not for us. What every surface
+carries is two counts. In a village, "who thought my report was overblown" is a
+question with consequences at the school gate, and the answer is deliberately
+not available. If a resident closes their account or deletes a report, the votes
+attached to it go with it.
+
+**What it is for** is the panel on your Dashboard. It lists the reports your
+village actually voted on, and you can order it three ways:
+
+| Ordering | What it shows you |
+| --- | --- |
+| Most concerning | Reports the village rated more serious than they look. This is the one to read first. |
+| Most voted on | Reports the most neighbours had a view about, in either direction. A report six people disagreed about is worth your attention whatever the net figure. |
+| Rated less serious | Reports the village thinks were overstated. Useful, and easy to over-read — see below. |
+
+Reports nobody voted on are simply absent. They are unrated rather than
+uninteresting, and padding the list with them would turn an ordering into a
+ranking of things nobody ranked.
+
+Read it as what it is: a show of hands, not evidence. A quiet lane with three
+elderly residents will never out-vote a busy close with forty, and the "rated
+less serious" list is at least as likely to be telling you that a report was
+badly worded as that it was overstated. It is a prompt to go and look, and it is
+a genuinely good one — it is the only thing on the Dashboard that tells you what
+your village is worried about rather than what it filed.
+
+The period report you send your PCSO carries a **Most concerning to residents**
+section built from the same votes, and it is bounded: a report needs at least
+two votes to appear at all, so one neighbour nudging something never leads a
+document addressed to a police officer. The section is left out entirely when
+nothing qualifies, and it carries a sentence explaining that these are residents'
+opinions rather than a severity assessment — and, in particular, that seven
+votes is seven opinions and not seven witnesses. Leave that sentence in when you
+quote from it.
+
+### The map
+
+**Map** in the sidebar draws every published report in the period. A control in
+the corner switches between **Pins**, **Heatmap** and **Both**, and your choice
+is remembered on that device.
+
+Pins are one report each, coloured by severity. The heatmap is the one to show a
+meeting: it weighs each report by how serious it was and how recent, so a corner
+with four moderate reports this month burns brighter than one serious report
+last spring. That is the property you want — it shows accumulation rather than
+drama.
+
+Two things to hold on to when you are pointing at it. **Every point has been
+moved.** Coordinates are jittered before they are stored, so a blob means
+"around here" and never "this house" — which is all the underlying data
+supports, and it is deliberate. And **the heatmap is not the pattern detector**;
+it is a picture. The detector is the next section and it works against the
+database.
+
+### When a report looks like a pattern
+
+Some reports carry a line saying something like *"3rd report of vehicle crime
+within 200m in the last 30 days."* That is the pattern detector, and it is worth
+knowing exactly what it does, because residents will ask.
+
+It looks at **published reports only**, within **200 metres** of the new one, in
+the **last 30 days**. Two previous reports of the same kind makes it a repeat.
+Four previous reports of any kind makes it a hotspot. One previous report is a
+coincidence and it says nothing — a line that appeared every time would be a
+line everybody learned to skip.
+
+Published only, and that matters: a note describing something still sitting in
+your queue would leak an unreviewed report to the resident who triggered it.
+
+The note is not an accusation and it is not intelligence. It is arithmetic about
+reports your village has already seen, and it is the single most useful thing to
+quote to a PCSO, because it is specific, dated and bounded.
+
+### The weekly summary
+
+Every Sunday morning the service reads the week's published reports for your
+village, writes a summary of them, flags anything that looks like a cluster, and
+sends it to the village's coordinators as a **phone notification**. Tapping it
+opens the Dashboard.
+
+Three things about it:
+
+- **It goes to coordinators only.** It ignores the severity threshold and the
+  distance radius residents set for themselves, because those are how a resident
+  asks to hear less village news, and this is work rather than news.
+- **It arrives as a notification and nowhere else.** There is no weekly-summary
+  screen yet. If you dismiss it, the reports it describes are all still on the
+  Dashboard for the same period — you have lost the paragraph, not the data.
+- **It still arrives when the AI is unavailable**, assembled by counting
+  instead, and it says which of the two you are holding. An outage should not be
+  mistakeable for a quiet week.
+
+The habit worth forming is in "Tips and good practice": skim it on Sunday, and
+if there is something in it, send your PCSO the period report on the Monday.
+
+### Police recorded crime
+
+Underneath your village's own figures, the Dashboard shows the **Home Office's**
+figures for the same months — every crime recorded by your force within about a
+mile of the village centre, published as open data at data.police.uk.
+
+This is the panel that answers the hardest question you will be asked at a
+parish meeting: *is this actually getting worse, or are we just reporting more
+of it?* Your own numbers cannot answer it, because they move with how many
+residents have installed the app. The police series does not.
+
+**The two counts sit side by side and are never added together, averaged, or
+drawn on one chart.** That is a deliberate refusal, and the caveat printed
+between them says why:
+
+| | What it counts | Over what area | When |
+| --- | --- | --- | --- |
+| Police figures | Crimes an officer recorded after a decision | About a mile around the village centre | Published about two months in arrears |
+| VillageWatch | What a resident thought they saw at the time | Your village | Immediately |
+
+They are two different measurements of the same place, not the same measurement
+twice. A police "burglary" and a VillageWatch "burglary" are not the same claim.
+Quote both, quote the caveat with them, and do not let anybody in the room
+subtract one from the other.
+
+**Missing months are stated rather than shown as zero.** If the most recent
+month of your period has not been published yet, the panel says so in as many
+words. A quiet-looking figure that is really an unpublished one is exactly the
+sort of thing that gets carried into a meeting as fact.
+
+**Your neighbourhood policing team** appears in the same panel where the force
+publishes one: the team name, the officers with their ranks, an email address, a
+phone number and a link to the force's own page. It is filled in automatically
+from the force's own list, so it is as current as they keep it. This is the
+fastest way to find out who your actual PCSO is, and it saves the annual ritual
+of discovering they moved on eight months ago.
+
+Two more things. **No resident data leaves the country to fetch any of this** —
+the request carries your village's map centre and a calendar month, and nothing
+else. And **the figures refresh themselves weekly**; there is no button, because
+the numbers are the same for everybody in the village and change once a month.
+
+The figures are Crown copyright under the Open Government Licence, and the
+acknowledgement printed under the panel has to travel with them wherever you
+reproduce them. It is already in the period report.
+
+If your village has no police panel at all, no figures have been collected for
+it yet. Tell us and we will look.
+
+### The audit trail
+
+**Dashboard**, then **Audit trail**. Every action any coordinator has taken in
+your village, newest first, filterable by what kind of action it was, and
+paginated.
+
+What is in it: reports filed, published, rejected, resolved, archived and
+edited; every reveal of a reporter's original wording; every village setting
+changed and by whom; every spreadsheet exported and every police report
+generated; every compliance document accepted; and every account closure and
+report deletion.
+
+Nothing can edit it or delete from it. Not you, not another coordinator, not us
+— the database itself refuses, which is the only version of that promise worth
+making.
+
+It is not there because anybody is suspected. It is there because it is what
+makes it *safe* to let a coordinator read a neighbour's original words at all,
+and because when a resident or the Information Commissioner asks what happened
+to a report, it is the answer. Read it once a quarter — see "Tips and good
+practice" for why that is worth doing and what to say about it.
+
 ---
 
 ## Sharing with police and the council
@@ -440,7 +720,16 @@ one. That is intentional; the summary itself carries what they need.
 Go to **Reports** in the sidebar. Choose a date range — the last week and the
 last month are the usual ones — and you get a document covering every report
 published in that period: how many, of what kind, how serious, where the
-clusters are.
+clusters are, and a log of the individual reports with their references. Where
+residents have voted on any of them it also carries a **Most concerning to
+residents** section — see "What the village makes of a report" above, and keep
+the sentence under it when you quote from the list.
+
+Where official figures are held for those months, the document carries a
+**police recorded crime** section too — the Home Office's own count for the
+area beside your village's, with the caveat that has to travel with the pair
+and the licence acknowledgement. See "Police recorded crime" above before you
+quote from it, and never let the two counts be read as one measurement.
 
 There is a button that writes a narrative summary of the period in prose,
 suitable for reading out or forwarding. It is a separate button because it costs
@@ -489,7 +778,12 @@ designed to be read aloud down the phone or printed in a newsletter.
 
 A resident goes to **villagewatch.app/register**, finds your village in the
 list, and enters that code. It is the code that says they were invited by the
-village rather than having simply found it.
+village rather than having simply found it. They can also arrive by scanning
+your QR code or following your invite link, in which case the village and the
+code are already filled in and there is nothing for them to type.
+
+Everything you need to do that is the invite panel at the foot of the
+Dashboard — see "Invite the village" in Getting started.
 
 Get the address and the code to residents the way you already reach them: the
 parish newsletter, the noticeboard, the existing WhatsApp group, the annual
@@ -499,6 +793,25 @@ liked the look of the map — but do not post it on a public website.
 
 If a code gets somewhere it should not, ask us to issue a new one. Everybody
 already signed up stays signed up; only new joiners need the new code.
+
+**Two emails arrive when somebody joins, and neither is from you.** One is the
+confirmation with the link they have to click before they can sign in — that
+one comes from the sign-in system and is the one to ask about if somebody says
+they never got in. The other is a welcome from VillageWatch explaining what
+happens to a report once it is filed. Neither carries your address, and there is
+nothing you have to send.
+
+If a resident says no email arrived, check the obvious thing first (spam), then
+tell us. There is a limit on how many of those the service can send in an hour,
+and a village onboarding twenty households in one evening can reach it — they
+are not locked out, they need to try again a little later, and it is worth
+knowing before you spend an evening troubleshooting a spelling.
+
+**Signing up in an evening is the best predictor of a village that sticks.**
+Run it at an event where people already are — the annual meeting, the fete, the
+Christmas fair — with the QR sheet on the table and your phone in your hand.
+Twenty people who joined together talk to each other about it afterwards; twenty
+people who joined over four months do not.
 
 ### Coordinator applications
 
@@ -562,14 +875,25 @@ Email info@yakasista.com for:
 
 This is the section to reread every few months.
 
-### You are acting for the council
+### You are handling other people's personal data
 
-Everything you do in this app, you do on behalf of your parish or town council,
-which is the data controller. You are not a moderator on a website; you are
-handling other people's personal data under an authorisation the council holds.
+You are not a moderator on a website. Every report in your queue is a resident's
+personal data, held under a legal authorisation, and somebody is answerable for
+it.
 
-Practically, that means: if you would not do it with a folder of paper reports
-from your neighbours, do not do it here.
+**Which somebody depends on how your village is run**, and it is the same split
+as the compliance documents in Getting started. Where a parish or town council
+has taken the village on, the council is the data controller and you are acting
+on its behalf. Where there is no council — which is most villages — **you are
+the controller**, and there is nobody above you to catch a mistake. If you are
+not sure which you are, the answer is on the compliance screen and in section 1
+of the privacy notice at villagewatch.app/privacy.
+
+That changes who answers for what. It does not change any of the rules in this
+section, which apply identically either way.
+
+Practically, all of it comes down to one test: if you would not do it with a
+folder of paper reports from your neighbours, do not do it here.
 
 ### Never take original wording out of the app
 
@@ -648,12 +972,21 @@ least useful one names somebody. If you say this often enough in the first three
 months, it sets the tone for good. A line in the newsletter — "please say what
 you saw, not who you think it was" — does most of the work.
 
-**Use the weekly summary to brief your PCSO.** Every Sunday morning the app puts
-together the week's reports for your village and flags anything that looks like
+**Use the weekly summary to brief your PCSO.** Every Sunday morning the app
+sends you the week's reports for your village and flags anything that looks like
 a pattern — several similar reports close together in space and time. Skim it,
-and if there is a pattern in it, forward the period report to your police
-contact on the Monday. Regular, boring, well-formatted contact with a named
-officer is worth far more than an urgent email once a year.
+and if there is something in it, send the period report to your police contact
+on the Monday. Regular, boring, well-formatted contact with a named officer is
+worth far more than an urgent email once a year. The officer's name and address
+are on the Dashboard — see "Police recorded crime".
+
+**Take both sets of figures to the parish meeting, never one.** Somebody will
+ask whether crime is up. Your own figures cannot answer that on their own,
+because they move with how many people have installed the app — six months of
+recruitment looks exactly like a crime wave. The Home Office panel is the
+independent half. Read both out, read the caveat out with them, and resist the
+temptation to tidy them into a single number; the honest answer to "is it
+getting worse" is sometimes "we cannot tell yet, and here is why".
 
 **Check the queue twice a day if auto-approve is off.** Morning and evening is
 plenty. A report that sits for two days is a resident who concludes that nobody

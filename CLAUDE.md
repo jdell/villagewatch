@@ -2697,7 +2697,7 @@ app imports it and no route serves its output.
   out of the repository and by nothing on Vercel.
 - **No page numbers, and it is the same trade `report-pdf.tsx` documents.** A
   dynamic `render` node beside an absolutely positioned `fixed` one corrupts the
-  layout past about eight pages, and this document is twenty-three. The fixed
+  layout past about eight pages, and this document is twenty-four. The fixed
   footer is what every page is entitled to carry, so the numbers went — which is
   why the contents page lists sections rather than pages, and why every level-2
   heading starts a new page: a section can then be pulled out and handed to

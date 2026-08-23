@@ -655,7 +655,7 @@ nobody is ever named, the Dashboard panel and its three orderings, and the
 "Most concerning to residents" section of the period report with the caveat that
 has to travel with it.
 
-**`scripts/generate-guide-pdf.tsx` is the printable copy** — 23 A4 pages,
+**`scripts/generate-guide-pdf.tsx` is the printable copy** — 24 A4 pages,
 committed as `docs/VillageWatch-Coordinator-Guide.pdf`. It parses the guide with
 `src/lib/markdown.ts`, the same parser `/dashboard/guide` renders through, so
 the two cannot describe different software; see "The coordinator guide, on
