@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 24 August 2026 · **Repo version:** `v0.1.42` · **Branch:**
-`fix/map-controls-overlap` · **Domain:** https://villagewatch.app
+**Last updated:** 25 August 2026 · **Repo version:** `v0.1.43` · **Branch:**
+`main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -55,6 +55,64 @@ PRs because they were asked for as PRs.
 ---
 
 ## Open items
+
+### Go-to-market and the launch blockers, in one place each — 25 August 2026
+
+Two new documents, both read by people and rendered by nothing, so neither needs
+an `outputFileTracingIncludes` line.
+
+- **`docs/LAUNCH_BLOCKERS.md`** — the five blockers audited against `main` at
+  `v0.1.43` rather than restated from `BACKLOG.md`, with what was actually
+  verified on the day and an action list each. The summary: **L2 is still
+  placeholders** (`DATA_CONTROLLER` in `src/lib/constants.ts:1872` reads
+  `[Data controller name]`, mode-neutral since the community model but a
+  placeholder still, and `/privacy` reads it because it is public and
+  sessionless); **L3 is code-complete and has never been run** — no village has
+  ever been activated, all 270 seeded parishes are `PENDING`, and the only
+  `ACTIVE` village is the seed's placeholder with its hardcoded `VILLAGE1` code,
+  which is why L7 is folded into L3's action list rather than tracked beside it;
+  **L4's three OneSignal variables are blank** and the public one is inlined at
+  build time, so setting it in Vercel without a redeploy changes nothing;
+  **L5 cannot start until L1 and L4 land**, because the compliance gate is live
+  and refusing reports and because `notifyCoordinatorsOfPendingReport` is what
+  tells a coordinator the queue filled up.
+
+  **The one finding that moves the critical path is L1's.** `Village.mode`
+  defaults to `community`, where the gate asks for one document rather than
+  three — so running the Histon pilot as a community village takes A1 (the
+  council's Appropriate Policy Document), A2 (the countersigned Article 28(3)
+  agreement) and the council's review of an Article 35 assessment off the
+  pilot's path and replaces them with `COMMUNITY_DPA.md`, in force on
+  acceptance. What it does **not** remove is A4 (coordinator review guidance),
+  A10 (breach procedure) or A5/L2 — in community mode those attach to the
+  coordinator, who is the controller.
+
+- **`docs/MARKETING_GTM_PLAN.md`** — positioning, the coordinator-first funnel,
+  the four launch phases, Facebook and SEO, analytics, pricing validation,
+  growth targets and the grant pipeline as marketing. Three things in it are
+  findings rather than plan: **there is no analytics of any kind in the project**
+  (no `@vercel/analytics`, no PostHog, no Plausible in `package.json`), and
+  adding one is a new processor — a change to `/privacy` §6, to both processing
+  agreements' sub-processor lists and to `docs/DPIA.md` §5 in the same commit;
+  **there is no `src/app/blog` route**, so the SEO plan carries a build item and
+  the two traps that come with it (`outputFileTracingIncludes`, and keeping a
+  literal path segment so Turbopack does not trace the project into the bundle);
+  and **the pitch message is not in the repo** though it is referred to as
+  existing, while the coordinator guide is (24 pages, verified) and the resident
+  quick start is not.
+
+  **The £15 council tier is validated off-platform and deliberately stays off
+  the landing page.** `PRICING` carries no price for Pro since 22 August and
+  `tests/pricing.test.ts` asserts that a planned tier states none — so putting
+  the figure back today fails CI, correctly, there being no billing provider, no
+  plan column and no enforcement behind it. The plan tests the number on a quote
+  to the first three interested councils instead, and says what has to exist
+  before it goes back on the site.
+
+  **UKDI is reported as submitted and awaiting Stage 1 review, and is tracked in
+  neither `docs/FUNDING.md` nor `BACKLOG.md`'s funding table.** The plan flags it
+  as P6 to add, with the submission date and what was claimed, so its claims are
+  checkable against the code like every other application's.
 
 ### Done — landed, not yet exercised against real data
 

@@ -79,6 +79,13 @@ be joined until they are activated (L6). The table at the foot of
 
 ## Launch Blockers (remaining)
 
+**`docs/LAUNCH_BLOCKERS.md` is the operational companion to this table**, audited
+against `main` at `v0.1.43` on 25 August 2026: what was verified on the day, what
+each blocker costs to clear, and in what order. This table tracks the items; that
+file tracks their state. Where the two disagree, check the code — several entries
+here were true when written and stopped being true without being corrected. The
+go-to-market plan those blockers gate is `docs/MARKETING_GTM_PLAN.md`.
+
 | # | Blocker | Status | Details |
 |---|---------|--------|---------|
 | L1 | DPIA | Drafted 27 Jul | `docs/DPIA.md` — 12 assessed risks, none high after mitigation, conclusion is "may proceed with mitigations". **Not signed.** Its §9 carries five blockers that are the council's to produce, not ours: an Appropriate Policy Document for criminal offence data (DPA 2018 Sch 1 Pt 4), an Article 28 processing agreement with Yakasista Ltd, coordinator terms and moderation guidance, real controller details plus ICO registration, and a breach notification procedure. Two of the five now have templates — the APD, and as of 28 Jul the processing agreement. |
