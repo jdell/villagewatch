@@ -127,8 +127,17 @@ export const viewport: Viewport = {
   initialScale: 1,
   /**
    * Fills the notch area on an installed iOS app. Pages then have to respect
-   * `env(safe-area-inset-*)` themselves — the app shell's sticky header and the
-   * push prompt already sit inside padded containers.
+   * `env(safe-area-inset-*)` themselves — and this comment asserted they did
+   * for a good deal longer than it was true. With `black-translucent` above,
+   * the web view spans the whole screen and the status bar is composited over
+   * the top of it, so anything at `top-0` is drawn under the clock rather than
+   * below it. In portrait that inset is 59px on a Dynamic Island phone and 47px
+   * on a notch; in landscape it is 0, the notch becoming a left/right inset
+   * instead — which is why the navigation button was reachable only sideways.
+   *
+   * Padded now: the app shell's top bar and drawer, and the toaster below.
+   * Safari reports 0 here in portrait, so none of it moves in a browser — which
+   * also means none of it can be verified in one. Use an installed app.
    */
   viewportFit: "cover",
 };
@@ -145,7 +154,20 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-white text-slate-900">
         {children}
-        <Toaster position="top-center" richColors closeButton />
+        {/*
+          `mobileOffset` keeps the toast clear of the iOS status bar in an
+          installed app. Sonner's own default is 16px from the top, which puts
+          a top-centre toast's close button under the clock — the same bug the
+          app shell's top bar had, on the control the app reports its errors
+          through. Only `top` is passed: sonner falls back to its default for
+          every key left undefined, so the other three edges are untouched.
+        */}
+        <Toaster
+          position="top-center"
+          richColors
+          closeButton
+          mobileOffset={{ top: "max(16px, env(safe-area-inset-top))" }}
+        />
         {/* Renders nothing; registers the offline worker in production only. */}
         <ServiceWorkerRegistration />
       </body>
