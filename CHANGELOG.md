@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.43](https://github.com/jdell/villagewatch/compare/v0.1.42...v0.1.43) (2026-08-24)
+
+
+### Documentation
+
+* **channels:** plan auto-posting a published report to a village's channels ([b688ff3](https://github.com/jdell/villagewatch/commit/b688ff3e31d476d86e395e59c96fae47f325e350))
+
+
+### Fixes
+
+* **map:** move the zoom control out of the village card's corner ([39a8aeb](https://github.com/jdell/villagewatch/commit/39a8aeb1c77afa03d5c8f7b2796df475ee7acfd4))
+
 ### [0.1.42](https://github.com/jdell/villagewatch/compare/v0.1.41...v0.1.42) (2026-08-24)
 
 
