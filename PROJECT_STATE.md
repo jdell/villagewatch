@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 23 August 2026 · **Repo version:** `v0.1.40` · **Branch:**
-`main` · **Domain:** https://villagewatch.app
+**Last updated:** 24 August 2026 · **Repo version:** `v0.1.41` · **Branch:**
+`fix/iphone-safe-area` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -34,6 +34,7 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
+| `fix/iphone-safe-area` | In review as a PR. The iOS safe-area fix below — CSS only, three files. | Review, merge, then verify on an installed app |
 | `fix/dashboard-period-picker` | Merged as PR #11, 22 August. | Delete |
 | `feat/police-data` | Merged as PR #10, 22 August. Migration 13 landed with it. | Delete; confirm `rls_policies.sql` re-ran |
 | `fix/share-summary-mode-aware` | Merged. | Delete |
@@ -55,6 +56,43 @@ PRs because they were asked for as PRs.
 ## Open items
 
 ### Done — landed, not yet exercised against real data
+
+- **The navigation button was untappable on an installed iPhone, in portrait
+  only** — 24 August 2026, reported by a user, `fix/iphone-safe-area`. The app
+  asks iOS for the whole screen — `viewportFit: "cover"` plus
+  `black-translucent` in `app/layout.tsx` — and then nothing in the codebase
+  respected `env(safe-area-inset-top)`. The status bar is composited over the
+  top of the web view, so the app shell's `top-0` bar was drawn under the
+  clock: a 36px button at y=10-46 inside a 59px inset on a Dynamic Island
+  phone, with no part of it reachable. Rotating to landscape collapses that
+  inset to 0, which is what the report described and what made it look like a
+  layout bug rather than a safe-area one.
+
+  **Three controls were affected, not one.** The hamburger; the drawer's own
+  close button, 36px at y=16-52, which would have left anybody who got the
+  drawer open unable to shut it by any means but the backdrop; and the toast
+  close button, since sonner's mobile offset is 16px and `/` renders
+  `closeButton` — the control the app reports its errors through. All three now
+  carry the inset. The hamburger also went from 36px to 44px, the figure this
+  same file already argues for in its comment on the sidebar rows.
+
+  `map-view.tsx` subtracts the inset too, because its height is written against
+  the bar's. The comment in `layout.tsx` claiming the header was already padded
+  is corrected — it had been wrong for as long as it had been there.
+
+  **The reason it shipped is worth keeping**: there is no
+  `@media (display-mode: standalone)` rule anywhere in the project, and Safari
+  reports a 0 top inset in portrait. The app therefore renders identically in
+  every browser, on desktop, and in responsive-design mode. **This fix cannot
+  be verified in any of them** — it needs an Add to Home Screen launch on a
+  notched or Dynamic Island phone, or the Simulator with one.
+
+  Not fixed here, and both are the same bug class on surfaces outside the
+  approved scope: the public landing page's own `sticky top-0` header
+  (`app/page.tsx:208`), reachable in standalone through `/login`'s "Back to
+  home" link; and the drawer's left edge in landscape, where
+  `safe-area-inset-left` is 47-59px on a notched phone and the panel is flush
+  to it. Both want their own change.
 
 - **The raw "email rate limit exceeded" popup is gone, and the dashboard half of
   it is not done** — 23 August 2026. Residents signing up were shown Supabase's

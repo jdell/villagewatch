@@ -192,8 +192,11 @@ export function MapView({
     // so the severity legend and the OpenStreetMap attribution sit underneath
     // Safari's toolbar and the page acquires a scroll it should not have. The
     // 3.5rem is the mobile top bar in `app-shell.tsx` — same height, and the two
-    // have to keep matching.
-    <div className="map-surface relative h-[calc(100dvh-3.5rem)] w-full lg:h-dvh">
+    // have to keep matching, the safe-area inset that bar now adds to its own
+    // height included. Subtract one without the other and the map is taller
+    // than the space beneath the header, which is the scroll this line exists
+    // to prevent.
+    <div className="map-surface relative h-[calc(100dvh-3.5rem-env(safe-area-inset-top))] w-full lg:h-dvh">
       <IncidentMap
         incidents={visible}
         center={center}

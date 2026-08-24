@@ -195,11 +195,19 @@ export function AppShell({
     shrink below its content, so without it the band grows to fit and the
     overflow moves back out to the panel, which cannot scroll.
 
-    The bottom padding clears the iOS home indicator, which otherwise sits over
-    the sign-out button in a standalone PWA window (see `manifest.json`).
+    The vertical padding clears the two system regions an installed iOS app
+    draws underneath — see `viewportFit` in `app/layout.tsx`. The home indicator
+    at the bottom, which otherwise sits over the sign-out button; and the status
+    bar at the top, which otherwise covers the close button outright. In
+    portrait that inset is 59px on a Dynamic Island phone and the button ends
+    52px down, so every pixel of it was under the clock, and opening the drawer
+    was a one-way trip for anybody who did not think to tap the backdrop.
+
+    Both are `max(1rem, …)`, so neither moves anything where the inset is 0 —
+    which is every browser, the desktop column included.
   */
   const sidebar = (
-    <div className="flex h-full flex-col p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div className="flex h-full flex-col p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
       <div className="flex shrink-0 items-center justify-between">
         <Link
           href="/map"
@@ -394,15 +402,34 @@ export function AppShell({
           problem and sits one layer below it. `/map` renders full-bleed
           underneath this bar, and its zoom control used to cover the hamburger
           button outright.
+
+          The status bar covered it outright too, for longer and less visibly.
+          With `viewportFit: "cover"` and `black-translucent` (both in
+          `app/layout.tsx`) an installed iOS app draws from the physical top of
+          the screen, so `top-0` is under the clock rather than below it: the
+          36px button sat at y=10-46 inside a 59px inset and could not be tapped
+          at all. Landscape collapses that inset to 0, which is why rotating the
+          phone "fixed" it, and why no amount of testing in Safari finds it.
+
+          The height carries the inset as well as the padding, or the bar keeps
+          its old 56px and the inset eats the content instead of clearing it.
+          `map-view.tsx` subtracts the same two values — keep them in step.
         */}
         <header
-          className="sticky top-0 z-[1000] flex h-14 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:hidden"
+          className="sticky top-0 z-[1000] flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 border-b border-slate-200 bg-white pt-[env(safe-area-inset-top)] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:hidden"
           data-print-hide
         >
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100"
+            /*
+              `size-11` is 44px, the minimum Apple and WCAG 2.5.5 both ask for
+              and the same figure the sidebar rows are kept at above. `p-2`
+              around a 20px icon gave 36px — under it, on the one control that
+              gates every other screen in the app. `-ml-1` keeps the icon
+              optically where it was against the content below.
+            */
+            className="-ml-1 inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100"
             aria-label="Open navigation"
           >
             <Menu className="size-5" aria-hidden />
