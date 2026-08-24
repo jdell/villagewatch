@@ -224,7 +224,9 @@ src/
     location-picker.tsx       Leaflet pin picker — dynamic import, ssr: false
     ai-preview.tsx            Review / publish screens, reprocess + edit
     incident-map.tsx          Leaflet pin + heat layers — never import without
-                              ssr:false. `mode` picks pins / heat / both
+                              ssr:false. `mode` picks pins / heat / both. The
+                              zoom control is `bottomright`, never Leaflet's own
+                              top-left default — see The map's corners
     map-view.tsx              Client wrapper: dynamic import, date range incl.
                               the custom pair, and the layer toggle in localStorage
     time-range-fields.tsx     The period control on /incidents and /dashboard —
@@ -3009,6 +3011,53 @@ section of everything `/reports` produces.
   linked to an account — and the notice says what is recorded, that the totals
   are public within the village while the voter is not, and that it goes with
   the report and with the account.
+
+## The map's corners
+
+`/map` is four overlays and a set of Leaflet controls competing for the same
+four corners, and the competition is not a fair one: Leaflet numbers its
+controls at 1000 and `map-view.tsx` deliberately numbers its own overlays at 800
+against that scale (see the note on `.map-surface` in `globals.css`). A control
+and an overlay in the same corner is therefore a control drawn **over** a card,
+not beside it.
+
+- **The zoom control is `bottomright`, and `zoomControl` is `false` on every
+  `MapContainer` in the codebase.** Leaflet's default is `topleft`, which is
+  where the village card sits — 10px of control margin against a card that
+  starts 12px in — so on a phone the + and − buttons were drawn on top of the
+  village's name and its incident count, which is the one label saying what a
+  resident is looking at. Reported from an iPhone in portrait, where the top
+  overlays stack rather than share a row and there is least room to lose.
+- **Bottom right is the corner nothing else claims.** Village card top left,
+  layer and period controls top right, legend along the bottom from the left.
+  Leaflet inserts a bottom control *before* whatever is already in that corner,
+  so the OpenStreetMap attribution stays flush with the edge and the buttons
+  stack above it — not under it, which would hide a licence condition.
+- **The legend row reserves that column** with a right padding wide enough for a
+  34px control and its 10px margin. It is centred until `sm`, so the width that
+  bites is the one wide enough to sit both legend cards on one line and too
+  narrow to left-align them: at 500px the density card's right edge landed seven
+  pixels inside the buttons. Written per side rather than as `p-3` with a `pr-`
+  override: the shorthand and the directional utility are two different
+  properties, and which wins inside a breakpoint is a question about Tailwind's
+  output order rather than about that file.
+- **Both pill groups wrap inside their own card.** The four periods want 367px
+  and an iPhone in portrait has 366px of row. Nothing ran off the screen —
+  flexbox squeezed the pills instead, breaking a label in half inside its own
+  button, so a resident chose between "Last 30" over "days" and "Custom" over
+  "range".
+- **The same row clears the OpenStreetMap attribution.** A 17px strip flush
+  with the bottom edge that the density card had always covered the top of when
+  the two legend cards wrap onto separate rows. Attribution is a licence
+  condition rather than a control, so the bottom padding is the one that has to
+  be right whatever else is on screen.
+- **The village card is deliberately *not* `shrink-0`.** It looks like it should
+  be, and it measures as a no-op at 375, 390 and 720: flexbox breaks a line
+  before it shrinks anything on it, and the control group beside the card is
+  wider than a phone, so `flex-wrap` on the parent has already moved the group
+  to its own row before shrinking is reached.
+- **`interactive={false}` has no zoom control at all**, which is the dashboard's
+  density thumbnail — there is no zoom on it to control.
 
 ## The heatmap
 

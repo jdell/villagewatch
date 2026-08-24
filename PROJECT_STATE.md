@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 24 August 2026 · **Repo version:** `v0.1.41` · **Branch:**
-`fix/iphone-safe-area` · **Domain:** https://villagewatch.app
+**Last updated:** 24 August 2026 · **Repo version:** `v0.1.42` · **Branch:**
+`fix/map-controls-overlap` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -19,8 +19,8 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.40` in `package.json` on `main` — `version.yml` released the auth-email fix as 0.1.40 while this change was being written; voting, the email transport and the Supabase templates bump it to `v0.1.41` when it next runs. Was `v0.1.35`, tagged — the period-picker branch landed as PR #11 on 22 August, after the police-data branch as PR #10 |
-| Version on screen | expect **v0.1.39** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
+| Repo version | `v0.1.42` in `package.json` on `main` — `version.yml` released voting, the email transport and the Supabase templates as 0.1.41, then the iPhone safe-area fix (PR #12) as 0.1.42. The map-corners fix bumps it to `v0.1.43` when it next runs |
+| Version on screen | expect **v0.1.41** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 14, `20260726161847_init` → `20260823120000_incident_votes`. **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
@@ -34,7 +34,8 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
-| `fix/iphone-safe-area` | In review as a PR. The iOS safe-area fix below — CSS only, three files. | Review, merge, then verify on an installed app |
+| `fix/map-controls-overlap` | In review as a PR. The map's corners below — CSS and one Leaflet prop, two files plus the documents. | Review, merge, then look at `/map` on a phone |
+| `fix/iphone-safe-area` | Merged as PR #12, 24 August. Released as `v0.1.42`. | Delete |
 | `fix/dashboard-period-picker` | Merged as PR #11, 22 August. | Delete |
 | `feat/police-data` | Merged as PR #10, 22 August. Migration 13 landed with it. | Delete; confirm `rls_policies.sql` re-ran |
 | `fix/share-summary-mode-aware` | Merged. | Delete |
@@ -56,6 +57,48 @@ PRs because they were asked for as PRs.
 ## Open items
 
 ### Done — landed, not yet exercised against real data
+
+- **The map's zoom buttons were drawn on top of the village's name** — 24 August
+  2026, reported by a user, `fix/map-controls-overlap`. Leaflet puts its zoom
+  control in the `topleft` corner by default, and that is the corner
+  `map-view.tsx` puts the village card in: 10px of control margin against a card
+  that starts 12px in. The control wins, and not by accident — Leaflet numbers
+  its controls at 1000 and this app deliberately numbers its own map overlays at
+  800 against that scale, so what a resident on an iPhone in portrait actually
+  read was + and − over the village's name and its incident count.
+
+  It is `bottomright` now, on every map in the codebase, with `zoomControl` set
+  to `false` so Leaflet's own is never built. That corner is the one nothing
+  else claims — village card top left, layer and period controls top right,
+  legend along the bottom from the left — and Leaflet inserts a bottom control
+  *before* whatever is already there, so the OpenStreetMap attribution stays
+  flush with the edge and the buttons stack above it rather than over a licence
+  condition.
+
+  **Three things beside it were crowding the same phone**, none a logic change.
+  The legend row now reserves the zoom control's column: it is centred until
+  `sm`, so at 500px — wide enough for both legend cards on one line, too narrow
+  to left-align them — the density card's right edge landed seven pixels inside
+  the buttons. Both pill groups wrap inside their own card: the four periods
+  want 367px against 366px of row on a 390px phone, and flexbox was paying for
+  that by squeezing the pills until a label broke in half inside its own button
+  ("Last 30" over "days"). And the same row now clears the OpenStreetMap
+  attribution, which the density card had been covering the top few pixels of —
+  older than this change and picked up with it, because that strip is a licence
+  condition rather than a control.
+
+  **Measured rather than eyeballed**, against the compiled stylesheet and real
+  Leaflet at 375, 390, 500, 640, 720 and 1280 CSS pixels: no pair of the six
+  overlays and controls intersects at any of them, and the document never
+  scrolls sideways. That harness also killed a third fix before it shipped — a
+  `shrink-0` on the village card, to stop the control groups squeezing it, which
+  measured as a no-op at every width because flexbox breaks a line before it
+  shrinks anything on it. The comment where it would have gone says so, since it
+  is the obvious thing for the next person to reach for. What the harness cannot
+  show is the map with a village's pins on it — the only `ACTIVE` village is the
+  seed placeholder — so **look at `/map` on a phone once there is one**, in both
+  `pins` and `both`, which is the mode that puts a second card on the bottom
+  row.
 
 - **The navigation button was untappable on an installed iPhone, in portrait
   only** — 24 August 2026, reported by a user, `fix/iphone-safe-area`. The app

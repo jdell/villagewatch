@@ -5,7 +5,14 @@ import "leaflet/dist/leaflet.css";
 import { useEffect } from "react";
 import Link from "next/link";
 import L from "leaflet";
-import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import {
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer,
+  ZoomControl,
+  useMap,
+} from "react-leaflet";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { HeatmapLayer } from "@/components/map/heatmap-layer";
@@ -178,13 +185,38 @@ export function IncidentMap({
       doubleClickZoom={interactive}
       touchZoom={interactive}
       keyboard={interactive}
-      zoomControl={interactive}
+      /*
+        Never Leaflet's own control. Its default corner is `topleft`, which on
+        this map is where `map-view.tsx` puts the village card — 10px of margin
+        against a card that starts 12px in, so on a phone the + and - buttons
+        landed on top of the village's name and its incident count. The control
+        wins that overlap, because Leaflet numbers its controls at 1000 and the
+        overlays are deliberately numbered against that scale at 800 (see the
+        note on `.map-surface` in globals.css), so what a resident actually got
+        was two zoom buttons sitting over the one label that says which village
+        they are looking at.
+      */
+      zoomControl={false}
       className={className}
     >
       <TileLayer
         url={MAP_DEFAULTS.tileUrl}
         attribution={MAP_DEFAULTS.tileAttribution}
       />
+
+      {/*
+        Bottom right instead, which is the one corner no map in this codebase
+        puts anything of its own in: the village card is top left, the layer and
+        period controls are top right, and the legend runs along the bottom from
+        the left. Leaflet inserts a bottom control *before* whatever is already
+        in that corner, so the attribution stays flush against the edge with the
+        buttons stacked above it rather than under them — and `map-view.tsx`
+        keeps its bottom row clear of the column they occupy.
+
+        Only when the map is a map. `interactive={false}` is the dashboard's
+        density thumbnail, which has no zoom to control.
+      */}
+      {interactive && <ZoomControl position="bottomright" />}
 
       <FitBounds incidents={incidents} enabled={fitToIncidents} />
 
