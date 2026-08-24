@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.42](https://github.com/jdell/villagewatch/compare/v0.1.41...v0.1.42) (2026-08-24)
+
+
+### Documentation
+
+* **guide:** catch the coordinator guide up with the code, and print it ([fb27cca](https://github.com/jdell/villagewatch/commit/fb27ccaf75152f630389234bf5801306e81fe087))
+
+
+### Fixes
+
+* **pwa:** reserve the iOS status bar so the navigation button can be tapped ([955e7a6](https://github.com/jdell/villagewatch/commit/955e7a6e2149a65093b652f269fa41c22ef897ef))
+
 ### [0.1.41](https://github.com/jdell/villagewatch/compare/v0.1.40...v0.1.41) (2026-08-23)
 
 
