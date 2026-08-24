@@ -210,8 +210,23 @@ export function MapView({
         className="size-full"
       />
 
-      {/* z-index sits above Leaflet's own panes, which top out at 700. */}
+      {/*
+        z-index sits above Leaflet's own panes, which top out at 700 — and below
+        its controls, which are at 1000. That ordering is why the zoom buttons
+        are no longer in the corner this card is in: `incident-map.tsx` asks for
+        `bottomright`, because a control at 1000 over an overlay at 800 means the
+        overlay is what loses, and what a resident was left reading was two zoom
+        buttons on top of their village's name.
+      */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[800] flex flex-wrap items-start justify-between gap-3 p-3 sm:p-4">
+        {/*
+          This card keeps its natural width on a phone without being told to:
+          the control group beside it is wider than the viewport, so `flex-wrap`
+          on the parent moves the whole group to the next row rather than
+          squeezing the two of them onto one. Flexbox breaks a line before it
+          shrinks anything on it, which is why there is no `shrink-0` here —
+          measured at 375, 390 and 720, it changes nothing.
+        */}
         <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
           <p className="text-sm font-semibold text-slate-900">{villageName}</p>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -223,7 +238,7 @@ export function MapView({
 
         <div className="pointer-events-none flex flex-wrap items-start justify-end gap-2">
           <div
-            className="pointer-events-auto inline-flex rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
+            className="pointer-events-auto inline-flex flex-wrap justify-end rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
             role="group"
             aria-label="Map layer"
           >
@@ -245,8 +260,18 @@ export function MapView({
           </div>
 
           <div className="pointer-events-none flex flex-col items-end gap-2">
+            {/*
+              Wrapping, because the four periods want 367px and an iPhone in
+              portrait has 366px of row — one pixel over on the widest of them
+              and sixteen on a 375px phone. Nothing ran off the screen: flexbox
+              squeezed the pills instead, which broke a label in half inside its
+              own button, so a resident chose between "Last 30" over "days" and
+              "Custom" over "range". Wrapping puts each period on one line and
+              spends a row of the map instead. The layer group above wraps for
+              the same reason rather than because it has ever needed to.
+            */}
             <div
-              className="pointer-events-auto inline-flex rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
+              className="pointer-events-auto inline-flex flex-wrap justify-end rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
               role="group"
               aria-label="Date range"
             >
@@ -340,8 +365,24 @@ export function MapView({
         severity key beside a map with no pins on it explains nothing, and a heat
         scale beside a map with no heat is worse — it invites somebody to read
         pin colours as density.
+
+        The right padding is the zoom control's column, kept clear. Leaflet's
+        buttons are 34px wide with a 10px margin, and this row is centred until
+        `sm` — so the width that bites is the one wide enough to sit both cards
+        on one line and too narrow to left-align them. Measured at 500px: the
+        density card's right edge landed seven pixels inside the buttons, and
+        clears them by fifteen with this. Written per side rather than as `p-3`
+        plus a `pr-` override, because the shorthand and the directional utility
+        are two properties and which one wins inside a breakpoint is a question
+        about Tailwind's output order rather than about this file.
+
+        The bottom padding is the attribution's row, and clearing it is older
+        than this change — a 17px strip at the very bottom that the density card
+        has always covered the top few pixels of when the layers wrap onto two
+        rows. It is a licence condition rather than a control, so it gets the
+        20px it needs while the padding beside it is being written out anyway.
       */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[800] flex flex-wrap justify-center gap-2 p-3 sm:justify-start sm:p-4">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[800] flex flex-wrap justify-center gap-2 pb-5 pl-3 pr-14 pt-3 sm:justify-start sm:pl-4 sm:pr-16 sm:pt-4">
         {showPins && (
           <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
             <p className="text-xs font-medium text-slate-500">Severity</p>
