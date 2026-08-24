@@ -558,6 +558,27 @@ PRs because they were asked for as PRs.
   report.
 - No staging environment — CI, unit tests and auto-versioning exist, but there
   is nowhere to run a migration before production sees it.
+- **Auto-posting a published report to a village's channels is planned and not
+  built** — `docs/AUTO_POST_CHANNELS_PLAN.md`, covering `BACKLOG.md` N7 and N8.
+  Nothing in the codebase makes an outbound call to any social platform:
+  WhatsApp is a log line plus a coordinator's clipboard, Facebook is a
+  `sharer.php` link a human clicks, and there is no Telegram code at all. Four
+  items, in the order the plan recommends — a shared dispatcher and a
+  `ChannelPost` record first, changing no behaviour at all; then Telegram, which
+  is free, official and needs no review; then a Facebook Page, whose two-to-six
+  weeks of Meta App Review should be started while Telegram ships; and WhatsApp,
+  which is scheduled for nothing, because Channels have no publishing API, the
+  Cloud API is a different product that bills per message and needs residents'
+  phone numbers, and the relays that offer it get the number behind them banned.
+  Three findings are worth knowing before anybody starts. The hook belongs in
+  `notifyIncidentPublished` and **not** on a publish route — there is no publish
+  route, there are two publish paths, and the coordinator's Approve click is a
+  server action, so a route hook would miss every report a coordinator approves.
+  A report whose `anonymized` is false must never be auto-posted, because
+  `CopyAlert`'s red warning is a human reading the reporter's own wording before
+  pasting it and automation is what removes that person. And there is still no
+  `ACTIVE` village to post for, which would make the first automated post the
+  first post of any kind.
 
 ---
 
