@@ -430,10 +430,12 @@ export default function PrivacyPage() {
             Everything above, plus your original wording — recorded each time —
             and your name against the report even when you filed anonymously to
             other residents. They also see the village&rsquo;s membership list:
-            your name, your email address, when you joined, and how many of your
-            reports are on the map. That is how a coordinator confirms the people
-            on the map are the neighbours they think they are; confirming you, or
-            withdrawing that, is recorded in the trail above.
+            your name, when you joined, how many of your reports are on the map,
+            and your email address &mdash; which is shown partly hidden, as
+            &ldquo;j***@example.com&rdquo;, until they ask for it. That is how a
+            coordinator confirms the people on the map are the neighbours they
+            think they are; confirming you, or withdrawing that, is recorded in
+            the trail above.
           </Definition>
           <Definition term="Anyone, if your coordinator posts an alert somewhere public">
             Once a report is published, your village coordinator can post an

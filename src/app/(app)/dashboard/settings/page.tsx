@@ -102,7 +102,9 @@ export default async function VillageSettingsPage() {
   const residentRows: ResidentRow[] = residents.residents.map((resident) => ({
     id: resident.id,
     fullName: resident.fullName,
-    email: resident.email,
+    // Already `j***@gmail.com` — `listVillageResidents` masks before the row
+    // leaves the server, so no full address is in this page's payload.
+    maskedEmail: resident.maskedEmail,
     role: resident.role,
     // ISO strings — a `Date` does not cross into a Client Component intact.
     verifiedAt: resident.verifiedAt?.toISOString() ?? null,

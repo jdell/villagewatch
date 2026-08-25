@@ -141,3 +141,54 @@ export function initialsOf(name: string | null | undefined): string {
 
   return letters.toUpperCase() || "–";
 }
+
+/**
+ * The fixed stand-in for a masked local part.
+ *
+ * Fixed width on purpose. `j***@gmail.com` for `jane@` and for
+ * `jane.elizabeth.smith@` alike — a mask that grew with the name would leak its
+ * length, which for a village of a few hundred people is a real narrowing.
+ */
+const EMAIL_MASK = "***";
+
+/**
+ * An email address with its local part masked — `j***@gmail.com`.
+ *
+ * The resident list shows this and reveals the full address on request. What it
+ * is for is **incidental** exposure rather than access control: a coordinator
+ * screen-sharing the settings tab at a parish meeting, a screenshot pasted into
+ * a WhatsApp group, somebody reading over a shoulder on a train. The full
+ * address is a deliberate act away for a coordinator who needs it — a data
+ * subject request, or emailing somebody about their report — and the reveal is
+ * a server action, so the unmasked addresses are not sitting in the page for a
+ * screenshot to catch either.
+ *
+ * The domain is kept whole and deliberately. It is not personal data on its own
+ * — `gmail.com` describes nobody — and it is the half a coordinator actually
+ * scans for, because "did they sign up with their work address or their home
+ * one" is the question behind most glances at this column.
+ *
+ * **It fails closed.** Anything this cannot parse as an address returns the bare
+ * mask rather than the input: a value that reached here without an `@` is
+ * already surprising, and echoing it back on the grounds that it did not look
+ * like an email is how an unmasked address ends up on screen.
+ */
+export function maskEmail(email: string | null | undefined): string {
+  const trimmed = email?.trim() ?? "";
+
+  // The *last* `@`, not the first. A quoted local part may legally contain one
+  // (`"a@b"@example.test`), and splitting on the first would treat half the
+  // local part as the domain — printing more of it than the mask hides.
+  const at = trimmed.lastIndexOf("@");
+
+  // No `@`, nothing before it to take an initial from, or nothing after it to
+  // keep. All three fail to the bare mask.
+  if (at <= 0 || at === trimmed.length - 1) return EMAIL_MASK;
+
+  // Spread rather than `[0]`, so an address whose local part starts with an
+  // astral character gives that character back rather than half of a surrogate
+  // pair — which renders as a replacement glyph and identifies nobody.
+  const initial = [...trimmed.slice(0, at)][0] ?? "";
+
+  return `${initial}${EMAIL_MASK}${trimmed.slice(at)}`;
+}
