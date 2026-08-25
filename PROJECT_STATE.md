@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 25 August 2026 · **Repo version:** `v0.1.43` · **Branch:**
-`feat/coordinator-dashboard-redesign` · **Domain:** https://villagewatch.app
+**Last updated:** 25 August 2026 · **Repo version:** `v0.1.44` · **Branch:**
+`feat/email-masking-resident-list` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -19,7 +19,7 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.42` in `package.json` on `main` — `version.yml` released voting, the email transport and the Supabase templates as 0.1.41, then the iPhone safe-area fix (PR #12) as 0.1.42. The map-corners fix bumps it to `v0.1.43` when it next runs |
+| Repo version | `v0.1.44` in `package.json` on `main` — `version.yml` released the map-corners fix as 0.1.43 and the coordinator dashboard redesign (PR #16) as 0.1.44 |
 | Version on screen | expect **v0.1.41** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 14, `20260726161847_init` → `20260823120000_incident_votes`. **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
@@ -34,7 +34,8 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
-| `feat/coordinator-dashboard-redesign` | **In review as a PR.** The coordinator's five tabs — `/dashboard` split into Overview, Queue and Village settings, with `/map` and `/reports` unchanged as the other two. No migration. | Review, merge, then walk the five tabs as a coordinator |
+| `feat/email-masking-resident-list` | **In review as a PR.** One commit: the resident list's email addresses are masked server-side, with a Show button per row. Cut from `main` after PR #16 merged without it. | Review, merge |
+| `feat/coordinator-dashboard-redesign` | Merged as PR #16, 25 August. Released as `v0.1.44`. | Delete |
 | `fix/map-controls-overlap` | Merged as PR #15, 25 August. | Delete |
 | `fix/iphone-safe-area` | Merged as PR #12, 24 August. Released as `v0.1.42`. | Delete |
 | `fix/dashboard-period-picker` | Merged as PR #11, 22 August. | Delete |
@@ -59,8 +60,14 @@ PRs because they were asked for as PRs.
 
 ### The coordinator dashboard, in five tabs — 25 August 2026
 
-`feat/coordinator-dashboard-redesign`, in review. `docs/COORDINATOR_DASHBOARD_REDESIGN.md`
+Merged as PR #16 and released as `v0.1.44`. `docs/COORDINATOR_DASHBOARD_REDESIGN.md`
 is the design doc and was written before the code.
+
+**The email masking on the resident list is not in that release.** It was
+written while #16 was in review, missed the merge, and is
+`feat/email-masking-resident-list` — one commit, cut from `main` afterwards. So
+production shows full email addresses on `/dashboard/settings` until that
+lands.
 
 `/dashboard` was one nine-hundred-line page doing four jobs — figures, the
 review queue, five village settings forms and the invite panel — with the queue,
