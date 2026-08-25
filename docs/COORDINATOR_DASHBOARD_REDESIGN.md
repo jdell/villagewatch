@@ -235,9 +235,32 @@ entry: _"Resident verification has no UI — no way to approve a join request or
 promote someone to `VERIFIED_RESIDENT`."_
 
 The list shows every account in the village: name, email, role, whether they are
-verified, and when they joined. Closed accounts (`deletedAt`) are shown as
-closed rather than hidden, because a coordinator counting their village should
-see the same number the stat card does.
+verified, and when they joined.
+
+**Email addresses are masked** — `j***@gmail.com` — with a Show button per row.
+The masking happens in `listVillageResidents`, on the server, so the page
+carries no full addresses at all; `getResidentEmail` returns one at a time
+behind `revealResidentEmailAction`. That is data minimisation in the only sense
+worth claiming here: a coordinator is entitled to these addresses and can press
+the button as often as they like, so this is not an access control. What it
+answers is *incidental* exposure — a screen-share at a parish meeting, a
+screenshot pasted into a WhatsApp group, a saved page, a HAR file on a bug
+report — which is how a village's contact list actually leaks. Doing the
+masking in the component would have been a line shorter and put all fifty
+addresses in the payload, which is the version that looks the same on screen and
+protects nothing off it.
+
+The reveal writes **no audit row**, deliberately, and it is the audit viewer's
+own argument: a row every time somebody glanced at an address they are entitled
+to would bury `incident.raw_viewed`, which records a coordinator reading a
+resident's unedited words. Those are not the same act and should not be the same
+weight of entry.
+
+**Closed accounts do not appear**, and `villageId` rather than `deletedAt` is
+what decides it: `eraseAccount` nulls both, so a closed account leaves the
+tenant boundary this query is scoped by and drops out without being filtered.
+The component still renders a closed state from `deletedAt` as a backstop for a
+row closed some other way, but in the ordinary case that branch never runs.
 
 **What a coordinator may do is exactly one thing: verify a resident, or undo
 it.** `RESIDENT` ↔ `VERIFIED_RESIDENT`, and nothing else. Specifically:

@@ -1,11 +1,19 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
-import { BadgeCheck, Loader2, UserRound, Users } from "lucide-react";
+import {
+  BadgeCheck,
+  Eye,
+  EyeOff,
+  Loader2,
+  UserRound,
+  Users,
+} from "lucide-react";
 import type { UserRole } from "@/generated/prisma/enums";
 import {
+  revealResidentEmailAction,
   saveResidentRoleAction,
   type ResidentRoleState,
 } from "@/app/(app)/dashboard/actions";
@@ -37,7 +45,16 @@ import { formatDate, initialsOf } from "@/lib/format";
 export type ResidentRow = {
   id: string;
   fullName: string;
-  email: string;
+  /**
+   * `j***@gmail.com`, masked on the server by `listVillageResidents`.
+   *
+   * The full address is deliberately **not** on this type. It arrives one at a
+   * time from `revealResidentEmailAction` when a coordinator presses Show — so
+   * a page of fifty residents carries fifty masks and no addresses, and a
+   * screenshot of this screen is not a screenshot of the village's contact
+   * list. See `getResidentEmail` for what that does and does not buy.
+   */
+  maskedEmail: string;
   role: UserRole;
   /** ISO string — `Date` does not survive the server/client boundary intact. */
   verifiedAt: string | null;
@@ -71,6 +88,99 @@ function RoleButton({ verified }: { verified: boolean }) {
       )}
       {verified ? "Verify" : "Withdraw"}
     </button>
+  );
+}
+
+/**
+ * One resident's email address: masked, and revealed on request.
+ *
+ * A child component with its own `useActionState` rather than one hook at list
+ * level, because the state here is genuinely per row — a coordinator revealing
+ * one address should not put the others into a pending state, and a single hook
+ * would hold one result that every row would then have to filter by id. Same
+ * reasoning as `ModerationCard` owning its own reveal.
+ *
+ * The revealed address is component state and nothing more: navigating away or
+ * refreshing puts the mask back, which is what makes Hide a real control rather
+ * than a decoration. Nothing is persisted, and there is nothing to persist —
+ * the address is a round trip away whenever it is wanted again.
+ */
+function ResidentEmail({
+  residentId,
+  fullName,
+  maskedEmail,
+}: {
+  residentId: string;
+  /** For the button's accessible name — "Show" alone names nobody. */
+  fullName: string;
+  maskedEmail: string;
+}) {
+  const [state, reveal, revealing] = useActionState(revealResidentEmailAction, {
+    email: null,
+    error: null,
+  });
+  const [hidden, setHidden] = useState(false);
+
+  useEffect(() => {
+    if (state.error) toast.error(state.error);
+  }, [state.error]);
+
+  // Revealed once and not since hidden again. Hiding keeps the fetched address
+  // in state rather than discarding it — pressing Show again should not cost a
+  // second round trip for something this browser has already been told.
+  const revealed = state.email;
+  const shown = revealed !== null && !hidden;
+
+  /*
+    A `div`, not the `p` this replaced. It contains a `<form>`, which is flow
+    content — a paragraph may hold only phrasing content, so the HTML parser
+    would close the `p` at the `form` and rebuild a tree React did not render.
+    That is a hydration mismatch, and it is one that only shows up in the
+    server-rendered pass.
+  */
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+      <span className="min-w-0 truncate" title={shown ? revealed : undefined}>
+        {shown ? revealed : maskedEmail}
+      </span>
+
+      {revealed === null ? (
+        <form action={reveal} className="contents">
+          <input type="hidden" name="residentId" value={residentId} />
+          <button
+            type="submit"
+            disabled={revealing}
+            className="inline-flex shrink-0 items-center gap-1 rounded font-medium text-brand-700 transition hover:text-brand-800 disabled:opacity-60"
+          >
+            {revealing ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            ) : (
+              <Eye className="size-3.5" aria-hidden />
+            )}
+            <span aria-hidden>Show</span>
+            <span className="sr-only">
+              Show {fullName}&rsquo;s full email address
+            </span>
+          </button>
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setHidden((current) => !current)}
+          className="inline-flex shrink-0 items-center gap-1 rounded font-medium text-slate-500 transition hover:text-slate-700"
+        >
+          {shown ? (
+            <EyeOff className="size-3.5" aria-hidden />
+          ) : (
+            <Eye className="size-3.5" aria-hidden />
+          )}
+          <span aria-hidden>{shown ? "Hide" : "Show"}</span>
+          <span className="sr-only">
+            {shown ? "Hide" : "Show"} {fullName}&rsquo;s full email address
+          </span>
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -145,9 +255,11 @@ export function ResidentList({
                       />
                     )}
                   </p>
-                  <p className="truncate text-xs text-slate-500">
-                    {resident.email}
-                  </p>
+                  <ResidentEmail
+                    residentId={resident.id}
+                    fullName={resident.fullName}
+                    maskedEmail={resident.maskedEmail}
+                  />
                   <p className="mt-0.5 text-xs text-slate-400">
                     {USER_ROLE_LABELS[resident.role]} · joined{" "}
                     {formatDate(resident.createdAt)}
