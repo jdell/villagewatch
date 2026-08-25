@@ -7,6 +7,7 @@ import {
   BookOpen,
   ClipboardList,
   FileText,
+  Inbox,
   LayoutDashboard,
   LogOut,
   Map,
@@ -16,6 +17,7 @@ import {
   Settings,
   Shield,
   ShieldCheck,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -41,28 +43,56 @@ import {
 const NAV_ITEMS = [
   { href: "/map", label: "Map", icon: Map, tour: "map" },
   { href: "/incidents", label: "Incidents", icon: ClipboardList },
+  /*
+    The five coordinator tabs, in the order a coordinator uses them — see
+    `docs/COORDINATOR_DASHBOARD_REDESIGN.md`. Overview is where they land,
+    Queue is where they spend the time, and the three below it are used
+    progressively less often.
+
+    `requires: "coordinator"` covers the platform administrator who also holds
+    `UserRole.ADMIN` — that role is in `COORDINATOR_ROLES`. An administrator by
+    email alone does not get these links, and should not: a report is one
+    village's data (domain rule 4), and somebody in `ADMIN_EMAILS` with no
+    village has nothing to report on. `requireCoordinator()` on each route says
+    the same thing, and it is the half that enforces it.
+  */
   {
     href: "/dashboard",
-    label: "Dashboard",
+    label: "Overview",
     icon: LayoutDashboard,
     requires: "coordinator",
   },
   /*
-    Below the dashboard, because that is the order they are used in: a
-    coordinator reviews the queue, and then once a week or once a month turns
-    what cleared it into a document for somebody outside the village.
-
-    `requires: "coordinator"` covers the platform administrator who also holds
-    `UserRole.ADMIN` — that role is in `COORDINATOR_ROLES`. An administrator by
-    email alone does not get this link, and should not: a report is one
-    village's data (domain rule 4), and somebody in `ADMIN_EMAILS` with no
-    village has nothing to report on. `requireCoordinator()` on the route says
-    the same thing, and it is the half that enforces it.
+    Second, and it is the one with work behind it. `badge` is what puts the
+    pending count on it: the queue only works if somebody knows it filled up,
+    and a coordinator who has to open a page to find out whether there is
+    anything on it will stop opening it.
+  */
+  {
+    href: "/dashboard/queue",
+    label: "Queue",
+    icon: Inbox,
+    requires: "coordinator",
+    badge: "pending",
+  },
+  /*
+    Then the documents: once a week or once a month a coordinator turns what
+    cleared the queue into something for somebody outside the village.
   */
   {
     href: "/reports",
     label: "Reports",
     icon: FileText,
+    requires: "coordinator",
+  },
+  /*
+    Village settings — the four decisions that apply to everyone, the invite and
+    the resident list. Below the daily work because most of it is set once.
+  */
+  {
+    href: "/dashboard/settings",
+    label: "Village settings",
+    icon: SlidersHorizontal,
     requires: "coordinator",
   },
   /*
@@ -135,6 +165,20 @@ export type AppShellUser = {
    * draw one link would be the wrong trade twice over.
    */
   isAdmin: boolean;
+  /**
+   * How many reports are waiting for review, for the badge on the Queue item.
+   *
+   * Computed in the layout for the same reason `isAdmin` is: this is a Client
+   * Component and the count is a database read. Null for a resident and for a
+   * coordinator with no village — the badge is absent rather than zero, because
+   * a "0" beside a navigation item reads as a thing to go and look at.
+   *
+   * It is a count of `PENDING_REVIEW` in the village, all time. See the same
+   * decision on the Overview tab's stat card: a badge bounded by a period a
+   * coordinator happened to select would be the one place in the app that could
+   * say the work is done when it is not.
+   */
+  pendingCount: number | null;
 };
 
 export function AppShell({
@@ -155,8 +199,33 @@ export function AppShell({
     (item) => !("requires" in item) || isCoordinator,
   );
 
+  // Absent rather than zero: a badge reading "0" beside a navigation item reads
+  // as a thing to go and look at, which is the opposite of what it means.
+  const pendingBadge =
+    user.pendingCount !== null && user.pendingCount > 0
+      ? user.pendingCount
+      : null;
+
+  /*
+    The *longest* matching prefix, not every matching one.
+
+    The coordinator tabs are nested under `/dashboard`, so a plain
+    `startsWith` lights up Overview at the same time as Queue, Village settings,
+    Compliance and the Guide — five highlighted rows and no way to tell which
+    page you are on. Working out the best match once and comparing against it
+    keeps exactly one row current, and it does the right thing for the pages
+    with no nav item of their own: `/dashboard/audit` falls back to Overview,
+    which is where its link is.
+  */
+  const activeHref = [...NAV_ITEMS, ...ADMIN_ITEMS]
+    .map((item) => item.href as string)
+    .filter(
+      (href) => pathname === href || pathname.startsWith(`${href}/`),
+    )
+    .sort((a, b) => b.length - a.length)[0];
+
   function isActive(href: string) {
-    return pathname === href || pathname.startsWith(`${href}/`);
+    return href === activeHref;
   }
 
   /*
@@ -253,7 +322,21 @@ export function AppShell({
                   className={linkClass(item.href)}
                 >
                   <item.icon className="size-5 shrink-0" aria-hidden />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {/*
+                    Only where there is something waiting. The count is in the
+                    accessible name rather than left as a bare number beside a
+                    label — "Queue 3" read aloud is ambiguous in a way "3
+                    waiting for review" is not.
+                  */}
+                  {"badge" in item && pendingBadge !== null && (
+                    <span className="shrink-0 rounded-full bg-amber-400 px-2 py-0.5 text-xs font-semibold tabular-nums text-amber-950">
+                      <span aria-hidden>{pendingBadge}</span>
+                      <span className="sr-only">
+                        {pendingBadge} waiting for review
+                      </span>
+                    </span>
+                  )}
                 </Link>
               </li>
             ))}

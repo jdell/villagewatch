@@ -17,6 +17,7 @@ import {
   getVillageMode,
   getVillageParishCouncil,
   getVillagePrivacyLevel,
+  setResidentRole,
   setVillageParishCouncil,
   setVillagePrivacyLevel,
 } from "@/lib/villages";
@@ -28,6 +29,7 @@ import {
   villageChannelFormSchema,
   villageParishCouncilFormSchema,
   villagePrivacyLevelFormSchema,
+  villageResidentRoleFormSchema,
 } from "@/lib/validations";
 
 /**
@@ -63,7 +65,7 @@ export async function moderateIncidentAction(
   _previous: ModerationState,
   formData: FormData,
 ): Promise<ModerationState> {
-  const session = await requireCoordinator("/dashboard");
+  const session = await requireCoordinator("/dashboard/queue");
   const villageId = session.profile?.villageId;
 
   if (!villageId) {
@@ -92,6 +94,9 @@ export async function moderateIncidentAction(
 
   // The queue, the list and the map all change shape when a report is
   // published, and the detail page shows a different set of actions.
+  // The queue loses the card, and the Overview tab's "waiting for review"
+  // and "published" cards both move.
+  revalidatePath("/dashboard/queue");
   revalidatePath("/dashboard");
   revalidatePath("/incidents");
   revalidatePath("/map");
@@ -175,7 +180,7 @@ export async function saveAutoApproveAction(
   _previous: AutoApproveState,
   formData: FormData,
 ): Promise<AutoApproveState> {
-  const session = await requireCoordinator("/dashboard");
+  const session = await requireCoordinator("/dashboard/settings");
   const villageId = session.profile?.villageId;
 
   if (!villageId || !process.env.DATABASE_URL) {
@@ -227,7 +232,9 @@ export async function saveAutoApproveAction(
     console.error("Could not audit the auto-approve change for %s", villageId, cause);
   }
 
-  revalidatePath("/dashboard");
+  // The switch itself, and the notice the queue renders in place of a queue.
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/queue");
 
   return {
     ok: true,
@@ -283,7 +290,7 @@ export async function saveParishCouncilAction(
   _previous: ParishCouncilState,
   formData: FormData,
 ): Promise<ParishCouncilState> {
-  const session = await requireCoordinator("/dashboard");
+  const session = await requireCoordinator("/dashboard/settings");
   const villageId = session.profile?.villageId;
 
   if (!villageId || !process.env.DATABASE_URL) {
@@ -365,7 +372,7 @@ export async function saveParishCouncilAction(
   // `/reports` prints it in both documents' footers and warns while it is
   // unset; `/incidents/[id]` takes the same read for a coordinator's share
   // panel on a published report.
-  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/settings");
   revalidatePath("/reports");
 
   return {
@@ -411,7 +418,7 @@ export async function savePrivacyLevelAction(
   _previous: PrivacyLevelState,
   formData: FormData,
 ): Promise<PrivacyLevelState> {
-  const session = await requireCoordinator("/dashboard");
+  const session = await requireCoordinator("/dashboard/settings");
   const villageId = session.profile?.villageId;
 
   if (!villageId || !process.env.DATABASE_URL) {
@@ -471,7 +478,7 @@ export async function savePrivacyLevelAction(
 
   // The wizard reads the column server-side on every render of
   // `/incidents/new`, so the next reporter to open it gets the new level.
-  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/settings");
   revalidatePath("/incidents/new");
 
   return {
@@ -508,7 +515,7 @@ export async function saveChannelSettingsAction(
   _previous: ChannelSettingsState,
   formData: FormData,
 ): Promise<ChannelSettingsState> {
-  const session = await requireCoordinator("/dashboard");
+  const session = await requireCoordinator("/dashboard/settings");
   const villageId = session.profile?.villageId;
 
   if (!villageId || !process.env.DATABASE_URL) {
@@ -582,7 +589,10 @@ export async function saveChannelSettingsAction(
 
   // `/settings` renders the follow link from these columns for every resident
   // of the village, and the dashboard renders the form itself.
-  revalidatePath("/dashboard");
+  // The form, the resident-facing follow link, and the "Open WhatsApp"
+  // button on a report the coordinator has just approved.
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/queue");
   revalidatePath("/settings");
 
   return {
@@ -591,4 +601,62 @@ export async function saveChannelSettingsAction(
       ? "Channel saved. Published alerts at or above your threshold will be posted."
       : "Channel saved. Posting is off — residents can still follow the link.",
   };
+}
+
+export type ResidentRoleState = {
+  ok: boolean;
+  message: string;
+};
+
+/**
+ * A coordinator confirming that somebody actually lives in the village, or
+ * withdrawing that confirmation.
+ *
+ * The rules are all in `setResidentRole` rather than here, because this is the
+ * third place in the codebase that writes `User.role` and the first that is not
+ * platform-admin only. What that function refuses — anybody holding coordinator
+ * access, the caller themselves, a resident of another village, a closed
+ * account, and any role outside `RESIDENT_MANAGED_ROLES` — is the entire
+ * argument for the control existing, and rules that live at a call site are
+ * rules the next call site does not have.
+ *
+ * The form posts an intent rather than a role (domain rule 5). There is no
+ * shape of request this accepts that can ask for `COORDINATOR`: raising
+ * somebody into that role is still `appointCoordinator` or an approved
+ * application, both platform-admin only.
+ */
+export async function saveResidentRoleAction(
+  _previous: ResidentRoleState,
+  formData: FormData,
+): Promise<ResidentRoleState> {
+  const session = await requireCoordinator("/dashboard/settings");
+  const villageId = session.profile?.villageId;
+
+  if (!villageId || !process.env.DATABASE_URL) {
+    return { ok: false, message: "You are not attached to a village." };
+  }
+
+  const parsed = villageResidentRoleFormSchema.safeParse({
+    residentId: formData.get("residentId"),
+    // Posted by the button that was pressed, so it is always present — the
+    // union handles the absent case the way the other village forms do.
+    verified: formData.get("verified") ?? "",
+  });
+
+  if (!parsed.success) {
+    return { ok: false, message: "That resident could not be found." };
+  }
+
+  const result = await setResidentRole({
+    session,
+    villageId,
+    residentId: parsed.data.residentId,
+    verified: parsed.data.verified,
+  });
+
+  if (!result.ok) return { ok: false, message: result.error };
+
+  revalidatePath("/dashboard/settings");
+
+  return { ok: true, message: result.message };
 }

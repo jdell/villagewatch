@@ -107,7 +107,8 @@ const STAGE_LABELS: Record<PendingItem["stage"], string> = {
  * How the reporter's one remaining choice is offered.
  *
  * The village decides how faces are covered — `Village.privacyLevel`, set by a
- * coordinator on `/dashboard`. What is left to the reporter is the direction
+ * coordinator on `/dashboard/settings`. What is left to the reporter is the
+ * direction
  * that cannot go wrong: redacting instead, which is the strongest option on the
  * scale and always available. There is no control here that covers a face *less*
  * than the village asked for.

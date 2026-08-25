@@ -111,6 +111,7 @@ export async function acceptComplianceAction(
   // read the same two columns, so all three are stale the moment this returns.
   revalidatePath("/dashboard/compliance");
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/settings");
   revalidatePath("/incidents/new");
 
   return {
@@ -170,6 +171,7 @@ export async function setVillageModeAction(
 
   revalidatePath("/dashboard/compliance");
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/settings");
   revalidatePath("/incidents/new");
 
   return {

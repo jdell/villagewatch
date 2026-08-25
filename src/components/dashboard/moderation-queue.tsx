@@ -13,7 +13,7 @@ import {
  * The moderation queue, and the alerts for what has just come out of it.
  *
  * It exists for one reason: **state has to outlive the card that produced it.**
- * `moderateIncidentAction` revalidates `/dashboard`, so an approved report
+ * `moderateIncidentAction` revalidates `/dashboard/queue`, so an approved report
  * leaves `PENDING_REVIEW` and its `ModerationCard` unmounts on the very next
  * render. The WhatsApp alert that approval produced would go with it, which
  * would be a copy button that flashes past on the way to disappearing.

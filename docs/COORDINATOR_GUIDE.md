@@ -67,6 +67,9 @@ also who the Information Commissioner writes to.
 - See every report filed in your village, including ones waiting for review and
   ones that were rejected.
 - Publish a report to the village, or reject it.
+- Correct a report while it is still waiting for review — a title or a landmark
+  that gives somebody away is better fixed than rejected. Once it is published,
+  nobody rewrites it.
 - Read a reporter's original wording — the words they typed before the rewrite.
   Every time you do this it is recorded.
 - Mark a report resolved, or archive an old one.
@@ -77,6 +80,8 @@ also who the Information Commissioner writes to.
   spreadsheet of the village's reports.
 - Hand out the village's invite — a link, a code and a QR code you can print
   and pin to the noticeboard.
+- See everybody who has joined, and record that you know a resident really lives
+  in the village. Every change is recorded.
 - See the Home Office's own recorded-crime figures for the area beside your
   village's reports, and your neighbourhood policing team's contact details.
 - See which reports the village itself rated more serious than they look.
@@ -88,8 +93,12 @@ also who the Information Commissioner writes to.
   your village. There is no view across villages and no way to ask for one.
 - **Approve a resident's application to become a coordinator.** Those go to the
   platform administrator, not to you. See "Managing your community".
-- **Change your own role, or anybody else's.** Roles are set by the system when
-  an application is approved.
+- **Make somebody a coordinator, or take it away.** You can record that a
+  resident is verified — that they really live in the village — and withdraw it
+  again. That is the whole of it: coordinator access is granted only when an
+  application is approved by the platform administrator, and removed the same
+  way. You cannot change another coordinator's role, and you cannot change your
+  own.
 - **Change or delete the audit trail.** Nothing can, including us. That is the
   point of it.
 - **Un-accept a compliance document, or move a village back off the council
@@ -108,7 +117,7 @@ puts residents in your village.
 
 ### 1. Accept the compliance documents
 
-Go to **Compliance** in the sidebar, or Dashboard then Compliance.
+Go to **Compliance** in the sidebar.
 
 What you see there depends on how your village is run, and most villages get the
 first of these two.
@@ -192,9 +201,10 @@ rather than switching it back.
 
 ### 2. Set the name of whoever is answerable
 
-Go to **Dashboard** and find the data controller field in Village Settings. It
-is headed **Parish council** if a council runs your village and **Data
-controller** if one does not, but it is the same field either way.
+Go to **Village settings** in the sidebar and find the data controller field
+under Village profile. It is headed **Parish council** if a council runs your
+village and **Data controller** if one does not, but it is the same field either
+way.
 
 If a council runs your village, type its full legal name exactly as it appears
 on its own letterhead — "Histon and Impington Parish Council", not "Histon PC".
@@ -215,8 +225,8 @@ Do this before the first report is filed, not after.
 
 ### 3. Choose how strongly faces are covered
 
-Also on the Dashboard. Four options, and there is a small preview of each one
-next to it.
+Also in **Village settings**, under Channels and privacy. Four options, and
+there is a small preview of each one next to it.
 
 | Level | What it does | When to use it |
 | --- | --- | --- |
@@ -253,8 +263,8 @@ village does not have one, you create it inside WhatsApp itself in about a
 minute.
 
 Once you have one, open WhatsApp, go to the channel, and copy its invite link.
-Paste that link into the WhatsApp Channel field on the Dashboard. That is all
-you have to do — the app works the rest out from the link.
+Paste that link into the WhatsApp Channel field in **Village settings**. That is
+all you have to do — the app works the rest out from the link.
 
 What that gets you:
 
@@ -322,8 +332,8 @@ against it.
 
 Nothing above puts a single resident in your village. This does.
 
-At the foot of the Dashboard there is an invite panel holding four versions of
-the same invitation, all built from the same link so they cannot come apart:
+**Village settings**, under Residents, holds an invite panel with four versions
+of the same invitation, all built from the same link so they cannot come apart:
 
 - **The link.** `villagewatch.app/join/your-village?code=XXXXXX`. Somebody who
   opens it sees your village's name and what they are joining before they are
@@ -352,12 +362,25 @@ See "How residents join" for where to put all this.
 
 ### The moderation queue
 
-If auto-approve is off, this is the daily work. It is on the Dashboard, under
-the figures.
+If auto-approve is off, this is the daily work, and it has its own tab: **Queue**
+in the sidebar. The number beside it is how many reports are waiting, so you can
+see there is work without opening the page.
 
 Each report in the queue shows you the title, the anonymised description, the
-type and severity, when and roughly where it happened, and any photo. That is
-enough to make the decision in most cases.
+type and severity, when and roughly where it happened, who filed it and any
+photo. That is enough to make the decision in most cases.
+
+There are three buttons on each one. **Approve & alert** publishes it. **Reject**
+turns it down, with a note back to the reporter if you add one. **Edit** lets you
+correct it before it goes out — a landmark that names a house, a title that gives
+somebody away — which is better than rejecting a report that is fundamentally
+fine. You can only edit a report that is still in the queue: once it is
+published the village has read it, and nobody rewrites it after that. Your edit
+is recorded in the audit trail like everything else.
+
+Underneath the queue there is a collapsed list of what you have already
+published, for the one question the queue cannot answer — whether something has
+already been through it.
 
 Read it as a resident would. The question is not "is this true" — you often
 cannot know — but "should the village see this, in these words".
@@ -465,12 +488,12 @@ meeting.
 
 ### The period, and the three screens that share it
 
-The Dashboard, the incident list and the map each have a period control at the
-top: last 7 days, last 30 days, and so on, with **Custom range** opening a
-calendar if you want two specific dates.
+The Overview tab, the incident list and the map each have a period control at
+the top: last 7 days, last 30 days, last 90 days, last 12 months, with **Custom
+range** opening a calendar if you want two specific dates.
 
 It is one control governing everything on the screen below it. Change the period
-on the Dashboard and the figures, the breakdowns, the hotspots and the official
+on Overview and the figures, the breakdowns, the hotspots and the official
 police figures all move together — there is no card quietly showing a different
 window from the one you selected.
 
@@ -482,12 +505,26 @@ The Dashboard deliberately has no "all time" option. Every figure on it is a
 comparison against the period immediately before, and there is no period before
 all time.
 
-### The Dashboard figures
+### The Overview figures
 
-**Two numbers at the top.** How many reports were published in the period, and
-how many of them were High or Critical. Each carries its change against the
-preceding period of the same length — thirty days against the thirty before it —
-so "eleven reports" becomes "eleven reports, up from four".
+**Four numbers at the top**, and only two of them follow the period control.
+
+**Waiting for review** is every report in your queue, whatever period is
+selected, and it says so on its own label. That is deliberate: a report filed in
+March that nobody has read is still waiting today, and a figure that fell to zero
+because you happened to pick "Last 7 days" would be the one number on the screen
+that could tell you the work was done when it was not.
+
+**Published** is how many reports went out in the period, with its change against
+the preceding period of the same length — thirty days against the thirty before
+it — so "eleven reports" becomes "eleven reports, up from four".
+
+**Patterns detected** is how many times the Sunday digest flagged a cluster
+during the period. **Active residents** is how many accounts in your village are
+still open, which is a state rather than a rate and so has no period either.
+
+How many reports were High or Critical is in the **How serious** breakdown just
+below, which is where the detail was anyway.
 
 **Two breakdowns.** *What was reported* by category, and *How serious* by
 severity. Plain bars, no chart library, and they print.
@@ -532,7 +569,7 @@ question with consequences at the school gate, and the answer is deliberately
 not available. If a resident closes their account or deletes a report, the votes
 attached to it go with it.
 
-**What it is for** is the panel on your Dashboard. It lists the reports your
+**What it is for** is the panel on Overview. It lists the reports your
 village actually voted on, and you can order it three ways:
 
 | Ordering | What it shows you |
@@ -549,7 +586,7 @@ Read it as what it is: a show of hands, not evidence. A quiet lane with three
 elderly residents will never out-vote a busy close with forty, and the "rated
 less serious" list is at least as likely to be telling you that a report was
 badly worded as that it was overstated. It is a prompt to go and look, and it is
-a genuinely good one — it is the only thing on the Dashboard that tells you what
+a genuinely good one — it is the only thing on Overview that tells you what
 your village is worried about rather than what it filed.
 
 The period report you send your PCSO carries a **Most concerning to residents**
@@ -604,7 +641,8 @@ quote to a PCSO, because it is specific, dated and bounded.
 Every Sunday morning the service reads the week's published reports for your
 village, writes a summary of them, flags anything that looks like a cluster, and
 sends it to the village's coordinators as a **phone notification**. Tapping it
-opens the Dashboard.
+opens Overview. Every summary it has ever written is kept, and they are listed
+under the report on the **Reports** tab.
 
 Three things about it:
 
@@ -623,7 +661,7 @@ if there is something in it, send your PCSO the period report on the Monday.
 
 ### Police recorded crime
 
-Underneath your village's own figures, the Dashboard shows the **Home Office's**
+Underneath your village's own figures, Overview shows the **Home Office's**
 figures for the same months — every crime recorded by your force within about a
 mile of the village centre, published as open data at data.police.uk.
 
@@ -672,9 +710,11 @@ it yet. Tell us and we will look.
 
 ### The audit trail
 
-**Dashboard**, then **Audit trail**. Every action any coordinator has taken in
+**Overview**, then **Audit trail**. Every action any coordinator has taken in
 your village, newest first, filterable by what kind of action it was, and
-paginated.
+paginated. The last few entries are on Overview itself, under **Recent
+activity**, so you can see what the other coordinators have been doing without
+opening the trail.
 
 What is in it: reports filed, published, rejected, resolved, archived and
 edited; every reveal of a reporter's original wording; every village setting
@@ -751,7 +791,7 @@ figures is not.
 
 ### The spreadsheet
 
-On the Dashboard, **Export CSV** downloads your village's reports as a
+On Overview, **Export CSV** downloads your village's reports as a
 spreadsheet: reference, date, type, severity, status, the anonymised
 description, the approximate location description.
 
@@ -782,8 +822,8 @@ village rather than having simply found it. They can also arrive by scanning
 your QR code or following your invite link, in which case the village and the
 code are already filled in and there is nothing for them to type.
 
-Everything you need to do that is the invite panel at the foot of the
-Dashboard — see "Invite the village" in Getting started.
+Everything you need to do that is the invite panel in **Village settings** —
+see "Invite the village" in Getting started.
 
 Get the address and the code to residents the way you already reach them: the
 parish newsletter, the noticeboard, the existing WhatsApp group, the annual
@@ -812,6 +852,39 @@ Run it at an event where people already are — the annual meeting, the fete, th
 Christmas fair — with the QR sheet on the table and your phone in your hand.
 Twenty people who joined together talk to each other about it afterwards; twenty
 people who joined over four months do not.
+
+### Verifying residents
+
+**Village settings**, under Residents, lists everybody who has joined: their
+name, their email, when they joined, and how many reports of theirs are on the
+map. Anyone still waiting to be verified is at the top, because that is the
+reason to open the list.
+
+**Verify** records that you know this person lives in the village. That is all
+it does — it changes nothing about what they can see, what they can file, or
+what reaches their phone. It is a note from you, in the one place a second
+coordinator will look, and it is what stops two of you separately wondering
+about the same unfamiliar name. **Withdraw** takes it back if you got it wrong
+or somebody has moved away.
+
+Verify on the same basis you would vouch for somebody at a parish meeting: you
+know the household, or somebody you trust does. A name you do not recognise is
+not a problem to solve today — the join code already means somebody handed them
+the invitation. Leave it unverified and ask around.
+
+Two things you cannot do from this list, both deliberately:
+
+- **You cannot make somebody a coordinator.** That goes through an application
+  they make and we approve — see below. A village where any coordinator could
+  appoint the next one is a village one bad afternoon away from having a
+  coordinator nobody agreed to.
+- **You cannot change another coordinator, or yourself.** If a coordinator needs
+  removing, that is a conversation with us. Two coordinators who have fallen out
+  must not be able to remove each other, and the safest way to guarantee that is
+  for neither of them to have the button.
+
+Every change is recorded in the audit trail, both directions, with your name
+against it.
 
 ### Coordinator applications
 
@@ -978,7 +1051,7 @@ a pattern — several similar reports close together in space and time. Skim it,
 and if there is something in it, send the period report to your police contact
 on the Monday. Regular, boring, well-formatted contact with a named officer is
 worth far more than an urgent email once a year. The officer's name and address
-are on the Dashboard — see "Police recorded crime".
+are on Overview — see "Police recorded crime".
 
 **Take both sets of figures to the parish meeting, never one.** Somebody will
 ask whether crime is up. Your own figures cannot answer that on their own,

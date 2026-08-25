@@ -57,7 +57,7 @@ export function AutoApproveForm({ value }: { value: boolean }) {
   }, [state]);
 
   // Both derived from the `value` prop rather than from a second piece of
-  // state. The action revalidates `/dashboard`, so a successful save
+  // state. The action revalidates `/dashboard/settings`, so a successful save
   // re-renders this component with the stored value updated — which is the
   // only thing that should decide whether there is anything left to save, and
   // whether ticking the box is still a change worth warning about.

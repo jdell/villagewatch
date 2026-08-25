@@ -1,13 +1,16 @@
 import { randomInt } from "node:crypto";
-import type { VillageStatus } from "@/generated/prisma/enums";
+import type { UserRole, VillageStatus } from "@/generated/prisma/enums";
 import type { Session } from "@/lib/auth";
 import { isPlatformAdmin } from "@/lib/auth";
+import { auditContext } from "@/lib/audit-context";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_PRIVACY_LEVEL,
   DEFAULT_VILLAGE_MODE,
   JOIN_CODE_LENGTH,
+  PUBLIC_INCIDENT_STATUSES,
   canApplyForCoordinator,
+  isCoordinatorRole,
   resolvePrivacyLevel,
   resolveVillageMode,
   type PrivacyLevel,
@@ -894,4 +897,271 @@ export async function setVillagePrivacyLevel(
     );
     return { ok: false, reason: "failed" };
   }
+}
+
+// ---------------------------------------------------------------------------
+// The village's residents
+// ---------------------------------------------------------------------------
+//
+// The list a coordinator reads on `/dashboard/settings`, and the one change
+// they are allowed to make to it.
+//
+// This is the third place in the codebase that writes `User.role`, and the
+// first that is not platform-admin only — which is why the rules below are in
+// this module rather than at the call site. The other two are
+// `appointCoordinator` above and `decideCoordinatorRequest` in
+// `coordinator-requests.ts`, and both of those *raise* somebody into
+// `COORDINATOR`. This one deliberately cannot: it moves a resident between
+// `RESIDENT` and `VERIFIED_RESIDENT` and refuses everything else.
+//
+// The distinction is the whole safety argument for putting the control on a
+// coordinator's screen at all. A coordinator who could mint coordinators would
+// make the platform-admin review of an application decorative — see
+// `CLAUDE.md`, which says a third route to that role would be one too many.
+
+/**
+ * The two roles a coordinator may move a resident between.
+ *
+ * Written out rather than derived from `COORDINATOR_APPLICANT_USER_ROLES`,
+ * which happens to hold the same pair today for an unrelated reason — it is the
+ * set of roles that may still *apply* for coordinator access. Sharing the
+ * constant would mean a change to who can apply silently changing who a
+ * coordinator can verify.
+ */
+export const RESIDENT_MANAGED_ROLES = [
+  "RESIDENT",
+  "VERIFIED_RESIDENT",
+] as const satisfies readonly UserRole[];
+
+/** Whether this role is one a coordinator may change from the resident list. */
+export function isManagedResidentRole(
+  role: UserRole | null | undefined,
+): boolean {
+  return role !== null && role !== undefined
+    ? (RESIDENT_MANAGED_ROLES as readonly UserRole[]).includes(role)
+    : false;
+}
+
+/** One row of the resident list. */
+export type VillageResident = {
+  id: string;
+  fullName: string;
+  email: string;
+  role: UserRole;
+  verifiedAt: Date | null;
+  createdAt: Date;
+  /** Set when the resident closed their own account — see `src/lib/erasure.ts`. */
+  deletedAt: Date | null;
+  /** How many reports they have filed that are still on the map. */
+  publishedReports: number;
+};
+
+export type VillageResidentList = {
+  residents: VillageResident[];
+  /** Every account in the village, including any beyond `RESIDENT_LIST_SIZE`. */
+  total: number;
+};
+
+/**
+ * Who is in this village.
+ *
+ * Closed accounts are listed rather than filtered out, marked as closed. A
+ * coordinator counting their village should see the same number the Overview
+ * tab's stat card counts, and an account that vanished from a list without
+ * explanation is the kind of thing somebody reports as a bug.
+ *
+ * `homeLat`/`homeLng`, `phone` and `addressLine` are deliberately not selected.
+ * This is a membership list, not a directory: none of the three is needed to
+ * verify that somebody lives in the village — that is a judgement the
+ * coordinator makes off their own knowledge of the place — and a home location
+ * is the one column here that would let one resident locate another.
+ */
+export async function listVillageResidents(
+  villageId: string,
+  take: number,
+): Promise<VillageResidentList> {
+  if (!process.env.DATABASE_URL) return { residents: [], total: 0 };
+
+  const [rows, total] = await Promise.all([
+    prisma.user.findMany({
+      where: { villageId },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        verifiedAt: true,
+        createdAt: true,
+        deletedAt: true,
+        _count: {
+          select: {
+            reportedIncidents: {
+              where: { status: { in: [...PUBLIC_INCIDENT_STATUSES] } },
+            },
+          },
+        },
+      },
+      /*
+        Unverified first, then newest, which is the order the list is worked in:
+        the reason a coordinator opens it is that somebody has joined and is
+        waiting to be confirmed. Verified residents sort below because there is
+        nothing to do to them.
+      */
+      orderBy: [{ verifiedAt: "asc" }, { createdAt: "desc" }],
+      take,
+    }),
+    prisma.user.count({ where: { villageId } }),
+  ]);
+
+  return {
+    residents: rows.map((row) => ({
+      id: row.id,
+      fullName: row.fullName,
+      email: row.email,
+      role: row.role,
+      verifiedAt: row.verifiedAt,
+      createdAt: row.createdAt,
+      deletedAt: row.deletedAt,
+      publishedReports: row._count.reportedIncidents,
+    })),
+    total,
+  };
+}
+
+/**
+ * Verify a resident, or withdraw the verification.
+ *
+ * Five refusals, and each one is load-bearing:
+ *
+ * 1. **Not a coordinator of this village.** The caller's village comes from
+ *    their session profile and the target is matched on it (domain rule 4), so
+ *    a coordinator cannot reach into a neighbouring parish.
+ * 2. **Not yourself.** A coordinator is verified already, so this costs nothing
+ *    real — what it stops is a coordinator writing `RESIDENT` over their own
+ *    row and demoting themselves out of the page they are standing on.
+ * 3. **Not somebody who already holds coordinator access.** Two coordinators
+ *    who fell out must not be able to remove each other, and the route that
+ *    granted the access is the route that should take it away.
+ * 4. **Not a closed account.** The row is a tombstone (UK GDPR Article 17);
+ *    changing the role on one would be editing a record of somebody who has
+ *    left.
+ * 5. **Only the two roles in `RESIDENT_MANAGED_ROLES`.** The caller passes an
+ *    intent, and the role written is picked from that constant here — never
+ *    taken from a payload (domain rule 5). The `verified` parameter is a
+ *    boolean for exactly that reason: there is no shape of request that can ask
+ *    for `COORDINATOR`.
+ *
+ * `verifiedAt`/`verifiedById` follow the role in both directions. That differs
+ * from `appointCoordinator`, which fills them only when empty and never clears
+ * them — there, verification is a side effect of a different decision and an
+ * existing one is somebody else's record; here it *is* the decision.
+ */
+export async function setResidentRole(input: {
+  session: Session;
+  villageId: string;
+  residentId: string;
+  verified: boolean;
+}): Promise<VillageOutcome> {
+  const { session, villageId, residentId, verified } = input;
+
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "The database is not configured." };
+  }
+
+  if (!isCoordinatorRole(session.profile?.role)) {
+    return {
+      ok: false,
+      error: "Only a village coordinator can change that.",
+    };
+  }
+
+  if (residentId === session.user.id) {
+    return { ok: false, error: "You cannot change your own role." };
+  }
+
+  const resident = await prisma.user.findFirst({
+    // The village in the predicate rather than checked afterwards: this is the
+    // tenant boundary, and a resident of another village should be
+    // indistinguishable from one who does not exist.
+    where: { id: residentId, villageId },
+    select: {
+      id: true,
+      fullName: true,
+      role: true,
+      verifiedAt: true,
+      deletedAt: true,
+    },
+  });
+
+  if (!resident) {
+    return { ok: false, error: "That resident is not in your village." };
+  }
+
+  if (resident.deletedAt) {
+    return {
+      ok: false,
+      error: `${resident.fullName} has closed their account.`,
+    };
+  }
+
+  if (!isManagedResidentRole(resident.role)) {
+    return {
+      ok: false,
+      error: `${resident.fullName} holds coordinator access, which is granted and removed by a platform administrator. Contact them instead.`,
+    };
+  }
+
+  const role: UserRole = verified ? "VERIFIED_RESIDENT" : "RESIDENT";
+
+  if (resident.role === role) {
+    return {
+      ok: true,
+      message: `${resident.fullName} is already ${verified ? "verified" : "unverified"}.`,
+    };
+  }
+
+  const now = new Date();
+
+  await prisma.user.update({
+    where: { id: resident.id },
+    data: {
+      role,
+      verifiedAt: verified ? (resident.verifiedAt ?? now) : null,
+      verifiedById: verified ? session.user.id : null,
+    },
+  });
+
+  // `/privacy` §2 promises privileged actions are recorded "including who did
+  // it, when, and from what IP address and browser". This is called from a
+  // server action, which has no `request` to read those off — see
+  // `auditContext`, which never throws.
+  const context = await auditContext();
+
+  await prisma.auditLog.create({
+    data: {
+      actorId: session.user.id,
+      actorEmail: session.user.email,
+      actorRole: session.profile?.role,
+      villageId,
+      action: "village.resident_role_changed",
+      entityType: "User",
+      entityId: resident.id,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      // Both roles, and neither is personal data — every coordinator in the
+      // village can read both on the screen the change was made from. The
+      // resident's name and email are deliberately absent: `entityId` resolves
+      // to the row, and the trail is readable by every coordinator in the
+      // village for as long as the village exists.
+      before: { role: resident.role },
+      after: { role },
+    },
+  });
+
+  return {
+    ok: true,
+    message: verified
+      ? `${resident.fullName} is now a verified resident.`
+      : `${resident.fullName}'s verification has been withdrawn.`,
+  };
 }

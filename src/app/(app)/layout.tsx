@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { isPlatformAdmin, requireSession } from "@/lib/auth";
+import { isCoordinatorRole } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -49,13 +50,31 @@ export default async function AppLayout({
 
   const profile = session.profile;
 
-  const village =
+  const coordinator = isCoordinatorRole(profile?.role);
+
+  /*
+    The village's name for the sidebar footer, and — for a coordinator only —
+    how many reports are waiting for review, for the badge on the Queue item.
+
+    The count is gated on the role rather than fetched for everybody: a resident
+    has no Queue item to badge, and `PENDING_REVIEW` is a moderation state they
+    are not shown (domain rule 6). It is one indexed count on every
+    authenticated render for the handful of people who can act on it, which is
+    the price of the queue being visible without opening it.
+  */
+  const [village, pendingCount] = await Promise.all([
     profile?.villageId && process.env.DATABASE_URL
-      ? await prisma.village.findUnique({
+      ? prisma.village.findUnique({
           where: { id: profile.villageId },
           select: { name: true },
         })
-      : null;
+      : Promise.resolve(null),
+    coordinator && profile?.villageId && process.env.DATABASE_URL
+      ? prisma.incident.count({
+          where: { villageId: profile.villageId, status: "PENDING_REVIEW" },
+        })
+      : Promise.resolve(null),
+  ]);
 
   return (
     <AppShell
@@ -72,6 +91,8 @@ export default async function AppLayout({
         // Decided here rather than in the shell: `ADMIN_EMAILS` is server-only
         // and a Client Component cannot read it.
         isAdmin: isPlatformAdmin(session),
+        // Same reason, different variable: a Client Component cannot query.
+        pendingCount,
       }}
     >
       {children}

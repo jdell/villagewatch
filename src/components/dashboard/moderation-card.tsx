@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
-import { Check, Eye, Loader2, Sparkles, X } from "lucide-react";
+import { Check, Eye, Loader2, Pencil, Sparkles, X } from "lucide-react";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -27,7 +27,7 @@ import {
  * not a column on the page's query.
  *
  * Approving hands the WhatsApp alert **upwards** rather than rendering it here.
- * `moderateIncidentAction` revalidates `/dashboard`, the report leaves
+ * `moderateIncidentAction` revalidates `/dashboard/queue`, the report leaves
  * `PENDING_REVIEW`, and this card is unmounted with the queue it was in — so an
  * alert panel rendered inside it would appear and vanish in the same frame. It
  * goes to `ModerationQueue`, which survives the re-render.
@@ -45,6 +45,16 @@ export type QueuedIncident = {
   occurredAt: string;
   reportedAt: string;
   reporterName: string | null;
+  /**
+   * The reporter's initials, computed on the server by `initialsOf` in
+   * `src/lib/format.ts`.
+   *
+   * Null for an anonymous report, where the chip renders a dash rather than the
+   * initials of nothing. Passed in rather than derived here so one resident
+   * cannot end up with two different sets of initials on two screens — the
+   * resident list uses the same function.
+   */
+  reporterInitials: string | null;
   anonymized: boolean;
   tags: readonly string[];
   mediaCount: number;
@@ -191,9 +201,17 @@ export function ModerationCard({
           </div>
         )}
 
-        <div className="inline-flex gap-1.5">
+        <div className="inline-flex items-center gap-1.5">
           <dt>Reporter</dt>
-          <dd className="text-slate-700">{incident.reporterName ?? "Anonymous"}</dd>
+          <dd className="inline-flex items-center gap-1.5 text-slate-700">
+            <span
+              className="grid size-5 shrink-0 place-items-center rounded-full bg-brand-50 text-[0.625rem] font-semibold text-brand-700"
+              aria-hidden
+            >
+              {incident.reporterInitials ?? "–"}
+            </span>
+            {incident.reporterName ?? "Anonymous"}
+          </dd>
         </div>
 
         {incident.mediaCount > 0 && (
@@ -287,6 +305,24 @@ export function ModerationCard({
           >
             Approve &amp; alert
           </SubmitButton>
+
+          {/*
+            An anchor rather than a third `SubmitButton`, and inside the form
+            because that is where the other two decisions are — a coordinator
+            reading a report decides between the three in one place.
+
+            Editing a queued report is a coordinator capability as of this
+            redesign; it used to be the reporter's alone. The widening is in
+            `editIncidentAction`, and it is still bounded by the two constraints
+            that matter: queue statuses only, and the coordinator's own village.
+          */}
+          <Link
+            href={`/incidents/${incident.id}/edit`}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            <Pencil className="size-4" aria-hidden />
+            Edit
+          </Link>
 
           <SubmitButton
             action="REJECT"
