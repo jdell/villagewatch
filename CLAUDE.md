@@ -870,7 +870,7 @@ line often enough that an IP limit would silence a household.
 
 | Route                              | Rule              | Limit       |
 | ---------------------------------- | ----------------- | ----------- |
-| `POST /api/incidents/process`      | `aiProcess`       | 5 per hour  |
+| `POST /api/incidents/process`      | `aiProcess`       | 30 per hour |
 | `POST /api/incidents`              | `incidentCreate`  | 10 per day  |
 | `generateNarrativeAction` (`/reports`) | `reportNarrative` | 12 per hour |
 | `POST /api/incidents/[id]/vote`    | `incidentVote`    | 1 per 10s, **per incident** |
@@ -883,6 +883,21 @@ Being limited there costs the prose and not the document: every other section is
 counted from the database, and `countedNarrative` writes the summary instead.
 `GET /api/reports/[villageId]/pdf` shares that rule when the button asks for
 `?analysis=ai`, and falls back rather than failing the download.
+
+**The first was 5 until 25 August 2026, and 5 was tighter than the filing limit
+it sits in front of.** Its comment called five "roughly two full reports with a
+reprocess each", which assumed a reporter who writes a description once and does
+not revise it. `aiSignature` in `incident-form.tsx` keys on the description, so
+every edit-and-preview is a fresh call and "Reprocess" forces one regardless —
+a single report refined four times spent the hour. Against `incidentCreate`'s
+ten reports a day that was the wrong way round: the cheap call was rationed
+harder than the expensive act it precedes, so a resident filing three things
+they saw on one walk got a rewrite for two of them. Thirty an hour is one every
+two minutes sustained — above any good-faith filing session and still well below
+a stuck retry loop, which reaches thirty in seconds. **The route is spent by the
+report wizard and by nothing else**: `/dashboard/queue` and
+`/incidents/[id]/edit` never call it, and the edit form runs no re-anonymisation
+pass, so a coordinator working through a queue spends none of this quota.
 
 **The fourth is the odd one out twice over and is worth reading before copying
 its shape.** It is scoped to one incident rather than to the resident —

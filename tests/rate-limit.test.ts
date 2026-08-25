@@ -65,7 +65,12 @@ describe("rateLimit", () => {
     }
 
     expect(results.every((r) => r.ok)).toBe(true);
-    expect(results.map((r) => r.remaining)).toEqual([4, 3, 2, 1, 0]);
+    // Derived from the rule rather than written out: this assertion was
+    // `[4, 3, 2, 1, 0]` and had to be edited by hand the first time the limit
+    // moved, which is a test asserting a constant back to itself.
+    expect(results.map((r) => r.remaining)).toEqual(
+      Array.from({ length: rule.limit }, (_, i) => rule.limit - 1 - i),
+    );
     expect(results.at(-1)?.limit).toBe(rule.limit);
   });
 

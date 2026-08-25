@@ -298,6 +298,14 @@ has been re-run**, so this one is closed.
 
 `src/lib/rate-limit.ts` · `RATE_LIMITS.aiProcess` = 5/hour
 
+> **Addendum, 25 August 2026 — the figure moved, the mechanism did not.**
+> `RATE_LIMITS.aiProcess` is **30/hour**, not 5. Five was tighter than the ten
+> reports a day `incidentCreate` allows, and residents were meeting it inside a
+> single report: the wizard's `aiSignature` keys on the description, so each
+> edit-and-preview is a fresh call. Every row in the table below was verified
+> against the limiter rather than against the number, so all eight still hold —
+> read "the 6th call" as "the 31st". See "Rate limiting" in CLAUDE.md.
+
 | Step | Where | Verified |
 |------|-------|----------|
 | Counted **after** the body validates | `process/route.ts:83-86` | A malformed request costs a Zod parse, not a slot |

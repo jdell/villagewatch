@@ -35,11 +35,20 @@ import { RATE_LIMIT_RETENTION_DAYS } from "@/lib/constants";
  *   when it cannot prove otherwise — would allow.
  *
  * Fixed windows, not sliding: a caller can spend their whole quota at the end of
- * one window and again at the start of the next. For a limit of 5 an hour that
- * is 10 calls in a minute, worst case. That was an acceptable imprecision when
- * this was a counter with no dependencies and it still is — the thing being
- * defended against is a retry loop and a hammered "Reprocess" button, not a
- * caller pacing themselves against a window boundary.
+ * one window and again at the start of the next, so the worst case for any rule
+ * here is twice its limit in the space of a minute. That was an acceptable
+ * imprecision when this was a counter with no dependencies and it still is — the
+ * thing being defended against is a retry loop and a hammered "Reprocess"
+ * button, not a caller pacing themselves against a window boundary.
+ *
+ * What the alignment costs the *caller* is worth stating, because it is what a
+ * rate-limited resident actually experiences: the window resets on the clock
+ * hour rather than an hour after their first call, so spending a quota at five
+ * past means waiting fifty-five minutes and spending it at ten to means waiting
+ * ten. Same rule, and the wait reads as arbitrary to whoever is looking at it.
+ * The answer to that is a limit high enough that ordinary use never meets it —
+ * see {@link RATE_LIMITS.aiProcess} — rather than a sliding window, which would
+ * cost the single-statement increment above.
  *
  * ## What happens when the database is unreachable
  *
@@ -72,11 +81,33 @@ const DAY_MS = 24 * HOUR_MS;
  */
 export const RATE_LIMITS = {
   /**
-   * The AI pass. Five is roughly two full reports with a reprocess each — past
-   * that the model is not the problem, and the reporter can still file using
-   * their own wording, which the wizard falls back to anyway.
+   * The AI pass, spent by the report wizard and by nothing else.
+   *
+   * **It was 5, and 5 was tighter than the filing limit it sits in front of.**
+   * The old comment called five "roughly two full reports with a reprocess
+   * each", which assumed a reporter who writes their description once and does
+   * not revise it. They do revise it: `aiSignature` in `incident-form.tsx`
+   * keys on the description, so every edit-and-preview is a fresh call, and the
+   * "Reprocess" button forces one whatever the signature says. One report
+   * refined four times spent the hour. Meanwhile `incidentCreate` allows ten
+   * reports a day — so a resident filing three things they saw on one walk
+   * could file all three and get a rewrite for two of them, which is the wrong
+   * way round: the cheap call was rationed harder than the expensive act it
+   * precedes.
+   *
+   * Thirty an hour is one every two minutes sustained. That is far above any
+   * good-faith filing session — including a coordinator filing a batch of
+   * reports in one sitting — and still far below what this exists to catch,
+   * which is a stuck retry loop or a hammered "Reprocess" button, both of which
+   * reach thirty in seconds and then stop. The call itself is a short
+   * description and at most one image, cheaper per call than
+   * {@link RATE_LIMITS.reportNarrative}, which already allows twelve an hour
+   * with a month of a village's reports in each prompt.
+   *
+   * Being limited here still costs the rewrite and never the report: the wizard
+   * falls back to the reporter's own wording and says on screen that it did.
    */
-  aiProcess: { name: "ai-process", limit: 5, windowMs: HOUR_MS },
+  aiProcess: { name: "ai-process", limit: 30, windowMs: HOUR_MS },
 
   /**
    * Filing a report. Ten a day is far above what a real resident files and far

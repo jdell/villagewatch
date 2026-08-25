@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 25 August 2026 · **Repo version:** `v0.1.44` · **Branch:**
-`feat/email-masking-resident-list` · **Domain:** https://villagewatch.app
+**Last updated:** 25 August 2026 · **Repo version:** `v0.1.45` · **Branch:**
+`fix/ai-rewrite-rate-limit` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -35,6 +35,7 @@ in `BACKLOG.md`.
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
 | `feat/email-masking-resident-list` | **In review as a PR.** One commit: the resident list's email addresses are masked server-side, with a Show button per row. Cut from `main` after PR #16 merged without it. | Review, merge |
+| `fix/ai-rewrite-rate-limit` | **In review as a PR.** One commit: `RATE_LIMITS.aiProcess` raised from 5/hour to 30/hour, after residents reported meeting it inside a single report. No schema change, no migration, no new environment variable. | Review, merge |
 | `feat/coordinator-dashboard-redesign` | Merged as PR #16, 25 August. Released as `v0.1.44`. | Delete |
 | `fix/map-controls-overlap` | Merged as PR #15, 25 August. | Delete |
 | `fix/iphone-safe-area` | Merged as PR #12, 24 August. Released as `v0.1.42`. | Delete |
@@ -847,6 +848,37 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 ---
 
 ## Recent completions
+
+**The AI rewrite limit was five an hour and residents were meeting it inside one
+report — 25 August 2026.** Reported from the field: "You have used this hour's
+automatic rewrites. Try again in 13 minutes" after a handful of uses.
+`RATE_LIMITS.aiProcess` is **30/hour** now. Three things worth keeping:
+
+- **Five was tighter than the filing limit it sits in front of.** Its comment
+  called five "roughly two full reports with a reprocess each", which assumed a
+  reporter who writes a description once and does not revise it. `aiSignature`
+  in `incident-form.tsx` keys on the description, so every edit-and-preview is a
+  fresh call and "Reprocess" forces one regardless — one report refined four
+  times spent the hour. Against `incidentCreate`'s ten reports a day that was
+  the wrong way round: the cheap call was rationed harder than the expensive act
+  it precedes.
+- **The route is spent by the report wizard and by nothing else.** The original
+  report described a coordinator batch-reviewing incidents, and that flow does
+  not touch this quota at all — `/dashboard/queue` and `/incidents/[id]/edit`
+  never call `POST /api/incidents/process`, and the edit form runs no
+  re-anonymisation pass. Whoever met this was *filing*, not reviewing. Worth
+  knowing before the next report of it is read as a queue problem.
+- **The clock-aligned window is why the wait reads as arbitrary.** "13 minutes"
+  means they hit it at :47; the same limit spent at :05 is a fifty-five minute
+  wait. That is inherent to the fixed window, which is what buys the
+  single-statement atomic increment, so the answer taken was a limit ordinary
+  use never meets rather than a sliding window. Noted in the module header.
+
+Nothing else moved: same table, same key, same fail-open, same 429 shape, and
+the wizard still falls back to the reporter's own wording when it is refused.
+`tests/rate-limit.test.ts` had one assertion written out as `[4, 3, 2, 1, 0]`,
+which is a test asserting a constant back to itself — it derives from
+`rule.limit` now, so the next move of this number does not need it edited.
 
 **The coordinator guide caught up with the code, and there is a printable copy
 of it — 23 August 2026.** `docs/COORDINATOR_GUIDE.md` had not moved since the
