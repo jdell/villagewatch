@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.45](https://github.com/jdell/villagewatch/compare/v0.1.44...v0.1.45) (2026-08-25)
+
+
+### Features
+
+* **dashboard:** mask email addresses on the resident list ([826fba7](https://github.com/jdell/villagewatch/commit/826fba7da756e4d8b73e74939cfcd7654535d50a)), closes [#16](https://github.com/jdell/villagewatch/issues/16)
+
+
+### Documentation
+
+* **state:** PR [#16](https://github.com/jdell/villagewatch/issues/16) is merged and released; this branch is what it missed ([25edadc](https://github.com/jdell/villagewatch/commit/25edadc08d130581cc375d86a8536f7fcfa02dff))
+
 ### [0.1.44](https://github.com/jdell/villagewatch/compare/v0.1.43...v0.1.44) (2026-08-25)
 
 
