@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.46](https://github.com/jdell/villagewatch/compare/v0.1.45...v0.1.46) (2026-08-25)
+
+
+### Fixes
+
+* **rate-limit:** raise the AI rewrite quota from 5 an hour to 30 ([fd37d7a](https://github.com/jdell/villagewatch/commit/fd37d7aa0d5c0ddee8375ca0ff9358cb49b14767))
+
 ### [0.1.45](https://github.com/jdell/villagewatch/compare/v0.1.44...v0.1.45) (2026-08-25)
 
 
