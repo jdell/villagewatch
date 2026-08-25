@@ -14,6 +14,7 @@ import {
   saveVillageChannel,
 } from "@/lib/whatsapp-channel";
 import {
+  getResidentEmail,
   getVillageMode,
   getVillageParishCouncil,
   getVillagePrivacyLevel,
@@ -659,4 +660,38 @@ export async function saveResidentRoleAction(
   revalidatePath("/dashboard/settings");
 
   return { ok: true, message: result.message };
+}
+
+/**
+ * Reveals one resident's full email address to the coordinator asking for it.
+ *
+ * The resident list carries `j***@gmail.com` and nothing more, so this is the
+ * only path an address takes to a browser. See `getResidentEmail` for what the
+ * pair does and does not buy, and for why — unlike
+ * `revealRawDescriptionAction`, which this is otherwise shaped like — it writes
+ * no audit row.
+ *
+ * `requireCoordinator()` is re-established from the server, because a server
+ * action is a POST endpoint with a generated URL and "the button is only on a
+ * coordinator page" has never been an authorisation check. The village comes
+ * from the session profile and never the form (domain rule 4).
+ */
+export async function revealResidentEmailAction(
+  _previous: { email: string | null; error: string | null },
+  formData: FormData,
+): Promise<{ email: string | null; error: string | null }> {
+  const session = await requireCoordinator("/dashboard/settings");
+  const villageId = session.profile?.villageId;
+
+  const residentId = formData.get("residentId");
+
+  if (!villageId || typeof residentId !== "string") {
+    return { email: null, error: "That address could not be read." };
+  }
+
+  const result = await getResidentEmail({ session, villageId, residentId });
+
+  return result.ok
+    ? { email: result.email, error: null }
+    : { email: null, error: result.error };
 }

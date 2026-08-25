@@ -285,7 +285,9 @@ src/
     dashboard/activity-feed.tsx  The last few audit rows on Overview. A window
                               onto the trail, and it writes nothing
     dashboard/resident-list.tsx  Who is in the village, and the one change a
-                              coordinator may make to it — verified, or not
+                              coordinator may make to it — verified, or not.
+                              Addresses arrive masked and are revealed one at a
+                              time, on a press
     dashboard/breakdown-bar.tsx  CSS bars — no charting dependency
     dashboard/concern-list.tsx   What the village made of its own reports —
                               voted reports only, and its own GET form for the
@@ -529,6 +531,10 @@ tests/                        Vitest, unit only — see The test suite
                               month, the 31st that skips February, the date that
                               is shaped right and does not exist, and the year
                               the chip prints only where it says something
+  mask-email.test.ts          The mask on the resident list — the fixed width
+                              that hides a local part's length, the last-@ split,
+                              and every unparseable input failing closed to
+                              `***` rather than echoing the address
   resident-role.test.ts       The one change a coordinator may make to a
                               resident — the two roles it can write, both
                               directions of the verifiedAt pair, and each of
@@ -1277,7 +1283,7 @@ Authentication → Emails → Templates.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Thirty-four files, 543 tests, covering the
+between the typecheck and the build. Thirty-five files, 560 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1293,7 +1299,8 @@ travel with a comparison — the markup of the three period controls, the
 landing page's pricing promises, the mapper in front of every Supabase auth
 failure, the email transport's failure modes, the four Supabase auth templates,
 the vote — its toggle, its ordering, and the two domain rules its route
-enforces — and the one change a coordinator may make to a resident's role.
+enforces — the one change a coordinator may make to a resident's role, and the
+mask in front of every email address on the resident list.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -3167,8 +3174,34 @@ why the rules live in the module rather than at the call site.
 - **The list selects no `homeLat`/`homeLng`, `phone` or `addressLine`.** It is a
   membership list rather than a directory, and a home location is the one column
   that would let one resident locate another.
-- **Closed accounts are listed as closed rather than hidden**, so the list and
-  Overview's resident count agree.
+- **Email addresses are masked, on the server.** `listVillageResidents` returns
+  `maskedEmail` — `j***@gmail.com`, fixed-width so it does not leak the length
+  of the local part — and the full address is not on `VillageResident` at all.
+  `getResidentEmail` returns one at a time behind `revealResidentEmailAction`,
+  so a page of fifty residents carries fifty masks and no addresses. **It is not
+  an access control** and nothing claims it is: a coordinator is entitled to
+  these addresses and can press Show fifty times. What the pair answers is
+  incidental exposure — a screen-share at a parish meeting, a screenshot, a
+  saved page, a HAR file on a bug report. Masking in the component instead would
+  look identical on screen and put every address in the payload.
+- **The reveal writes no `AuditLog` row**, and this is the one place that
+  decision is worth stating rather than inferring. `readRawDescription` is
+  audited because domain rule 1 says so and because behind it is a resident's
+  verbatim account of their neighbours. An email address is neither, and a row
+  per glance would bury `incident.raw_viewed` under rows about looking at a
+  mailbox — the audit viewer's own argument about itself.
+- **`maskEmail` fails closed.** Anything it cannot parse as an address returns
+  the bare `***` rather than the input, because a value that reached it without
+  an `@` is already surprising and echoing it back is how an unmasked address
+  ends up on screen. It splits on the *last* `@`, since a quoted local part may
+  legally contain one. `tests/mask-email.test.ts` asserts every branch.
+- **Closed accounts do not appear, and `villageId` is what decides that.**
+  `eraseAccount` nulls `villageId` as well as `deletedAt`, so a closed account
+  has already left the tenant boundary this query is scoped by. The component
+  still renders a closed state from `deletedAt`, as a backstop for a row closed
+  some other way — in the ordinary case that branch never runs. An earlier
+  version of this section said closed accounts were *listed* as closed; they are
+  not, and the reason is one line further up in `erasure.ts` than it looked.
 - `/privacy` changed in the same commit, for the reason the legal-pages section
   gives: coordinators now see a membership list, and confirming somebody is a
   new privileged action in the trail. `/terms` §2 already said coordinators

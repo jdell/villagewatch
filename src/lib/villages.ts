@@ -16,6 +16,7 @@ import {
   type PrivacyLevel,
   type VillageMode,
 } from "@/lib/constants";
+import { maskEmail } from "@/lib/format";
 import { normalizeJoinCode } from "@/lib/validations";
 
 /**
@@ -946,7 +947,11 @@ export function isManagedResidentRole(
 export type VillageResident = {
   id: string;
   fullName: string;
-  email: string;
+  /**
+   * `j***@gmail.com`. The full address is **not** on this type, and that is the
+   * point — see `listVillageResidents` and `getResidentEmail`.
+   */
+  maskedEmail: string;
   role: UserRole;
   verifiedAt: Date | null;
   createdAt: Date;
@@ -965,16 +970,33 @@ export type VillageResidentList = {
 /**
  * Who is in this village.
  *
- * Closed accounts are listed rather than filtered out, marked as closed. A
- * coordinator counting their village should see the same number the Overview
- * tab's stat card counts, and an account that vanished from a list without
- * explanation is the kind of thing somebody reports as a bug.
- *
  * `homeLat`/`homeLng`, `phone` and `addressLine` are deliberately not selected.
  * This is a membership list, not a directory: none of the three is needed to
  * verify that somebody lives in the village — that is a judgement the
  * coordinator makes off their own knowledge of the place — and a home location
  * is the one column here that would let one resident locate another.
+ *
+ * ## The address is masked here, not in the browser
+ *
+ * `email` is read and `maskEmail` is applied before the row leaves the server,
+ * so a page of fifty residents carries fifty `j***@gmail.com` and not one full
+ * address. `getResidentEmail` is how a coordinator gets one back, one at a
+ * time, behind a button.
+ *
+ * Masking in the component instead would have been a line shorter and would
+ * have put every address in the payload — visible in view-source, in a saved
+ * page, in a screenshot of the developer tools, and in any HAR file attached to
+ * a bug report. The threat this actually answers is incidental exposure rather
+ * than a determined reader, but the version that keeps the addresses off the
+ * wire costs one round trip on a button nobody presses fifty times.
+ *
+ * ## Closed accounts do not appear, and it is `villageId` that decides that
+ *
+ * `eraseAccount` sets `villageId: null` as well as `deletedAt`, so a closed
+ * account leaves the tenant boundary this query is scoped by and drops out of
+ * the list without needing to be filtered. `deletedAt` is still selected, and
+ * the component still renders a closed state from it, as a backstop for a row
+ * closed some other way — but in the ordinary case that branch never runs.
  */
 export async function listVillageResidents(
   villageId: string,
@@ -1017,7 +1039,8 @@ export async function listVillageResidents(
     residents: rows.map((row) => ({
       id: row.id,
       fullName: row.fullName,
-      email: row.email,
+      // Masked before it leaves the server, never in the component.
+      maskedEmail: maskEmail(row.email),
       role: row.role,
       verifiedAt: row.verifiedAt,
       createdAt: row.createdAt,
@@ -1164,4 +1187,69 @@ export async function setResidentRole(input: {
       ? `${resident.fullName} is now a verified resident.`
       : `${resident.fullName}'s verification has been withdrawn.`,
   };
+}
+
+/**
+ * One resident's full email address, for the coordinator who asked for it.
+ *
+ * The other half of the mask on the resident list. `listVillageResidents`
+ * carries `j***@gmail.com` and nothing else, so this is the only way an address
+ * reaches a browser — one at a time, on a deliberate press, rather than fifty
+ * at once in the page that happened to be open.
+ *
+ * ## What it is and is not
+ *
+ * It is **not** an access control, and nothing here pretends otherwise: a
+ * coordinator is entitled to these addresses, and one who wants all fifty can
+ * press the button fifty times. What the pair actually buys is that the
+ * addresses are not *incidentally* somewhere — a screen-share at a parish
+ * meeting, a screenshot pasted into a WhatsApp group, a saved page, a HAR file
+ * attached to a bug report. Those are the ways a village's contact list has
+ * actually leaked in services like this one, and none of them involves anybody
+ * deciding to take it.
+ *
+ * ## Why it writes no `AuditLog` row
+ *
+ * Deliberately, and it is the same argument the audit viewer makes about
+ * itself. The trail records decisions somebody is accountable for; a row every
+ * time a coordinator glanced at an address they are entitled to would bury
+ * `incident.raw_viewed` — the row that records somebody reading a resident's
+ * unedited words — under rows about looking at a mailbox. `readRawDescription`
+ * is audited because domain rule 1 says so and because the thing behind it is a
+ * resident's verbatim account of their neighbours; an email address is neither.
+ *
+ * The village is in the predicate rather than checked after the read, so a
+ * resident of another village is indistinguishable from one who does not exist
+ * (domain rule 4). A closed account cannot be reached either — `eraseAccount`
+ * nulls `villageId`, so it has already left the boundary this query is scoped
+ * by.
+ */
+export async function getResidentEmail(input: {
+  session: Session;
+  villageId: string;
+  residentId: string;
+}): Promise<{ ok: true; email: string } | { ok: false; error: string }> {
+  const { session, villageId, residentId } = input;
+
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "The database is not configured." };
+  }
+
+  // Re-checked here rather than trusted from the page that called it, for the
+  // reason the rest of this module gives: a permission check belongs next to
+  // the privilege it guards, not only at the doors in front of it.
+  if (!isCoordinatorRole(session.profile?.role)) {
+    return { ok: false, error: "Only a village coordinator can see that." };
+  }
+
+  const resident = await prisma.user.findFirst({
+    where: { id: residentId, villageId },
+    select: { email: true },
+  });
+
+  if (!resident) {
+    return { ok: false, error: "That resident is not in your village." };
+  }
+
+  return { ok: true, email: resident.email };
 }
