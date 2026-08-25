@@ -3,6 +3,24 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.44](https://github.com/jdell/villagewatch/compare/v0.1.43...v0.1.44) (2026-08-25)
+
+
+### Features
+
+* **dashboard:** split the coordinator's screens into five tabs ([e4f99d8](https://github.com/jdell/villagewatch/commit/e4f99d841265c51f4aab1a5188bd82ebe07fdf89))
+
+
+### Documentation
+
+* **channels:** break the auto-post plan down into its four items ([a539a4d](https://github.com/jdell/villagewatch/commit/a539a4d081c9c738ebd399da3d649111672bdd8d)), closes [#15](https://github.com/jdell/villagewatch/issues/15)
+* **gtm:** plan the go-to-market and audit the five launch blockers ([b495f5d](https://github.com/jdell/villagewatch/commit/b495f5dd0da79ac726d6db0c047f443b0d7ddd23))
+
+
+### Fixes
+
+* **dashboard:** the three back-links say "overview", not "dashboard" ([d0f7a68](https://github.com/jdell/villagewatch/commit/d0f7a689fbab8a95dc05b74c7bf9fa3aa353b7dd))
+
 ### [0.1.43](https://github.com/jdell/villagewatch/compare/v0.1.42...v0.1.43) (2026-08-24)
 
 
