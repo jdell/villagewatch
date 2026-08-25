@@ -757,6 +757,30 @@ export const villageAppointSchema = z.object({
   email: z.email({ error: "Enter the address they registered with" }),
 });
 
+/**
+ * A coordinator verifying a resident, or withdrawing it.
+ *
+ * **There is no `role` field here, and that is the point.** The form posts who
+ * and an intent; `setResidentRole` picks the role out of
+ * `RESIDENT_MANAGED_ROLES`. A `role: z.enum(UserRole)` here would be a payload
+ * a coordinator could hand-edit into `COORDINATOR`, which is domain rule 5
+ * exactly — roles are written by server code, never taken from a client.
+ *
+ * The same unchecked-checkbox handling as `villageAutoApproveFormSchema`: this
+ * arrives from a submit button rather than a checkbox, so the value is always
+ * present, but the union keeps the two forms reading the same way.
+ *
+ * No `villageId`. It comes from the caller's session — a village id in this
+ * form would be a way to verify a resident of a neighbouring parish.
+ */
+export const villageResidentRoleFormSchema = z.object({
+  residentId: z.uuid({ error: "That resident could not be found" }),
+  verified: z
+    .union([z.literal("on"), z.literal("")])
+    .optional()
+    .transform((value) => value === "on"),
+});
+
 export const villageAutoApproveFormSchema = z.object({
   autoApprove: z
     .union([z.literal("on"), z.literal("")])

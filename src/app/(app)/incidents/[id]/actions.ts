@@ -24,6 +24,10 @@ import {
  *   and may erase it right up to the point a coordinator closes it — see
  *   `deleteIncidentAction`, which is the right to erasure rather than an edit
  *   and is therefore not bounded by the edit window.
+ * - **A coordinator** may edit any report still in their own village's queue,
+ *   which is how the Edit button on `/dashboard/queue` works. The window is the
+ *   same one the reporter has — a published report cannot be rewritten by
+ *   anybody.
  * - **A coordinator** may publish, reject or archive anything in their village,
  *   through the same `applyModeration` path the dashboard uses — so the audit
  *   row and the village alert cannot be skipped by coming in from here.
@@ -35,7 +39,14 @@ export type IncidentActionState = {
   fieldErrors?: Record<string, string>;
 };
 
-/** Statuses a reporter may still change or withdraw their own report from. */
+/**
+ * Statuses a report may still be edited or withdrawn from.
+ *
+ * The name is the reporter's because they are the caller it was written for,
+ * and it still bounds them; a coordinator editing from the review queue is held
+ * to exactly the same window, which is the point — the constraint that matters
+ * is that a *published* report is not rewritable, not who is doing the writing.
+ */
 const REPORTER_EDITABLE = ["DRAFT", "PENDING_REVIEW"] as const;
 
 export async function moderateFromDetailAction(
@@ -120,14 +131,27 @@ export async function editIncidentAction(
     };
   }
 
-  // Ownership and status in the predicate rather than in a prior read: this is
-  // what stops a reporter editing someone else's report, or their own after a
-  // coordinator has published it.
+  /*
+    Ownership and status in the predicate rather than in a prior read: this is
+    what stops a reporter editing someone else's report, or their own after a
+    coordinator has published it.
+
+    A coordinator drops the ownership clause and keeps everything else — the
+    village (domain rule 4) and the queue statuses. That is the whole of the
+    widening the dashboard redesign made, and it is written as a missing clause
+    rather than an `OR` so the reporter's own path is byte-for-byte what it was.
+
+    The role comes off the revalidated session profile, never the payload: a
+    server action is a POST endpoint with a generated URL, so "the button is
+    only on a coordinator page" has never been an authorisation check.
+  */
+  const coordinator = isCoordinatorRole(session.profile?.role);
+
   const { count } = await prisma.incident.updateMany({
     where: {
       id: incidentId,
       villageId,
-      reporterId: session.user.id,
+      ...(coordinator ? {} : { reporterId: session.user.id }),
       status: { in: [...REPORTER_EDITABLE] },
     },
     data: {
@@ -165,6 +189,14 @@ export async function editIncidentAction(
         title: parsed.data.title,
         type: parsed.data.type,
         severity: parsed.data.severity,
+        /*
+          Whether this was the reporter fixing their own wording or a
+          coordinator correcting somebody else's. `actorRole` above already
+          distinguishes the two — a coordinator can also be a reporter, and on
+          their own report both are true — so this says which of the two hats
+          was being worn rather than leaving the trail to infer it.
+        */
+        byCoordinator: coordinator,
       },
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
@@ -173,6 +205,9 @@ export async function editIncidentAction(
 
   revalidatePath(`/incidents/${incidentId}`);
   revalidatePath("/incidents");
+  // The queue renders the title, the description and the landmark, all four of
+  // which this may have just changed.
+  revalidatePath("/dashboard/queue");
 
   redirect(`/incidents/${incidentId}`);
 }

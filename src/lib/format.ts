@@ -112,3 +112,32 @@ export function formatDuration(seconds: number): string {
 export function formatCoordinates(lat: number, lng: number): string {
   return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 }
+
+/**
+ * The first letter of the first two words of a name — "PR" for Pat Resident.
+ *
+ * Here rather than beside either of the two components that draw it. The queue
+ * card is rendered from a Server Component and the resident list is a Client
+ * Component, so a helper living in either would be imported across the
+ * boundary: a plain function exported from a `"use client"` module and called
+ * on the server is a client reference, and calling one throws at render.
+ *
+ * One implementation because two would be two answers for the same resident on
+ * two screens. Falls back to a dash rather than an empty string — a chip with
+ * nothing in it reads as a loading state, and an anonymous report has no name
+ * to take initials from.
+ */
+export function initialsOf(name: string | null | undefined): string {
+  if (!name) return "–";
+
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    // Spread rather than `[0]`, so a name starting with an astral character
+    // gives that character back rather than half of a surrogate pair.
+    .map((word) => [...word][0] ?? "")
+    .join("");
+
+  return letters.toUpperCase() || "–";
+}

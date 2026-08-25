@@ -121,8 +121,11 @@ export async function appointCoordinatorAction(
   if (!result.ok) return { ok: false, message: result.error };
 
   revalidateVillageSurfaces();
-  // Their sidebar gains the dashboard the moment their role changes.
+  // Their sidebar gains the five coordinator tabs the moment their role
+  // changes, and the settings tab is where the join code this just minted is
+  // handed out.
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/settings");
 
   return { ok: true, message: result.message };
 }

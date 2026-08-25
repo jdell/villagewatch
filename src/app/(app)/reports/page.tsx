@@ -4,9 +4,14 @@ import { LayoutDashboard, TriangleAlert } from "lucide-react";
 import { NoVillage } from "@/components/no-village";
 import { ReportPeriodPicker } from "@/components/reports/report-period-picker";
 import { ReportView } from "@/components/reports/report-view";
+import { WeeklySummaryHistory } from "@/components/reports/weekly-summary-history";
 import { requireCoordinator } from "@/lib/auth";
 import { getVillageController, getVillageMode } from "@/lib/villages";
-import { DATA_CONTROLLER } from "@/lib/constants";
+import {
+  DATA_CONTROLLER,
+  WEEKLY_SUMMARY_HISTORY_SIZE,
+} from "@/lib/constants";
+import { prisma } from "@/lib/prisma";
 import { dateInputValue } from "@/lib/date-range";
 import { collectVillageReport, resolveReportRange } from "@/lib/reports";
 
@@ -76,9 +81,39 @@ export default async function ReportsPage({
     amber warning about an unnamed data controller on a village that has named
     one. See `getVillageMode`.
   */
-  const [village, mode] = await Promise.all([
+  const [village, mode, weeklySummaries] = await Promise.all([
     getVillageController(villageId),
     getVillageMode(villageId),
+    /*
+      The weekly digests this village has already had.
+
+      `GET|POST /api/digest` has written one `PatternAlert` per active village
+      per run since Day 6 and nothing has ever rendered one. This is the reading
+      half of it, and it is here rather than on Overview because it is a set of
+      documents rather than a figure — the same reason the period report is
+      here.
+
+      Village-scoped like every other query (domain rule 4). Read-only:
+      `acknowledgedAt` and `dismissedAt` still have no UI, and adding one in
+      passing to a list that is otherwise inert is not a decision to make here.
+    */
+    prisma.patternAlert.findMany({
+      where: { villageId },
+      select: {
+        id: true,
+        title: true,
+        summary: true,
+        type: true,
+        severity: true,
+        incidentCount: true,
+        windowStart: true,
+        windowEnd: true,
+        detector: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: WEEKLY_SUMMARY_HISTORY_SIZE,
+    }),
   ]);
 
   if (!village) return <NoVillage />;
@@ -130,7 +165,7 @@ export default async function ReportsPage({
           className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
         >
           <LayoutDashboard className="size-4" aria-hidden />
-          Dashboard
+          Overview
         </Link>
       </div>
 
@@ -161,7 +196,7 @@ export default async function ReportsPage({
                 ? "Name your parish council in"
                 : "Your village runs the community model, so you are the data controller — put your group’s name in"}{" "}
               <Link
-                href="/dashboard#village-settings"
+                href="/dashboard/settings#village-profile"
                 className="font-medium underline underline-offset-2"
               >
                 village settings
@@ -194,6 +229,27 @@ export default async function ReportsPage({
           from: range.fromValue,
           to: range.toValue,
         }}
+      />
+
+      {/*
+        Below the report, and outside the print region — this is a record a
+        coordinator reads back over, not part of the document they send. It is
+        `data-print-hide` for the same reason the period picker is: Ctrl+P on
+        this page should produce the report and nothing else.
+      */}
+      <WeeklySummaryHistory
+        summaries={weeklySummaries.map((summary) => ({
+          id: summary.id,
+          title: summary.title,
+          summary: summary.summary,
+          type: summary.type,
+          severity: summary.severity,
+          incidentCount: summary.incidentCount,
+          windowStart: summary.windowStart.toISOString(),
+          windowEnd: summary.windowEnd.toISOString(),
+          detector: summary.detector,
+          createdAt: summary.createdAt.toISOString(),
+        }))}
       />
     </div>
   );

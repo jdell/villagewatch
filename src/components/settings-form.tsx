@@ -37,7 +37,8 @@ export type SettingsFormValues = {
  * The village's WhatsApp Channel, if it runs one.
  *
  * Not a form value — there is nothing to save here. The channel belongs to the
- * village and is configured by a coordinator on `/dashboard`; following one
+ * village and is configured by a coordinator on `/dashboard/settings`;
+ * following one
  * happens in WhatsApp. So this is a link, a warning, and no state at all.
  *
  * `null` where the resident has no village, which is the one case with nothing
@@ -139,16 +140,16 @@ function ChannelSection({ channel }: { channel: SettingsChannel | null }) {
           </p>
 
           {/*
-            Only a coordinator can act on this, and only from the dashboard —
-            it is a village setting, so it is not a field on this form. A
-            resident gets the explanation and no dead end to click.
+            Only a coordinator can act on this, and only from the village
+            settings tab — it is a village setting, so it is not a field on this
+            form. A resident gets the explanation and no dead end to click.
           */}
           {channel.canSetUp && (
             <Link
-              href="/dashboard"
+              href="/dashboard/settings#channels"
               className="mt-4 inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
-              Set one up on the dashboard
+              Set one up in village settings
             </Link>
           )}
         </>

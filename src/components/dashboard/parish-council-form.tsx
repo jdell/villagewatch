@@ -114,7 +114,7 @@ export function ParishCouncilForm({
   }, [state]);
 
   // Derived from the `value` prop rather than a second piece of state. The
-  // action revalidates `/dashboard`, so a successful save re-renders this with
+  // action revalidates `/dashboard/settings`, so a successful save re-renders this with
   // the stored value updated — which is the only thing that should decide
   // whether there is anything left to save.
   const dirty = name.trim() !== (value ?? "");

@@ -1097,6 +1097,20 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    value: "village.resident_role_changed",
+    label: "Resident verified",
+    description:
+      "A coordinator confirmed a resident lives in the village, or withdrew that confirmation",
+    // Sensitive, alongside the village settings rather than alongside the two
+    // ways a role is *raised*. What it writes is one of two roles and never
+    // COORDINATOR — see `setResidentRole`, which is why this is not a second
+    // `village.coordinator_appointed`. It is here because it changes what
+    // somebody can do inside the village, and because withdrawing a
+    // verification is the half nobody would think to look for: it is quiet,
+    // it is done to another person, and the only record of it is this row.
+    tone: "sensitive",
+  },
+  {
     value: "village.coordinator_appointed",
     label: "Coordinator appointed",
     description:
@@ -1177,6 +1191,46 @@ export const AUDIT_LOG_PAGE_SIZE = 50;
 
 /** How many locations the dashboard calls out as hotspots. */
 export const HOTSPOT_COUNT = 3;
+
+/**
+ * How many audit rows the Overview tab's activity feed shows.
+ *
+ * Short on purpose. This is a window onto `/dashboard/audit` rather than a
+ * second copy of it — enough to answer "what has happened since I last looked"
+ * at a glance, and short enough that it cannot become the thing somebody scrolls
+ * instead of opening the trail. The viewer is what paginates.
+ */
+export const ACTIVITY_FEED_SIZE = 8;
+
+/**
+ * How many already-published reports the Queue tab lists under the queue.
+ *
+ * The collapsed list exists to answer "did I already publish that one?" without
+ * leaving the tab, which is a question about the last day or two of work. A
+ * longer list would be `/incidents` with fewer features.
+ */
+export const QUEUE_PUBLISHED_SIZE = 10;
+
+/**
+ * How many residents the Settings tab lists before it stops and says how many
+ * more there are.
+ *
+ * The same shape as `MODERATION_QUEUE_SIZE` and the coordinator request queue:
+ * a first page and an honest count, rather than a page control. A village that
+ * outgrows this wants a search box — a resident is looked up by name, not
+ * found by paging.
+ */
+export const RESIDENT_LIST_SIZE = 50;
+
+/**
+ * How many weekly summaries `/reports` lists.
+ *
+ * A quarter of them, which is the span a coordinator preparing for a parish
+ * meeting actually reads back over. `PatternAlert` rows are written one per
+ * village per digest run and are never deleted, so this is a bound on the
+ * page rather than on the table.
+ */
+export const WEEKLY_SUMMARY_HISTORY_SIZE = 12;
 
 // ---------------------------------------------------------------------------
 // What the village made of a report
@@ -1273,6 +1327,19 @@ export const TIME_RANGES = [
   { value: "7", label: "Last 7 days", days: 7 },
   { value: "30", label: "Last 30 days", days: 30 },
   { value: "90", label: "Last 90 days", days: 90 },
+  /*
+    A year, for the one screen that reads as a report rather than as a feed.
+    A coordinator asked at an annual parish meeting how the year went has no
+    other way to answer it from the app, and "All time" is not that answer —
+    it is however long the village has been on VillageWatch, which for most of
+    them is less than a year and for none of them is a period anybody agreed on.
+
+    365 rather than a calendar year, because everything else in this list is a
+    count of days back from now and the resolver has exactly one branch for
+    that. `/reports`' "This year" is the calendar version and has its own branch
+    in its own resolver, for the reason written down there.
+  */
+  { value: "365", label: "Last 12 months", days: 365 },
   { value: "all", label: "All time", days: null },
   { value: "custom", label: "Custom range", days: null },
 ] as const satisfies readonly {
@@ -1291,8 +1358,21 @@ export const TIME_RANGE_VALUES = TIME_RANGES.map((r) => r.value) as [
 /** What the map and the incident list offer. Ninety days is the dashboard's. */
 export const BROWSE_RANGE_VALUES = ["7", "30", "all", "custom"] as const;
 
-/** What the dashboard offers. `all` is absent — see the note on `TIME_RANGES`. */
-export const DASHBOARD_RANGE_VALUES = ["7", "30", "90", "custom"] as const;
+/**
+ * What the dashboard offers. `all` is absent — see the note on `TIME_RANGES`.
+ *
+ * Twelve months is well inside `MAX_CUSTOM_RANGE_DAYS` (730), so adding it
+ * moves nothing about the custom-range clamp. `tests/date-range.test.ts`
+ * asserts every value here is a known `TIME_RANGES` preset, which is what
+ * catches a preset added to one of these two lists and not the other.
+ */
+export const DASHBOARD_RANGE_VALUES = [
+  "7",
+  "30",
+  "90",
+  "365",
+  "custom",
+] as const;
 
 /**
  * The preset each surface starts on.

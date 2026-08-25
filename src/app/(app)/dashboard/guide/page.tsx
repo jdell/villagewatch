@@ -54,7 +54,7 @@ export default async function CoordinatorGuidePage() {
         className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
       >
         <ArrowLeft className="size-4" aria-hidden />
-        Back to dashboard
+        Back to overview
       </Link>
 
       <header className="mt-4">

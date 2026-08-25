@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
 **Last updated:** 25 August 2026 · **Repo version:** `v0.1.43` · **Branch:**
-`main` · **Domain:** https://villagewatch.app
+`feat/coordinator-dashboard-redesign` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -24,7 +24,7 @@ in `BACKLOG.md`.
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 14, `20260726161847_init` → `20260823120000_incident_votes`. **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, **33 files, 525 tests**, all passing (~3.5s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
+| Test suite | Vitest, **34 files, 543 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -34,7 +34,8 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
-| `fix/map-controls-overlap` | In review as a PR. The map's corners below — CSS and one Leaflet prop, two files plus the documents. | Review, merge, then look at `/map` on a phone |
+| `feat/coordinator-dashboard-redesign` | **In review as a PR.** The coordinator's five tabs — `/dashboard` split into Overview, Queue and Village settings, with `/map` and `/reports` unchanged as the other two. No migration. | Review, merge, then walk the five tabs as a coordinator |
+| `fix/map-controls-overlap` | Merged as PR #15, 25 August. | Delete |
 | `fix/iphone-safe-area` | Merged as PR #12, 24 August. Released as `v0.1.42`. | Delete |
 | `fix/dashboard-period-picker` | Merged as PR #11, 22 August. | Delete |
 | `feat/police-data` | Merged as PR #10, 22 August. Migration 13 landed with it. | Delete; confirm `rls_policies.sql` re-ran |
@@ -55,6 +56,61 @@ PRs because they were asked for as PRs.
 ---
 
 ## Open items
+
+### The coordinator dashboard, in five tabs — 25 August 2026
+
+`feat/coordinator-dashboard-redesign`, in review. `docs/COORDINATOR_DASHBOARD_REDESIGN.md`
+is the design doc and was written before the code.
+
+`/dashboard` was one nine-hundred-line page doing four jobs — figures, the
+review queue, five village settings forms and the invite panel — with the queue,
+the only part with a decision waiting on a person, eight sections down. It is
+now three routes and the sidebar has five coordinator tabs:
+
+| Tab | Route | New? |
+| --- | --- | --- |
+| Overview | `/dashboard` | Rewritten, read-only |
+| Queue | `/dashboard/queue` | New page, existing components |
+| Map | `/map` | Untouched |
+| Reports | `/reports` | Gains the weekly summary history |
+| Village settings | `/dashboard/settings` | New page, existing forms |
+
+**No migration**, which is what makes this cheap to land: every column it reads
+already exists, and the only schema-adjacent change is a new `AUDIT_ACTIONS`
+entry, which is a display list rather than a constraint.
+
+Three things in it are more than a move, and are what a review should look at:
+
+- **The Queue tab's Edit button** widens `/incidents/[id]/edit` and
+  `editIncidentAction` from the reporter alone to *a coordinator of the same
+  village, on a report still in the queue*. Both constraints that matter are
+  unchanged — queue statuses only, so a published report is still not
+  rewritable, and the coordinator's own village. `/terms` §7 has said
+  "coordinators may edit … any report in their village" since it was written, so
+  this makes the code match the notice rather than the other way round.
+- **The resident list** on the Settings tab closes the standing "resident
+  verification has no UI" gap. A coordinator can move somebody between
+  `RESIDENT` and `VERIFIED_RESIDENT` and **nothing else** — not to
+  `COORDINATOR`, not another coordinator, not themselves, not a closed account.
+  `tests/resident-role.test.ts` is the new test file and asserts each refusal.
+  Audited as `village.resident_role_changed`, toned `sensitive`.
+- **`PatternAlert` is finally rendered.** Overview counts the alerts raised in
+  the period and `/reports` lists the weekly summaries. Read-only — acknowledge
+  and dismiss still have no UI, deliberately.
+
+Also: the period control gains **Last 12 months** (`365` in `TIME_RANGES` and
+`DASHBOARD_RANGE_VALUES`), the sidebar's Queue item carries a pending-count
+badge computed in `(app)/layout.tsx`, and the sidebar's active-item rule now
+takes the *longest* matching prefix — without which every nested `/dashboard/*`
+tab lit up Overview as well as itself.
+
+**What has not been done**: none of it has been exercised against a real
+village, because no village has ever been activated. The five tabs build,
+typecheck, lint and pass 543 tests. The three things to watch on the first real
+coordinator are the badge count (it is one indexed `count` on every
+authenticated render), the resident list on a village with more than
+`RESIDENT_LIST_SIZE` accounts, and the weekly summary list — which cannot render
+anything until a digest has run, and no cron has ever fired.
 
 ### Go-to-market and the launch blockers, in one place each — 25 August 2026
 

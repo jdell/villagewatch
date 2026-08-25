@@ -254,10 +254,10 @@ export default function PrivacyPage() {
           </LI>
           <LI>
             A record of privileged actions — publishing, rejecting, editing,
-            exporting, and every read of an original report — including who did
-            it, when, and from what IP address and browser. This is the
-            accountability trail. It cannot be edited or deleted, by anyone,
-            including us.
+            exporting, confirming that a resident lives in the village, and every
+            read of an original report — including who did it, when, and from
+            what IP address and browser. This is the accountability trail. It
+            cannot be edited or deleted, by anyone, including us.
           </LI>
           <LI>
             If you turn on push notifications, an anonymous device identifier
@@ -429,7 +429,11 @@ export default function PrivacyPage() {
           <Definition term="Your village coordinators and moderators">
             Everything above, plus your original wording — recorded each time —
             and your name against the report even when you filed anonymously to
-            other residents.
+            other residents. They also see the village&rsquo;s membership list:
+            your name, your email address, when you joined, and how many of your
+            reports are on the map. That is how a coordinator confirms the people
+            on the map are the neighbours they think they are; confirming you, or
+            withdrawing that, is recorded in the trail above.
           </Definition>
           <Definition term="Anyone, if your coordinator posts an alert somewhere public">
             Once a report is published, your village coordinator can post an

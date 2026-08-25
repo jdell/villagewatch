@@ -23,7 +23,8 @@ import {
  * Coordinator surfaces only. A channel is public and a resident deciding to
  * republish their neighbour's report outside the village is not a decision the
  * app should be handing out with a button — the three places this renders
- * (`/dashboard` after an approval, the incident page, and the wizard's success
+ * (`/dashboard/queue` after an approval, the incident page, and the wizard's
+ * success
  * screen) all gate it on the viewer moderating this village.
  *
  * ## The three buttons
