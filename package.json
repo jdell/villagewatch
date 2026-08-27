@@ -15,6 +15,7 @@
     "db:seed": "npx tsx prisma/seed.ts",
     "db:clean-seed": "npx tsx scripts/clean-seed-data.ts",
     "db:clean-village": "npx tsx scripts/clean-village.ts",
+    "db:activate-village": "npx tsx scripts/activate-village.ts",
     "db:seed:villages": "npx tsx prisma/seed-villages.ts --county Cambridgeshire",
     "db:seed:villages:all": "npx tsx prisma/seed-villages.ts --all",
     "download:ons": "npx tsx scripts/download-ons-places.ts",

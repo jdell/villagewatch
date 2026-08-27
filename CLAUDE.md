@@ -454,9 +454,18 @@ docs/                         The documents rendered from disk, not restated
                               paragraph 5 policy document in one agreement
   COORDINATOR_GUIDE.md        How to run a village, for a coordinator
                               The five above are rendered by the app and need a
-                              line in `outputFileTracingIncludes`. The four
+                              line in `outputFileTracingIncludes`. The ones
                               below are not — they are read by people, in the
                               repository, and nothing imports them
+  BREACH_PROCEDURE.md         DPIA action A10. What to do when personal data
+                              ends up somewhere it should not: both models, the
+                              three clocks, containment, the Article 33(5)
+                              record. Deliberately **not** in the compliance
+                              gate — a fourth document there would re-close
+                              every village that has been through it
+  LAUNCH_BLOCKERS.md          The operational companion to BACKLOG.md's Launch
+                              Blockers table — what was verified on which date,
+                              what each costs to clear, and in what order
   E2E_VERIFICATION.md         What was checked by hand against the deployment,
                               and what its addenda got wrong afterwards
   SUPABASE_EMAIL_SETUP.md     The two dashboard settings behind the auth email
@@ -489,6 +498,12 @@ scripts/
   clean-village.ts            Empties one village by slug and re-opens its
                               compliance gate. Deletes every report in it, not
                               just test data. Dry run first
+  activate-village.ts         The other direction — brings a village into
+                              service from a terminal. Calls `activateVillage`
+                              and `appointCoordinator` unchanged rather than
+                              reimplementing them, enforces the same
+                              `ADMIN_EMAILS` gate the screen does, and reports
+                              the compliance state it cannot open. Dry run first
 tests/                        Vitest, unit only — see The test suite
   rate-limit.test.ts          Quotas, independence, fail-open, the 429
   auth.test.ts                requireSession / requireAdmin / isPlatformAdmin
@@ -543,6 +558,16 @@ tests/                        Vitest, unit only — see The test suite
   village-join.test.ts        checkVillageJoin — the blank code, the empty
                               string, normalisation, the legacy null, and status
                               refusing before the code is looked at
+  incident-create-route.test.ts  The third route handler. The regression the
+                              backlog asked for by name for a month: a village
+                              with auto-approve **off** files PENDING_REVIEW,
+                              and a failed read of the setting fails closed to
+                              the queue rather than publishing
+  legal-placeholders.test.tsx The second component test. /privacy and /terms
+                              rendered to a string: no bracketed placeholder
+                              survives, there is always a working mailto, and
+                              DATA_CONTROLLER is filled in for every field or
+                              none
   village-mode.test.ts        The mode resolver — the prototype key, the
                               fallback's direction, the two document sets having
                               nothing in common, and the one audit action whose
@@ -1022,9 +1047,25 @@ filed and can close their account. Two entry points, one implementation:
 `/privacy` and `/terms`, public, sharing `src/components/legal-page.tsx` and
 linked from `SiteFooter` and the registration form.
 
-- `DATA_CONTROLLER` in `src/lib/constants.ts` is **placeholders**. A privacy
-  notice that does not name a controller does not satisfy Article 13 — fill it
-  in before a single real resident registers. It is also no longer the only
+- `DATA_CONTROLLER` in `src/lib/constants.ts` is **placeholders**, and since
+  27 August 2026 **no placeholder reaches a resident**. Those are two statements
+  and the gap between them is the design. A privacy notice that does not name a
+  controller does not satisfy Article 13 — fill it in before a single real
+  resident registers — but the constant cannot be the answer on its own, because
+  the controller differs per village and these two pages are public and
+  sessionless. So both branch on `HAS_FALLBACK_CONTROLLER_DETAILS`: filled in
+  they print the details, unfilled they explain that the controller is per
+  village and give `OPERATOR` — Yakasista Ltd, the **processor** — as a contact
+  route that works. `CONTROLLER_LABEL` carries the six sentences on `/terms`
+  that name the controller. Before that, `/privacy` §13 told a resident to send
+  their subject access request to `[contact@example.uk]`.
+  `tests/legal-placeholders.test.tsx` renders both pages and asserts no bracket
+  survives, that a `mailto:` always does, and that the constant is filled in for
+  every field or none. **Naming Yakasista Ltd as the controller would be the
+  wrong fix** and is worth writing down because it is the obvious one: it is the
+  processor in both models, and `COMMUNITY_DPA.md` makes the coordinator
+  personally answerable — a notice asserting otherwise would contradict the
+  agreement they signed. It is also no longer the only
   answer: `Village.mode` decides whether the controller is a parish council or
   the village's own coordinator, so `/privacy` §1 and `/terms` §1 describe both
   and the constant is the fallback where no village-specific controller is
@@ -1298,7 +1339,7 @@ Authentication → Emails → Templates.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Thirty-five files, 560 tests, covering the
+between the typecheck and the build. Thirty-seven files, 595 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1314,8 +1355,9 @@ travel with a comparison — the markup of the three period controls, the
 landing page's pricing promises, the mapper in front of every Supabase auth
 failure, the email transport's failure modes, the four Supabase auth templates,
 the vote — its toggle, its ordering, and the two domain rules its route
-enforces — the one change a coordinator may make to a resident's role, and the
-mask in front of every email address on the resident list.
+enforces — the one change a coordinator may make to a resident's role, the
+mask in front of every email address on the resident list, the report route's
+own two paths, and the two legal pages' placeholder text.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -1431,12 +1473,38 @@ mask in front of every email address on the resident list.
   voter. The limiter is left real with its Postgres counter mocked, the way
   `rate-limit.test.ts` does it, so "per incident and not per resident" is
   exercised against the key rather than against a stub.
-- **What is deliberately not covered**: no other route handler, no server
-  action, no RLS policy, and no component beyond the one above — nothing
+- **`incident-create-route.test.ts` is the third route handler, and it closed
+  the gap this list named for a month.** "Nothing asserts that a village with
+  auto-approve off still queues" was written here, in `BACKLOG.md` and in
+  `docs/E2E_VERIFICATION.md`, each time with the rider that it *needed a
+  database*. It did not. Mocking Prisma, the session, the compliance gate and
+  the two dispatches at their boundaries leaves the route's own decisions
+  exercisable — which is what the other two route tests already do — so the
+  suite still runs on a fresh clone with no environment.
+
+  Two decisions in it are the interesting ones. `getVillageAutoApprove` is left
+  **real** and its `SELECT` is what the mock throws from, so "a database error
+  means the queue" is exercised *through* the route rather than asserted against
+  a stub that was told to return false; that meant mocking `village.findUnique`
+  by its `select` rather than by call order, because the route reads the same row
+  twice for two different reasons. And the compliance assertions pin the two
+  things that are easy to lose in a refactor: the gate refuses **before the body
+  is parsed** and **before a rate-limit slot is spent**, so a resident whose
+  village is blocked does not pay one of their ten daily reports to find out.
+- **`legal-placeholders.test.tsx` is the second component test**, and it earns
+  the exception the way the first does — `react-dom/server`, no DOM, no secret.
+  What it pins is that no square-bracket placeholder reaches `/privacy` or
+  `/terms`, that each page always carries a working `mailto:`, and that
+  `DATA_CONTROLLER` is filled in for **every field or none**: a real council
+  named above an address still reading `[Town]` is the state that would slip a
+  placeholder past a check on the name alone. It asserts no wording, for the
+  reason `compliance-documents.test.ts` gives.
+- **What is deliberately not covered**: three route handlers and no more, no
+  server action, no RLS policy, and no component beyond the two above — nothing
   interactive, nothing behind a click. Those need a database, a request context or a
   browser, and a suite that needed any of them would stop being the thing CI can
-  run on every push. The gap that matters most is named in Not built yet —
-  nothing asserts that a `PENDING_REVIEW` village still queues.
+  run on every push. What the three route tests still cannot say is what
+  *Postgres* did with the row they watched being handed to `create`.
 
 ## The canonical origin
 
@@ -1547,6 +1615,7 @@ npm run db:seed:villages # Seed the Cambridgeshire directory — 270 parishes
 npm run db:seed:villages:all      # Every parish in England — 10,670
 npm run db:clean-seed    # Remove the sample village's data — dry run by default
 npm run db:clean-village -- --slug <slug>   # Empty one village — dry run first
+npm run db:activate-village -- --slug <slug> --admin <email>  # Activate one — dry run first
 npx prisma studio        # Browse data
 npm run release:patch    # Bump version + changelog by hand (CI usually does it)
 node scripts/generate-icons.mjs   # Re-render the favicons + PWA icons from the mark
@@ -4065,12 +4134,17 @@ open:
   `/map` in a village with a handful of reports and check the blobs sit where the
   pins do: `leaflet.heat` reads `L` off the global scope, and the failure mode if
   that ever stops being true is a silent no-op layer rather than an error.
-- **There is a test suite, and it covers twenty modules rather than the app.**
-  `npm run test` runs Vitest over `tests/`, and `.github/workflows/ci.yml` runs
-  it between the typecheck and the build. See The test suite above for what is
-  asserted and what is deliberately not. Nothing yet asserts that a village with
-  auto-approve off still queues — that needs a route test with a database behind
-  it, and it is still the regression worth having one for.
+- **There is a test suite, and it covers twenty-odd modules rather than the
+  app.** `npm run test` runs Vitest over `tests/`, and
+  `.github/workflows/ci.yml` runs it between the typecheck and the build. See
+  The test suite above for what is asserted and what is deliberately not.
+  **"Nothing yet asserts that a village with auto-approve off still queues" was
+  the standing entry here and is closed** — `tests/incident-create-route.test.ts`,
+  27 August 2026. The rider that went with it for a month, that it "needs a route
+  test with a database behind it", was wrong: the route's own decisions are
+  exercisable with Prisma mocked at its boundary, the same way the retention and
+  vote route tests work. What is still true is the narrower thing — no test in
+  this suite has ever seen a row come back out of Postgres.
 - **The police figures have three tables, four modules, two surfaces and no
   request ever made.** `20260822120000_police_crime_data` is unapplied, no sync
   has run, and nothing in this deployment has spoken to data.police.uk. The unit

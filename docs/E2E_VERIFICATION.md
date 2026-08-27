@@ -211,9 +211,23 @@ the channel if the village also has posting on.
 *resident* asks to hear less, and a coordinator who muted village news has not
 asked to stop being told there is work waiting.
 
-**Gap in coverage, not in code:** nothing in `tests/` asserts that a
+~~**Gap in coverage, not in code:** nothing in `tests/` asserts that a
 non-auto-approving village still queues. That needs a route test with a database
-behind it, and it remains the regression most worth having one for.
+behind it, and it remains the regression most worth having one for.~~
+
+**Closed 27 August 2026** — `tests/incident-create-route.test.ts`. And the
+second sentence above was wrong, which is worth leaving visible rather than
+quietly editing: it did **not** need a database. Mocking Prisma, the session,
+the compliance gate and the two dispatches at their boundaries leaves the
+route's own decisions exercisable, which is exactly what `retention.test.ts`
+had already been doing since before this paragraph was written. The belief that
+a route test implied a database is what kept the gap open for a month.
+
+`getVillageAutoApprove` is deliberately left **real** in that test, with only
+its `SELECT` mocked, so the fail-closed behaviour is exercised through the route
+rather than asserted against a stub. What a unit test still cannot tell you is
+what Postgres did with the row — that is the by-hand step, and it is still
+outstanding.
 
 ## f) Coordinator approve/reject → status change → reporter notified
 

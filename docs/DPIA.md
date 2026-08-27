@@ -633,7 +633,10 @@ and should understand that this is what it is removing.
 | **Accepted?** | *[Controller to confirm]* |
 
 **A breach notification procedure is required** — who tells the ICO within 72
-hours, and who tells residents. **Action A10.**
+hours, and who tells residents. **Action A10**, drafted 27 August 2026 at
+`docs/BREACH_PROCEDURE.md`. It is not part of the compliance gate: the gate is
+what a village *accepts* before it may take a report, and a fourth document
+there would re-close every village that has already been through it.
 
 ### R11 — Children's data
 
@@ -700,9 +703,9 @@ waiting on the developer.
 |---|---|---|---|---|---|
 | **A1** | Adopt an **Appropriate Policy Document** under Schedule 1 Part 4 DPA 2018 for criminal offence data, and identify the Schedule 1 condition relied on. The accompanying template is drafted and ready for the council to review and sign; adopting it is the council's act, and until it is signed the template is a draft | §4.3 | **Blocker** | Before launch | Template drafted, not yet adopted |
 | **A2** | Execute a **written data processing agreement** with Yakasista Ltd (processor), meeting Article 28(3). Jointly with the processor. The agreement is drafted and is the third document on the compliance page, so the council's acceptance is recorded there alongside this assessment and the Appropriate Policy Document. It is a contract rather than a policy, so it is **not in force until both parties have signed the paper copy** — accepting it on screen is the council's half | §5.4 | **Blocker** | Before launch | Template drafted, included in compliance flow |
-| **A4** | Write **coordinator terms and review guidance** — what to reject, how to handle a report about a child, what "obviously about one household" looks like, and the consequences of misusing access | R1, R8, R9, R11 | **Blocker** | Before launch | Not started |
-| **A5** | Replace the placeholder controller details in the privacy notice with the council's real name, address, contact and **ICO registration number**; register with the ICO if not already registered | §6 | **Blocker** | Before launch | Placeholders in place |
-| **A10** | Write a **personal data breach procedure** — detection, the 72-hour ICO notification, resident notification, and who decides | R10 | **Blocker** | Before launch | Not started |
+| **A4** | Write **coordinator terms and review guidance** — what to reject, how to handle a report about a child, what "obviously about one household" looks like, and the consequences of misusing access | R1, R8, R9, R11 | **Blocker** | Before launch | **Drafted** — `docs/COORDINATOR_GUIDE.md`. "Rejecting" covers all four grounds by name, including a report about a child and the "house with the blue door" identification; "Privacy responsibilities" covers misuse. Recorded as *Not started* here until 27 Aug 2026, which was stale rather than accurate. Outstanding: the council adopting it as its own terms, and a stated consequence for a coordinator who misuses access |
+| **A5** | Replace the placeholder controller details in the privacy notice with the council's real name, address, contact and **ICO registration number**; register with the ICO if not already registered | §6 | **Blocker** | Before launch | **Partly closed 27 Aug 2026.** No placeholder now reaches a resident: `/privacy` and `/terms` branch on whether the fallback has been filled in, and where it has not they name the role, explain that the controller is per village, and give the operator as a contact route that works. `tests/legal-placeholders.test.tsx` asserts it. Still outstanding, and still a blocker: naming the controller, and ICO registration |
+| **A10** | Write a **personal data breach procedure** — detection, the 72-hour ICO notification, resident notification, and who decides | R10 | **Blocker** | Before launch | **Drafted 27 Aug 2026** — `docs/BREACH_PROCEDURE.md`. Covers both models, the three clocks, containment, the risk test, the record template and five named gaps. Outstanding and marked in it: the controller naming a decision-maker and a deputy |
 | **A9** | Verify Anthropic's current terms — transfer mechanism, training exclusion, retention period — and record the date checked | R6, §5.1 | High | Before launch | Not verified |
 | **A11** | Verify the OneSignal data processing agreement and its transfer mechanism | §5.4 | High | Before launch | Not verified |
 | **A12** | Consult residents through the parish newsletter or a public meeting and record the outcome at §3 | §3 | High | Before launch | Not started |

@@ -1,6 +1,8 @@
 # VillageWatch — launch blockers
 
 **Audited:** 25 August 2026 against `main` at `v0.1.43`.
+**Re-audited:** 27 August 2026 against `main` at `v0.1.46`, on
+`fix/launch-blockers`.
 **Scope:** the five items standing between the code as it is today and a real
 resident filing a real report in a real village.
 
@@ -21,11 +23,35 @@ documents in `docs/` that the app renders from disk, it needs **no**
 
 | # | Blocker | Code | Operationally | Blocks the pilot? |
 |---|---------|------|---------------|-------------------|
-| **L1** | DPIA and the compliance pack | Complete — gate is live and enforcing | Nothing accepted, nowhere | **Yes** — but see the community-mode finding below |
-| **L2** | `DATA_CONTROLLER` placeholders | Still placeholders, verified in source | `/privacy` reads them today | **Yes** |
-| **L3** | Village activation from cold | Complete and audited since 27 Jul; join-code enforcement fixed 13 Aug | **Never run.** No village has ever been activated | **Yes** |
+| **L1** | DPIA and the compliance pack | Complete — gate is live and enforcing. **A10 written 27 Aug**; A4 found already written | Nothing accepted, nowhere | **Yes** — but see the community-mode finding below |
+| **L2** | `DATA_CONTROLLER` placeholders | **Resident-facing half closed 27 Aug** — no placeholder reaches `/privacy` or `/terms`, asserted by a test | Controller still unnamed; ICO registration not started | **Yes**, and the ICO registration is the long lead |
+| **L3** | Village activation from cold | Complete and audited since 27 Jul; join-code enforcement fixed 13 Aug. **CLI added 27 Aug** | **Never run.** No village has ever been activated | **Yes** |
 | **L4** | OneSignal push | Complete; three env vars blank | Credentials missing in Vercel; no push ever delivered | **Yes** for the alert leg |
-| **L5** | Coordinator flow end-to-end | Complete; untested as a chain | Never exercised against a database | **Yes** |
+| **L5** | Coordinator flow end-to-end | **Named test-suite gap closed 27 Aug** — the queue is asserted. The chain is still untested | Never exercised against a database | **Yes** |
+
+### What the 27 August pass changed
+
+Five things, and the boundary between them and the rest is the point: everything
+below is code or a document, and **not one of them activates a village, accepts
+an agreement, registers with the ICO or delivers a push.** Those five remain
+manual and are listed under each blocker.
+
+| Change | Blocker | Where |
+|---|---|---|
+| `POST /api/incidents` route test — 23 assertions, including that auto-approve **off** files `PENDING_REVIEW` and that a failed read of the setting fails closed to the queue | L5 | `tests/incident-create-route.test.ts` |
+| No placeholder reaches a resident: `/privacy` and `/terms` branch on whether the fallback is filled in, and name the operator as a working contact where it is not | L2 | `src/lib/constants.ts`, both legal pages, `tests/legal-placeholders.test.tsx` |
+| Personal data breach procedure — DPIA action **A10**, the only blocker action with no document at all | L1 | `docs/BREACH_PROCEDURE.md` |
+| Village activation from a terminal, dry-run by default, reusing the audited functions rather than reimplementing them | L3 | `scripts/activate-village.ts` |
+| DPIA action statuses corrected — **A4 was recorded as "Not started" and was substantially written** | L1 | `docs/DPIA.md` §9.1 |
+
+**The finding worth carrying forward: A4 was not started, it was unrecorded.**
+`docs/COORDINATOR_GUIDE.md` covers every ground A4 names — what to reject, a
+report about a child, the "house with the blue door" identification, and the
+consequences of misusing access — and has since it was written. The DPIA said
+*Not started* for a month. That is the second time in this project a status line
+outlived its own truth (the first was L3's join-code enforcement), and it is why
+this document opens by telling the reader to check the code before believing
+either file.
 
 **The one finding that changes the critical path:** `Village.mode` defaults to
 `community`, and a community village accepts **one** document rather than three.
@@ -126,8 +152,8 @@ volunteer is told; being told is not the same as having a procedure.
 ### Action items
 
 - [ ] **Decide the pilot's mode.** Recommend `community` for Histon. Record the decision here with the date.
-- [ ] Write **A4** — coordinator review guidance. Much of it already exists in prose in `docs/COORDINATOR_GUIDE.md` §"Managing incidents" and §"Privacy responsibilities"; what is missing is the decision list a coordinator can act from and the consequences of misuse.
-- [ ] Write **A10** — breach procedure. One page: how a breach is noticed, who is told within 72 hours, who decides, and what a resident is told.
+- [x] ~~Write **A4** — coordinator review guidance.~~ **Found already written, 27 Aug.** `docs/COORDINATOR_GUIDE.md` §"Rejecting" is the decision list, and it names all four grounds A4 asks for including a report about a child; §"Privacy responsibilities" covers misuse. The DPIA's status line was stale rather than the work being missing. **Still outstanding:** the controller adopting it as its own coordinator terms, and a stated consequence for a coordinator who misuses access — the guide says what not to do and not what happens if you do.
+- [x] ~~Write **A10** — breach procedure.~~ **Written 27 Aug**, `docs/BREACH_PROCEDURE.md`. Both models, the three clocks (24h processor → controller, 72h controller → ICO, without-undue-delay → residents), containment a coordinator can do themselves, the risk test, the Article 33(5) record template, and five named gaps. **Still outstanding:** §2 needs a named decision-maker and a deputy — *[Controller to complete]* — and it has never been rehearsed.
 - [ ] Close **A9** and **A11** — read Anthropic's and OneSignal's current terms, record the transfer mechanism and the date checked. Both are marked `[verify]` inside `DATA_PROCESSING_AGREEMENT.md` today.
 - [ ] Have the coordinator accept `COMMUNITY_DPA.md` on `/dashboard/compliance` and **confirm reporting opens** — this has never been done in either model.
 - [ ] Only if the pilot runs as `council`: get A1 adopted and A2 countersigned, and put the DPIA in front of the council.
@@ -136,7 +162,9 @@ volunteer is told; being told is not the same as having a procedure.
 
 ## L2 — the `DATA_CONTROLLER` placeholder
 
-**Status: still there.** Verified in source on 25 August 2026.
+**Status, 27 August 2026: the constant is still placeholders and no placeholder
+reaches a resident.** Those are two different statements and the distinction is
+the whole of what changed.
 
 `src/lib/constants.ts:1872`:
 
@@ -174,21 +202,55 @@ footer of every police and council document — the period report, the PDF and t
 single-incident summary. `/reports` shows an amber warning when the footer would
 print the placeholder.
 
+### What was fixed on 27 August
+
+`/privacy` and `/terms` printed the placeholders **verbatim, to the public**. A
+resident looking for where to send a subject access request was given
+`[contact@example.uk]`; `/terms` told them "neither VillageWatch nor
+[Data controller name] is liable". That is a broken right-of-access route on a
+live page, and bracket text is the worst shape for it to take — most people read
+it as a rendering fault rather than as a gap somebody has to fill, so nobody
+reports it.
+
+It survived eight weeks because "fill in the constant" was never the whole fix.
+**The controller genuinely differs per village** — a parish council in one model,
+the coordinator in the other — and these two pages are public and sessionless, so
+they cannot read a village to find out which. There is no single true name to put
+there.
+
+So both pages branch instead, on `HAS_FALLBACK_CONTROLLER_DETAILS`:
+
+- filled in, they print the details exactly as before;
+- unfilled, they say the controller is per village, tell the reader to ask their
+  coordinator, and give **Yakasista Ltd at info@yakasista.com** as a route that
+  always works — clearly labelled the *processor*, which it is;
+- `CONTROLLER_LABEL` carries the six sentences on `/terms` that name the
+  controller, saying "your village's data controller" until there is a name.
+
+`tests/legal-placeholders.test.tsx` renders both pages to a string and asserts no
+bracketed placeholder survives, that there is always a working `mailto:`, and
+that `DATA_CONTROLLER` is filled in **for every field or none** — a half-filled
+object being the state that would slip a placeholder past the name check.
+
+**Yakasista Ltd is named as the processor and deliberately not as the
+controller.** It is not the controller in either model, `COMMUNITY_DPA.md` makes
+the coordinator personally answerable, and a privacy notice asserting otherwise
+would contradict the agreement the coordinator signs.
+
 ### Where it still leaks
 
-- **`/privacy` reads the constant.** It is public, sessionless and cannot read a village, so there is no per-village value for it to prefer. A privacy notice that does not name a controller does not satisfy Article 13.
-- **`/terms` §1** describes both models and points at `/privacy` §1.
-- Any village that has not filled in `Village.parishCouncil` prints `[Data controller name]` on documents addressed to a PCSO.
+- **Nobody has decided who the controller is.** That is the actual blocker and no code change reaches it.
+- **No ICO registration.** A separate act with a fee, not a string to type, and the longest lead item on this page.
+- Any village that has not filled in `Village.parishCouncil` still prints `[Data controller name]` on documents addressed to a PCSO. Left as-is deliberately: `/reports` already shows an amber warning, and a police report is read by somebody who can act on a visibly unfinished field, unlike a resident.
 
-This is **DPIA action A5** and it is a Blocker there too. It also carries the
-ICO registration requirement, which is a separate act with a fee, not a string
-to type.
+This is **DPIA action A5**, now recorded there as partly closed and still a
+Blocker.
 
 ### Action items
 
 - [ ] Decide who the controller is for the pilot. In `community` mode this is the Histon coordinator personally, at an address they are willing to publish.
 - [ ] **Register with the ICO** if not already registered, and obtain the registration number. This is the long-lead item — do it first.
-- [ ] Fill in all six fields in `DATA_CONTROLLER`.
+- [ ] Fill in all six fields in `DATA_CONTROLLER`. **All of them or none** — the test asserts it, because a real name above an address reading `[Town]` is the state that puts a placeholder back on the page.
 - [ ] Set `Village.parishCouncil` for Histon on `/dashboard` so the report footers name it too.
 - [ ] Re-read `/privacy` §1 and `/terms` §1 end to end with the real values in place, and have whoever is now the controller review them. `/privacy` makes nine claims about how the code behaves; the controller is the person answerable for them.
 
@@ -229,10 +291,45 @@ Nothing in the code. Everything in the operation:
 - **The only `ACTIVE` village is `prisma/seed.ts`'s placeholder**, named "your-village", with five invented incidents and the hardcoded join code `VILLAGE1`. That is the village a real resident would land in today. This is **L7**, and it is entangled with L3 rather than separate from it: activating Histon without dealing with the placeholder leaves two villages live, one of them fictional.
 - **No village has ever been activated through the screen.** `PROJECT_STATE.md` records that a grant draft claimed the Histon pilot was under way and that this was corrected — no village has ever been activated.
 
+### What was added on 27 August
+
+`scripts/activate-village.ts`, run as
+`npm run db:activate-village -- --slug histon-cambridgeshire --admin <email>`.
+**Dry run by default**, like `clean-village.ts`; `--confirm` writes.
+
+It exists because of the bootstrap, and it is the same bootstrap `ADMIN_EMAILS`
+exists for. Activating the *first* village through the screen needs a browser, a
+session, `ADMIN_EMAILS` set on the deployment **and a redeploy for it to take
+effect** — of which the last turns a five-minute operational step into a deploy
+cycle. That is a fair part of why 270 parishes have been `PENDING` since 27 July
+with complete, audited code to activate them sitting unused.
+
+Three things about it are worth knowing before it is run:
+
+- **It is the same act, not a second implementation.** It calls `activateVillage`
+  and `appointCoordinator` unchanged. It does not reimplement minting, the status
+  guard or the audit rows — a divergent second copy of a privileged write is how
+  you get a village with a status and no code, which `checkVillageJoin` lets
+  anybody into.
+- **It is the same gate.** `--admin` must be in `ADMIN_EMAILS` and must have a
+  `User` row (`AuditLog.actorId` is a foreign key, so a trail entry naming
+  nobody cannot be written). With `ADMIN_EMAILS` unset it refuses everyone,
+  exactly as the screen does. Both refusals were tested against an unreachable
+  database, so they are known to happen before anything is read.
+- **It reports the compliance gate and cannot open it.** Activating a village
+  does *not* let it accept reports; a script that ticked the boxes would record
+  an acceptance nobody made. It prints where the gate stands, in bold, because an
+  activated village that then refuses every report is the surprise worth heading
+  off.
+
+It deliberately has no `--regenerate`: rotating a code from a terminal with no
+confirmation of who is holding it is not an improvement on the screen's button.
+
 ### Action items
 
-- [ ] Confirm `ADMIN_EMAILS` reaches **Vercel**, not only a local file. It is read at module load and fails closed: unset, nobody is an administrator and `/admin/villages` refuses everyone.
-- [ ] Find Histon in `/admin/villages` and **activate it**. Record the minted join code somewhere that is not a screenshot.
+- [ ] Confirm `ADMIN_EMAILS` reaches **Vercel**, not only a local file. It is read at module load and fails closed: unset, nobody is an administrator and `/admin/villages` refuses everyone. The CLI needs it in `.env.local` only, which is the point of the CLI.
+- [ ] **Dry-run the activation first:** `npm run db:activate-village -- --slug histon-cambridgeshire --admin <your ADMIN_EMAILS address>`. Read the report — it prints the village's status, resident count, compliance model and gate state before it offers to change anything.
+- [ ] Then re-run with `--confirm`, and `--coordinator <email>` to appoint the first coordinator in the same pass. **Record the minted join code somewhere that is not a screenshot** — it is a credential, it is not in the audit trail, and the run that prints it is the only place it appears.
 - [ ] Appoint the Histon coordinator by email in the same action.
 - [ ] Deal with the seed village (**L7**): `npm run db:clean-village -- --slug your-village` (dry run first), or delete it outright. It must not be reachable when the first real resident registers.
 - [ ] Have the coordinator open `/dashboard`, and check the join code, link and QR render.
@@ -282,7 +379,21 @@ Four dispatches, and one of them is new and load-bearing for L5:
 
 - [ ] Set all three variables in **Vercel**, for Production. `ONESIGNAL_REST_API_KEY` is server-only — never prefix it with `NEXT_PUBLIC_`.
 - [ ] **Redeploy**, because the public one is inlined at build time.
-- [ ] Set the OneSignal dashboard's service worker path and scope to `/onesignal/`, matching `serviceWorkerPath` and `serviceWorkerParam` in `push-registration.tsx`.
+- [ ] Set the OneSignal dashboard's service worker fields to match `push-registration.tsx` **exactly**. Settings → Web Configuration → Advanced → Service Workers, "Customize service worker file paths and scope":
+
+  | Dashboard field | Value | Comes from |
+  |---|---|---|
+  | Path to service worker files | `/onesignal/` | `SERVICE_WORKER.scope` |
+  | Main service worker filename | `OneSignalSDKWorker.js` | `public/onesignal/OneSignalSDKWorker.js` |
+  | **Updater** service worker filename | `OneSignalSDKWorker.js` | the same file — v16 collapsed the two, and leaving the v15 default `OneSignalSDKUpdaterWorker.js` here points at a file this repo does not have |
+  | Service worker registration scope | `/onesignal/` | `SERVICE_WORKER.scope` |
+
+  The updater row is the one that catches people: it is a separate field, it
+  defaults to a filename that does not exist here, and a 404 on it reports a
+  perfectly healthy init that never delivers. Confirm with
+  `curl -I https://villagewatch.app/onesignal/OneSignalSDKWorker.js` — a 200 is
+  the only acceptable answer, and it is worth checking before believing the
+  dashboard.
 - [ ] Set the OneSignal site URL to `https://villagewatch.app` — one of the three places outside the repo that name the canonical host and all of which fail quietly if they disagree.
 - [ ] Subscribe on a real phone and **deliver one push**. Watch the `[push:client]` and `[push:*]` console breadcrumbs; SETUP.md §8 is the checklist.
 - [ ] Confirm the deep link opens the right report on the device, not just that the notification arrives.
@@ -292,7 +403,7 @@ Four dispatches, and one of them is new and load-bearing for L5:
 ## L5 — the coordinator flow, end to end
 
 **Status: every part is built, no part of the chain has been exercised against a
-database, and the suite cannot cover it.**
+database, and the suite now covers the one step it was said not to be able to.**
 
 ### The chain to verify
 
@@ -303,7 +414,11 @@ the list.
 ### What is unverified, in the order it is likely to surprise
 
 1. **That the compliance gate opens.** No acceptance has ever been recorded in either model. Until one is, a village refuses every report with a 403 before the body is parsed — so step one of the chain does not run at all. This is the L1 dependency and it is first for a reason.
-2. **That a village with `autoApprove` off actually queues.** This is the single named gap in the test suite: nothing anywhere asserts it. It needs a route test with a database behind it, which is the test this suite deliberately does not take.
+2. ~~**That a village with `autoApprove` off actually queues.**~~ **Closed in code, 27 Aug** — `tests/incident-create-route.test.ts`, 23 assertions. It turned out not to need a database at all: mocking Prisma, the session, the compliance gate and the two notification dispatches at their boundaries leaves the route's own decisions exercisable, which is what `retention.test.ts` and `incident-vote-route.test.ts` already do. The suite still runs with no secret and no environment.
+
+   Two decisions in it are worth knowing. `getVillageAutoApprove` is left **real**, with its `SELECT` mocked, so "a database error means the queue" is exercised through the route rather than asserted against a stub told to return false. And the test was **mutation-checked**: replacing `autoApprove ? "PUBLISHED" : "PENDING_REVIEW"` with a bare `"PUBLISHED"` fails four of its assertions, so it is known not to pass vacuously.
+
+   What a unit test still cannot tell you is whether the *row in Postgres* comes back `PENDING_REVIEW`, which is item 2 of the by-hand list below.
 3. **That the coordinator is told.** `notifyCoordinatorsOfPendingReport` is the newest dispatch and depends entirely on L4. Without it the queue fills silently and the flow stalls at step two with nothing on any screen to say so.
 4. **That approval publishes and fans out.** `applyModeration` owes four things at once — the village push, the WhatsApp Channel log line, the staff Slack line and an `incident.publish` audit row. `announce()` in `POST /api/incidents` is where the same set lives for the auto-approve path; the two have to stay in step and nothing tests that they do.
 5. **The AI pass against a real report.** Every failure is a 200 with `ok: false` and the wizard falls back to the reporter's own wording — so a broken key looks like a working wizard producing unanonymised text. Watch `anonymized` on the first report.
@@ -319,7 +434,7 @@ the list.
 - [ ] Read the reporter's original wording once through the queue's reveal button, and confirm an `incident.raw_viewed` row appears against it.
 - [ ] Paste one alert into a **test** channel and read what actually lands.
 - [ ] Then, and only then, turn auto-approve on in a second test and confirm the other path files as `PUBLISHED` with `autoApproved: true` and no `before` on the audit row.
-- [ ] Write the route test for item 2 above once the flow is proven by hand. It is the regression worth having a database-backed test for.
+- [x] ~~Write the route test for item 2 above.~~ Done 27 Aug, and it did not need the database it was assumed to need. What is left for the by-hand pass is confirming the **stored row** matches what the route decided — the test asserts what was handed to `incident.create`, not what Postgres did with it.
 
 ---
 

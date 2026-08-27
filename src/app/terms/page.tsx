@@ -15,8 +15,10 @@ import {
 import {
   APP_HOST,
   APP_NAME,
-  DATA_CONTROLLER,
+  CONTROLLER_LABEL,
+  HAS_FALLBACK_CONTROLLER_DETAILS,
   MINIMUM_AGE,
+  OPERATOR,
   RETENTION,
 } from "@/lib/constants";
 
@@ -88,7 +90,7 @@ export default function TermsPage() {
             privacy policy
           </Link>{" "}
           explains which applies and how to find out. Where these terms name{" "}
-          {DATA_CONTROLLER.name}, read it as whichever of the two runs your
+          {CONTROLLER_LABEL}, read it as whichever of the two runs your
           village. By creating an account you agree to these terms and to our{" "}
           <Link
             href="/privacy"
@@ -286,7 +288,7 @@ export default function TermsPage() {
         <P>
           You remain legally responsible for the content of every report you
           submit, including after it has been anonymised, rewritten and
-          published. Neither {APP_NAME} nor {DATA_CONTROLLER.name} accepts
+          published. Neither {APP_NAME} nor {CONTROLLER_LABEL} accepts
           responsibility for a report&apos;s accuracy.
         </P>
         <P>
@@ -377,7 +379,7 @@ export default function TermsPage() {
           </LI>
           <LI>
             To the extent the law allows, neither {APP_NAME} nor{" "}
-            {DATA_CONTROLLER.name} is liable for any loss arising from reliance
+            {CONTROLLER_LABEL} is liable for any loss arising from reliance
             on an AI-generated summary, category, severity or pattern note.
           </LI>
         </UL>
@@ -390,7 +392,7 @@ export default function TermsPage() {
       <LegalSection id="content" title="9. Your content">
         <P>
           What you file stays yours. By submitting it you give{" "}
-          {DATA_CONTROLLER.name} a non-exclusive, royalty-free licence to store
+          {CONTROLLER_LABEL} a non-exclusive, royalty-free licence to store
           it, anonymise it, redact it, publish it to your village and include it
           in aggregated safety statistics, for as long as these terms apply and
           for the retention periods in the privacy policy.
@@ -420,13 +422,13 @@ export default function TermsPage() {
             limited.
           </LI>
           <LI>
-            Subject to that, neither {APP_NAME} nor {DATA_CONTROLLER.name} is
+            Subject to that, neither {APP_NAME} nor {CONTROLLER_LABEL} is
             liable for indirect or consequential loss, loss of property, or loss
             arising from a report that was inaccurate, delayed, unreviewed or
             never filed.
           </LI>
           <LI>
-            You agree to indemnify {DATA_CONTROLLER.name} against claims brought
+            You agree to indemnify {CONTROLLER_LABEL} against claims brought
             by a third party arising from content you filed in breach of section
             4.
           </LI>
@@ -467,7 +469,31 @@ export default function TermsPage() {
       <LegalSection id="contact" title="14. Contact">
         <P>
           Questions about these terms, or about a moderation decision, go to{" "}
-          {DATA_CONTROLLER.name} at <strong>{DATA_CONTROLLER.email}</strong>.
+          {CONTROLLER_LABEL} — in most villages that is your coordinator.{" "}
+          {HAS_FALLBACK_CONTROLLER_DETAILS ? (
+            <>
+              Section 1 of the{" "}
+              <Link
+                href="/privacy"
+                className="font-medium text-brand-700 underline underline-offset-2"
+              >
+                privacy policy
+              </Link>{" "}
+              has their contact details.
+            </>
+          ) : (
+            <>
+              If you cannot reach them, email{" "}
+              <a
+                href={`mailto:${OPERATOR.email}`}
+                className="font-medium text-brand-700 underline underline-offset-2"
+              >
+                {OPERATOR.email}
+              </a>
+              , which reaches {OPERATOR.name} — the company that runs the
+              software, not the controller, but a route that always works.
+            </>
+          )}
         </P>
       </LegalSection>
     </LegalPage>

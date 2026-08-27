@@ -1963,6 +1963,62 @@ export const DATA_CONTROLLER = {
 } as const;
 
 /**
+ * Whether a value is still one of the square-bracketed placeholders above.
+ *
+ * The convention is the brackets and nothing cleverer: every unfilled field in
+ * `DATA_CONTROLLER` opens with `[`, and a real council's name, address or email
+ * never does. A boolean flag beside the object would be a second thing to
+ * remember to change, and the one it is easy to forget is the flag.
+ */
+export function isPlaceholderDetail(value: string): boolean {
+  return value.trim().startsWith("[");
+}
+
+/**
+ * Whether this deployment has been told who the fallback data controller is.
+ *
+ * False today, and false is not a bug — it is the honest answer for a
+ * deployment serving many villages, because **the controller differs per
+ * village**. A parish council controls a council village and the coordinator
+ * controls a community one, so there is no single name that is true of all of
+ * them; `Village.parishCouncil` is where the answer actually lives and
+ * `reportController` is what reads it.
+ *
+ * What this flag is for is the two pages that cannot read a village.
+ * `/privacy` and `/terms` are public and sessionless, so until 27 August 2026
+ * they printed the placeholders themselves — a resident looking for the address
+ * to send a subject access request to was given `[contact@example.uk]`, and a
+ * resident who wanted to complain about that was given `[Town]`. That is a
+ * broken right-of-access route on a live public page, and it is worse than
+ * saying nothing: bracket text reads to most people as a rendering fault rather
+ * than as a gap somebody has to fill, so nobody reports it.
+ *
+ * Both pages branch on this now. Filled in, they print the details. Unfilled,
+ * they say the controller is per village, name the operator as the route that
+ * always works, and drop the block entirely rather than render a fake one.
+ *
+ * **Filling it in is still L2 and is still a launch blocker** — see
+ * `docs/LAUNCH_BLOCKERS.md`. This makes the unfilled state truthful; it does
+ * not make it finished.
+ */
+export const HAS_FALLBACK_CONTROLLER_DETAILS =
+  !isPlaceholderDetail(DATA_CONTROLLER.name);
+
+/**
+ * What to call the controller in a sentence that has to read correctly whether
+ * or not anybody has named one.
+ *
+ * `/terms` names the controller in six places — "neither VillageWatch nor X is
+ * liable", "you grant X a licence" — and every one of them read
+ * "[Data controller name]" on a public page. The role is the part those
+ * sentences actually depend on, and it is true in both models and in both
+ * states, so it is what they say until there is a name to use instead.
+ */
+export const CONTROLLER_LABEL = HAS_FALLBACK_CONTROLLER_DETAILS
+  ? DATA_CONTROLLER.name
+  : "your village's data controller";
+
+/**
  * How long things are kept.
  *
  * The privacy policy states these numbers and `GET /api/cron/retention` enforces
