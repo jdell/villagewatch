@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 25 August 2026 · **Repo version:** `v0.1.45` · **Branch:**
-`fix/ai-rewrite-rate-limit` · **Domain:** https://villagewatch.app
+**Last updated:** 27 August 2026 · **Repo version:** `v0.1.46` · **Branch:**
+`fix/launch-blockers` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -24,7 +24,7 @@ in `BACKLOG.md`.
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 14, `20260726161847_init` → `20260823120000_incident_votes`. **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, **35 files, 560 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar one: `period-control.test.tsx` renders three components to a string, which needs no DOM |
+| Test suite | Vitest, **37 files, 595 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar two component tests, both rendered to a string with no DOM: `period-control.test.tsx` and `legal-placeholders.test.tsx`. Three route handlers are now covered — retention, the vote, and **`POST /api/incidents`**, which closed the gap this file and two others named for a month |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -35,7 +35,8 @@ in `BACKLOG.md`.
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
 | `feat/email-masking-resident-list` | **In review as a PR.** One commit: the resident list's email addresses are masked server-side, with a Show button per row. Cut from `main` after PR #16 merged without it. | Review, merge |
-| `fix/ai-rewrite-rate-limit` | **In review as a PR.** One commit: `RATE_LIMITS.aiProcess` raised from 5/hour to 30/hour, after residents reported meeting it inside a single report. No schema change, no migration, no new environment variable. | Review, merge |
+| `fix/launch-blockers` | **In review as a PR.** The 27 August launch-blocker audit: the breach procedure (L1/A10), placeholder text off `/privacy` and `/terms` (L2), an activation CLI (L3), the OneSignal runbook (L4) and the report route's queue test (L5). No schema change, no migration, no new environment variable. **Closes no blocker outright** — what is left in each of the five is an operational act. | Review, merge |
+| `fix/ai-rewrite-rate-limit` | Merged as PR #20, 25 August. Released as `v0.1.46`. | Delete |
 | `feat/coordinator-dashboard-redesign` | Merged as PR #16, 25 August. Released as `v0.1.44`. | Delete |
 | `fix/map-controls-overlap` | Merged as PR #15, 25 August. | Delete |
 | `fix/iphone-safe-area` | Merged as PR #12, 24 August. Released as `v0.1.42`. | Delete |
@@ -735,7 +736,7 @@ as working — to anybody, and least of all in a grant application.
 | The period controls | No database holds ninety days of reports | `/dashboard` — a stat card keyed to a different window from the breakdown beneath it is the failure that looks correct |
 | Password recovery | No email has ever been sent through it | Supabase's redirect URL must be allow-listed or the link dead-ends |
 | OG image, `robots.txt`, `sitemap.xml` | Never fetched by a crawler | — |
-| The coordinator flow end to end | Never run | Nothing in the suite asserts that a village with auto-approve **off** still queues. This is the regression worth a route test |
+| The coordinator flow end to end | Never run | The **suite** now asserts that a village with auto-approve **off** files `PENDING_REVIEW` (`tests/incident-create-route.test.ts`, 27 Aug). What has never happened is the chain: no compliance acceptance exists, so step one 403s, and the coordinator's push depends on L4 |
 | Incident votes | Nobody has voted; migration 14 is unapplied | The toggle across two devices, the concern panel's ordering, and a village with one vote producing **no** report section rather than one with a single line in it |
 | Email from the app | No message has reached a real inbox | An unverified Resend sending domain is refused and the refusal is only in the server log; both env vars have to reach Vercel |
 | The Supabase auth templates | Never pasted into the dashboard | Outlook's Word engine is the one that surprises people; the fallback link under the button is what a client that eats the button table leaves behind |
@@ -848,6 +849,75 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 ---
 
 ## Recent completions
+
+**The five launch blockers, audited — 27 August 2026.** Every one of L1–L5 was
+read against the code rather than against its own status line, which mattered:
+two of the five were recorded as less finished than they were, and one was
+recorded as more.
+
+What changed in the repository, and the boundary is the point — **none of these
+activates a village, accepts an agreement, registers with the ICO or delivers a
+push**:
+
+- **L5's named gap is closed**, and the rider that came with it was wrong.
+  "Nothing asserts that a village with auto-approve off still queues" appeared in
+  `BACKLOG.md`, in `CLAUDE.md` and in `docs/E2E_VERIFICATION.md`, each time
+  saying it needed a database. `tests/incident-create-route.test.ts` is 23
+  assertions and needs none: mocking Prisma, the session, the compliance gate and
+  the two dispatches at their boundaries leaves the route's own decisions
+  exercisable, which is what the retention and vote route tests already do.
+  `getVillageAutoApprove` is left **real** with its `SELECT` mocked, so "a
+  database error means the queue" is exercised through the route rather than
+  against a stub told to answer false. It was mutation-checked — replacing
+  `autoApprove ? "PUBLISHED" : "PENDING_REVIEW"` with a bare `"PUBLISHED"` fails
+  four of its assertions — so it is known not to pass vacuously.
+- **L2 stopped leaking.** `/privacy` §13 was telling residents to send their
+  subject access request to `[contact@example.uk]`, and `/terms` said "neither
+  VillageWatch nor [Data controller name] is liable". Both pages branch on
+  `HAS_FALLBACK_CONTROLLER_DETAILS` now. **The constant is still placeholders and
+  that is not the same statement**: the controller genuinely differs per village
+  and these two pages cannot read one, so there was never a single true name to
+  put there — which is why "fill in the constant" was never the whole fix and why
+  this survived eight weeks.
+- **L1's last unwritten document is written.** `docs/BREACH_PROCEDURE.md`, DPIA
+  action A10, which had been *Blocker / Not started* since 27 July and was the
+  only one of the five blocker actions with no document at all. It is
+  deliberately **not** added to the compliance gate — a fourth document there
+  would re-close every village that has been through it.
+- **L3 gained a CLI.** `scripts/activate-village.ts`, dry run by default. It
+  calls `activateVillage` and `appointCoordinator` unchanged rather than
+  reimplementing them, and enforces the same `ADMIN_EMAILS` gate the screen does
+  — both refusal paths verified against an unreachable database, so they are
+  known to happen before anything is read. It exists because activating the first
+  village through `/admin/villages` needs `ADMIN_EMAILS` in Vercel **and a
+  redeploy for it to take effect**, which is a fair part of why 270 parishes have
+  been `PENDING` since 27 July with complete, audited code to activate them.
+
+**The finding worth carrying forward: DPIA action A4 was not "not started", it
+was unrecorded.** `docs/COORDINATOR_GUIDE.md` §"Rejecting" names every ground A4
+asks for — what to reject, a report about a child, the "house with the blue
+door" identification — and §"Privacy responsibilities" covers misuse. The DPIA
+said *Not started* for a month. That is the **second** time a status line in this
+project outlived its own truth; the first was L3's join-code enforcement, which
+`BACKLOG.md` recorded as done for seventeen days while both auth routes accepted
+a blank code. Both were caught by reading the code rather than the file.
+
+**What none of this closes**, and it is the whole remaining critical path:
+
+| Blocker | The act nobody has performed |
+|---|---|
+| L1 | No compliance acceptance has ever been recorded, in either model. Every village is refusing reports right now |
+| L2 | Nobody has decided who the controller is; nobody has registered with the ICO — the longest lead item |
+| L3 | No village has ever been activated. The only `ACTIVE` one is the seed's placeholder with the code `VILLAGE1` (L7) |
+| L4 | Three Vercel variables, a redeploy, four dashboard fields. No push has reached a device |
+| L5 | The chain has never been walked, and it cannot be until L1 and L4 are done |
+
+`docs/LAUNCH_BLOCKERS.md` carries the runbook for each, with the OneSignal
+service-worker fields written out — including the **updater filename**, which is
+a separate dashboard field defaulting to a v15 name this repo does not have, and
+a 404 there reports a perfectly healthy init that never delivers.
+
+---
 
 **The AI rewrite limit was five an hour and residents were meeting it inside one
 report — 25 August 2026.** Reported from the field: "You have used this hour's

@@ -16,8 +16,10 @@ import {
   APP_HOST,
   APP_NAME,
   DATA_CONTROLLER,
+  HAS_FALLBACK_CONTROLLER_DETAILS,
   LOCATION_FUZZ_METERS,
   MINIMUM_AGE,
+  OPERATOR,
   RETENTION,
 } from "@/lib/constants";
 
@@ -150,14 +152,17 @@ export default function PrivacyPage() {
       intro={`${APP_NAME} exists to move safety information around a village without moving people's personal details with it. This page explains exactly what we hold, why, who else sees it, and how to get it back or get rid of it.`}
       sections={SECTIONS}
     >
-      <Callout tone="warning" title="Before this village goes live">
-        The contact details and data controller named below are placeholders.
-        Whoever is the data controller for your village — your coordinator, or a
-        parish or town council that has taken it on — must complete them,
-        register with the ICO if they have not already, and have this notice
-        reviewed alongside their own data protection arrangements before any
-        resident signs up.
-      </Callout>
+      {!HAS_FALLBACK_CONTROLLER_DETAILS && (
+        <Callout tone="warning" title="Before this village goes live">
+          No deployment-wide data controller has been named on this
+          installation. Whoever is the data controller for your village — your
+          coordinator, or a parish or town council that has taken it on — must
+          identify themselves to residents, register with the ICO if they have
+          not already, and have this notice reviewed alongside their own data
+          protection arrangements before any resident signs up. Everything else
+          on this page describes the service accurately and applies either way.
+        </Callout>
+      )}
 
       <LegalSection id="controller" title="1. Who is responsible for your data">
         <P>
@@ -179,18 +184,58 @@ export default function PrivacyPage() {
         <P>
           Ask your coordinator which applies to your village if you are not sure;
           they are also who to ask for the contact details of a council that has
-          taken it on. The details below are the deployment&rsquo;s own and are
-          the fallback where no village-specific controller has been named.
+          taken it on.
         </P>
+        {HAS_FALLBACK_CONTROLLER_DETAILS ? (
+          <>
+            <P>
+              The details below are the deployment&rsquo;s own and are the
+              fallback where no village-specific controller has been named.
+            </P>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 text-base leading-relaxed text-slate-700">
+              <p className="font-semibold text-slate-900">
+                {DATA_CONTROLLER.name}
+              </p>
+              {DATA_CONTROLLER.addressLines.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+              <p className="mt-2">Email: {DATA_CONTROLLER.email}</p>
+              <p>Telephone: {DATA_CONTROLLER.phone}</p>
+              <p className="mt-2 text-sm text-slate-500">
+                ICO registration: {DATA_CONTROLLER.icoRegistration}
+              </p>
+            </div>
+          </>
+        ) : (
+          <P>
+            This installation has not named a fallback controller, so there is no
+            single address here to give you — it depends on your village. If you
+            cannot reach your coordinator, or you do not know who they are, write
+            to the company that operates the software and it will tell you who
+            the controller for your village is and pass anything you send on to
+            them.
+          </P>
+        )}
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-base leading-relaxed text-slate-700">
-          <p className="font-semibold text-slate-900">{DATA_CONTROLLER.name}</p>
-          {DATA_CONTROLLER.addressLines.map((line) => (
-            <p key={line}>{line}</p>
-          ))}
-          <p className="mt-2">Email: {DATA_CONTROLLER.email}</p>
-          <p>Telephone: {DATA_CONTROLLER.phone}</p>
+          <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Operator (processor)
+          </p>
+          <p className="mt-1 font-semibold text-slate-900">{OPERATOR.name}</p>
+          <p className="mt-2">
+            Email:{" "}
+            <a
+              href={`mailto:${OPERATOR.email}`}
+              className="font-medium text-brand-700 underline underline-offset-2"
+            >
+              {OPERATOR.email}
+            </a>
+          </p>
           <p className="mt-2 text-sm text-slate-500">
-            ICO registration: {DATA_CONTROLLER.icoRegistration}
+            {OPERATOR.name} builds and runs {APP_NAME} and processes data on the
+            controller&rsquo;s instructions under a written agreement. It is{" "}
+            <strong>not</strong> the controller and cannot decide what your
+            village does with your data — but it is a route that always works,
+            and it will put you in touch with whoever can.
           </p>
         </div>
       </LegalSection>
@@ -770,10 +815,28 @@ export default function PrivacyPage() {
       <LegalSection id="contact" title="13. Contact and complaints">
         <P>
           For anything in this policy, including a request to exercise your
-          rights, contact your village&rsquo;s data controller at{" "}
-          <strong>{DATA_CONTROLLER.email}</strong> or write to them at the
-          address in section 1. If your coordinator is the controller — the
-          ordinary case — they are who to ask.
+          rights, contact your village&rsquo;s data controller. If your
+          coordinator is the controller — the ordinary case — they are who to
+          ask.{" "}
+          {HAS_FALLBACK_CONTROLLER_DETAILS ? (
+            <>
+              Where no village-specific controller has been named, write to{" "}
+              <strong>{DATA_CONTROLLER.email}</strong> or to the address in
+              section 1.
+            </>
+          ) : (
+            <>
+              If you cannot reach them or do not know who they are, email{" "}
+              <a
+                href={`mailto:${OPERATOR.email}`}
+                className="font-medium text-brand-700 underline underline-offset-2"
+              >
+                {OPERATOR.email}
+              </a>{" "}
+              and {OPERATOR.name} will identify the controller for your village
+              and pass your request to them.
+            </>
+          )}
         </P>
         <P>
           If you are not satisfied with the response, you can complain to the
