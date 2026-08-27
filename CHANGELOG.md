@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.47](https://github.com/jdell/villagewatch/compare/v0.1.46...v0.1.47) (2026-08-27)
+
+
+### Fixes
+
+* **launch:** audit the five launch blockers, close what code can close ([cf337d0](https://github.com/jdell/villagewatch/commit/cf337d062d74d5b725d370936c37216d3492e126))
+
 ### [0.1.46](https://github.com/jdell/villagewatch/compare/v0.1.45...v0.1.46) (2026-08-25)
 
 
