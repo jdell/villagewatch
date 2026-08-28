@@ -189,7 +189,25 @@ describe("renderReportPdf", () => {
     expectPdf(
       await renderReportPdf(report({ total: 240, incidents: rows, omitted: 40 })),
     );
-  });
+    /*
+      An explicit timeout, and the only one in the suite.
+
+      Two hundred rows through PDFKit is around 1.4s on a developer's machine
+      and comfortably over 5s on a shared CI runner — roughly 3.5x, which is an
+      ordinary gap between an M-series laptop and a GitHub runner under load.
+      Vitest's default is 5000ms, so this test sat just inside the limit locally
+      and just outside it there: green on every machine anybody checked it on,
+      red often enough in CI to teach people to press re-run.
+
+      Raising it is the right fix rather than a workaround. The slowness is the
+      point of the test — it is the case that pages, and the reason it exists is
+      that the broken shape only appears past about eight pages — so there is no
+      version of it that is quick. 30s is far enough above the real figure that
+      load cannot reach it, and far enough below a hang that an infinite loop in
+      the renderer still fails the run rather than sitting there for the job's
+      whole budget.
+    */
+  }, 30_000);
 
   it("renders a location with no space in it to wrap at", async () => {
     // `locationText` is free text a resident typed. A run longer than the
