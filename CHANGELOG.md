@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.48](https://github.com/jdell/villagewatch/compare/v0.1.47...v0.1.48) (2026-08-28)
+
+
+### Fixes
+
+* **tests:** give the 200-row PDF render a timeout it cannot flake against ([372f5fc](https://github.com/jdell/villagewatch/commit/372f5fc365c50451c46fa2c5e03b0d8724e0b561)), closes [#18](https://github.com/jdell/villagewatch/issues/18) [#18](https://github.com/jdell/villagewatch/issues/18)
+
+
+### Documentation
+
+* **state:** PR [#18](https://github.com/jdell/villagewatch/issues/18) is merged and released, and name the flake it left behind ([d658b1d](https://github.com/jdell/villagewatch/commit/d658b1d6582ff0ff826bb65cb2108f37ca599569))
+
 ### [0.1.47](https://github.com/jdell/villagewatch/compare/v0.1.46...v0.1.47) (2026-08-27)
 
 
