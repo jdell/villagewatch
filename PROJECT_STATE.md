@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 27 August 2026 · **Repo version:** `v0.1.47` · **Branch:**
-`fix/pdf-test-timeout` · **Domain:** https://villagewatch.app
+**Last updated:** 29 August 2026 · **Repo version:** `v0.1.48` · **Branch:**
+`main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -34,7 +34,7 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
-| `fix/pdf-test-timeout` | **In review as a PR.** One test file: the 200-row PDF render gets an explicit timeout so it stops flaking on CI. | Review, merge |
+| `fix/pdf-test-timeout` | Merged as PR #19, 28 August. Released as `v0.1.48`. | Delete |
 | `fix/launch-blockers` | Merged as PR #21, 27 August. Released as `v0.1.47`. | Delete |
 | `fix/ai-rewrite-rate-limit` | Merged as PR #20, 25 August. Released as `v0.1.46`. | Delete |
 | `feat/email-masking-resident-list` | Merged as PR #18, 25 August. Released as `v0.1.45`. | Delete |
@@ -859,6 +859,40 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 ---
 
 ## Recent completions
+
+**Application security audit — 29 August 2026.** A source-level review of the
+whole tree against six domains: Next.js and Vercel, Supabase Auth, row-level
+security, UK GDPR, the four integrations, and the supply chain. Written up in
+`docs/SECURITY_AUDIT_2026-08-29.md`, which is read by people and rendered by
+nothing — so, like `LAUNCH_BLOCKERS.md`, it needs **no**
+`outputFileTracingIncludes` entry.
+
+**Thirty-four findings, none Critical, four High.** Nothing found is a remote
+unauthenticated compromise. **Nothing in the audit changed any code** — it is a
+report, and every finding is still open:
+
+- **`VW-14`, the worst of them.** `audit_logs` grants INSERT to `authenticated`
+  and the policy checks only `actor_id`, so any resident with the public anon key
+  can write rows carrying somebody else's `actor_email`, `actor_role` and
+  `village_id` — and `vw_audit_logs_append_only()` rejects DELETE from the owner
+  too, so they cannot be removed without a DBA disabling the trigger. Nothing in
+  the app writes audit rows through PostgREST, so the fix is to revoke the grant.
+- **`VW-01`.** Neither `createServerClient` call passes `cookieOptions`, so the
+  session cookies take the `@supabase/ssr` defaults — `httpOnly: false`, no
+  `secure`, 400-day life. The browser client has only two call sites and neither
+  reads a session, so the flag can be set.
+- **`VW-15` and `VW-16`.** `villages` grants an unscoped INSERT/UPDATE to any
+  row with `role = 'ADMIN'` — including the four compliance timestamps — and
+  `users.email` is missing from the privilege-column trigger while the admin push
+  audience is resolved by matching it.
+- **`VW-19` and `VW-20`** are the two legal ones and one is already L2:
+  `DATA_CONTROLLER` is still placeholders with no ICO registration started, and
+  `LEGAL_LAST_UPDATED` has read 27 July through five substantive rewrites of
+  `/privacy`.
+
+The report's "Order of work" section sequences all thirty-four. The first rung is
+four small changes — two `REVOKE`s, one trigger clause and one `cookieOptions`
+object — and closes the highest-rated finding.
 
 **The five launch blockers, audited — 27 August 2026.** Every one of L1–L5 was
 read against the code rather than against its own status line, which mattered:

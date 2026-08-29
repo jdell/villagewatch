@@ -468,6 +468,11 @@ docs/                         The documents rendered from disk, not restated
                               what each costs to clear, and in what order
   E2E_VERIFICATION.md         What was checked by hand against the deployment,
                               and what its addenda got wrong afterwards
+  SECURITY_AUDIT_2026-08-29.md  The source-level security review — 34 findings
+                              across the six domains, each with the file it
+                              lives in and the change that closes it. A record
+                              of one pass, not a living document: date the next
+                              one rather than editing this one
   SUPABASE_EMAIL_SETUP.md     The two dashboard settings behind the auth email
                               quota — raising the limit, and pointing Supabase
                               at Resend as its SMTP sender. Read by an operator
