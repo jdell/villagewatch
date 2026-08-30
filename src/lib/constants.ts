@@ -1958,7 +1958,27 @@ export const DATA_CONTROLLER = {
   ],
   email: "[contact@example.uk]",
   phone: "[01234 567890]",
-  /** Registration number from the ICO's public register. */
+  /**
+   * Registration number from the ICO's public register.
+   *
+   * **Outstanding, and it is the one field here with a lead time rather than a
+   * decision behind it** — VW-19 in `docs/SECURITY_AUDIT_2026-08-29.md`, L2 in
+   * `docs/LAUNCH_BLOCKERS.md`. Registering is an application, a fee and a wait;
+   * the other five fields are answers somebody already knows.
+   *
+   * Left as a placeholder rather than as a `TODO` comment, because a bracketed
+   * value is the only form of "not yet" this object has that the rest of the
+   * file can *test*: `isPlaceholderDetail` reads it, and
+   * `tests/legal-placeholders.test.tsx` fails if one ever reaches a resident. A
+   * `// TODO` beside a plausible-looking number is the version of this that
+   * ships by accident.
+   *
+   * Note what that means for the day the other five are filled in and this one
+   * is not: `HAS_FALLBACK_CONTROLLER_DETAILS` tests `name` alone, so the block
+   * on `/privacy` would render and print this bracket to the public. The
+   * "renders no bracketed placeholder at all" test is what catches it. Fill this
+   * in *with* the others, or give the line its own conditional first.
+   */
   icoRegistration: "[ICO registration number]",
 } as const;
 

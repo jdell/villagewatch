@@ -166,6 +166,35 @@ volunteer is told; being told is not the same as having a procedure.
 reaches a resident.** Those are two different statements and the distinction is
 the whole of what changed.
 
+**30 August 2026 — considered again under VW-19, and deliberately left as it
+is.** The obvious move, and the one asked for, was to fill the constant in with
+Yakasista Ltd's details. It was not taken, because
+`HAS_FALLBACK_CONTROLLER_DETAILS` tests `DATA_CONTROLLER.name`: filling it flips
+the flag, and `/privacy` and `/terms` then assert that **Yakasista Ltd is the
+data controller**. It is the *processor* in both models — that is what
+`docs/DATA_PROCESSING_AGREEMENT.md` and `docs/COMMUNITY_DPA.md` are — and the
+community agreement makes the coordinator personally answerable. A notice
+contradicting the agreement a volunteer has signed is a worse defect than the gap
+it would close, and it is the specific mistake CLAUDE.md's legal-pages section
+warns about by name.
+
+Two mechanical consequences, worth writing down for whoever tries it next:
+
+- **The address and the phone would have to be real.** Neither is in the
+  repository, and both print on a privacy notice. There is no acceptable
+  placeholder for them once the flag is true.
+- **The ICO field would print a bracket to the public.** `/privacy` renders
+  `ICO registration: {DATA_CONTROLLER.icoRegistration}` inside the same branch,
+  and `tests/legal-placeholders.test.tsx`'s "renders no bracketed placeholder at
+  all" catches it. Fill the ICO number *with* the rest, or give that line its own
+  conditional first.
+
+So what remains under L2 is unchanged and is not a code change: **register with
+the ICO**, and **name the controller for the first pilot village** — under
+`community` mode that is the coordinator personally, which `COMMUNITY_DPA.md`
+already says, so the answer exists and only needs writing down. The source now
+says which of the six fields is the one with a lead time behind it.
+
 `src/lib/constants.ts:1872`:
 
 ```ts

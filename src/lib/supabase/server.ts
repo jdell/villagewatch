@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/env";
+import {
+  SUPABASE_COOKIE_OPTIONS,
+  withCookieLifetime,
+} from "@/lib/supabase/cookie-options";
 
 /**
  * Supabase client for Server Components, Route Handlers and Server Actions.
@@ -13,6 +17,10 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    // HttpOnly, Secure and SameSite — see the module for why the browser client
+    // does not need to read these, and why the lifetime is applied below rather
+    // than here.
+    cookieOptions: SUPABASE_COOKIE_OPTIONS,
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -20,7 +28,7 @@ export async function createClient() {
       setAll(cookiesToSet) {
         try {
           for (const { name, value, options } of cookiesToSet) {
-            cookieStore.set(name, value, options);
+            cookieStore.set(name, value, withCookieLifetime(options));
           }
         } catch {
           // Called from a Server Component, where cookies are read-only.

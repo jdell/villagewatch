@@ -285,7 +285,47 @@ GRANT SELECT (
   created_at, updated_at
 ) ON public.villages TO authenticated;
 
-GRANT INSERT, UPDATE ON public.villages TO authenticated;
+/**
+ * No write grant at all — VW-15, 30 August 2026.
+ *
+ * There used to be `GRANT INSERT, UPDATE ON public.villages TO authenticated`,
+ * table-wide, gated by `villages_insert_admin` / `villages_update_admin` on
+ * `vw_is_admin()`. Three things were wrong with that and they compound.
+ *
+ * **`vw_is_admin()` is not what the application means by administrator.** It
+ * tests `users.role = 'ADMIN'`; the app gates `/admin` on `ADMIN_EMAILS` against
+ * the revalidated JWT, and nothing in the codebase ever writes that role. So the
+ * only rows that can satisfy it are bootstrap leftovers from an `UPDATE` typed
+ * into a SQL console — an account nobody is tracking, holding a privilege
+ * nobody granted deliberately. The divergence is flagged where `vw_is_admin()`
+ * is defined; this is what it cost.
+ *
+ * **The policy carried no village predicate**, unlike `users_select_admin`
+ * beside it. So the write was over *every* village in the deployment, not the
+ * caller's own.
+ *
+ * **And the columns were not enumerated**, on a table where several of them are
+ * the security model. Through PostgREST with the public anon key, such an
+ * account could rotate any village's `join_code`, flip `auto_approve` on so
+ * reports publish unreviewed, drop `privacy_level` to `light`, or backdate
+ * `dpia_accepted_at` / `apd_accepted_at` / `dpa_accepted_at` /
+ * `community_dpa_accepted_at` and open the compliance gate for a village that
+ * has accepted nothing — which is the one gate in the app with no switch to turn
+ * it off, because it answers a lawfulness question rather than a configuration
+ * one.
+ *
+ * **Nothing needs the grant.** Villages are written by `activateVillage`,
+ * `regenerateJoinCode`, `appointCoordinator` and the dashboard settings actions,
+ * every one of them through Prisma as the owner and every one of them audited.
+ *
+ * If a write is ever wanted here, scope it to `vw_current_village_id()` and
+ * enumerate the columns — the four compliance timestamps and `join_code` should
+ * never be among them, on the same reasoning that already keeps
+ * `*_accepted_by_id` out of the SELECT list above.
+ */
+REVOKE INSERT, UPDATE ON public.villages FROM authenticated;
+DROP POLICY IF EXISTS villages_insert_admin ON public.villages;
+DROP POLICY IF EXISTS villages_update_admin ON public.villages;
 
 DROP POLICY IF EXISTS villages_select_authenticated ON public.villages;
 CREATE POLICY villages_select_authenticated
@@ -293,20 +333,8 @@ CREATE POLICY villages_select_authenticated
   TO authenticated
   USING (true);
 
-DROP POLICY IF EXISTS villages_insert_admin ON public.villages;
-CREATE POLICY villages_insert_admin
-  ON public.villages FOR INSERT
-  TO authenticated
-  WITH CHECK (public.vw_is_admin());
-
-DROP POLICY IF EXISTS villages_update_admin ON public.villages;
-CREATE POLICY villages_update_admin
-  ON public.villages FOR UPDATE
-  TO authenticated
-  USING (public.vw_is_admin())
-  WITH CHECK (public.vw_is_admin());
-
--- No DELETE policy. Deleting a village cascades every incident in it.
+-- No INSERT, UPDATE or DELETE policy. Deleting a village would cascade every
+-- incident in it; the other two are the paragraph above.
 
 -- ---------------------------------------------------------------------------
 -- users
@@ -372,6 +400,20 @@ CREATE POLICY users_insert_self
  * with the anon key, `UPDATE users SET deleted_at = NULL`, and let itself back
  * in past both sign-in gates.
  *
+ * `email` joined the list on 30 August 2026 — VW-16. It is the identity
+ * provider's answer, not the profile's: the address on the row is written by
+ * the two registration routes from the verified session and is never a resident's
+ * to edit here, and `/settings` does not offer it. Left unguarded it was
+ * rewritable through PostgREST, which mattered because
+ * `notifyAdminsOfCoordinatorRequest` resolves its audience by looking the
+ * `ADMIN_EMAILS` addresses up in **this table**, case-insensitively. A resident
+ * who took `info@yakasista.com` would receive the push about every coordinator
+ * application — which names the applicant and the standing they claim — and
+ * would permanently occupy the address the real administrator needs, since the
+ * column is unique. It did **not** open `/admin`: `isPlatformAdmin` reads the
+ * address off the revalidated JWT rather than off the profile, which is the
+ * right call and is what kept this to a Medium.
+ *
  * SECURITY INVOKER, deliberately. Inside a SECURITY DEFINER function
  * `current_user` is the function's owner, so the check below would compare the
  * owner's name and never fire. As an invoker function it sees the role
@@ -389,9 +431,10 @@ BEGIN
        OR NEW.village_id IS DISTINCT FROM OLD.village_id
        OR NEW.verified_at IS DISTINCT FROM OLD.verified_at
        OR NEW.verified_by_id IS DISTINCT FROM OLD.verified_by_id
+       OR NEW.email IS DISTINCT FROM OLD.email
        OR NEW.deleted_at IS DISTINCT FROM OLD.deleted_at THEN
       RAISE EXCEPTION
-        'role, village, verification and account closure are set by the server, not by the account holder';
+        'email, role, village, verification and account closure are set by the server, not by the account holder';
     END IF;
   END IF;
 
@@ -1016,8 +1059,8 @@ CREATE POLICY pattern_alert_incidents_select
 -- SELECT policy with the commented-out variant below rather than dropping the
 -- admin one.
 
-GRANT SELECT, INSERT ON public.audit_logs TO authenticated;
-REVOKE UPDATE, DELETE ON public.audit_logs FROM authenticated;
+GRANT SELECT ON public.audit_logs TO authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.audit_logs FROM authenticated;
 
 DROP POLICY IF EXISTS audit_logs_select_admin ON public.audit_logs;
 CREATE POLICY audit_logs_select_admin
@@ -1033,17 +1076,46 @@ CREATE POLICY audit_logs_select_admin
 --          AND village_id = public.vw_current_village_id());
 
 /**
- * The actor must be the caller. Without this a client could forge a trail
- * naming somebody else — which is worse than no trail, because it reads as
- * evidence.
+ * No INSERT grant and no INSERT policy — VW-14, 30 August 2026.
+ *
+ * There used to be both: `GRANT ... INSERT` above, and an `audit_logs_insert_self`
+ * policy whose `WITH CHECK` tested `actor_id = auth.uid()` and nothing else. Its
+ * comment claimed it stopped "a client forging a trail naming somebody else".
+ * It did not, and the gap was the shape of this table rather than an oversight
+ * in the predicate: `actor_email` and `actor_role` are **denormalised on
+ * purpose**, so the trail survives an account deletion (see the actor_id
+ * carve-out below), and a policy that pins `actor_id` constrains neither. Nor
+ * did it constrain `village_id`, `action`, `entity_type`, `entity_id` or the
+ * `before`/`after` JSON.
+ *
+ * So any resident with the public anon key and their own session could
+ * `POST /rest/v1/audit_logs` naming themselves in the one checked column and
+ * writing every other one freely — a coordinator's address in `actor_email`,
+ * `actor_role = 'COORDINATOR'`, `action = 'incident.raw_viewed'`, another
+ * village's id. `/dashboard/audit` renders `actor_email`, which is precisely the
+ * unconstrained column.
+ *
+ * Two things made it worse than an ordinary forged-input bug. The row cannot be
+ * removed afterwards — the trigger below rejects DELETE from **everyone,
+ * including the owner**, which is what makes domain rule 7 real — so cleaning up
+ * means a DBA disabling a trigger under an ACCESS EXCLUSIVE lock on the
+ * accountability record itself. And an unbounded insert into an undeletable
+ * table is a storage flood with no application-side ceiling in front of it.
+ *
+ * **Nothing in VillageWatch notices the revoke.** No code path anywhere writes
+ * an audit row through the Supabase client: Prisma connects as the owner and
+ * bypasses RLS entirely, and the only thing reached through the Supabase JS
+ * client in this codebase is Storage. The grant bought nothing and cost the
+ * trail's integrity.
+ *
+ * The INSERT arm of the trigger below is the belt to this braces — it refuses
+ * the write even if somebody re-grants the privilege later.
  */
 DROP POLICY IF EXISTS audit_logs_insert_self ON public.audit_logs;
-CREATE POLICY audit_logs_insert_self
-  ON public.audit_logs FOR INSERT
-  TO authenticated
-  WITH CHECK (actor_id = (SELECT auth.uid()));
 
--- No UPDATE policy and no DELETE policy. Their absence is the rule.
+-- No INSERT policy, no UPDATE policy and no DELETE policy. Their absence is the
+-- rule: rows are written by the application as the table owner, which is the
+-- only writer there has ever been.
 
 /**
  * Append-only at the database, not just in application code.
@@ -1068,9 +1140,38 @@ CREATE POLICY audit_logs_insert_self
 CREATE OR REPLACE FUNCTION public.vw_audit_logs_append_only()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SECURITY INVOKER
 SET search_path = ''
 AS $$
 BEGIN
+  -- `authenticated` may not write the trail at all — VW-14.
+  --
+  -- The grant and the policy that used to allow this are both gone (see above),
+  -- so in the ordinary case nothing reaches here. This arm is what makes the
+  -- constraint survive somebody re-granting INSERT later without reading why it
+  -- was taken away: a forged row in an undeletable table is the one mistake in
+  -- this file that cannot be corrected afterwards, so it is worth refusing
+  -- twice. The test is the role rather than the row's contents, because there
+  -- is no set of column values from a resident that this table should accept.
+  --
+  -- SECURITY INVOKER, for the reason `vw_guard_user_privilege_columns()` gives:
+  -- inside a definer function `current_user` is the function's owner and the
+  -- comparison below would never fire. As an invoker function it sees the role
+  -- PostgREST switched to, which is the thing being tested. Prisma connects as
+  -- the owner and is unaffected.
+  --
+  -- Note the unconditional RETURN: an INSERT by the owner has to leave here, or
+  -- it falls through to the UPDATE carve-out, where `OLD` is unassigned on an
+  -- INSERT and every audit write in the application dies.
+  IF TG_OP = 'INSERT' THEN
+    IF current_user = 'authenticated' THEN
+      RAISE EXCEPTION
+        'audit_logs is written by the server, not by the account holder';
+    END IF;
+
+    RETURN NEW;
+  END IF;
+
   -- One UPDATE is permitted, and only one: severing `actor_id` when the account
   -- it points at is deleted.
   --
@@ -1113,7 +1214,7 @@ $$;
 
 DROP TRIGGER IF EXISTS audit_logs_append_only ON public.audit_logs;
 CREATE TRIGGER audit_logs_append_only
-  BEFORE UPDATE OR DELETE ON public.audit_logs
+  BEFORE INSERT OR UPDATE OR DELETE ON public.audit_logs
   FOR EACH ROW
   EXECUTE FUNCTION public.vw_audit_logs_append_only();
 
@@ -1195,3 +1296,40 @@ CREATE POLICY police_neighbourhoods_select_village
 -- The real test is with the anon key, signed in as a resident of village A:
 -- a `select * from incidents` through the Supabase JS client must return that
 -- village's published rows and nothing from village B.
+--
+-- ---------------------------------------------------------------------------
+-- Detection, for the two holes closed on 30 August 2026
+-- ---------------------------------------------------------------------------
+--
+-- Both VW-14 and VW-15 were reachable by anybody holding the public anon key,
+-- so re-running this file closes them going forward and says nothing about
+-- whether they were used. These two queries are what answers that, and they are
+-- worth running once on the deployed database rather than assuming.
+--
+-- **VW-14** — a forged audit row names its author in `actor_id` (the one column
+-- the old policy checked) and can carry anything in the denormalised pair. Any
+-- row where those disagree with the profile is either a forgery or a genuine
+-- address change, and there are no genuine address changes: nothing in the
+-- application rewrites `actor_email` after the row is written.
+--
+--   SELECT a.id, a.created_at, a.action, a.actor_id,
+--          a.actor_email AS claimed_email, u.email AS actual_email,
+--          a.actor_role  AS claimed_role,  u.role  AS actual_role
+--     FROM public.audit_logs a
+--     JOIN public.users u ON u.id = a.actor_id
+--    WHERE a.actor_email IS DISTINCT FROM u.email
+--       OR a.actor_role  IS DISTINCT FROM u.role::text
+--    ORDER BY a.created_at DESC;
+--
+-- Rows returned cannot be deleted — that is the point of the trigger above, and
+-- it is why this is a detection query rather than a clean-up one. Record what it
+-- finds; a purge is the deliberate DBA act the trigger's own comment describes.
+--
+-- **VW-15** — the villages write was gated on `users.role = 'ADMIN'`, which no
+-- code path in VillageWatch ever sets. Every row this returns is a bootstrap
+-- leftover and should be demoted, because the role is now inert in the
+-- application (`/admin` reads `ADMIN_EMAILS` off the JWT) and was live here.
+--
+--   SELECT id, email, village_id, created_at
+--     FROM public.users
+--    WHERE role = 'ADMIN';

@@ -395,6 +395,10 @@ src/
     clipboard.ts              copyText + shareText, browser only, shared by the
                               three surfaces that copy
     cron.ts                   Constant-time CRON_SECRET check, shared by both jobs
+    csp.ts                    The Content-Security-Policy, built per request from
+                              the nonce `proxy.ts` mints. Enforced unless
+                              CSP_REPORT_ONLY says otherwise — see The
+                              Content-Security-Policy
     email/                    layout, welcome, weekly-digest,
                               incident-notification, coordinator-decision — pure
                               functions to `{ subject, text, html }`
@@ -419,6 +423,10 @@ src/
     media/face-blur.ts        MediaPipe WASM face detection + canvas blur
     media/storage.ts          Signed URLs + base64 stills — service-role, server only
     supabase/                 server.ts, client.ts, admin.ts, env.ts
+    supabase/cookie-options.ts  The session cookie's flags and its lifetime,
+                              shared by the two createServerClient calls that
+                              have to agree. The lifetime is clamped in setAll
+                              because @supabase/ssr discards it anywhere else
     constants.ts              Enum display metadata, severity colours, map config
     validations.ts            Zod 4 schemas
   generated/prisma/           Generated client — gitignored, never edit
@@ -622,6 +630,17 @@ tests/                        Vitest, unit only — see The test suite
                               sending, every Resend failure resolving to a value
                               rather than throwing, and the timeout that stops a
                               registration hanging on somebody else's outage
+  supabase-cookies.test.ts    The session cookie — the flags, and the clamp that
+                              has to be `Math.min` because the same callback
+                              carries a sign-out's `maxAge: 0`. Also that
+                              `SUPABASE_COOKIE_OPTIONS` holds no `maxAge`, since
+                              moving it there would read better and silently
+                              restore the 400-day cookie
+  csp.test.ts                 The policy's load-bearing directives, and no
+                              wording: WASM permitted without `eval`, jsdelivr in
+                              `script-src` as well as `connect-src`, never
+                              `'unsafe-inline'` in `script-src`, and report-only
+                              differing from enforcing in exactly one directive
   supabase-templates.test.ts  The four auth templates — `{{ .ConfirmationURL }}`
                               present, no other Go variable, and the committed
                               `.html` matching the module that generates it
@@ -839,6 +858,124 @@ configuration rather than code.
 
 ---
 
+## The session cookie
+
+`src/lib/supabase/cookie-options.ts`, one module, and the two
+`createServerClient` calls that must agree — `src/lib/supabase/server.ts` and
+`src/proxy.ts`. VW-01.
+
+- **`@supabase/ssr` defaults to `httpOnly: false` and a 400-day life**, and
+  neither call passed `cookieOptions`, so the access token *and* the refresh
+  token were readable by any script on the page for over a year. Two
+  third-party scripts already run on authenticated pages — the OneSignal SDK
+  and the MediaPipe WASM runtime — so a compromise of either, or any XSS
+  anywhere, was a refresh-token theft rather than a session hijack.
+- **The browser client does not need to read the cookie, which is what makes
+  this safe.** `src/lib/supabase/client.ts` has exactly two call sites,
+  `google-button.tsx` and `forgot-password-form.tsx`, and neither reads an
+  existing session. The PKCE verifier is written through `document.cookie`,
+  which cannot set `HttpOnly` anyway, and `PushRegistration` takes `userId` as a
+  server-rendered prop. Add a third call site that reads a session and this
+  breaks — the fix is a server round trip, not the flag.
+- **`sameSite` stays `lax` and must.** Both the OAuth and the recovery legs
+  return from Supabase as a top-level cross-site navigation to
+  `/api/auth/callback`; under `strict` the browser withholds the cookies on
+  arrival and the exchange lands on a page that cannot see the session it just
+  created.
+- **`secure` is production-only**, which is the audit's own recommendation
+  rather than a blanket `true`: browsers refuse a `Secure` cookie over plain
+  HTTP, `npm run dev` is `http://localhost:3000`, and Safari has historically
+  not granted localhost the exemption Chrome and Firefox do.
+- **`maxAge` cannot be passed through `cookieOptions`, and it looks like it
+  can.** `@supabase/ssr` spreads the caller's options and then overwrites
+  `maxAge` with its own 400-day default — in both the storage adapter and the
+  server-side response path. A lifetime set there is accepted by the types,
+  discarded at run time, and leaves the long cookie behind looking shortened. So
+  `withCookieLifetime` clamps in the `setAll` callback, which is the only place
+  the options are ours.
+- **The clamp is `Math.min`, never assignment.** The same callback carries the
+  **deletions** — signing out writes the cookies with `maxAge: 0` — and raising
+  that to a week would leave a signed-out browser holding the cookie it had just
+  been told to drop.
+- **The cookie's life is the browser's half only.** Seven days here bounds how
+  long a stolen cookie works; the refresh token's own lifetime is a Supabase
+  dashboard setting and is untouched by anything in this repository.
+
+## The Content-Security-Policy
+
+`src/lib/csp.ts` builds it, `src/proxy.ts` applies it, and `next.config.ts`
+holds every *other* security header. VW-02, closing a deferral that
+`next.config.ts` had been documenting since the header set was written.
+
+- **It is in the proxy because it needs a per-request nonce.** The App Router
+  serves an inline bootstrap script on every page; a static header list cannot
+  produce a nonce, and a policy loose enough not to need one protects nothing.
+  Read `node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md`
+  before changing anything here.
+- **Every `return` in `proxy()` goes through `withCsp`**, including the two
+  early ones and both redirects. A policy covering the ordinary path and not the
+  bounce to `/login` has a hole in exactly the response an attacker would rather
+  land on.
+- **The request carries the enforcing header name whatever the mode.** Next
+  finds the nonce by parsing the *request*'s `Content-Security-Policy`, so
+  report-only sets that one too and varies only the **response** header name.
+  Otherwise a report-only fortnight would exercise a policy whose scripts carry
+  no nonce, which is not the policy that would later be enforced.
+- **`'strict-dynamic'` is what makes it hold up, and it makes the host list look
+  wrong.** Trust propagates from a nonced script to whatever it loads, which is
+  how `next/script` gets the OneSignal SDK in. A browser honouring it **ignores
+  every host expression in `script-src`** — so the hosts listed there are dead
+  weight in Chrome and Firefox and are the whole policy in a CSP2-only browser.
+  Both halves are deliberate.
+- **`'wasm-unsafe-eval'` is not optional and the audit's sketch omitted it.**
+  MediaPipe's face detector is WebAssembly, and `POST /api/incidents/media` has
+  no server-side fallback by design (domain rule 3) — so without it a reporter
+  cannot attach a photograph at all. `cdn.jsdelivr.net` is in **`script-src` as
+  well as `connect-src`** for the same reason: `FilesetResolver` loads the WASM
+  glue with `document.createElement("script")`, not with `fetch`.
+- **`style-src` takes `'unsafe-inline'`, and that is the one concession.** A
+  nonce covers `<style>` elements and not the `style="…"` **attribute**, which
+  is what React emits for every `style={{…}}` prop — the heatmap legend, the
+  breakdown bars, the privacy-level previews, Leaflet's positioning. What it
+  costs is restyling; `script-src` takes no such concession and that is where
+  the XSS is.
+- **The two service workers are served *without* the header.** A worker is
+  governed by the policy delivered with its own script, and
+  `public/onesignal/OneSignalSDKWorker.js` does nothing but `importScripts` from
+  `cdn.onesignal.com` — checked against `script-src`, where there is no nonce to
+  inherit and `'strict-dynamic'` has made the host list inert. Policed, it would
+  be an init that reports itself healthy and never delivers a notification,
+  which is the same silent failure the dashboard's worker path already has.
+  `UNPOLICED_SCRIPTS` in `proxy.ts` is the exclusion.
+- **`forwarded()` is a function, not an object, and that is load-bearing.**
+  `setAll` refreshes the session by writing `request.cookies.set(…)`, which
+  rewrites the request's own `cookie` header. A `Headers` snapshot taken at the
+  top of `proxy()` predates that write, so forwarding it would hand the render
+  the *stale* cookies and silently undo the refresh the proxy exists to perform.
+- **Six pages became `force-dynamic` and they had to.** `/`, `/privacy`,
+  `/terms`, `/forgot-password`, `/account-closed` and `not-found.tsx` were
+  prerendered, and a page built before the request has no nonce to stamp on its
+  scripts — so `'strict-dynamic'` blocked all of them: HTML arrived, React never
+  hydrated, nothing in a server log said so. Measured, not reasoned about: 0
+  nonced scripts before, all of them after. `/forgot-password` was the worst of
+  the six, since its form is a Client Component. The four routes still static —
+  the two share cards, `robots.txt` and `sitemap.xml` — carry no scripts.
+- **`export const dynamic` rather than `await connection()`**, which Next's own
+  guide reaches for first. Both work; only the first leaves the component
+  synchronous, and `tests/legal-placeholders.test.tsx` renders two of these
+  pages through `react-dom/server`'s synchronous API. Make them async and the
+  suite fails on a page nobody touched.
+- **The landing page's JSON-LD is the one unnonced `<script>` and is meant to
+  be.** `type="application/ld+json"` is a data block the browser never executes,
+  so `script-src` does not apply to it.
+- **`upgrade-insecure-requests` is dropped in report-only mode.** There is no
+  way to *report* an upgrade that did not happen, so every browser logs it as a
+  console error on every page load — and a fortnight of report-only is only
+  worth running if the console it fills is worth reading.
+- **Nothing in `next.config.ts` moved.** `X-Frame-Options: DENY` and
+  `frame-ancestors 'none'` now say the same thing and both stay; the older
+  header is the one every browser honours.
+
 ## Row-level security
 
 `prisma/sql/rls_policies.sql`, applied once after the first migration and after
@@ -857,9 +994,32 @@ configuration rather than code.
   `vw_is_admin`). Definer, because a policy on `users` that reads `users`
   recurses; `search_path` pinned empty, because a definer function that
   resolves names through the caller's path is an escalation primitive.
+- **`authenticated` cannot write the audit trail, the villages table, or its
+  own email** — VW-14, VW-15 and VW-16, closed 30 August 2026. All three were
+  grants that bought the application nothing, because every writer in this
+  codebase is Prisma connecting as the owner; the only thing reached through the
+  Supabase JS client anywhere is Storage. The first was the serious one:
+  `audit_logs_insert_self` checked `actor_id` alone, and `actor_email` and
+  `actor_role` are denormalised on purpose — so a resident could
+  `POST /rest/v1/audit_logs` naming themselves in the one checked column and a
+  coordinator in the column the audit viewer actually renders, into a table the
+  append-only trigger makes undeletable. The second, `villages`, was table-wide
+  INSERT/UPDATE gated on `vw_is_admin()` — a definition nothing in the app sets
+  and nothing scopes to a village — reaching `join_code`, `auto_approve`,
+  `privacy_level` and all four compliance timestamps. The third let a resident
+  take `info@yakasista.com` and receive the push about every coordinator
+  application, since `notifyAdminsOfCoordinatorRequest` resolves its audience by
+  looking `ADMIN_EMAILS` up in `users`. **Re-running the file closes them going
+  forward and says nothing about whether they were used** — the Verify section
+  at the foot of `rls_policies.sql` carries the two detection queries, and they
+  are worth running once against the deployed database.
 - Two triggers do what a policy cannot. `users_guard_privilege_columns` rejects
-  a client changing its own `role`, `village_id` or `verified_at` (domain rule
-  5 — a policy filters rows, not columns). `audit_logs_append_only` rejects
+  a client changing its own `email`, `role`, `village_id` or `verified_at`
+  (domain rule 5 — a policy filters rows, not columns). `audit_logs_append_only`
+  now also rejects an INSERT from `authenticated`, which is belt to the revoked
+  grant's braces: a forged row in an undeletable table is the one mistake in
+  that file that cannot be corrected afterwards, so it is refused twice. It
+  rejects
   every DELETE on the trail **including from the owner**, which is the only way
   domain rule 7 survives a careless `deleteMany`, and every UPDATE bar one:
   severing `actor_id` to NULL while every other column stays byte-identical.
@@ -1344,7 +1504,7 @@ Authentication → Emails → Templates.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Thirty-seven files, 595 tests, covering the
+between the typecheck and the build. Thirty-nine files, 617 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1362,7 +1522,9 @@ failure, the email transport's failure modes, the four Supabase auth templates,
 the vote — its toggle, its ordering, and the two domain rules its route
 enforces — the one change a coordinator may make to a resident's role, the
 mask in front of every email address on the resident list, the report route's
-own two paths, and the two legal pages' placeholder text.
+own two paths, the two legal pages' placeholder text, the session cookie's flags
+and its lifetime clamp, and the Content-Security-Policy's few load-bearing
+directives.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -4274,10 +4436,15 @@ open:
 - Closing an account leaves its Supabase `auth.users` row in place — see The
   right to erasure. The address is therefore still held by Supabase Auth after
   the profile has been scrubbed, which `/privacy` should say before launch.
-- No Content-Security-Policy. It needs a per-request nonce from `src/proxy.ts`;
-  the other security headers are in `next.config.ts`. Note that a CSP now has
-  three script origins to account for, not two: the App Router bootstrap, the
-  OneSignal CDN, and the two service workers.
+- **There is a Content-Security-Policy now** — `src/lib/csp.ts`, applied by
+  `src/proxy.ts` on every response, closing VW-02. What is left is operational
+  rather than code: **no violation report has ever been read from a real
+  browser on a real village.** The public pages were checked against one and
+  come back clean, but the three surfaces most likely to violate cannot be
+  reached without a signed-in resident of a live village — the Leaflet tile
+  layer, the MediaPipe WASM face blur, and whatever the OneSignal SDK loads
+  after its own bootstrap. `CSP_REPORT_ONLY=true` is the fortnight of
+  report-only the audit asks for before enforcing; see The Content-Security-Policy.
 - **Resident verification has a UI now**, on `/dashboard/settings` — the
   resident list, and `setResidentRole` behind it. A coordinator can move
   somebody between `RESIDENT` and `VERIFIED_RESIDENT` and nothing else; see
