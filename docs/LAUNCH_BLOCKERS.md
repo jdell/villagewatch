@@ -24,7 +24,7 @@ documents in `docs/` that the app renders from disk, it needs **no**
 | # | Blocker | Code | Operationally | Blocks the pilot? |
 |---|---------|------|---------------|-------------------|
 | **L1** | DPIA and the compliance pack | Complete — gate is live and enforcing. **A10 written 27 Aug**; A4 found already written | Nothing accepted, nowhere | **Yes** — but see the community-mode finding below |
-| **L2** | `DATA_CONTROLLER` placeholders | **Resident-facing half closed 27 Aug** — no placeholder reaches `/privacy` or `/terms`, asserted by a test | Controller still unnamed; ICO registration not started | **Yes**, and the ICO registration is the long lead |
+| **L2** | `DATA_CONTROLLER` placeholders | **Constant filled in 30 Aug** — Yakasista Ltd, address, email and the ICO application reference, published as the *operator* contact route, not as a claim of control | ICO registration pending (C2018564); no pilot village's controller named; notice unreviewed | **Yes**, and the ICO registration is the long lead |
 | **L3** | Village activation from cold | Complete and audited since 27 Jul; join-code enforcement fixed 13 Aug. **CLI added 27 Aug** | **Never run.** No village has ever been activated | **Yes** |
 | **L4** | OneSignal push | Complete; three env vars blank | Credentials missing in Vercel; no push ever delivered | **Yes** for the alert leg |
 | **L5** | Coordinator flow end-to-end | **Named test-suite gap closed 27 Aug** — the queue is asserted. The chain is still untested | Never exercised against a database | **Yes** |
@@ -166,51 +166,45 @@ volunteer is told; being told is not the same as having a procedure.
 reaches a resident.** Those are two different statements and the distinction is
 the whole of what changed.
 
-**30 August 2026 — considered again under VW-19, and deliberately left as it
-is.** The obvious move, and the one asked for, was to fill the constant in with
-Yakasista Ltd's details. It was not taken, because
-`HAS_FALLBACK_CONTROLLER_DETAILS` tests `DATA_CONTROLLER.name`: filling it flips
-the flag, and `/privacy` and `/terms` then assert that **Yakasista Ltd is the
-data controller**. It is the *processor* in both models — that is what
-`docs/DATA_PROCESSING_AGREEMENT.md` and `docs/COMMUNITY_DPA.md` are — and the
-community agreement makes the coordinator personally answerable. A notice
-contradicting the agreement a volunteer has signed is a worse defect than the gap
-it would close, and it is the specific mistake CLAUDE.md's legal-pages section
-warns about by name.
+**30 August 2026 — the constant is filled in, and L2 is narrowed rather than
+closed.** `DATA_CONTROLLER` now reads Yakasista Ltd, `Cambridge` /
+`United Kingdom`, `info@yakasista.com`, ICO `Registration pending (ref:
+C2018564)`. What that buys is the Article 13 half: a resident looking for
+somewhere to send a subject access request had nowhere to write, and now has an
+address, an email and a working `mailto:` in `/privacy` §1 and §13.
 
-Two mechanical consequences, worth writing down for whoever tries it next:
+**What it deliberately does not do is call Yakasista Ltd the controller.** It is
+the *processor* in both models — that is what `DATA_PROCESSING_AGREEMENT.md` and
+`COMMUNITY_DPA.md` are — and the community agreement makes the coordinator
+personally answerable. So the details are published in a box headed **Operator
+(processor)** that says in bold it is not the controller, `/privacy` §1 still
+explains both models before any of it, and `CONTROLLER_LABEL` stayed the role
+phrase so `/terms` reads exactly as it did.
 
-- **The address and the phone would have to be real.** Neither is in the
-  repository, and both print on a privacy notice. There is no acceptable
-  placeholder for them once the flag is true.
-- **The ICO field would print a bracket to the public.** `/privacy` renders
-  `ICO registration: {DATA_CONTROLLER.icoRegistration}` inside the same branch,
-  and `tests/legal-placeholders.test.tsx`'s "renders no bracketed placeholder at
-  all" catches it. Fill the ICO number *with* the rest, or give that line its own
-  conditional first.
+Three things that came out of doing it, worth keeping:
 
-So what remains under L2 is unchanged and is not a code change: **register with
-the ICO**, and **name the controller for the first pilot village** — under
-`community` mode that is the coordinator personally, which `COMMUNITY_DPA.md`
-already says, so the answer exists and only needs writing down. The source now
-says which of the six fields is the one with a lead time behind it.
+- **The page contradicted itself and only the rendered page showed it.** §1 draws
+  a box for the fallback controller and, beneath it, one for the operator saying
+  in bold it is **not** the controller. With both naming the same company those
+  are adjacent paragraphs disagreeing. `FALLBACK_CONTROLLER_IS_OPERATOR` merges
+  them.
+- **No telephone, and the registered address is not in this repository.** `phone`
+  is `null` rather than a placeholder — Article 13(1)(a) asks for contact
+  details, not a telephone, and a resident who dials an invented number has been
+  sent somewhere by the document that promised it would reach the controller. The
+  address is the town and country; replace it from the Companies House record.
+- **No DPO, and the usual reason for that is the wrong one.** The 250-employee
+  figure is Article 30(5), about records of processing. The DPO test is Article
+  37(1), and what applies here is (c) — criminal offence data triggers a DPO
+  **when processed on a large scale**. At one parish it is not. That is a
+  threshold, so re-read it before onboarding a county.
 
-`src/lib/constants.ts:1872`:
-
-```ts
-export const DATA_CONTROLLER = {
-  name: "[Data controller name]",
-  addressLines: [
-    "[Data controller address line 1]",
-    "[Town]",
-    "[Postcode]",
-  ],
-  email: "[contact@example.uk]",
-  phone: "[01234 567890]",
-  /** Registration number from the ICO's public register. */
-  icoRegistration: "[ICO registration number]",
-} as const;
-```
+**What remains under L2, and none of it is a code change:** register with the
+ICO and replace the pending reference (application **C2018564** is submitted and
+waiting on confirmation — the longest lead item on the whole list), name the
+controller for the first pilot village, and have the finished notice read by
+somebody with UK data-protection standing. `LEGAL_LAST_UPDATED` also moved to
+30 August, which is half of VW-20.
 
 ### What has changed since it was raised
 

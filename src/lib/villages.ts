@@ -601,7 +601,7 @@ const VILLAGE_JOIN_REFUSALS = {
  * init migration; only the controller falls back, through `reportController`,
  * to the deployment-wide `DATA_CONTROLLER`. That is a state the product already
  * has an answer for — `/reports` renders an amber warning naming it, and the
- * placeholder is what the footer would have said for a village with the column
+ * fallback is what the footer would have said for a village with the column
  * empty anyway. Returning null here instead would send `/reports` to
  * `<NoVillage />` and tell a coordinator they are not attached to a village,
  * which is both false and unactionable.

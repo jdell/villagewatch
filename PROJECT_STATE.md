@@ -24,7 +24,7 @@ in `BACKLOG.md`.
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 14, `20260726161847_init` → `20260823120000_incident_votes`. **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
-| Test suite | Vitest, **39 files, 617 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar two component tests, both rendered to a string with no DOM: `period-control.test.tsx` and `legal-placeholders.test.tsx`. Three route handlers are now covered — retention, the vote, and **`POST /api/incidents`**, which closed the gap this file and two others named for a month |
+| Test suite | Vitest, **39 files, 622 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar two component tests, both rendered to a string with no DOM: `period-control.test.tsx` and `legal-placeholders.test.tsx`. Three route handlers are now covered — retention, the vote, and **`POST /api/incidents`**, which closed the gap this file and two others named for a month |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -861,8 +861,8 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 ## Recent completions
 
 **The four high-severity audit findings, closed — 30 August 2026.** `VW-14`,
-`VW-01`, `VW-02` and the two Mediums that travel with them, `VW-15` and `VW-16`.
-`VW-19` is the fourth High and is deliberately **not** closed; see below.
+`VW-01`, `VW-02` and `VW-19`, plus the two Mediums that travel with the first —
+`VW-15` and `VW-16` — and half of `VW-20`.
 
 - **`VW-14` — the audit trail can no longer be forged.** `INSERT` on
   `audit_logs` is revoked from `authenticated` and `audit_logs_insert_self` is
@@ -915,17 +915,46 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
   the three surfaces most likely to violate — the Leaflet tile layer, the WASM
   blur, and whatever OneSignal loads after its bootstrap — need a signed-in
   resident of a live village, which does not exist yet.
-- **`VW-19` is deliberately still open, and that is a decision rather than an
-  omission.** Filling `DATA_CONTROLLER` with Yakasista Ltd would flip
-  `HAS_FALLBACK_CONTROLLER_DETAILS` and make `/privacy` and `/terms` assert that
-  Yakasista is the **data controller**. It is the *processor* in both models, and
-  `COMMUNITY_DPA.md` makes the coordinator personally answerable — a notice
-  saying otherwise would contradict the agreement they have signed, which is
-  worse than the gap it closes. The constant stays placeholders, both pages keep
-  naming Yakasista as the processor contact, and the ICO field now says in the
-  source why it is the one field with a lead time rather than a decision behind
-  it. What closes L2 is a registration and a named pilot controller, neither of
-  which is a code change.
+- **`VW-19` — `DATA_CONTROLLER` is filled in, as a contact route rather than as
+  a claim of control.** Yakasista Ltd, `Cambridge` / `United Kingdom`,
+  `info@yakasista.com`, ICO `Registration pending (ref: C2018564)`. `/privacy` §1
+  publishes them in one box headed **Operator (processor)** which says in bold
+  that it is not the controller and to write there if your village has not named
+  one; §13 points a subject access request at the same address with a working
+  `mailto:`. §1 still explains both models — council or coordinator — before any
+  of it. That closes the Article 13 gap the finding is actually about: a resident
+  had nowhere to write, and now has somewhere.
+- **Filling it in put a self-contradiction on `/privacy`, and only the rendered
+  page showed it.** §1 draws a box for the fallback controller and, beneath it, a
+  box for the operator declaring in bold that it is **not** the controller. With
+  both naming Yakasista Ltd the page presented the same company as the controller
+  and then denied it, in adjacent blocks. `FALLBACK_CONTROLLER_IS_OPERATOR`
+  merges them; the two-box shape stays for a genuine third-party controller. The
+  test guards on the two constants directly rather than on the flag — guarding on
+  the flag would mean breaking the flag switched the assertion off, which was
+  caught by mutation-checking it.
+- **`CONTROLLER_LABEL` deliberately stopped following the constant.** Two of the
+  six `/terms` sentences are written *about* the role — §1's "read it as
+  whichever of the two runs your village" and §12's "in most villages that is
+  your coordinator" — so a company name substituted in tells a reader to treat a
+  named third party as their own coordinator. It is the role phrase
+  unconditionally now, and `/terms` reads exactly as it did.
+- **Three fields needed a judgement rather than a value.** No telephone is
+  published (`null`, not a placeholder — Article 13(1)(a) asks for contact
+  details, not a telephone, and an invented number is worse than an omitted one);
+  the registered address is not in this repository, so it is the town and country
+  rather than an invented street; and `HAS_DATA_PROTECTION_OFFICER` is `false`
+  with the **correct** reason recorded — Article 37(1)(c) and scale, not the
+  250-employee figure, which is Article 30(5) and about records of processing.
+- **`LEGAL_LAST_UPDATED` moved to 30 August 2026**, for the first time since it
+  was written, because §1, §13 and `/terms` §12 all changed substance. That is
+  half of **VW-20**; the test that would make the rule mechanical is still open.
+- **What is left of L2 is not a code change**: the ICO registration itself
+  (C2018564, pending), naming the controller for the first pilot village, and a
+  review by somebody with UK data-protection standing. Naming Yakasista Ltd as
+  the *controller* would still be the wrong fix — it is the processor in both
+  models and `COMMUNITY_DPA.md` makes the coordinator personally answerable — and
+  the page is careful not to.
 
 **Application security audit — 29 August 2026.** A source-level review of the
 whole tree against six domains: Next.js and Vercel, Supabase Auth, row-level

@@ -274,8 +274,9 @@ export type ParishCouncilState = {
  * only way to set it was `saveVillageAdminSettings`, which is platform-admin
  * only, so a village whose coordinator knew the answer had to ask somebody who
  * did not. Empty, `reportController` falls back to `DATA_CONTROLLER` in
- * `constants.ts` — still placeholders — and `/reports` renders an amber warning
- * about it. This is the field that clears that warning.
+ * `constants.ts` — which names the operator, not this village's controller — and
+ * `/reports` renders an amber warning about it. This is the field that clears
+ * that warning.
  *
  * **Audited**, and toned `sensitive` alongside the other two village settings.
  * Not because it widens an audience but because it is a statement of legal
@@ -382,7 +383,7 @@ export async function saveParishCouncilAction(
       ? `Reports will name ${parishCouncil} as the data controller.`
       : council
         ? "Council name cleared. Reports fall back to the deployment-wide controller."
-        : "Name cleared. Reports fall back to the deployment-wide controller, which is placeholder text.",
+        : "Name cleared. Reports fall back to the deployment-wide contact, which operates the software rather than controlling your village's data.",
   };
 }
 

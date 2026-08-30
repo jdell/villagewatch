@@ -1709,8 +1709,23 @@ export const PRICING = [
  * Shown on the privacy policy and terms pages. Bump it whenever either
  * document's substance changes — a policy with a stale date is worse than one
  * with no date, because it claims a review that did not happen.
+ *
+ * Moved to 30 August 2026 with VW-19, which is the first time it has moved since
+ * it was written. `/privacy` §1 now names a controller and gives its contact
+ * details where it previously said there were none to give, §13 points a subject
+ * access request at a real address, and `/terms` §12 stopped branching on
+ * whether that address existed. That is exactly the kind of change the sentence
+ * above is about.
+ *
+ * It should have moved several times before now — VW-20 in
+ * `docs/SECURITY_AUDIT_2026-08-29.md` counts five substantive rewrites of
+ * `/privacy` that left it at 27 July. `src/app/sitemap.ts` publishes this same
+ * date as `lastModified` for both pages, so a stale value tells search engines
+ * the documents have not moved either. VW-20 asks for a test in the shape of
+ * `tests/supabase-templates.test.ts` to make the rule mechanical rather than
+ * remembered; that is still open.
  */
-export const LEGAL_LAST_UPDATED = "2026-07-27";
+export const LEGAL_LAST_UPDATED = "2026-08-30";
 
 /**
  * The data controller under UK GDPR.
@@ -1933,63 +1948,93 @@ export const CONTROLLER_RESPONSIBILITIES = [
 /**
  * The deployment-wide fallback for the body answerable for a village's data.
  *
- * Placeholders, deliberately and visibly — nothing here is a real body, and
- * `/reports` renders an amber warning while a document would print it. What
- * changed is that the placeholders no longer say **council**.
+ * **Filled in on 30 August 2026** — VW-19 in `docs/SECURITY_AUDIT_2026-08-29.md`,
+ * L2 in `docs/LAUNCH_BLOCKERS.md`. Until then every field was a bracketed
+ * placeholder, and `/privacy` printed nothing at all rather than print one.
  *
- * `Village.mode` defaults to `community`, where there is no council and the
- * coordinator is the controller, so "[Parish Council name]" was the wrong
- * question asked of most villages: a volunteer reading it on the foot of their
- * own report is being told to go and find a council, and a coordinator reading
- * it under a field they are meant to fill in learns that the field is not for
- * them. The wording is mode-neutral instead — it names the *role* both models
- * agree on and asks for a name rather than a kind of organisation.
+ * **Read what this is before adding to it, because the name is misleading.** It
+ * is not "who the data controller is" — that question has no single answer on a
+ * deployment serving many villages, and `Village.mode` is what decides it: a
+ * parish council in a council village, the coordinator personally in a community
+ * one. `reportController` in `src/lib/community-report.ts` prefers
+ * `Village.parishCouncil` on a truthiness check and only reaches this when a
+ * village has named nobody.
  *
- * Read through `reportController` in `src/lib/community-report.ts`, which
- * prefers `Village.parishCouncil` on a truthiness check. This is what prints
- * when no village-specific controller has been named at all.
+ * What it is, is **the fallback contact route on the two pages that cannot read
+ * a village**. `/privacy` and `/terms` are public and sessionless. Before this
+ * they told a resident looking for the address to send a subject access request
+ * to that there was none to give — which is honest and is not an Article 13
+ * answer. Now there is an address that reaches a real company which can say who
+ * the controller for a given village is and pass the request on. That is the
+ * whole of what filling this in buys, and it is worth having.
+ *
+ * **`CONTROLLER_LABEL` deliberately did not follow this change** — see its own
+ * comment below. The six sentences on `/terms` that name a controller are
+ * written about the role, and swapping a role phrase for a company name breaks
+ * them.
  */
 export const DATA_CONTROLLER = {
-  name: "[Data controller name]",
-  addressLines: [
-    "[Data controller address line 1]",
-    "[Town]",
-    "[Postcode]",
-  ],
-  email: "[contact@example.uk]",
-  phone: "[01234 567890]",
+  name: "Yakasista Ltd",
+  /**
+   * The registered address is not recorded anywhere in this repository, so this
+   * is the town and country rather than a street. It is enough to reach the
+   * company by post alongside the email below, and a street address invented to
+   * fill the shape would be worse than a coarse one that is true.
+   *
+   * Replace it with the registered address from the company's Companies House
+   * record when somebody has it to hand.
+   */
+  addressLines: ["Cambridge", "United Kingdom"],
+  email: SUPPORT_EMAIL,
+  /**
+   * No telephone number is published, and `null` rather than a placeholder is
+   * how that is said.
+   *
+   * Article 13(1)(a) asks for contact details, not for a telephone; an email
+   * address and a postal address satisfy it. The alternative was inventing a
+   * number, which on a privacy notice is the one thing worse than omitting one —
+   * a resident who dials it has been sent somewhere by a document that told them
+   * it would reach the controller. `/privacy` drops the line entirely when this
+   * is null rather than printing an empty label.
+   */
+  phone: null as string | null,
   /**
    * Registration number from the ICO's public register.
    *
-   * **Outstanding, and it is the one field here with a lead time rather than a
-   * decision behind it** — VW-19 in `docs/SECURITY_AUDIT_2026-08-29.md`, L2 in
-   * `docs/LAUNCH_BLOCKERS.md`. Registering is an application, a fee and a wait;
-   * the other five fields are answers somebody already knows.
+   * TODO(VW-19): replace with the registration number once the ICO confirms
+   * application **C2018564**. This is the only field in this object still
+   * waiting on something, and what it waits on is an external body rather than
+   * a decision — see `docs/LAUNCH_BLOCKERS.md` L2.
    *
-   * Left as a placeholder rather than as a `TODO` comment, because a bracketed
-   * value is the only form of "not yet" this object has that the rest of the
-   * file can *test*: `isPlaceholderDetail` reads it, and
-   * `tests/legal-placeholders.test.tsx` fails if one ever reaches a resident. A
-   * `// TODO` beside a plausible-looking number is the version of this that
-   * ships by accident.
-   *
-   * Note what that means for the day the other five are filled in and this one
-   * is not: `HAS_FALLBACK_CONTROLLER_DETAILS` tests `name` alone, so the block
-   * on `/privacy` would render and print this bracket to the public. The
-   * "renders no bracketed placeholder at all" test is what catches it. Fill this
-   * in *with* the others, or give the line its own conditional first.
+   * Deliberately **not** a bracketed placeholder, which is the form
+   * `isPlaceholderDetail` recognises and `tests/legal-placeholders.test.tsx`
+   * refuses to let reach a resident. A pending application is a true statement
+   * about the state of things and the reference makes it checkable, so it is
+   * something a reader can act on rather than a rendering fault they will
+   * assume is a bug and not report.
    */
-  icoRegistration: "[ICO registration number]",
+  icoRegistration: "Registration pending (ref: C2018564)",
 } as const;
 
 /**
- * Whether a value is still one of the square-bracketed placeholders above.
+ * No data protection officer is appointed, and this is why — recorded here
+ * rather than on `/privacy`, because Article 13 asks for a DPO's contact details
+ * **where one exists** and says nothing about announcing that none does.
  *
- * The convention is the brackets and nothing cleverer: every unfilled field in
- * `DATA_CONTROLLER` opens with `[`, and a real council's name, address or email
- * never does. A boolean flag beside the object would be a second thing to
- * remember to change, and the one it is easy to forget is the flag.
+ * The test is Article 37(1), and it is worth writing down because the obvious
+ * reason is the wrong one: the 250-employee figure people reach for is Article
+ * 30(5), which is about keeping records of processing, and has nothing to do
+ * with appointing a DPO. What actually applies here is Article 37(1)(c) —
+ * VillageWatch processes criminal offence data, which is exactly the category
+ * that triggers a DPO **when it is done on a large scale**. At one parish it is
+ * not, and the service is not a public authority, so no DPO is required.
+ *
+ * **That is a threshold rather than a permanent answer.** Scale is the variable,
+ * and this is the paragraph to re-read before onboarding a county rather than a
+ * village. `docs/DPIA.md` §9 is where the decision belongs if it changes.
  */
+export const HAS_DATA_PROTECTION_OFFICER = false;
+
 export function isPlaceholderDetail(value: string): boolean {
   return value.trim().startsWith("[");
 }
@@ -2021,22 +2066,61 @@ export function isPlaceholderDetail(value: string): boolean {
  * `docs/LAUNCH_BLOCKERS.md`. This makes the unfilled state truthful; it does
  * not make it finished.
  */
+/**
+ * Whether the fallback contact details name the same body as `OPERATOR`.
+ *
+ * They do today, and that is the whole reason this flag exists. `/privacy` §1
+ * renders a box for the fallback controller and, beneath it, a box for the
+ * operator — a shape that made sense while the first was a parish council and
+ * the second was Yakasista Ltd. With both naming Yakasista Ltd the page printed
+ * the same company twice, the second box saying in bold that it is **not** the
+ * controller directly under the first box presenting it as one. A privacy notice
+ * that contradicts itself in two adjacent paragraphs is worse than one that
+ * says less, and it is the kind of thing only a rendered page shows you.
+ *
+ * So the page merges the two boxes when this is true. The two-box shape is kept
+ * for the day a deployment genuinely does name a third-party controller here,
+ * which is the case the constant was designed for.
+ */
+export const FALLBACK_CONTROLLER_IS_OPERATOR =
+  DATA_CONTROLLER.name === OPERATOR.name;
+
 export const HAS_FALLBACK_CONTROLLER_DETAILS =
   !isPlaceholderDetail(DATA_CONTROLLER.name);
 
 /**
- * What to call the controller in a sentence that has to read correctly whether
- * or not anybody has named one.
+ * What to call the controller in a sentence on `/terms`.
  *
  * `/terms` names the controller in six places — "neither VillageWatch nor X is
  * liable", "you grant X a licence" — and every one of them read
- * "[Data controller name]" on a public page. The role is the part those
- * sentences actually depend on, and it is true in both models and in both
- * states, so it is what they say until there is a name to use instead.
+ * "[Data controller name]" on a public page until 27 August 2026. The role is
+ * the part those sentences actually depend on, and it is true in both models.
+ *
+ * **It stopped following `DATA_CONTROLLER.name` on 30 August 2026, and that is
+ * the point of it rather than an oversight.** It used to read the name where one
+ * was filled in, on the assumption that a filled-in constant meant the
+ * deployment had a single controller and could say so. Filling it in for VW-19
+ * showed the assumption was wrong: `DATA_CONTROLLER` is the *fallback contact
+ * route* on two sessionless pages, not an answer to who controls a given
+ * village, which is still `Village.mode` and `Village.parishCouncil`.
+ *
+ * Two of the six sentences are what settle it, because they are written *about*
+ * the role and read as nonsense with a company name in them:
+ *
+ *   §1  "Where these terms name X, read it as whichever of the two runs
+ *        your village."
+ *   §12 "X — in most villages that is your coordinator."
+ *
+ * Substitute "Yakasista Ltd" into either and the sentence instructs a reader to
+ * treat a named company as their own coordinator. A liability clause that names
+ * the wrong party is worse than one that names a role, and `/terms` was not what
+ * VW-19 asked to change.
+ *
+ * So: a constant, not a branch. If a deployment ever genuinely does serve one
+ * village with one named controller, this is the line to reconsider — and those
+ * two sentences have to be rewritten in the same commit.
  */
-export const CONTROLLER_LABEL = HAS_FALLBACK_CONTROLLER_DETAILS
-  ? DATA_CONTROLLER.name
-  : "your village's data controller";
+export const CONTROLLER_LABEL = "your village's data controller";
 
 /**
  * How long things are kept.

@@ -1212,29 +1212,79 @@ filed and can close their account. Two entry points, one implementation:
 `/privacy` and `/terms`, public, sharing `src/components/legal-page.tsx` and
 linked from `SiteFooter` and the registration form.
 
-- `DATA_CONTROLLER` in `src/lib/constants.ts` is **placeholders**, and since
-  27 August 2026 **no placeholder reaches a resident**. Those are two statements
-  and the gap between them is the design. A privacy notice that does not name a
-  controller does not satisfy Article 13 — fill it in before a single real
-  resident registers — but the constant cannot be the answer on its own, because
-  the controller differs per village and these two pages are public and
-  sessionless. So both branch on `HAS_FALLBACK_CONTROLLER_DETAILS`: filled in
-  they print the details, unfilled they explain that the controller is per
-  village and give `OPERATOR` — Yakasista Ltd, the **processor** — as a contact
-  route that works. `CONTROLLER_LABEL` carries the six sentences on `/terms`
-  that name the controller. Before that, `/privacy` §13 told a resident to send
-  their subject access request to `[contact@example.uk]`.
-  `tests/legal-placeholders.test.tsx` renders both pages and asserts no bracket
-  survives, that a `mailto:` always does, and that the constant is filled in for
-  every field or none. **Naming Yakasista Ltd as the controller would be the
-  wrong fix** and is worth writing down because it is the obvious one: it is the
-  processor in both models, and `COMMUNITY_DPA.md` makes the coordinator
+- **`DATA_CONTROLLER` in `src/lib/constants.ts` was filled in on 30 August 2026**
+  — VW-19 — and the thing to understand before touching it is that **it is not
+  an answer to "who is the data controller".** That question has no single answer
+  on a deployment serving many villages: `Village.mode` decides it, a parish
+  council in a council village and the coordinator personally in a community one,
+  and `reportController` prefers `Village.parishCouncil` on a truthiness check.
+  What the constant is, is **the fallback contact route on the two pages that
+  cannot read a village** — `/privacy` and `/terms` are public and sessionless.
+  Before it was filled in they told a resident looking for somewhere to send a
+  subject access request that there was none to give, which is honest and is not
+  an Article 13 answer. It now names Yakasista Ltd with a postal address, an
+  email and the ICO application reference, and §13 points a request there.
+- **Filling it in put a self-contradiction on `/privacy` §1, and only the
+  rendered page showed it.** That section draws a box for the fallback controller
+  and, beneath it, a box for the operator saying in bold that it is **not** the
+  controller. While the two were different bodies that read correctly; with both
+  naming Yakasista Ltd the page presented the same company as the controller and
+  then denied it, in adjacent blocks. `FALLBACK_CONTROLLER_IS_OPERATOR` merges
+  them into one box when the names match, and the two-box shape stays for the
+  case the constant was designed for. `tests/legal-placeholders.test.tsx` pins
+  it, guarding on the two constants directly rather than on the flag — guarding
+  on the flag would mean breaking the flag also switched the assertion off.
+- **`CONTROLLER_LABEL` deliberately stopped following the constant.** It used to
+  read `DATA_CONTROLLER.name` wherever one was filled in; it is now the role
+  phrase unconditionally. Two of the six `/terms` sentences are written *about*
+  the role — §1's "where these terms name X, read it as whichever of the two runs
+  your village" and §12's "X — in most villages that is your coordinator" — and a
+  company name substituted into either instructs a reader to treat a named third
+  party as their own coordinator. A liability clause naming the wrong party is
+  worse than one naming a role. If a deployment ever serves one village with one
+  named controller, that is the line to reconsider, and those two sentences have
+  to be rewritten in the same commit.
+- **The ICO registration is the one field still waiting on something**, and it
+  waits on an external body rather than a decision: `Registration pending (ref:
+  C2018564)`, carrying a `TODO(VW-19)`. Deliberately **not** bracketed — brackets
+  are the form `isPlaceholderDetail` recognises and the test refuses to let reach
+  a resident, and a pending application with a reference is a true, checkable
+  statement rather than a rendering fault a reader will assume is a bug and not
+  report.
+- **No telephone is published and `phone` is `null` rather than a placeholder.**
+  Article 13(1)(a) asks for contact details, not for a telephone; an email and a
+  postal address satisfy it. Inventing a number would be the one thing worse than
+  omitting one — a resident who dials it has been sent somewhere by the document
+  that promised it would reach the controller. `/privacy` drops the line rather
+  than printing an empty label.
+- **The registered address is not in this repository**, so the address is
+  `Cambridge` / `United Kingdom` — the town and country rather than a street.
+  Enough to reach the company by post alongside the email, and a street invented
+  to fill the shape would be worse than a coarse one that is true. Replace it
+  from the Companies House record when somebody has it.
+- **`HAS_DATA_PROTECTION_OFFICER` is `false`, and the reason recorded beside it
+  is not the one people reach for.** The 250-employee figure is Article 30(5) and
+  is about records of processing; the DPO test is Article 37(1). What applies
+  here is 37(1)(c) — VillageWatch processes criminal offence data, which triggers
+  a DPO **when done on a large scale**. At one parish it is not, and the service
+  is not a public authority. That is a threshold rather than a permanent answer,
+  and it is the paragraph to re-read before onboarding a county. It is
+  deliberately not stated on `/privacy`: Article 13 asks for a DPO's details
+  where one exists and says nothing about announcing that none does.
+- **`LEGAL_LAST_UPDATED` moved to 30 August 2026**, for the first time since it
+  was written. `/privacy` §1 and §13 and `/terms` §12 all changed substance, which
+  is exactly what the constant's own rule is about. VW-20 counts five earlier
+  rewrites that left it at 27 July, and asks for a test to make the rule
+  mechanical rather than remembered; that is still open.
+- **Naming Yakasista Ltd as the *controller* would still be the wrong fix**, and
+  the distinction survives this change rather than being settled by it. It is the
+  **processor** in both models, and `COMMUNITY_DPA.md` makes the coordinator
   personally answerable — a notice asserting otherwise would contradict the
-  agreement they signed. It is also no longer the only
-  answer: `Village.mode` decides whether the controller is a parish council or
-  the village's own coordinator, so `/privacy` §1 and `/terms` §1 describe both
-  and the constant is the fallback where no village-specific controller is
-  named. See The two compliance models.
+  agreement they signed. What was published is a contact route, labelled
+  "Operator (processor)" on the page and saying in bold that it is not the
+  controller. `Village.mode` still decides who is, `/privacy` §1 still explains
+  both models first, and the ICO registration and the named pilot controller
+  remain L2.
 - **The placeholders are mode-neutral, and that was a real bug rather than a
   wording preference.** `name` read `[Parish Council name]` and the address and
   email matched it. That string is not decoration: it prints at the foot of a
@@ -1504,7 +1554,7 @@ Authentication → Emails → Templates.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Thirty-nine files, 617 tests, covering the
+between the typecheck and the build. Thirty-nine files, 622 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -2201,8 +2251,9 @@ the data controller is**. `VILLAGE_MODES`, `resolveVillageMode` and
   model there is no council to name — the coordinator is the controller — so the
   field a volunteer needs to fill in was asking them for something that does not
   exist, which is how it stays empty and every report they send names
-  `DATA_CONTROLLER`, still placeholder text. The column is `Village.parishCouncil`
-  either way; only the labels move.
+  `DATA_CONTROLLER` — which is the operator rather than the village's own
+  controller, and was bracketed placeholder text until 30 August 2026. The column
+  is `Village.parishCouncil` either way; only the labels move.
 - **The share panel was the third screen and it was missed**, closed the day
   after the other two. `ShareSummary` takes a `mode` and picks between two sets
   of copy the way `ParishCouncilForm` does — one component, because it is a
@@ -2347,9 +2398,12 @@ configuration one. See The two compliance models for what each asks for.
   landing there gets a link through to the fix; a resident gets the sentence and
   the 999/101 numbers, because there is nothing they can do.
 - **The checkbox names `Village.parishCouncil`**, falling back to
-  `DATA_CONTROLLER` — which is still placeholders. A coordinator accepting "on
-  behalf of [Parish Council name]" has accepted on behalf of nobody, so fill
-  that in first. See The parish council.
+  `DATA_CONTROLLER` — which names the **operator**, not the village's own
+  controller. A coordinator accepting on behalf of the company that runs the
+  software has accepted on behalf of the wrong body, so fill the village's own
+  in first. It was bracketed placeholder text until 30 August 2026, when it
+  became a real name and the failure mode changed from visibly empty to
+  plausibly wrong. See The parish council.
 - The three `*_accepted_by_id` columns are deliberately **absent** from the
   `villages` SELECT grant in `rls_policies.sql`. They are `users.id` values; the
   timestamps are granted and the identities are not.
@@ -2813,10 +2867,17 @@ together. Two documents: one incident, and everything published over a period.
   `[data-tour]` rule matches the sidebar links it points at, not the card, which
   is fixed to the viewport and printed over the top of the first page.
 - **`Village.parishCouncil` names the data controller in the footer**, falling
-  back to `DATA_CONTROLLER` in `constants.ts` — which is still placeholders, so
-  `/reports` shows a warning when the footer would read "[Parish Council name]".
-  That is the first thing in the app to actually read the column, and the
-  dashboard's parish council field is what fills it — see The parish council.
+  back to `DATA_CONTROLLER` in `constants.ts` — which names the operator rather
+  than the village's own controller, so `/reports` shows an amber warning
+  whenever the footer would fall back to it. **The warning's wording changed on
+  30 August 2026 and the reason is worth keeping**: the fallback used to be the
+  bracketed "[Parish Council name]", so "no data controller is named yet" was
+  literally what the footer said. It is now a real body and the wrong one — a
+  police report attributing control of a village's data to the processor is a
+  false statement in the one document that leaves the village on paper — so the
+  warning has to name which body is wrong rather than say none is named. That is
+  the first thing in the app to actually read the column, and the dashboard's
+  controller field is what fills it — see The parish council.
 - **`/privacy` §6 changed in the same commit**, for the reason the legal-pages
   section gives. It named one route to the police — a formal request the council
   decides on — and this adds a routine one a coordinator drives. The notice now
@@ -4123,14 +4184,16 @@ open:
   through PostgREST until they were put behind column grants. **Re-run the file
   after any migration that adds a table or a column** — a new table arrives with
   RLS off, and the column grants are enumerated at run time.
-- **`DATA_CONTROLLER` in `src/lib/constants.ts` is placeholders.** The privacy
-  policy and terms both name it. Fill it in, register with the ICO, and have
-  the council review both documents before launch. A coordinator can now name
-  their own council on `/dashboard`, which covers the `/reports` footers — but
-  that is per village and `/privacy` still reads the constant, so this is
-  narrowed rather than closed. The dashboard field needs
-  `20260727180000_village_activation`, which is applied — it says so on screen
-  rather than failing on Save where it is not.
+- **`DATA_CONTROLLER` is filled in, and what is left of L2 is not a code
+  change.** Since 30 August 2026 it names Yakasista Ltd with a postal address, an
+  email and the ICO application reference, so `/privacy` and `/terms` give a
+  resident somewhere to write — see The legal pages. **Still open:** the ICO
+  registration itself (application C2018564, pending — the longest lead item on
+  the list), naming the controller for the first pilot village, and having the
+  finished notice read by somebody with UK data-protection standing. A
+  coordinator can name their own council on `/dashboard`, which covers the
+  `/reports` footers; that is per village, and the constant is only ever the
+  fallback beneath it.
 - **Slack is disclosed rather than covered by its own agreement, and `/privacy`
   §6 now says so in as many words.** The blanket claim that every processor acts
   under a written data processing agreement was untrue for Slack, and a false
