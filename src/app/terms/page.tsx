@@ -16,11 +16,35 @@ import {
   APP_HOST,
   APP_NAME,
   CONTROLLER_LABEL,
-  HAS_FALLBACK_CONTROLLER_DETAILS,
   MINIMUM_AGE,
   OPERATOR,
   RETENTION,
 } from "@/lib/constants";
+
+/**
+ * Rendered per request, so the Content-Security-Policy nonce reaches this
+ * page's scripts.
+ *
+ * `src/proxy.ts` mints a fresh nonce for every request and Next stamps it onto
+ * the script tags it renders — but only while it is rendering. Prerendered at
+ * build time there is no request to take one from, the scripts go out bare, and
+ * `'strict-dynamic'` in `src/lib/csp.ts` then blocks every one of them: the
+ * server HTML arrives, React never hydrates, and nothing in a server log says
+ * so.
+ *
+ * Measured rather than assumed — without this line the page serves 0 nonced
+ * scripts under `npm run start`, with it, all of them. The cost is a render per
+ * request instead of a file from the edge, which at a parish's traffic is not a
+ * cost; the alternative is a policy covering only the pages behind a login,
+ * which are the pages least in need of one.
+ *
+ * `export const dynamic` rather than `await connection()`, which Next's CSP
+ * guide reaches for first. Both work. This one leaves the component
+ * **synchronous**, and `tests/legal-placeholders.test.tsx` renders two of these
+ * pages with `react-dom/server`'s synchronous API — an async Server Component
+ * suspends there and the suite fails on a page nobody changed.
+ */
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Terms of use",
@@ -470,30 +494,28 @@ export default function TermsPage() {
         <P>
           Questions about these terms, or about a moderation decision, go to{" "}
           {CONTROLLER_LABEL} — in most villages that is your coordinator.{" "}
-          {HAS_FALLBACK_CONTROLLER_DETAILS ? (
-            <>
-              Section 1 of the{" "}
-              <Link
-                href="/privacy"
-                className="font-medium text-brand-700 underline underline-offset-2"
-              >
-                privacy policy
-              </Link>{" "}
-              has their contact details.
-            </>
-          ) : (
-            <>
-              If you cannot reach them, email{" "}
+          {/*
+            Not a branch on `HAS_FALLBACK_CONTROLLER_DETAILS` any more.
+            It used to read "section 1 of the privacy policy has their contact
+            details" wherever the constant was filled in, on the assumption that
+            a filled constant meant the deployment had one named controller.
+            VW-19 showed the assumption was wrong: `DATA_CONTROLLER` is the
+            fallback *contact route*, and the controller is still per village. So
+            "their contact details" would have pointed a resident at a company
+            that is not their controller, and dropped the one tappable address on
+            this page while doing it.
+
+            The sentence below is true in both states and always was.
+          */}
+          If you cannot reach them, email{" "}
               <a
                 href={`mailto:${OPERATOR.email}`}
                 className="font-medium text-brand-700 underline underline-offset-2"
               >
                 {OPERATOR.email}
               </a>
-              , which reaches {OPERATOR.name} — the company that runs the
-              software, not the controller, but a route that always works.
-            </>
-          )}
+          , which reaches {OPERATOR.name} — the company that runs the software,
+          not the controller, but a route that always works.
         </P>
       </LegalSection>
     </LegalPage>

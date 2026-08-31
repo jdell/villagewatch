@@ -170,11 +170,20 @@ export default async function ReportsPage({
       </div>
 
       {/*
-        `DATA_CONTROLLER` is placeholders until somebody fills it in, and
-        `Village.parishCouncil` is what replaces it per village. A report whose
-        footer names "[Data controller name]" is a document a coordinator would
-        send to the police without noticing, so it says so here rather than only
-        in the footer of the thing they are about to print.
+        `Village.parishCouncil` is the village's own answer and `DATA_CONTROLLER`
+        is the deployment-wide fallback beneath it. A report whose footer names
+        the fallback is a document a coordinator would send to the police without
+        noticing, so it says so here rather than only in the footer of the thing
+        they are about to print.
+
+        The wording changed on 30 August 2026, with VW-19. The fallback used to
+        be the bracketed "[Data controller name]", so "no data controller is
+        named yet" was literally what the footer said. It now names Yakasista Ltd
+        — a real body, and the wrong one: it is the *processor*, and a police
+        report attributing control of a village's data to it would be a false
+        statement in the one document that leaves the village on paper. So the
+        warning still fires, and now has to say which body is wrong rather than
+        that none is named.
 
         Both halves of the sentence were wrong for a community village: the
         controller there is the coordinator reading this rather than a council,
@@ -188,10 +197,13 @@ export default async function ReportsPage({
         >
           <TriangleAlert className="size-5 shrink-0 text-amber-600" aria-hidden />
           <div className="text-sm leading-relaxed text-amber-900">
-            <p className="font-medium">No data controller is named yet</p>
+            <p className="font-medium">
+              Your village has not named its data controller
+            </p>
             <p className="mt-1 text-amber-800">
-              The footer of this report will read
-              &ldquo;{report.dataController}&rdquo;.{" "}
+              The footer of this report will fall back to
+              &ldquo;{report.dataController}&rdquo;, which operates the software
+              rather than controlling your village&rsquo;s data.{" "}
               {council
                 ? "Name your parish council in"
                 : "Your village runs the community model, so you are the data controller — put your group’s name in"}{" "}

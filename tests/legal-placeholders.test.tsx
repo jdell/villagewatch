@@ -73,13 +73,24 @@ const PAGES = [
  * Built from the constant rather than written out, so a field added to
  * `DATA_CONTROLLER` and then rendered is caught here rather than by a resident.
  */
-const PLACEHOLDERS = [
+/**
+ * Every field that carries a value, flattened.
+ *
+ * `phone` is nullable — no telephone is published, and the constant says why —
+ * so an omitted field is filtered out before the placeholder check rather than
+ * being treated as one. The distinction is the whole of what this file is
+ * about: a field that is *absent* renders nothing, and a field that still holds
+ * bracket text renders the brackets.
+ */
+const CONTROLLER_VALUES: string[] = [
   DATA_CONTROLLER.name,
   ...DATA_CONTROLLER.addressLines,
   DATA_CONTROLLER.email,
   DATA_CONTROLLER.phone,
   DATA_CONTROLLER.icoRegistration,
-].filter(isPlaceholderDetail);
+].filter((value): value is string => value !== null);
+
+const PLACEHOLDERS = CONTROLLER_VALUES.filter(isPlaceholderDetail);
 
 describe("the placeholder detector", () => {
   it("recognises a bracketed value and leaves a real one alone", () => {
@@ -99,18 +110,37 @@ describe("the placeholder detector", () => {
     );
   });
 
-  it("is filled in for every field or none of them", () => {
+  it("is filled in for every field it carries, or none of them", () => {
     // A half-filled object is the state that would slip a placeholder past the
     // name check and onto the page behind it — a real council named above an
     // address reading `[Town]`.
+    //
+    // `icoRegistration` is deliberately outside this check and always has been.
+    // It is the one field whose honest value can be a sentence rather than a
+    // number — a registration is applied for and then waited on — so "filled in"
+    // is not the right question to ask of it. What it still may not be is
+    // bracket text, which the page-level assertions below enforce on it like
+    // any other rendered value.
     const filled = [
       DATA_CONTROLLER.name,
       ...DATA_CONTROLLER.addressLines,
       DATA_CONTROLLER.email,
       DATA_CONTROLLER.phone,
-    ].map((value) => !isPlaceholderDetail(value));
+    ]
+      .filter((value): value is string => value !== null)
+      .map((value) => !isPlaceholderDetail(value));
 
     expect(new Set(filled).size).toBe(1);
+  });
+
+  it("publishes a postal address and an email, whatever else it omits", () => {
+    // Article 13(1)(a) is the reason this object exists at all. A telephone is
+    // optional and is currently absent; a way to reach the controller in
+    // writing is not, and a resident's subject access request is the thing that
+    // depends on it.
+    expect(HAS_FALLBACK_CONTROLLER_DETAILS).toBe(true);
+    expect(DATA_CONTROLLER.addressLines.length).toBeGreaterThan(0);
+    expect(DATA_CONTROLLER.email).toContain("@");
   });
 
   it("never labels the controller with a placeholder", () => {
@@ -118,6 +148,62 @@ describe("the placeholder detector", () => {
     // correctly either way. The role is true in both models and both states.
     expect(isPlaceholderDetail(CONTROLLER_LABEL)).toBe(false);
     expect(CONTROLLER_LABEL).not.toContain("[");
+  });
+
+  it("labels the controller with a role and never with the fallback's name", () => {
+    // Two sentences on `/terms` are written *about* the role — §1's "read it as
+    // whichever of the two runs your village" and §12's "in most villages that
+    // is your coordinator" — so a company name substituted in tells a reader to
+    // treat a named third party as their own coordinator. `DATA_CONTROLLER` is
+    // the fallback *contact route* on two sessionless pages, not an answer to
+    // who controls a given village, and this is the line that keeps the two
+    // apart.
+    expect(CONTROLLER_LABEL).not.toBe(DATA_CONTROLLER.name);
+    expect(CONTROLLER_LABEL).not.toContain(DATA_CONTROLLER.name);
+  });
+});
+
+describe("the fallback contact block", () => {
+  const privacy = PAGES.find((page) => page.name === "/privacy")!.markup;
+
+  it("publishes the ICO registration line", () => {
+    // It moves between two boxes depending on `FALLBACK_CONTROLLER_IS_OPERATOR`,
+    // and a refactor that merges them is exactly where a line gets dropped. The
+    // reference is what makes a pending registration checkable rather than a
+    // claim, so losing it silently is losing the point of publishing it.
+    expect(privacy).toContain(DATA_CONTROLLER.icoRegistration);
+  });
+
+  it("publishes somewhere to write", () => {
+    expect(privacy).toContain(DATA_CONTROLLER.addressLines[0]);
+    expect(privacy).toContain(`mailto:${DATA_CONTROLLER.email}`);
+  });
+
+  it("does not present the operator as the controller and then deny it", () => {
+    // The regression this pins is one only a rendered page shows. `/privacy` §1
+    // draws a box for the fallback controller and, beneath it, a box for the
+    // operator that says in bold it is **not** the controller. While those were
+    // different bodies that read correctly. Once `DATA_CONTROLLER` was filled in
+    // with the operator's own details, the page printed the same company twice —
+    // presented as the controller, then declared not to be, in adjacent blocks.
+    //
+    // Asserting a phrase rather than a property, deliberately, because the
+    // defect *is* a phrase: there is no structural difference between one box
+    // and two that a string render can see. If the copy is reworded, reword this
+    // with it rather than deleting it.
+    //
+    // The guard compares the two constants directly rather than reading
+    // `FALLBACK_CONTROLLER_IS_OPERATOR`, and that is the difference between a
+    // test and a tautology: the flag is what *drives* the rendering, so guarding
+    // on it means breaking the flag also switches the assertion off. Deriving
+    // the condition from the data means a flag stuck at `false` while both names
+    // still match — which is precisely the bug — fails here. Mutation-checked.
+    if (DATA_CONTROLLER.name === OPERATOR.name) {
+      expect(privacy).not.toContain(
+        "fallback where no village-specific controller has been named",
+      );
+      expect(privacy).toContain("not</strong> the controller");
+    }
   });
 });
 

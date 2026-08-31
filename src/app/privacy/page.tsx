@@ -16,12 +16,38 @@ import {
   APP_HOST,
   APP_NAME,
   DATA_CONTROLLER,
+  FALLBACK_CONTROLLER_IS_OPERATOR,
   HAS_FALLBACK_CONTROLLER_DETAILS,
   LOCATION_FUZZ_METERS,
   MINIMUM_AGE,
   OPERATOR,
   RETENTION,
 } from "@/lib/constants";
+
+/**
+ * Rendered per request, so the Content-Security-Policy nonce reaches this
+ * page's scripts.
+ *
+ * `src/proxy.ts` mints a fresh nonce for every request and Next stamps it onto
+ * the script tags it renders — but only while it is rendering. Prerendered at
+ * build time there is no request to take one from, the scripts go out bare, and
+ * `'strict-dynamic'` in `src/lib/csp.ts` then blocks every one of them: the
+ * server HTML arrives, React never hydrates, and nothing in a server log says
+ * so.
+ *
+ * Measured rather than assumed — without this line the page serves 0 nonced
+ * scripts under `npm run start`, with it, all of them. The cost is a render per
+ * request instead of a file from the edge, which at a parish's traffic is not a
+ * cost; the alternative is a policy covering only the pages behind a login,
+ * which are the pages least in need of one.
+ *
+ * `export const dynamic` rather than `await connection()`, which Next's CSP
+ * guide reaches for first. Both work. This one leaves the component
+ * **synchronous**, and `tests/legal-placeholders.test.tsx` renders two of these
+ * pages with `react-dom/server`'s synchronous API — an async Server Component
+ * suspends there and the suite fails on a page nobody changed.
+ */
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Privacy policy",
@@ -186,7 +212,21 @@ export default function PrivacyPage() {
           they are also who to ask for the contact details of a council that has
           taken it on.
         </P>
-        {HAS_FALLBACK_CONTROLLER_DETAILS ? (
+        {/*
+          One box or two, and the difference is whether the fallback names the
+          same body as the operator.
+
+          It does today — see `FALLBACK_CONTROLLER_IS_OPERATOR`. Rendering both
+          put Yakasista Ltd on the page twice, presented as the fallback
+          controller in the first box and, immediately beneath, declared in bold
+          **not** to be the controller in the second. Two adjacent paragraphs
+          contradicting each other is worse than a notice that says less, and it
+          is only visible on a rendered page rather than in a diff.
+
+          The two-box shape stays for the case the constant was designed for: a
+          deployment that names a genuine third-party controller here.
+        */}
+        {HAS_FALLBACK_CONTROLLER_DETAILS && !FALLBACK_CONTROLLER_IS_OPERATOR ? (
           <>
             <P>
               The details below are the deployment&rsquo;s own and are the
@@ -199,14 +239,26 @@ export default function PrivacyPage() {
               {DATA_CONTROLLER.addressLines.map((line) => (
                 <p key={line}>{line}</p>
               ))}
-              <p className="mt-2">Email: {DATA_CONTROLLER.email}</p>
-              <p>Telephone: {DATA_CONTROLLER.phone}</p>
+              <p className="mt-2">
+                Email:{" "}
+                <a
+                  href={`mailto:${DATA_CONTROLLER.email}`}
+                  className="font-medium text-brand-700 underline underline-offset-2"
+                >
+                  {DATA_CONTROLLER.email}
+                </a>
+              </p>
+              {DATA_CONTROLLER.phone ? (
+                <p>Telephone: {DATA_CONTROLLER.phone}</p>
+              ) : null}
               <p className="mt-2 text-sm text-slate-500">
                 ICO registration: {DATA_CONTROLLER.icoRegistration}
               </p>
             </div>
           </>
-        ) : (
+        ) : null}
+
+        {!HAS_FALLBACK_CONTROLLER_DETAILS ? (
           <P>
             This installation has not named a fallback controller, so there is no
             single address here to give you — it depends on your village. If you
@@ -215,12 +267,25 @@ export default function PrivacyPage() {
             the controller for your village is and pass anything you send on to
             them.
           </P>
-        )}
+        ) : null}
+
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-base leading-relaxed text-slate-700">
           <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Operator (processor)
           </p>
           <p className="mt-1 font-semibold text-slate-900">{OPERATOR.name}</p>
+          {/*
+            The postal address and the ICO reference ride in this box when the
+            two are the same body, because this is then the only box and a
+            resident needs somewhere to write to. `DATA_CONTROLLER` is where both
+            live — see the constant for why that object is a contact route rather
+            than an answer to who controls a given village.
+          */}
+          {FALLBACK_CONTROLLER_IS_OPERATOR
+            ? DATA_CONTROLLER.addressLines.map((line) => (
+                <p key={line}>{line}</p>
+              ))
+            : null}
           <p className="mt-2">
             Email:{" "}
             <a
@@ -230,12 +295,27 @@ export default function PrivacyPage() {
               {OPERATOR.email}
             </a>
           </p>
+          {FALLBACK_CONTROLLER_IS_OPERATOR && DATA_CONTROLLER.phone ? (
+            <p>Telephone: {DATA_CONTROLLER.phone}</p>
+          ) : null}
+          {FALLBACK_CONTROLLER_IS_OPERATOR ? (
+            <p className="mt-2 text-sm text-slate-500">
+              ICO registration: {DATA_CONTROLLER.icoRegistration}
+            </p>
+          ) : null}
           <p className="mt-2 text-sm text-slate-500">
             {OPERATOR.name} builds and runs {APP_NAME} and processes data on the
             controller&rsquo;s instructions under a written agreement. It is{" "}
             <strong>not</strong> the controller and cannot decide what your
             village does with your data — but it is a route that always works,
             and it will put you in touch with whoever can.
+            {FALLBACK_CONTROLLER_IS_OPERATOR ? (
+              <>
+                {" "}
+                Write here if your village has not named its own controller, or
+                if you do not know who yours is.
+              </>
+            ) : null}
           </p>
         </div>
       </LegalSection>
@@ -821,8 +901,21 @@ export default function PrivacyPage() {
           {HAS_FALLBACK_CONTROLLER_DETAILS ? (
             <>
               Where no village-specific controller has been named, write to{" "}
-              <strong>{DATA_CONTROLLER.email}</strong> or to the address in
-              section 1.
+              {/*
+                A real `mailto:`, not the bare address this used to print. This
+                is the sentence a subject access request starts from, and a
+                resident reading it on a phone should be able to tap it — which
+                is also the invariant `tests/legal-placeholders.test.tsx` holds
+                both pages to.
+              */}
+              <a
+                href={`mailto:${DATA_CONTROLLER.email}`}
+                className="font-medium text-brand-700 underline underline-offset-2"
+              >
+                {DATA_CONTROLLER.email}
+              </a>{" "}
+              or to the address in section 1, and {OPERATOR.name} will identify
+              the controller for your village and pass your request to them.
             </>
           ) : (
             <>

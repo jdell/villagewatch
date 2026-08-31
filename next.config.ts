@@ -9,12 +9,19 @@ import pkg from "./package.json";
  * of whoever wrote it; and they survive a move off Vercel, which a parish
  * council self-hosting for one village might well make.
  *
- * A Content-Security-Policy is deliberately not here. It has to be built with
- * a per-request nonce to work with the App Router's inline bootstrap script,
- * which means `src/proxy.ts` rather than a static list — see
+ * The Content-Security-Policy is **not** in this list, and that is not the
+ * deferral it used to be. It has to be built with a per-request nonce to work
+ * with the App Router's inline bootstrap script, which means `src/proxy.ts`
+ * rather than a static list — see
  * `node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md`.
  * A CSP added as a static string here would either break Leaflet and the
- * OneSignal SDK or be so wide it protected nothing.
+ * OneSignal SDK or be so wide it protected nothing. It lives in
+ * `src/lib/csp.ts`, applied by the proxy on every response; VW-02 in
+ * `docs/SECURITY_AUDIT_2026-08-29.md` is what closed the deferral.
+ *
+ * The two overlap in one place on purpose: `X-Frame-Options: DENY` below and
+ * `frame-ancestors 'none'` in the policy say the same thing, and both stay. The
+ * older header is the one every browser honours.
  */
 const SECURITY_HEADERS = [
   {

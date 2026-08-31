@@ -41,6 +41,31 @@ import { landingStructuredData, serialiseJsonLd } from '@/lib/structured-data';
  * that `/privacy` and `/terms` are duplicates of the home page and drop both
  * from the index.
  */
+/**
+ * Rendered per request, so the Content-Security-Policy nonce reaches this
+ * page's scripts.
+ *
+ * `src/proxy.ts` mints a fresh nonce for every request and Next stamps it onto
+ * the script tags it renders — but only while it is rendering. Prerendered at
+ * build time there is no request to take one from, the scripts go out bare, and
+ * `'strict-dynamic'` in `src/lib/csp.ts` then blocks every one of them: the
+ * server HTML arrives, React never hydrates, and nothing in a server log says
+ * so. The trade is sharpest here — this is the marketing surface and the page a crawler reaches first — but the HTML is identical either way, so neither the JSON-LD nor the metadata moves.
+ *
+ * Measured rather than assumed — without this line the page serves 0 nonced
+ * scripts under `npm run start`, with it, all of them. The cost is a render per
+ * request instead of a file from the edge, which at a parish's traffic is not a
+ * cost; the alternative is a policy covering only the pages behind a login,
+ * which are the pages least in need of one.
+ *
+ * `export const dynamic` rather than `await connection()`, which Next's CSP
+ * guide reaches for first. Both work. This one leaves the component
+ * **synchronous**, and `tests/legal-placeholders.test.tsx` renders two of these
+ * pages with `react-dom/server`'s synchronous API — an async Server Component
+ * suspends there and the suite fails on a page nobody changed.
+ */
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: `${APP_NAME} — ${APP_TAGLINE}`,
   description:

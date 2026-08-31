@@ -395,6 +395,10 @@ src/
     clipboard.ts              copyText + shareText, browser only, shared by the
                               three surfaces that copy
     cron.ts                   Constant-time CRON_SECRET check, shared by both jobs
+    csp.ts                    The Content-Security-Policy, built per request from
+                              the nonce `proxy.ts` mints. Enforced unless
+                              CSP_REPORT_ONLY says otherwise — see The
+                              Content-Security-Policy
     email/                    layout, welcome, weekly-digest,
                               incident-notification, coordinator-decision — pure
                               functions to `{ subject, text, html }`
@@ -419,6 +423,10 @@ src/
     media/face-blur.ts        MediaPipe WASM face detection + canvas blur
     media/storage.ts          Signed URLs + base64 stills — service-role, server only
     supabase/                 server.ts, client.ts, admin.ts, env.ts
+    supabase/cookie-options.ts  The session cookie's flags and its lifetime,
+                              shared by the two createServerClient calls that
+                              have to agree. The lifetime is clamped in setAll
+                              because @supabase/ssr discards it anywhere else
     constants.ts              Enum display metadata, severity colours, map config
     validations.ts            Zod 4 schemas
   generated/prisma/           Generated client — gitignored, never edit
@@ -622,6 +630,17 @@ tests/                        Vitest, unit only — see The test suite
                               sending, every Resend failure resolving to a value
                               rather than throwing, and the timeout that stops a
                               registration hanging on somebody else's outage
+  supabase-cookies.test.ts    The session cookie — the flags, and the clamp that
+                              has to be `Math.min` because the same callback
+                              carries a sign-out's `maxAge: 0`. Also that
+                              `SUPABASE_COOKIE_OPTIONS` holds no `maxAge`, since
+                              moving it there would read better and silently
+                              restore the 400-day cookie
+  csp.test.ts                 The policy's load-bearing directives, and no
+                              wording: WASM permitted without `eval`, jsdelivr in
+                              `script-src` as well as `connect-src`, never
+                              `'unsafe-inline'` in `script-src`, and report-only
+                              differing from enforcing in exactly one directive
   supabase-templates.test.ts  The four auth templates — `{{ .ConfirmationURL }}`
                               present, no other Go variable, and the committed
                               `.html` matching the module that generates it
@@ -839,6 +858,124 @@ configuration rather than code.
 
 ---
 
+## The session cookie
+
+`src/lib/supabase/cookie-options.ts`, one module, and the two
+`createServerClient` calls that must agree — `src/lib/supabase/server.ts` and
+`src/proxy.ts`. VW-01.
+
+- **`@supabase/ssr` defaults to `httpOnly: false` and a 400-day life**, and
+  neither call passed `cookieOptions`, so the access token *and* the refresh
+  token were readable by any script on the page for over a year. Two
+  third-party scripts already run on authenticated pages — the OneSignal SDK
+  and the MediaPipe WASM runtime — so a compromise of either, or any XSS
+  anywhere, was a refresh-token theft rather than a session hijack.
+- **The browser client does not need to read the cookie, which is what makes
+  this safe.** `src/lib/supabase/client.ts` has exactly two call sites,
+  `google-button.tsx` and `forgot-password-form.tsx`, and neither reads an
+  existing session. The PKCE verifier is written through `document.cookie`,
+  which cannot set `HttpOnly` anyway, and `PushRegistration` takes `userId` as a
+  server-rendered prop. Add a third call site that reads a session and this
+  breaks — the fix is a server round trip, not the flag.
+- **`sameSite` stays `lax` and must.** Both the OAuth and the recovery legs
+  return from Supabase as a top-level cross-site navigation to
+  `/api/auth/callback`; under `strict` the browser withholds the cookies on
+  arrival and the exchange lands on a page that cannot see the session it just
+  created.
+- **`secure` is production-only**, which is the audit's own recommendation
+  rather than a blanket `true`: browsers refuse a `Secure` cookie over plain
+  HTTP, `npm run dev` is `http://localhost:3000`, and Safari has historically
+  not granted localhost the exemption Chrome and Firefox do.
+- **`maxAge` cannot be passed through `cookieOptions`, and it looks like it
+  can.** `@supabase/ssr` spreads the caller's options and then overwrites
+  `maxAge` with its own 400-day default — in both the storage adapter and the
+  server-side response path. A lifetime set there is accepted by the types,
+  discarded at run time, and leaves the long cookie behind looking shortened. So
+  `withCookieLifetime` clamps in the `setAll` callback, which is the only place
+  the options are ours.
+- **The clamp is `Math.min`, never assignment.** The same callback carries the
+  **deletions** — signing out writes the cookies with `maxAge: 0` — and raising
+  that to a week would leave a signed-out browser holding the cookie it had just
+  been told to drop.
+- **The cookie's life is the browser's half only.** Seven days here bounds how
+  long a stolen cookie works; the refresh token's own lifetime is a Supabase
+  dashboard setting and is untouched by anything in this repository.
+
+## The Content-Security-Policy
+
+`src/lib/csp.ts` builds it, `src/proxy.ts` applies it, and `next.config.ts`
+holds every *other* security header. VW-02, closing a deferral that
+`next.config.ts` had been documenting since the header set was written.
+
+- **It is in the proxy because it needs a per-request nonce.** The App Router
+  serves an inline bootstrap script on every page; a static header list cannot
+  produce a nonce, and a policy loose enough not to need one protects nothing.
+  Read `node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md`
+  before changing anything here.
+- **Every `return` in `proxy()` goes through `withCsp`**, including the two
+  early ones and both redirects. A policy covering the ordinary path and not the
+  bounce to `/login` has a hole in exactly the response an attacker would rather
+  land on.
+- **The request carries the enforcing header name whatever the mode.** Next
+  finds the nonce by parsing the *request*'s `Content-Security-Policy`, so
+  report-only sets that one too and varies only the **response** header name.
+  Otherwise a report-only fortnight would exercise a policy whose scripts carry
+  no nonce, which is not the policy that would later be enforced.
+- **`'strict-dynamic'` is what makes it hold up, and it makes the host list look
+  wrong.** Trust propagates from a nonced script to whatever it loads, which is
+  how `next/script` gets the OneSignal SDK in. A browser honouring it **ignores
+  every host expression in `script-src`** — so the hosts listed there are dead
+  weight in Chrome and Firefox and are the whole policy in a CSP2-only browser.
+  Both halves are deliberate.
+- **`'wasm-unsafe-eval'` is not optional and the audit's sketch omitted it.**
+  MediaPipe's face detector is WebAssembly, and `POST /api/incidents/media` has
+  no server-side fallback by design (domain rule 3) — so without it a reporter
+  cannot attach a photograph at all. `cdn.jsdelivr.net` is in **`script-src` as
+  well as `connect-src`** for the same reason: `FilesetResolver` loads the WASM
+  glue with `document.createElement("script")`, not with `fetch`.
+- **`style-src` takes `'unsafe-inline'`, and that is the one concession.** A
+  nonce covers `<style>` elements and not the `style="…"` **attribute**, which
+  is what React emits for every `style={{…}}` prop — the heatmap legend, the
+  breakdown bars, the privacy-level previews, Leaflet's positioning. What it
+  costs is restyling; `script-src` takes no such concession and that is where
+  the XSS is.
+- **The two service workers are served *without* the header.** A worker is
+  governed by the policy delivered with its own script, and
+  `public/onesignal/OneSignalSDKWorker.js` does nothing but `importScripts` from
+  `cdn.onesignal.com` — checked against `script-src`, where there is no nonce to
+  inherit and `'strict-dynamic'` has made the host list inert. Policed, it would
+  be an init that reports itself healthy and never delivers a notification,
+  which is the same silent failure the dashboard's worker path already has.
+  `UNPOLICED_SCRIPTS` in `proxy.ts` is the exclusion.
+- **`forwarded()` is a function, not an object, and that is load-bearing.**
+  `setAll` refreshes the session by writing `request.cookies.set(…)`, which
+  rewrites the request's own `cookie` header. A `Headers` snapshot taken at the
+  top of `proxy()` predates that write, so forwarding it would hand the render
+  the *stale* cookies and silently undo the refresh the proxy exists to perform.
+- **Six pages became `force-dynamic` and they had to.** `/`, `/privacy`,
+  `/terms`, `/forgot-password`, `/account-closed` and `not-found.tsx` were
+  prerendered, and a page built before the request has no nonce to stamp on its
+  scripts — so `'strict-dynamic'` blocked all of them: HTML arrived, React never
+  hydrated, nothing in a server log said so. Measured, not reasoned about: 0
+  nonced scripts before, all of them after. `/forgot-password` was the worst of
+  the six, since its form is a Client Component. The four routes still static —
+  the two share cards, `robots.txt` and `sitemap.xml` — carry no scripts.
+- **`export const dynamic` rather than `await connection()`**, which Next's own
+  guide reaches for first. Both work; only the first leaves the component
+  synchronous, and `tests/legal-placeholders.test.tsx` renders two of these
+  pages through `react-dom/server`'s synchronous API. Make them async and the
+  suite fails on a page nobody touched.
+- **The landing page's JSON-LD is the one unnonced `<script>` and is meant to
+  be.** `type="application/ld+json"` is a data block the browser never executes,
+  so `script-src` does not apply to it.
+- **`upgrade-insecure-requests` is dropped in report-only mode.** There is no
+  way to *report* an upgrade that did not happen, so every browser logs it as a
+  console error on every page load — and a fortnight of report-only is only
+  worth running if the console it fills is worth reading.
+- **Nothing in `next.config.ts` moved.** `X-Frame-Options: DENY` and
+  `frame-ancestors 'none'` now say the same thing and both stay; the older
+  header is the one every browser honours.
+
 ## Row-level security
 
 `prisma/sql/rls_policies.sql`, applied once after the first migration and after
@@ -857,9 +994,32 @@ configuration rather than code.
   `vw_is_admin`). Definer, because a policy on `users` that reads `users`
   recurses; `search_path` pinned empty, because a definer function that
   resolves names through the caller's path is an escalation primitive.
+- **`authenticated` cannot write the audit trail, the villages table, or its
+  own email** — VW-14, VW-15 and VW-16, closed 30 August 2026. All three were
+  grants that bought the application nothing, because every writer in this
+  codebase is Prisma connecting as the owner; the only thing reached through the
+  Supabase JS client anywhere is Storage. The first was the serious one:
+  `audit_logs_insert_self` checked `actor_id` alone, and `actor_email` and
+  `actor_role` are denormalised on purpose — so a resident could
+  `POST /rest/v1/audit_logs` naming themselves in the one checked column and a
+  coordinator in the column the audit viewer actually renders, into a table the
+  append-only trigger makes undeletable. The second, `villages`, was table-wide
+  INSERT/UPDATE gated on `vw_is_admin()` — a definition nothing in the app sets
+  and nothing scopes to a village — reaching `join_code`, `auto_approve`,
+  `privacy_level` and all four compliance timestamps. The third let a resident
+  take `info@yakasista.com` and receive the push about every coordinator
+  application, since `notifyAdminsOfCoordinatorRequest` resolves its audience by
+  looking `ADMIN_EMAILS` up in `users`. **Re-running the file closes them going
+  forward and says nothing about whether they were used** — the Verify section
+  at the foot of `rls_policies.sql` carries the two detection queries, and they
+  are worth running once against the deployed database.
 - Two triggers do what a policy cannot. `users_guard_privilege_columns` rejects
-  a client changing its own `role`, `village_id` or `verified_at` (domain rule
-  5 — a policy filters rows, not columns). `audit_logs_append_only` rejects
+  a client changing its own `email`, `role`, `village_id` or `verified_at`
+  (domain rule 5 — a policy filters rows, not columns). `audit_logs_append_only`
+  now also rejects an INSERT from `authenticated`, which is belt to the revoked
+  grant's braces: a forged row in an undeletable table is the one mistake in
+  that file that cannot be corrected afterwards, so it is refused twice. It
+  rejects
   every DELETE on the trail **including from the owner**, which is the only way
   domain rule 7 survives a careless `deleteMany`, and every UPDATE bar one:
   severing `actor_id` to NULL while every other column stays byte-identical.
@@ -1052,29 +1212,79 @@ filed and can close their account. Two entry points, one implementation:
 `/privacy` and `/terms`, public, sharing `src/components/legal-page.tsx` and
 linked from `SiteFooter` and the registration form.
 
-- `DATA_CONTROLLER` in `src/lib/constants.ts` is **placeholders**, and since
-  27 August 2026 **no placeholder reaches a resident**. Those are two statements
-  and the gap between them is the design. A privacy notice that does not name a
-  controller does not satisfy Article 13 — fill it in before a single real
-  resident registers — but the constant cannot be the answer on its own, because
-  the controller differs per village and these two pages are public and
-  sessionless. So both branch on `HAS_FALLBACK_CONTROLLER_DETAILS`: filled in
-  they print the details, unfilled they explain that the controller is per
-  village and give `OPERATOR` — Yakasista Ltd, the **processor** — as a contact
-  route that works. `CONTROLLER_LABEL` carries the six sentences on `/terms`
-  that name the controller. Before that, `/privacy` §13 told a resident to send
-  their subject access request to `[contact@example.uk]`.
-  `tests/legal-placeholders.test.tsx` renders both pages and asserts no bracket
-  survives, that a `mailto:` always does, and that the constant is filled in for
-  every field or none. **Naming Yakasista Ltd as the controller would be the
-  wrong fix** and is worth writing down because it is the obvious one: it is the
-  processor in both models, and `COMMUNITY_DPA.md` makes the coordinator
+- **`DATA_CONTROLLER` in `src/lib/constants.ts` was filled in on 30 August 2026**
+  — VW-19 — and the thing to understand before touching it is that **it is not
+  an answer to "who is the data controller".** That question has no single answer
+  on a deployment serving many villages: `Village.mode` decides it, a parish
+  council in a council village and the coordinator personally in a community one,
+  and `reportController` prefers `Village.parishCouncil` on a truthiness check.
+  What the constant is, is **the fallback contact route on the two pages that
+  cannot read a village** — `/privacy` and `/terms` are public and sessionless.
+  Before it was filled in they told a resident looking for somewhere to send a
+  subject access request that there was none to give, which is honest and is not
+  an Article 13 answer. It now names Yakasista Ltd with a postal address, an
+  email and the ICO application reference, and §13 points a request there.
+- **Filling it in put a self-contradiction on `/privacy` §1, and only the
+  rendered page showed it.** That section draws a box for the fallback controller
+  and, beneath it, a box for the operator saying in bold that it is **not** the
+  controller. While the two were different bodies that read correctly; with both
+  naming Yakasista Ltd the page presented the same company as the controller and
+  then denied it, in adjacent blocks. `FALLBACK_CONTROLLER_IS_OPERATOR` merges
+  them into one box when the names match, and the two-box shape stays for the
+  case the constant was designed for. `tests/legal-placeholders.test.tsx` pins
+  it, guarding on the two constants directly rather than on the flag — guarding
+  on the flag would mean breaking the flag also switched the assertion off.
+- **`CONTROLLER_LABEL` deliberately stopped following the constant.** It used to
+  read `DATA_CONTROLLER.name` wherever one was filled in; it is now the role
+  phrase unconditionally. Two of the six `/terms` sentences are written *about*
+  the role — §1's "where these terms name X, read it as whichever of the two runs
+  your village" and §12's "X — in most villages that is your coordinator" — and a
+  company name substituted into either instructs a reader to treat a named third
+  party as their own coordinator. A liability clause naming the wrong party is
+  worse than one naming a role. If a deployment ever serves one village with one
+  named controller, that is the line to reconsider, and those two sentences have
+  to be rewritten in the same commit.
+- **The ICO registration is the one field still waiting on something**, and it
+  waits on an external body rather than a decision: `Registration pending (ref:
+  C2018564)`, carrying a `TODO(VW-19)`. Deliberately **not** bracketed — brackets
+  are the form `isPlaceholderDetail` recognises and the test refuses to let reach
+  a resident, and a pending application with a reference is a true, checkable
+  statement rather than a rendering fault a reader will assume is a bug and not
+  report.
+- **No telephone is published and `phone` is `null` rather than a placeholder.**
+  Article 13(1)(a) asks for contact details, not for a telephone; an email and a
+  postal address satisfy it. Inventing a number would be the one thing worse than
+  omitting one — a resident who dials it has been sent somewhere by the document
+  that promised it would reach the controller. `/privacy` drops the line rather
+  than printing an empty label.
+- **The registered address is not in this repository**, so the address is
+  `Cambridge` / `United Kingdom` — the town and country rather than a street.
+  Enough to reach the company by post alongside the email, and a street invented
+  to fill the shape would be worse than a coarse one that is true. Replace it
+  from the Companies House record when somebody has it.
+- **`HAS_DATA_PROTECTION_OFFICER` is `false`, and the reason recorded beside it
+  is not the one people reach for.** The 250-employee figure is Article 30(5) and
+  is about records of processing; the DPO test is Article 37(1). What applies
+  here is 37(1)(c) — VillageWatch processes criminal offence data, which triggers
+  a DPO **when done on a large scale**. At one parish it is not, and the service
+  is not a public authority. That is a threshold rather than a permanent answer,
+  and it is the paragraph to re-read before onboarding a county. It is
+  deliberately not stated on `/privacy`: Article 13 asks for a DPO's details
+  where one exists and says nothing about announcing that none does.
+- **`LEGAL_LAST_UPDATED` moved to 30 August 2026**, for the first time since it
+  was written. `/privacy` §1 and §13 and `/terms` §12 all changed substance, which
+  is exactly what the constant's own rule is about. VW-20 counts five earlier
+  rewrites that left it at 27 July, and asks for a test to make the rule
+  mechanical rather than remembered; that is still open.
+- **Naming Yakasista Ltd as the *controller* would still be the wrong fix**, and
+  the distinction survives this change rather than being settled by it. It is the
+  **processor** in both models, and `COMMUNITY_DPA.md` makes the coordinator
   personally answerable — a notice asserting otherwise would contradict the
-  agreement they signed. It is also no longer the only
-  answer: `Village.mode` decides whether the controller is a parish council or
-  the village's own coordinator, so `/privacy` §1 and `/terms` §1 describe both
-  and the constant is the fallback where no village-specific controller is
-  named. See The two compliance models.
+  agreement they signed. What was published is a contact route, labelled
+  "Operator (processor)" on the page and saying in bold that it is not the
+  controller. `Village.mode` still decides who is, `/privacy` §1 still explains
+  both models first, and the ICO registration and the named pilot controller
+  remain L2.
 - **The placeholders are mode-neutral, and that was a real bug rather than a
   wording preference.** `name` read `[Parish Council name]` and the address and
   email matched it. That string is not decoration: it prints at the foot of a
@@ -1344,7 +1554,7 @@ Authentication → Emails → Templates.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Thirty-seven files, 595 tests, covering the
+between the typecheck and the build. Thirty-nine files, 622 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1362,7 +1572,9 @@ failure, the email transport's failure modes, the four Supabase auth templates,
 the vote — its toggle, its ordering, and the two domain rules its route
 enforces — the one change a coordinator may make to a resident's role, the
 mask in front of every email address on the resident list, the report route's
-own two paths, and the two legal pages' placeholder text.
+own two paths, the two legal pages' placeholder text, the session cookie's flags
+and its lifetime clamp, and the Content-Security-Policy's few load-bearing
+directives.
 
 - **Unit only, and no test may need a secret.** Prisma, Supabase and Anthropic
   are mocked at their module boundaries, so the suite runs on a fresh clone with
@@ -2039,8 +2251,9 @@ the data controller is**. `VILLAGE_MODES`, `resolveVillageMode` and
   model there is no council to name — the coordinator is the controller — so the
   field a volunteer needs to fill in was asking them for something that does not
   exist, which is how it stays empty and every report they send names
-  `DATA_CONTROLLER`, still placeholder text. The column is `Village.parishCouncil`
-  either way; only the labels move.
+  `DATA_CONTROLLER` — which is the operator rather than the village's own
+  controller, and was bracketed placeholder text until 30 August 2026. The column
+  is `Village.parishCouncil` either way; only the labels move.
 - **The share panel was the third screen and it was missed**, closed the day
   after the other two. `ShareSummary` takes a `mode` and picks between two sets
   of copy the way `ParishCouncilForm` does — one component, because it is a
@@ -2185,9 +2398,12 @@ configuration one. See The two compliance models for what each asks for.
   landing there gets a link through to the fix; a resident gets the sentence and
   the 999/101 numbers, because there is nothing they can do.
 - **The checkbox names `Village.parishCouncil`**, falling back to
-  `DATA_CONTROLLER` — which is still placeholders. A coordinator accepting "on
-  behalf of [Parish Council name]" has accepted on behalf of nobody, so fill
-  that in first. See The parish council.
+  `DATA_CONTROLLER` — which names the **operator**, not the village's own
+  controller. A coordinator accepting on behalf of the company that runs the
+  software has accepted on behalf of the wrong body, so fill the village's own
+  in first. It was bracketed placeholder text until 30 August 2026, when it
+  became a real name and the failure mode changed from visibly empty to
+  plausibly wrong. See The parish council.
 - The three `*_accepted_by_id` columns are deliberately **absent** from the
   `villages` SELECT grant in `rls_policies.sql`. They are `users.id` values; the
   timestamps are granted and the identities are not.
@@ -2651,10 +2867,17 @@ together. Two documents: one incident, and everything published over a period.
   `[data-tour]` rule matches the sidebar links it points at, not the card, which
   is fixed to the viewport and printed over the top of the first page.
 - **`Village.parishCouncil` names the data controller in the footer**, falling
-  back to `DATA_CONTROLLER` in `constants.ts` — which is still placeholders, so
-  `/reports` shows a warning when the footer would read "[Parish Council name]".
-  That is the first thing in the app to actually read the column, and the
-  dashboard's parish council field is what fills it — see The parish council.
+  back to `DATA_CONTROLLER` in `constants.ts` — which names the operator rather
+  than the village's own controller, so `/reports` shows an amber warning
+  whenever the footer would fall back to it. **The warning's wording changed on
+  30 August 2026 and the reason is worth keeping**: the fallback used to be the
+  bracketed "[Parish Council name]", so "no data controller is named yet" was
+  literally what the footer said. It is now a real body and the wrong one — a
+  police report attributing control of a village's data to the processor is a
+  false statement in the one document that leaves the village on paper — so the
+  warning has to name which body is wrong rather than say none is named. That is
+  the first thing in the app to actually read the column, and the dashboard's
+  controller field is what fills it — see The parish council.
 - **`/privacy` §6 changed in the same commit**, for the reason the legal-pages
   section gives. It named one route to the police — a formal request the council
   decides on — and this adds a routine one a coordinator drives. The notice now
@@ -3961,14 +4184,16 @@ open:
   through PostgREST until they were put behind column grants. **Re-run the file
   after any migration that adds a table or a column** — a new table arrives with
   RLS off, and the column grants are enumerated at run time.
-- **`DATA_CONTROLLER` in `src/lib/constants.ts` is placeholders.** The privacy
-  policy and terms both name it. Fill it in, register with the ICO, and have
-  the council review both documents before launch. A coordinator can now name
-  their own council on `/dashboard`, which covers the `/reports` footers — but
-  that is per village and `/privacy` still reads the constant, so this is
-  narrowed rather than closed. The dashboard field needs
-  `20260727180000_village_activation`, which is applied — it says so on screen
-  rather than failing on Save where it is not.
+- **`DATA_CONTROLLER` is filled in, and what is left of L2 is not a code
+  change.** Since 30 August 2026 it names Yakasista Ltd with a postal address, an
+  email and the ICO application reference, so `/privacy` and `/terms` give a
+  resident somewhere to write — see The legal pages. **Still open:** the ICO
+  registration itself (application C2018564, pending — the longest lead item on
+  the list), naming the controller for the first pilot village, and having the
+  finished notice read by somebody with UK data-protection standing. A
+  coordinator can name their own council on `/dashboard`, which covers the
+  `/reports` footers; that is per village, and the constant is only ever the
+  fallback beneath it.
 - **Slack is disclosed rather than covered by its own agreement, and `/privacy`
   §6 now says so in as many words.** The blanket claim that every processor acts
   under a written data processing agreement was untrue for Slack, and a false
@@ -4274,10 +4499,15 @@ open:
 - Closing an account leaves its Supabase `auth.users` row in place — see The
   right to erasure. The address is therefore still held by Supabase Auth after
   the profile has been scrubbed, which `/privacy` should say before launch.
-- No Content-Security-Policy. It needs a per-request nonce from `src/proxy.ts`;
-  the other security headers are in `next.config.ts`. Note that a CSP now has
-  three script origins to account for, not two: the App Router bootstrap, the
-  OneSignal CDN, and the two service workers.
+- **There is a Content-Security-Policy now** — `src/lib/csp.ts`, applied by
+  `src/proxy.ts` on every response, closing VW-02. What is left is operational
+  rather than code: **no violation report has ever been read from a real
+  browser on a real village.** The public pages were checked against one and
+  come back clean, but the three surfaces most likely to violate cannot be
+  reached without a signed-in resident of a live village — the Leaflet tile
+  layer, the MediaPipe WASM face blur, and whatever the OneSignal SDK loads
+  after its own bootstrap. `CSP_REPORT_ONLY=true` is the fortnight of
+  report-only the audit asks for before enforcing; see The Content-Security-Policy.
 - **Resident verification has a UI now**, on `/dashboard/settings` — the
   resident list, and `setResidentRole` behind it. A coordinator can move
   somebody between `RESIDENT` and `VERIFIED_RESIDENT` and nothing else; see

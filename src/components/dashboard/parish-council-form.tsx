@@ -29,7 +29,8 @@ import { DATA_CONTROLLER, type VillageMode } from "@/lib/constants";
  * controller, and what belongs in this box is the group's own name. Labelling it
  * "Parish council" there asks a volunteer for something that does not exist,
  * which is how the field ends up empty and every report they send names
- * `DATA_CONTROLLER`, which is placeholder text. That was N15.
+ * `DATA_CONTROLLER`, which names the operator rather than the village's own
+ * controller. That was N15.
  *
  * One component with the mode passed in rather than two, unlike the two
  * compliance forms: this is one field and one sentence changing, not two sets of
@@ -160,7 +161,9 @@ export function ParishCouncilForm({
                 <span className="font-medium text-slate-600">
                   {DATA_CONTROLLER.name}
                 </span>
-                , which is placeholder text rather than a real body.
+                , which operates the software rather than controlling your
+                village&rsquo;s data — so a report sent outside the village would
+                name the wrong body.
               </p>
             )}
           </div>
