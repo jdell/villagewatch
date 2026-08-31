@@ -3,6 +3,19 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.49](https://github.com/jdell/villagewatch/compare/v0.1.48...v0.1.49) (2026-08-31)
+
+
+### Documentation
+
+* **security:** audit the whole tree, and write down the thirty-four findings ([2233f01](https://github.com/jdell/villagewatch/commit/2233f01a0e2a1aed87bae2a2f6ab6567a5965f8d)), closes [#19](https://github.com/jdell/villagewatch/issues/19)
+
+
+### Fixes
+
+* **legal:** name the fallback contact and publish the ICO reference ([4622659](https://github.com/jdell/villagewatch/commit/4622659fc632822167fe99acaaaa44d3924991a8))
+* **security:** close the four high-severity audit findings ([fe09396](https://github.com/jdell/villagewatch/commit/fe093967935d94153233592e013638a625f00b40))
+
 ### [0.1.48](https://github.com/jdell/villagewatch/compare/v0.1.47...v0.1.48) (2026-08-28)
 
 
