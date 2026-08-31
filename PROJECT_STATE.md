@@ -1,7 +1,7 @@
 # VillageWatch — project state
 
-**Last updated:** 30 August 2026 · **Repo version:** `v0.1.48` · **Branch:**
-`fix/security-audit-highs` · **Domain:** https://villagewatch.app
+**Last updated:** 31 August 2026 · **Repo version:** `v0.1.49` · **Branch:**
+`main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -19,11 +19,11 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.47` in `package.json` on `main` — `version.yml` released the map-corners fix as 0.1.43, the coordinator dashboard redesign (PR #16) as 0.1.44, the resident list's email masking (PR #18) as 0.1.45, the AI rewrite quota (PR #20) as 0.1.46 and the launch-blocker audit (PR #21) as 0.1.47 |
+| Repo version | `v0.1.49` in `package.json` on `main` — `version.yml` released the map-corners fix as 0.1.43, the coordinator dashboard redesign (PR #16) as 0.1.44, the resident list's email masking (PR #18) as 0.1.45, the AI rewrite quota (PR #20) as 0.1.46, the launch-blocker audit (PR #21) as 0.1.47, the PDF test timeout (PR #19) as 0.1.48 and the four high-severity audit findings (PR #22) as 0.1.49 |
 | Version on screen | expect **v0.1.41** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 14, `20260726161847_init` → `20260823120000_incident_votes`. **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
-| Villages seeded | 270 Cambridgeshire parishes, all `PENDING`; the only `ACTIVE` village is `prisma/seed.ts`'s placeholder |
+| Villages seeded | 270 Cambridgeshire parishes, all `PENDING`. **There is no `ACTIVE` village at all.** This row said the only one was `prisma/seed.ts`'s placeholder until 31 August; that was an inference from the script existing rather than from a query, and it was wrong — the seed has only ever been run against local scratch databases. See BACKLOG L7 |
 | Test suite | Vitest, **39 files, 622 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar two component tests, both rendered to a string with no DOM: `period-control.test.tsx` and `legal-placeholders.test.tsx`. Three route handlers are now covered — retention, the vote, and **`POST /api/incidents`**, which closed the gap this file and two others named for a month |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
@@ -34,6 +34,7 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
+| `fix/security-audit-highs` | Merged as PR #22, 30 August. Released as `v0.1.49`. | Delete |
 | `fix/pdf-test-timeout` | Merged as PR #19, 28 August. Released as `v0.1.48`. | Delete |
 | `fix/launch-blockers` | Merged as PR #21, 27 August. Released as `v0.1.47`. | Delete |
 | `fix/ai-rewrite-rate-limit` | Merged as PR #20, 25 August. Released as `v0.1.46`. | Delete |
@@ -60,6 +61,63 @@ PRs because they were asked for as PRs.
 ---
 
 ## Open items
+
+### Four tracked items closed, none of them by a code change — 31 August 2026
+
+A documentation pass rather than a release. Nothing in `src/` moved, so there is
+no version bump behind it; what moved is what the tracker claims is true.
+
+- **B3 and L4 — push works.** OneSignal delivers to a real device. Both rows had
+  been open for a month against code that was correct throughout: every
+  condition on the list is a Vercel variable, a redeploy or a field in the
+  OneSignal dashboard, which is exactly why nothing in this repository could
+  ever have closed them. `NEXT_PUBLIC_ONESIGNAL_APP_ID` is inlined at build
+  time, so setting it without redeploying looks identical to setting it, and the
+  **updater filename** under Web Configuration → Advanced → Service Workers is a
+  separate field defaulting to a v15 name this repo does not have. Every failure
+  mode on the path reports a perfectly healthy init that never delivers, which is
+  why the runbook stays in `docs/LAUNCH_BLOCKERS.md` §L4 rather than being
+  deleted with the blocker. **This takes one of L5's two dependencies with it**;
+  L1 is the other, and nothing here touches it.
+
+- **L7 — the premise was wrong, and that is the finding.** There is no sample
+  seed data in the live database and there never was: `prisma/seed.ts` has only
+  ever been run against local scratch databases, and its invented village, five
+  incidents and hardcoded `VILLAGE1` join code exist in that script and nowhere
+  else. The row was written during the B5 stub sweep on 27 July as an inference
+  from the script's existence, and this file, `BACKLOG.md` and
+  `docs/LAUNCH_BLOCKERS.md` then repeated it for a month in the register of
+  something somebody had checked. **The consequence is worth carrying rather than
+  deleting**: there is no `ACTIVE` village *at all* rather than a placeholder
+  one, so L3's first activation lands in a directory of 270 `PENDING` parishes
+  with nothing to clear out of its way. Five statements in this file said
+  otherwise and are corrected in place, each marked where it stood.
+
+  It is the same shape of error as the join code `BACKLOG.md` recorded as done
+  for seventeen days, and as the migration statuses reconciled on 13 August:
+  a claim about the *deployment* written from the repository. The repository is
+  the one thing that cannot answer those.
+
+- **T11 — three Vercel crons, settled by the deployment.** `vercel.json` has
+  carried three entries since 22 August, the deploy was accepted, and
+  `/api/cron/police-data` then fired on its own schedule — the run that came back
+  429 for every village and cost two bug fixes. A Hobby project would have
+  rejected the deploy at the third entry before any of that. So this is not a
+  Hobby project, all three crons are scheduled, and nothing changes. The route's
+  `?village=`, `?months=` and `?force=1` parameters stay as the on-demand path
+  rather than as a workaround for a plan limit.
+
+- **The heatmap row in "Can launch without" caught up with N1**, which shipped it
+  on 28 July. The reasoning in that row never stopped being true — pins already
+  answer "where is this happening" — which is what makes it different from the
+  time-range row beside it. It is still unexercised: no heatmap has been drawn
+  over real reports.
+
+**What none of this changes.** The critical path is L1, L2, L3 and L5 — a
+compliance acceptance, the ICO registration and a named controller, the first
+activation, and the chain walked end to end. No village is `ACTIVE`, no
+acceptance of any kind has ever been recorded, and every village in the
+directory is refusing reports right now.
 
 ### The coordinator dashboard, in five tabs — 25 August 2026
 
@@ -159,6 +217,15 @@ an `outputFileTracingIncludes` line.
   **L5 cannot start until L1 and L4 land**, because the compliance gate is live
   and refusing reports and because `notifyCoordinatorsOfPendingReport` is what
   tells a coordinator the queue filled up.
+
+  **Two of those four findings have since been overtaken — 31 August.** L4 is
+  closed: the variables are set, the redeploy is done, the service-worker fields
+  match and a push has reached a real device. And the L7 half of the L3 finding
+  was never true — there is no seed placeholder in this database and there never
+  was, so L3's first activation lands in an empty directory rather than beside
+  something that has to be cleared out of the way first. The paragraph above is
+  left as written on 25 August, because it is what that audit found; this note is
+  the correction rather than a rewrite of it.
 
   **The one finding that moves the critical path is L1's.** `Village.mode`
   defaults to `community`, where the gate asks for one document rather than
@@ -472,19 +539,28 @@ an `outputFileTracingIncludes` line.
   would be a false statement produced by arithmetic that is individually correct.
   Every surface names the months it holds and the months it does not.
 
-  **Nothing has ever spoken to the service.** Migration 13 is unapplied, no sync
-  has run, and the tests stub `fetch` and mock Prisma. Four things to watch on
-  the first run — the neighbourhood lookup (a village centre resolving to a
+  **Nothing had ever spoken to the service when this was written, and that
+  changed on 22 August** — see the police-data cron entry further down. Migration
+  13 is applied, the first scheduled run reached `data.police.uk`, and it came
+  back 429 for every village. What is still true is that no village holds a month
+  of figures. Four things to watch on the first *successful* run — the
+  neighbourhood lookup (a village centre resolving to a
   neighbouring parish's team is wrong in a way only somebody local spots), the
   availability list the month-selection strategy rests on, a real month's volume
   against `POLICE_MAX_CRIMES_PER_MONTH`, and the two freehand fields whose markup
   is stripped. None can fail a page; all four degrade, which is why they want
   looking at.
 
-  **It is a third Vercel cron and Hobby allows two.** If this deployment is on
-  Hobby the `vercel.json` entry has to go and the route be called from an
-  external scheduler — it is `CRON_SECRET`-guarded and takes `?village=`,
-  `?months=` and `?force=1`. Settle it before the first deploy of this branch.
+  **It is a third Vercel cron and Hobby allows two — settled 31 August, and the
+  deployment settled it rather than anybody deciding.** The three-entry
+  `vercel.json` deployed without complaint, and the police-data cron then fired on
+  its own schedule: that is the run which came back 429. A Hobby project would
+  have rejected the deploy at the third entry, loudly, before either could
+  happen. So this is not a Hobby project, all three crons are scheduled, and
+  nothing in `vercel.json` changes. `?village=`, `?months=` and `?force=1` stay as
+  the on-demand path — which is what made the 22 August debugging possible —
+  rather than as a workaround for a plan limit. Worth re-reading if the project
+  ever moves between Vercel plans. BACKLOG T11.
 
   `/privacy` §6 gained a paragraph in the same commit. It is the seventh claim
   that file makes about how the code behaves, and the only one describing an
@@ -508,8 +584,9 @@ an `outputFileTracingIncludes` line.
   `community` — but no village is on either model in anger, and no acceptance of
   any kind has ever been recorded. Three things to watch on the first village
   through: that the migration's backfill
-  leaves the seeded village on `community` (nothing has been accepted anywhere,
-  so it should), that accepting the one agreement actually opens reporting, and
+  leaves it on `community` (nothing has been accepted anywhere, so it should —
+  this named "the seeded village" until 31 August, and there is no seeded
+  village), that accepting the one agreement actually opens reporting, and
   that an upgrade leaves the village open. `docs/COMMUNITY_DPA.md` has been
   written from the code and read by no lawyer.
 
@@ -668,10 +745,11 @@ an `outputFileTracingIncludes` line.
   agree: `docs/E2E_VERIFICATION.md`'s addendum was the older of the two and has
   been corrected to match the `database.yml` run that reported `Database schema
   is up to date!` on 3 August. **All ten migrations that existed then are
-  applied**, so the gate is live and the seeded village is refusing reports
-  until somebody accepts all three documents on `/dashboard/compliance`. The
-  eleventh, `20260820100000_archive_deletes_raw_description`, is new and is not
-  applied yet.
+  applied**, so the gate is live and every village in the directory is refusing
+  reports until somebody accepts all three documents on `/dashboard/compliance`.
+  (This read "the seeded village" until 31 August; there is no seeded village —
+  BACKLOG L7.) The eleventh, `20260820100000_archive_deletes_raw_description`,
+  is new and is not applied yet.
 
   That reconciles the record; it does not *verify* it, and the difference
   matters because it is visible to residents. **Confirm with `npx prisma migrate
@@ -693,10 +771,10 @@ an `outputFileTracingIncludes` line.
   be done properly: the code it mints is actually demanded at registration.
 - `DATA_CONTROLLER` in `src/lib/constants.ts` is still placeholders, so
   `/privacy` names no controller.
-- No push has been delivered to a real device; the retention job has never run;
-  erasure has never touched a real bucket; no WhatsApp alert has been pasted
-  into a real channel; no email has reached a real inbox; nobody has voted on a
-  report.
+- ~~No push has been delivered to a real device~~ — **closed 31 August**, and it
+  was never a code gap (B3/L4). The retention job has still never run; erasure
+  has never touched a real bucket; no WhatsApp alert has been pasted into a real
+  channel; no email has reached a real inbox; nobody has voted on a report.
 - No staging environment — CI, unit tests and auto-versioning exist, but there
   is nowhere to run a migration before production sees it.
 - **Auto-posting a published report to a village's channels is planned and not
@@ -732,7 +810,7 @@ as working — to anybody, and least of all in a grant application.
 
 | Feature | What has never happened | What to watch on the first run |
 | --- | --- | --- |
-| Push notifications | No push has reached a device | Both failure modes are silent — the worker path and the three keys reaching Vercel |
+| ~~Push notifications~~ | **Delivered to a real device, 31 August** | Out of this table. Both failure modes were silent and both are now known-good: the `/onesignal/` worker path and the three keys reaching Vercel with a redeploy behind them. Re-check with `curl -I https://villagewatch.app/onesignal/OneSignalSDKWorker.js` after any OneSignal dashboard change |
 | The retention job | Never run against data | It deletes files and takes reports off the map. Read the counts in the response before trusting the schedule |
 | Erasure | `removeIncident` / `eraseAccount` have never touched a bucket | Confirm the object is gone, not just the row |
 | The weekly digest | Cron has never fired | It is the only thing that creates `PatternAlert` rows — and nothing renders them |
@@ -1051,9 +1129,9 @@ a blank code. Both were caught by reading the code rather than the file.
 |---|---|
 | L1 | No compliance acceptance has ever been recorded, in either model. Every village is refusing reports right now |
 | L2 | Nobody has decided who the controller is; nobody has registered with the ICO — the longest lead item |
-| L3 | No village has ever been activated. The only `ACTIVE` one is the seed's placeholder with the code `VILLAGE1` (L7) |
-| L4 | Three Vercel variables, a redeploy, four dashboard fields. No push has reached a device |
-| L5 | The chain has never been walked, and it cannot be until L1 and L4 are done |
+| L3 | No village has ever been activated. There is no `ACTIVE` village at all — the seed placeholder this row named until 31 August was never in this database (L7), so the first activation lands in an empty directory |
+| ~~L4~~ | **Done 31 August.** The three variables, the redeploy and the four dashboard fields are all in place, and a push has reached a real device |
+| L5 | The chain has never been walked. **L4 no longer blocks it**; L1 still does — the compliance gate is live and no acceptance has ever been recorded, so step one 403s |
 
 `docs/LAUNCH_BLOCKERS.md` carries the runbook for each, with the OneSignal
 service-worker fields written out — including the **updater filename**, which is
