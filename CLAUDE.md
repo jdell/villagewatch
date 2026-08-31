@@ -352,7 +352,10 @@ src/
                               them a village sees is `documentsForMode`
     markdown.ts               A small Markdown parser to a typed tree, so the
                               renderer needs no dangerouslySetInnerHTML
-    notifications.ts          OneSignal dispatch, audience rules — server only
+    notifications.ts          OneSignal dispatch and the email fan-out beside
+                              it. Owns the audience rules for both channels —
+                              one distance test, two preference columns. Server
+                              only
     whatsapp-channel.ts       Village channel config + the publish log line —
                               server only, opt-in, no API that can post
     format-alert.ts           formatIncidentAlert — the one WhatsApp alert
@@ -403,8 +406,10 @@ src/
                               incident-notification, coordinator-decision — pure
                               functions to `{ subject, text, html }`
     email/send.ts             The transport, over Resend. Never throws, logs the
-                              message with no key set. The welcome is the one
-                              thing anything sends today
+                              message with no key set. `sendBulkEmail` beside it
+                              fans one message out per recipient — never one
+                              addressed to the village. All four templates have
+                              a caller
     email/supabase-templates/ The four auth emails Supabase sends, as branded
                               HTML to paste into its dashboard. Generated from
                               `index.ts`; the `.html` files are the artefact
@@ -626,7 +631,11 @@ tests/                        Vitest, unit only — see The test suite
                               domain rules it enforces, the 404 that is not a
                               403, the quota that is not spent on a report the
                               caller cannot see, and a response naming nobody
-  email-send.test.ts          The transport — a missing key logging rather than
+  email-send.test.ts          The transport and the fan-out — one message per
+                              recipient and never one addressed to the village,
+                              the batching, the cap, a chunk failing without
+                              abandoning the ones after it, plus a missing key
+                              logging rather than
                               sending, every Resend failure resolving to a value
                               rather than throwing, and the timeout that stops a
                               registration hanging on somebody else's outage
@@ -1491,9 +1500,90 @@ was finally wired in** — which is the whole argument for having kept them apar
   to true on a row the call has just created, and reading it here would be
   asking somebody whether they want the message that explains how to change the
   setting. It is transactional: once, at the moment they join.
-- **`/privacy` §6 names Resend as a processor and says what an email carries** —
-  a first name and a village name, never a report's contents. That is a claim
-  about how the code behaves in the same sense the others are.
+- **`/privacy` §6 names Resend as a processor and says what an email carries.**
+  It used to say a first name and a village name and *never a report's
+  contents*; the incident alert carries the anonymised `description`, so that
+  sentence was rewritten on 31 August 2026 rather than left standing. It is a
+  claim about how the code behaves in the same sense the others are — change
+  what an email carries and §6 changes in the same commit.
+
+### The fan-out
+
+`sendBulkEmail` in `send.ts`, and the two audiences in `notifications.ts` that
+feed it. All four templates have a caller now; three of them gained one on
+31 August 2026.
+
+- **One message per recipient, and never one message addressed to the village.**
+  `sendEmail`'s `to` takes a list, and a village-wide alert is exactly the shape
+  that invites passing one — at which point every address is rendered into the
+  `To:` header of the copy every other resident receives. That is a
+  neighbourhood watch scheme's membership list disclosed to everybody on it, in
+  a form that is forwarded and unrecallable, and it says who reports on their
+  neighbours. `BulkEmailRecipient` carries a single `to` so the shape is not
+  expressible, and `tests/email-send.test.ts` asserts it anyway — the type is
+  one refactor from being widened by somebody who has not read this.
+- **Batched, because sequential sends hit a rate limit.** Resend's batch
+  endpoint takes `EMAIL_BATCH_SIZE` (100) separate messages per call, so
+  `MAX_EMAIL_RECIPIENTS` (500) is five round trips rather than five hundred —
+  the difference between a publish that returns in a second and one that spends
+  a minute against a per-second limit while a coordinator watches the Approve
+  button. `batchValidation: "permissive"`, because under the default one
+  malformed address fails the other ninety-nine messages in its chunk and
+  `User.email` is a plain string column.
+- **A failing chunk does not abandon the ones after it**, and the truncation at
+  `MAX_EMAIL_RECIPIENTS` is logged rather than silent — the police sync's rule.
+  An audience quietly capped looks exactly like a village smaller than it is.
+- **The audience rules live in `notifications.ts` and are the push's own.**
+  Village, then preference, then distance with `LOCATION_FUZZ_METERS` folded in;
+  `residentsToEmail` differs from `residentsToNotify` in one column and nothing
+  else, and both call the same `wantsAtThisDistance`. Two copies of "within
+  200m" would mean one thing to a resident's phone and another to their inbox.
+- **`notifyEmail` is not conditional on push having failed**, though the
+  template's own header said so while nothing called it. Doing that would mean
+  asking OneSignal who it could not deliver to — a report that arrives long
+  after the request has returned, for residents who mostly have no subscription
+  at all rather than a failed one. The two columns are independent and are
+  presented that way on `/settings`.
+- **The control arrived in the same commit as the dispatch.** `notifyEmail` had
+  existed since the first migration with nothing honouring it and no checkbox in
+  front of it; honouring it without adding the checkbox would have been a
+  village that could not stop the email. `settingsFormSchema`, the action, the
+  page and `SettingsForm` all gained it.
+- **`emailIncidentPublished` is deliberately *not* inside
+  `notifyIncidentPublished`**, which is the obvious place for it. That function
+  has three callers and only two are a publish: `POST /api/notifications` is a
+  coordinator re-sending an alert OneSignal dropped, and a re-send that also
+  mailed the village a second copy of a report they read yesterday would turn a
+  repair into a nuisance. **A push can be repeated; an email cannot be unsent.**
+  So the two genuine publish transitions call it themselves —
+  `applyModeration`'s PUBLISH branch and `announce()` in `POST /api/incidents` —
+  which is the same pair that writes the `incident.publish` audit row. Keep them
+  in step.
+- **No `Notification` rows and no `AuditLog` rows.** The first is the in-app
+  inbox and `dispatch()` already writes one per resident for the push covering
+  the same incident; a second would show every resident the same alert twice.
+  The second is for decisions somebody is accountable for, and the email is a
+  deterministic consequence of `incident.publish` plus each resident's own
+  preference, both already in the trail — the WhatsApp Channel alert's reasoning
+  exactly.
+- **The digest email ignores `notifyEmail`**, mirroring
+  `notifyCoordinatorsOfDigest` ignoring `notifyPush` and for its reason: those
+  columns are how a *resident* asks to hear less village news, and the digest is
+  a working document for the village's moderators. Coordinators only — the
+  hotspot lines name the areas a village is worried about, which is why
+  `logDigestAlert` gets the summary alone. Honouring the preference on one
+  channel and not the other would also mean the same weekly summary arriving or
+  not depending on which pipe it came down.
+- **The coordinator decision email is transactional and is sent regardless of
+  `notifyEmail`**, on `notifyApplicantOfCoordinatorDecision`'s reasoning: it is
+  the outcome of something the recipient personally submitted and waited on.
+  Neither it nor the push is the other's fallback — an approval is a briefing
+  about reading neighbours' verbatim reports, and that does not fit in a push
+  body.
+- **Nothing in the fan-out can throw.** `announce()` runs inside the
+  reference-clash retry loop, where an exception would be read as a P2002 and
+  file the report a second time; the digest runs inside a per-village loop where
+  one mail server would otherwise end the sweep for every village after it.
 
 ### The Supabase auth templates
 
@@ -1505,10 +1595,18 @@ Authentication → Emails → Templates.
 
 - **The problem it solves is that a dashboard is not version controlled.** A
   template edited in a form is a change nobody can review, diff or find again —
-  and these are the most-read emails the service sends. Until now they were
-  Supabase's stock ones: grey, unbranded, signed by a company no resident has
-  heard of. The first email a village ever received from VillageWatch was the
-  one that looked least like it.
+  and these are the most-read emails the service sends. Before them the project
+  sent Supabase's stock ones: grey, unbranded, signed by a company no resident
+  has heard of. The first email a village ever received from VillageWatch was
+  the one that looked least like it.
+- **These four are live on the deployed project.** Pasted into
+  Authentication → Emails → Templates, over Resend as the custom SMTP sender —
+  confirmed by the operator on 31 August 2026, and dashboard state that nothing
+  in this repository can check. The committed `.html` is therefore what a
+  resident actually receives, which raises the stakes on the generator: change
+  `index.ts`, run `npm run generate:supabase-templates`, and **paste the result
+  in again**, or the deployment carries on sending the previous version while
+  the test that compares the two goes on passing.
 - **The `.html` files are generated, not hand-edited.**
   `npm run generate:supabase-templates` writes them from `index.ts`, and
   `tests/supabase-templates.test.ts` fails when a committed file and the module
@@ -1554,7 +1652,7 @@ Authentication → Emails → Templates.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Thirty-nine files, 622 tests, covering the
+between the typecheck and the build. Thirty-nine files, 634 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1675,7 +1773,13 @@ directives.
   because one a project does not populate renders as an empty string rather than
   an error. The sentences are deliberately not asserted, for the reason
   `compliance-documents.test.ts` gives.
-- **`email-send.test.ts` asserts a contract, not a delivery.** Every failure
+- **`email-send.test.ts` asserts one privacy property as well as a contract.**
+  The property is that `sendBulkEmail` addresses one message to each recipient
+  and never one message to all of them — a village's membership list in the
+  `To:` header of every copy. It is guaranteed by the type and asserted anyway,
+  because the type is one widening refactor away from allowing it and the
+  failure is invisible from every screen in the app. The rest is the contract.
+  Every failure
   Resend has — no key, a refused message, a thrown network error, a blank
   address, a provider that never answers — resolves to a *value*. That is the
   property both registration routes depend on: `sendEmail` is awaited after the
@@ -4413,11 +4517,13 @@ open:
   write behind it and wants its own thinking, rather than a button added in
   passing to a list that is otherwise inert. Nothing has ever been listed either:
   the digest writes these and no cron has ever fired.
-- **Email has a transport now, and one caller.** `src/lib/email/send.ts` goes
-  out over Resend, and `welcomeEmail` fires on both registration paths. The
-  other three templates — weekly digest, incident notification, coordinator
-  decision — still have no caller: `notifyEmail` is absent from the settings
-  screen and no dispatch honours it, so village news is still push only. SMS has
+- **All four email templates have a caller now** — 31 August 2026, closing the
+  standing entry here. `welcomeEmail` on both registration paths;
+  `incidentNotificationEmail` from `emailIncidentPublished`, on the two publish
+  transitions; `weeklyDigestEmail` from `emailCoordinatorsOfDigest` in
+  `/api/digest`; `coordinatorDecisionEmail` from `decideCoordinatorRequest`.
+  `notifyEmail` is honoured by the first of those and is now on `/settings`,
+  which it had to be in the same commit. See The fan-out. SMS has
   neither templates nor transport. **No email has been delivered to a real
   inbox through this**; with no `RESEND_API_KEY` set the welcome is logged, which
   looks exactly like a working deployment until somebody asks why they never got
@@ -4425,26 +4531,44 @@ open:
   whether the sending domain is verified in Resend (an unverified one is refused
   and the refusal is only in the server log), and whether `RESEND_FROM_EMAIL`
   reached Vercel rather than only `.env.local`.
-- **The four Supabase auth templates have never been pasted into the
-  dashboard.** They build, they are asserted, and the project is still sending
-  Supabase's stock grey ones — so the branded HTML in
-  `src/lib/email/supabase-templates/` is, until somebody does step 3 of
-  `docs/SUPABASE_EMAIL_SETUP.md`, a file nobody has read. Check the rendering in
-  a real client before pasting all four: Outlook's Word engine is the one that
-  surprises people, and the fallback link under the button is what a client that
-  eats the button table leaves behind.
+- **The Supabase dashboard side is done, and this entry said otherwise for a
+  week.** Corrected 31 August 2026 on the operator's confirmation: the project
+  sends its auth email over **Resend as the custom SMTP sender**, and the four
+  branded templates in `src/lib/email/supabase-templates/` **are pasted into
+  Authentication → Emails → Templates**. Steps 2 and 3 of
+  `docs/SUPABASE_EMAIL_SETUP.md` have been carried out. Two entries here — this
+  one and the `LAUNCH_BLOCKERS`-style note in `PROJECT_STATE.md` — went on
+  describing a deployment on the built-in mailer sending stock grey templates,
+  which was true when they were written and had stopped being true.
 
-  **The auth emails are the exception and are not ours.** Confirmation and
-  recovery are minted and sent by Supabase Auth, because only Supabase can mint
-  the token — so they go out over whatever mailer that project is configured
-  with, and they are counted against that project's hourly quota. Residents hit
-  it: "email rate limit exceeded" was reaching the registration form as a toast
-  until 23 August 2026. The application side is closed (see Auth email and its
-  rate limits); the **dashboard side has not been done** — the project is still
-  on Supabase's built-in mailer, which is documented as being for development,
-  and `docs/SUPABASE_EMAIL_SETUP.md` is the procedure for pointing it at Resend
-  instead. Until somebody does that, a village onboarding a dozen households in
-  one evening will exhaust the quota and every one of them will be told to wait.
+  **It is dashboard state and nothing in this repository can verify it.** That
+  is worth saying plainly rather than leaving a reader to assume the claim is
+  checked: `tests/supabase-templates.test.ts` asserts that the committed `.html`
+  matches the module that generates it, and it cannot assert that either has
+  ever been pasted anywhere. The way to confirm it is to trigger a password
+  reset and look at what arrives — which is also the only way to check the
+  rendering, and Outlook's Word engine is the client that surprises people.
+  Re-generate and re-paste whenever the module changes; a template edited in a
+  form is a change nobody can review, which is the whole reason that directory
+  exists.
+
+  **The auth emails are still not ours, and that has not changed.**
+  Confirmation and recovery are minted and sent by Supabase Auth, because only
+  Supabase can mint the token — so they go out over whatever mailer that project
+  is configured with, and are counted against that project's limits. What moved
+  is which mailer that is. Residents were hitting the built-in ceiling: "email
+  rate limit exceeded" reached the registration form as a toast until 23 August
+  2026. The application side is closed (see Auth email and its rate limits) and
+  the built-in mailer's small quota no longer applies. **The one setting still
+  worth confirming** is the hourly limit under Auth → Rate Limits, which is a
+  separate box from the SMTP one and stays wherever it was last set.
+
+  **`RESEND_API_KEY` in this app's environment is still a different thing**, and
+  now that both sides genuinely use Resend the confusion is easier to fall into
+  rather than harder. One account, two unrelated uses: this variable sends the
+  emails VillageWatch renders (`src/lib/email/send.ts`), the Supabase project's
+  own SMTP settings send the auth emails, and neither has any effect on the
+  other.
 - Home location is captured at registration only, and it is optional. Both
   halves of registration ask for it through one shared
   `HomeLocationField` — `/register` and `/welcome` write the same two columns,

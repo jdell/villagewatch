@@ -44,6 +44,7 @@ export async function saveSettingsAction(
     // An unchecked checkbox is absent from the payload entirely, which is why
     // the schema treats "missing" as false rather than as "leave unchanged".
     notifyPush: formData.get("notifyPush") ?? "",
+    notifyEmail: formData.get("notifyEmail") ?? "",
     notifyMinSeverity: formData.get("notifyMinSeverity"),
     notifyRadiusMeters: formData.get("notifyRadiusMeters") ?? "",
   });
@@ -65,6 +66,7 @@ export async function saveSettingsAction(
         fullName: values.fullName,
         addressLine: values.addressLine ?? null,
         notifyPush: values.notifyPush,
+        notifyEmail: values.notifyEmail,
         notifyMinSeverity: values.notifyMinSeverity,
         notifyRadiusMeters: values.notifyRadiusMeters,
       },

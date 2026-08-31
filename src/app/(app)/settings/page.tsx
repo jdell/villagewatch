@@ -78,6 +78,7 @@ export default async function SettingsPage({
           email: session.user.email ?? "",
           addressLine: profile?.addressLine ?? "",
           notifyPush: profile?.notifyPush ?? true,
+          notifyEmail: profile?.notifyEmail ?? true,
           notifyMinSeverity: profile?.notifyMinSeverity ?? "LOW",
           notifyRadiusMeters: profile?.notifyRadiusMeters ?? null,
         }}

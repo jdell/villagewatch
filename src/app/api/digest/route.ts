@@ -6,7 +6,10 @@ import {
   peakSeverity,
   type DigestIncident,
 } from "@/lib/ai/weekly-digest";
-import { notifyCoordinatorsOfDigest } from "@/lib/notifications";
+import {
+  emailCoordinatorsOfDigest,
+  notifyCoordinatorsOfDigest,
+} from "@/lib/notifications";
 import { logDigestAlert } from "@/lib/whatsapp-channel";
 import { getVillageMode } from "@/lib/villages";
 import {
@@ -59,6 +62,8 @@ type VillageOutcome = {
   detail?: string;
   patternAlertId?: string;
   notified?: number;
+  /** Coordinators the digest email was accepted for, or why it was not sent. */
+  emailed?: number | string;
   /**
    * Whether the summary was also written out as a WhatsApp Channel alert for
    * this village. Nothing is posted — there is no relay; see
@@ -230,6 +235,38 @@ async function digestVillage(input: {
     summary: digest.summary,
   });
 
+  /*
+    The same digest at full length. The push above is a headline the operating
+    system truncates at roughly a sentence; this is the document a coordinator
+    takes to a parish meeting, with the hotspots and the week's advice in it.
+
+    Coordinators only, same as the push — the hotspot lines name the areas a
+    village is worried about, which is why `logDigestAlert` below gets the
+    summary alone and no resident gets this at all.
+
+    Cannot throw, which is what keeps one village's mail server from ending the
+    sweep for every village after it in the loop.
+  */
+  const email = await emailCoordinatorsOfDigest({
+    villageId: village.id,
+    digest: {
+      villageName: village.name,
+      title: digest.title,
+      summary: digest.summary,
+      hotspots: digest.hotspots,
+      advice: digest.advice,
+      severity: digest.severity,
+      incidentCount: incidents.length,
+      previousPeriodCount,
+      windowStart,
+      windowEnd: now,
+      // Says on the page that the summary was counted rather than written.
+      // Passing off arithmetic as a summary is how a coordinator stops trusting
+      // the digest — the same reasoning `countedNarrative` is built on.
+      fallback: !result.ok,
+    },
+  });
+
   // The public half of the week's roundup, for villages that run a channel.
   // `digest.summary` only — the hotspots and advice folded into the
   // `PatternAlert` above are a working document for coordinators, and the
@@ -247,6 +284,7 @@ async function digestVillage(input: {
     status: "written",
     patternAlertId: alert.id,
     notified: push.sent,
+    emailed: email.skipped ?? email.sent,
     channel: channel.logged ? "logged" : channel.skipped,
     detail: result.ok ? `Summarised by ${result.model}` : `AI unavailable (${result.code})`,
   };

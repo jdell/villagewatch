@@ -29,6 +29,7 @@ export type SettingsFormValues = {
   email: string;
   addressLine: string;
   notifyPush: boolean;
+  notifyEmail: boolean;
   notifyMinSeverity: Severity;
   notifyRadiusMeters: number | null;
 };
@@ -234,8 +235,9 @@ export function SettingsForm({
       <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-base font-semibold text-slate-900">Notifications</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Alerts are sent when a coordinator publishes a report — never when one
-          is filed.
+          Alerts are sent when a report is published — never when one is filed.
+          The two settings below choose how they reach you; the two under them
+          apply to both.
         </p>
 
         <div className="mt-4 space-y-5">
@@ -252,6 +254,34 @@ export function SettingsForm({
               </span>
               <span className="mt-0.5 block text-sm text-slate-500">
                 A notification on this device when something is published nearby.
+              </span>
+            </span>
+          </label>
+
+          {/*
+            The two channels are independent, and the copy says so rather than
+            presenting email as a fallback for a push that failed. A resident who
+            never grants the browser permission — which is most of them — gets
+            nothing at all unless this one is on, and a resident who wants both
+            has asked for both. The severity and distance below apply to
+            whichever are ticked.
+          */}
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              name="notifyEmail"
+              type="checkbox"
+              defaultChecked={values.notifyEmail}
+              className="mt-0.5 size-5 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-2 focus:ring-brand-500/20"
+            />
+            <span>
+              <span className="block text-sm font-medium text-slate-900">
+                Email
+              </span>
+              <span className="mt-0.5 block text-sm text-slate-500">
+                The same alert to your inbox, with the published description in
+                it. Turning this off stops village alerts — you will still get
+                the email that confirms your account and anything about a report
+                you filed yourself.
               </span>
             </span>
           </label>

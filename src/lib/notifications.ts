@@ -4,11 +4,17 @@ import {
   Notification as OneSignalNotification,
   createConfiguration,
 } from "@onesignal/node-onesignal";
-import type { Severity } from "@/generated/prisma/enums";
+import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { adminEmails } from "@/lib/admin";
 import { distanceMeters } from "@/lib/geo";
 import { formatTimeAgo } from "@/lib/format";
+import { sendBulkEmail, type BulkEmailDispatchResult } from "@/lib/email/send";
+import { incidentNotificationEmail } from "@/lib/email/incident-notification";
+import {
+  weeklyDigestEmail,
+  type WeeklyDigestEmailInput,
+} from "@/lib/email/weekly-digest";
 import {
   logIncidentAlert,
   type ChannelAlertResult,
@@ -22,9 +28,19 @@ import {
 } from "@/lib/constants";
 
 /**
- * Push delivery via OneSignal. **Server only** — `ONESIGNAL_REST_API_KEY` has
- * no `NEXT_PUBLIC_` prefix, and this module reads every resident's home
- * location to decide who is close enough to care.
+ * Push delivery via OneSignal, and the email fan-out beside it. **Server
+ * only** — `ONESIGNAL_REST_API_KEY` has no `NEXT_PUBLIC_` prefix, and this
+ * module reads every resident's home location and email address to decide who
+ * is close enough to care.
+ *
+ * **Both channels resolve their audience here, and that is the point.** The
+ * rules — village, then preference, then distance, with the coordinate fuzz
+ * folded in — are the same for a push and an email, and a second copy of them
+ * in `src/lib/email/` would be a second place for "within 200m" to mean
+ * something slightly different. What differs between the two is one column
+ * (`notifyPush` against `notifyEmail`) and the transport, so that is all that
+ * is written twice. The templates stay pure functions and the transport stays
+ * `src/lib/email/send.ts`; this module decides *who*.
  *
  * Three things here are load-bearing:
  *
@@ -440,22 +456,101 @@ async function residentsToNotify(
     },
   });
 
-  return candidates.filter((user) => {
-    if (user.notifyRadiusMeters === null) return true;
-    if (incident.lat === null || incident.lng === null) return true;
-    if (user.homeLat === null || user.homeLng === null) return true;
+  return candidates.filter((user) => wantsAtThisDistance(user, incident));
+}
 
-    const distance = distanceMeters(
-      { lat: user.homeLat, lng: user.homeLng },
-      { lat: incident.lat, lng: incident.lng },
-    );
+/**
+ * Whether an incident is close enough to a resident's home to be worth telling
+ * them about.
+ *
+ * Shared by the push audience and the email one, because "within 200m" has to
+ * mean the same thing on both — two copies of this test would differ the first
+ * time somebody adjusted one.
+ *
+ * Anyone it cannot be run against — no home location on file, or an incident
+ * filed without coordinates — is **included**. The radius is a way to hear
+ * less, not a reason to silently drop an alert because we do not know where
+ * somebody lives.
+ */
+function wantsAtThisDistance(
+  user: {
+    homeLat: number | null;
+    homeLng: number | null;
+    notifyRadiusMeters: number | null;
+  },
+  incident: { lat: number | null; lng: number | null },
+): boolean {
+  if (user.notifyRadiusMeters === null) return true;
+  if (incident.lat === null || incident.lng === null) return true;
+  if (user.homeLat === null || user.homeLng === null) return true;
 
-    // The stored point was jittered by up to `LOCATION_FUZZ_METERS` on the way
-    // in (domain rule 2), so a strict comparison would drop incidents that
-    // really are inside the radius. Widening by the fuzz is the honest reading
-    // of "within 200m" against a coordinate deliberately known to be imprecise.
-    return distance <= user.notifyRadiusMeters + LOCATION_FUZZ_METERS;
+  const distance = distanceMeters(
+    { lat: user.homeLat, lng: user.homeLng },
+    { lat: incident.lat, lng: incident.lng },
+  );
+
+  // The stored point was jittered by up to `LOCATION_FUZZ_METERS` on the way
+  // in (domain rule 2), so a strict comparison would drop incidents that
+  // really are inside the radius. Widening by the fuzz is the honest reading
+  // of "within 200m" against a coordinate deliberately known to be imprecise.
+  return distance <= user.notifyRadiusMeters + LOCATION_FUZZ_METERS;
+}
+
+/**
+ * The same audience as {@link residentsToNotify}, on the other column.
+ *
+ * `notifyEmail` rather than `notifyPush`, and an address selected alongside the
+ * id. Everything else is deliberately identical — the same village boundary,
+ * the same severity floor, the same distance test — because the two are the
+ * same alert down two pipes, and a resident whose radius meant one thing to
+ * their phone and another to their inbox would have no way to make sense of
+ * either setting.
+ *
+ * **Push is not a precondition.** An early draft of the email template called
+ * itself "the email a resident gets when push could not reach them", which
+ * would mean asking OneSignal who it failed to deliver to and emailing the
+ * remainder — a delivery report that arrives asynchronously, long after this
+ * request has returned, for residents who mostly have no subscription at all
+ * rather than a failed one. The two preferences are independent, they are
+ * presented that way in `/settings`, and a resident who ticks both has asked
+ * for both.
+ */
+async function residentsToEmail(
+  incident: NotifiableIncident,
+): Promise<{ id: string; email: string }[]> {
+  if (!process.env.DATABASE_URL) return [];
+
+  const minWeight = SEVERITY_META[incident.severity].weight;
+
+  const candidates = await prisma.user.findMany({
+    where: {
+      villageId: incident.villageId,
+      // A closed account keeps its row so the audit trail and `reporterId`
+      // still resolve (see `eraseAccount()`), but it is nobody's inbox any
+      // more. Belt and braces: that function keeps `email` — it is the row's
+      // unique key and the Supabase auth row holds the same address anyway —
+      // and excludes the account from this query three times over, by nulling
+      // `villageId`, setting `deletedAt` and setting `notifyEmail` to false.
+      deletedAt: null,
+      notifyEmail: true,
+      notifyMinSeverity: {
+        in: Object.values(SEVERITY_META)
+          .filter((meta) => meta.weight <= minWeight)
+          .map((meta) => meta.value),
+      },
+    },
+    select: {
+      id: true,
+      email: true,
+      homeLat: true,
+      homeLng: true,
+      notifyRadiusMeters: true,
+    },
   });
+
+  return candidates
+    .filter((user) => wantsAtThisDistance(user, incident))
+    .map((user) => ({ id: user.id, email: user.email }));
 }
 
 // ---------------------------------------------------------------------------
@@ -533,6 +628,94 @@ export async function notifyIncidentPublished(
   });
 
   return { ...push, channel };
+}
+
+/**
+ * What an email needs that a push does not.
+ *
+ * A lock screen gets a severity, a title and a landmark; an inbox gets the
+ * anonymised description, the reference somebody quotes on the phone to 101,
+ * and the village's name in the subject line, because an email is read in a
+ * list of forty others and none of the surrounding context is on screen.
+ *
+ * `description` is **required** here where {@link NotifiableIncident} leaves it
+ * optional. The two callers that only wanted a push had no reason to select it;
+ * an email that omitted it would be a worse copy of the push, and there would
+ * be nothing on the type to say so.
+ */
+export type EmailableIncident = NotifiableIncident & {
+  villageName: string;
+  reference: string;
+  type: IncidentType;
+  /** The anonymised public column. Never `rawDescription` (domain rule 1). */
+  description: string;
+};
+
+/**
+ * Emails the village that a report has been published.
+ *
+ * The third surface a publish reaches, beside the push and the WhatsApp
+ * Channel's log line — and, unlike those two, it is deliberately **not** folded
+ * into {@link notifyIncidentPublished}. That function has three callers and
+ * only two of them are a publish: `POST /api/notifications` is a coordinator
+ * re-sending an alert OneSignal dropped, and a re-send that also mailed the
+ * whole village a second copy of a report they read yesterday would turn a
+ * repair into a nuisance. Push can be repeated; an email cannot be unsent.
+ *
+ * So the two genuine publish transitions call this themselves —
+ * `applyModeration`'s PUBLISH branch and `announce()` in `POST /api/incidents`
+ * for a village running auto-approve — which is the same pair that writes the
+ * `incident.publish` audit row.
+ *
+ * **It cannot throw**, on {@link sendBulkEmail}'s contract and for the reason
+ * `announce()` needs: it runs inside a reference-clash retry loop where an
+ * exception would be read as a P2002 and file the report a second time.
+ *
+ * No `Notification` rows are written. That table is the in-app inbox and is
+ * written by `dispatch()` for the push covering this same incident; a second
+ * row per resident would show every resident the same alert twice on a screen
+ * that is meant to be a list of what happened.
+ */
+export async function emailIncidentPublished(
+  incident: EmailableIncident,
+): Promise<BulkEmailDispatchResult> {
+  const recipients = await residentsToEmail(incident);
+
+  if (recipients.length === 0) {
+    return { matched: 0, sent: 0, skipped: "no_recipients" };
+  }
+
+  // Rendered once and reused. The message is identical for every recipient —
+  // nothing in it is personalised — so rendering per resident would be five
+  // hundred passes over the same template to produce five hundred identical
+  // strings.
+  const message = incidentNotificationEmail({
+    villageName: incident.villageName,
+    incidentId: incident.id,
+    reference: incident.reference,
+    type: incident.type,
+    severity: incident.severity,
+    title: incident.title,
+    description: incident.description,
+    locationText: incident.locationText,
+    occurredAt: incident.occurredAt,
+    patternNote: incident.patternNote,
+  });
+
+  const result = await sendBulkEmail(
+    recipients.map((recipient) => ({ to: recipient.email, message })),
+  );
+
+  console.log(
+    "[email:incident] village=%s reference=%s matched=%d sent=%d%s",
+    incident.villageId,
+    incident.reference,
+    result.matched,
+    result.sent,
+    result.skipped ? ` skipped=${result.skipped}` : "",
+  );
+
+  return result;
 }
 
 /**
@@ -770,6 +953,67 @@ export async function notifyCoordinatorsOfDigest(input: {
     },
     coordinators,
   );
+}
+
+/**
+ * Emails the weekly digest to the people who act on it.
+ *
+ * The same audience as {@link notifyCoordinatorsOfDigest} and the same message,
+ * at the length a push cannot carry: the operating system truncates a
+ * notification body at roughly a sentence, which is enough for "come and look"
+ * and useless as the thing a coordinator takes to a parish council meeting.
+ * That is what the digest is for, and it is why the email exists rather than
+ * being a duplicate of the push.
+ *
+ * **Not filtered by `notifyEmail`, and that is a decision rather than an
+ * oversight.** It is the same reasoning `notifyCoordinatorsOfDigest` gives for
+ * ignoring `notifyPush`: those columns are how a *resident* asks to hear less
+ * village news, and the digest is not village news — it is a working document
+ * for the village's moderators, sent to people who volunteered for the job.
+ * Honouring the preference on one channel and not the other would also mean the
+ * same weekly summary arriving or not depending on which pipe it came down,
+ * which is not a distinction anybody could act on. Residents are unaffected:
+ * the audience is coordinators only.
+ *
+ * Cannot throw, on {@link sendBulkEmail}'s contract — one village's digest must
+ * not take down the sweep for every village after it.
+ */
+export async function emailCoordinatorsOfDigest(input: {
+  villageId: string;
+  digest: WeeklyDigestEmailInput;
+}): Promise<BulkEmailDispatchResult> {
+  if (!process.env.DATABASE_URL) {
+    return { matched: 0, sent: 0, skipped: "no_recipients" };
+  }
+
+  const coordinators = await prisma.user.findMany({
+    where: {
+      villageId: input.villageId,
+      deletedAt: null,
+      role: { in: [...COORDINATOR_ROLES] },
+    },
+    select: { email: true },
+  });
+
+  if (coordinators.length === 0) {
+    return { matched: 0, sent: 0, skipped: "no_recipients" };
+  }
+
+  const message = weeklyDigestEmail(input.digest);
+
+  const result = await sendBulkEmail(
+    coordinators.map((coordinator) => ({ to: coordinator.email, message })),
+  );
+
+  console.log(
+    "[email:digest] village=%s matched=%d sent=%d%s",
+    input.villageId,
+    result.matched,
+    result.sent,
+    result.skipped ? ` skipped=${result.skipped}` : "",
+  );
+
+  return result;
 }
 
 function truncate(value: string, max: number): string {

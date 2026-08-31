@@ -3,6 +3,7 @@ import type { Session } from "@/lib/auth";
 import { auditContext } from "@/lib/audit-context";
 import { prisma } from "@/lib/prisma";
 import {
+  emailIncidentPublished,
   notifyIncidentPublished,
   notifyReporterOfDecision,
 } from "@/lib/notifications";
@@ -102,6 +103,10 @@ export async function applyModeration(input: {
       reference: true,
       status: true,
       severity: true,
+      // For the email's subject line and its detail panel. The push has no use
+      // for it — a lock screen shows the severity and the landmark — so this
+      // column arrived with the email fan-out.
+      type: true,
       title: true,
       // The anonymised public column, for the alert a coordinator pastes into
       // WhatsApp. `rawDescription` is deliberately absent from this select and
@@ -191,6 +196,36 @@ export async function applyModeration(input: {
     });
 
     notified = broadcast.sent;
+
+    /*
+      The same alert, to the residents who asked for it by email rather than —
+      or as well as — on their phone. Beside the push rather than inside
+      `notifyIncidentPublished`, because that function is also what
+      `POST /api/notifications` calls to re-send an alert OneSignal dropped, and
+      a re-send must not mail the village a second copy of a report they read
+      yesterday. See `emailIncidentPublished`.
+
+      Cannot throw, so it cannot fail a publish or stop the Slack line below —
+      the same contract every other dispatch in this block has. Its result is
+      deliberately not folded into `notified`, which is what the coordinator is
+      told and has always meant phones.
+    */
+    await emailIncidentPublished({
+      id: incident.id,
+      villageId,
+      villageName: incident.village.name,
+      reference: incident.reference,
+      type: incident.type,
+      title: incident.title,
+      severity: incident.severity,
+      description: incident.description,
+      recurring: incident.recurring,
+      patternNote: incident.patternNote,
+      locationText: incident.locationText,
+      lat: incident.lat,
+      lng: incident.lng,
+      occurredAt: incident.occurredAt,
+    });
 
     // Handed back whatever the village's channel settings say, and deliberately
     // so: `logIncidentAlert` above respects `whatsappEnabled` and the severity

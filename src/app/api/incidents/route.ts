@@ -10,6 +10,7 @@ import {
 } from "@/lib/compliance";
 import { getVillageAutoApprove } from "@/lib/moderation";
 import {
+  emailIncidentPublished,
   notifyCoordinatorsOfPendingReport,
   notifyIncidentPublished,
 } from "@/lib/notifications";
@@ -172,6 +173,34 @@ async function announce(input: {
     await notifyIncidentPublished({
       id: incidentId,
       villageId,
+      title: report.title,
+      severity: report.severity,
+      description: report.description,
+      recurring: input.ai?.recurring ?? false,
+      patternNote: input.ai?.patternNote ?? null,
+      locationText: report.locationText ?? null,
+      lat: input.fuzzed.lat,
+      lng: input.fuzzed.lng,
+      occurredAt: report.occurredAt,
+    });
+
+    /*
+      And the same alert by email, to the residents of this village who asked
+      for that instead of — or as well as — a push. Beside
+      `notifyIncidentPublished` rather than inside it, for the reason
+      `emailIncidentPublished` gives: that function is also how a coordinator
+      re-sends a dropped alert, and a re-send must not mail the village twice.
+
+      Inside the same `try` as everything else here, and it cannot throw anyway.
+      Both matter: `announce()` runs inside the reference-clash retry loop, where
+      an exception would be read as a P2002 and file the report a second time.
+    */
+    await emailIncidentPublished({
+      id: incidentId,
+      villageId,
+      villageName: input.villageName,
+      reference,
+      type: report.type,
       title: report.title,
       severity: report.severity,
       description: report.description,

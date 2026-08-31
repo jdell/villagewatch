@@ -781,6 +781,35 @@ export const NOTIFICATION_RADIUS_VALUES = NOTIFICATION_RADII.flatMap(
  */
 export const MAX_PUSH_RECIPIENTS = 2_000;
 
+/**
+ * Ceiling on how many residents one incident emails.
+ *
+ * Lower than {@link MAX_PUSH_RECIPIENTS} by an order of magnitude, and the
+ * difference is not timidity. A push is one API call whatever the audience; an
+ * email is one *message per resident* (see `sendBulkEmail` for why it can never
+ * be one message addressed to the village), so the audience is also the cost —
+ * of Resend's monthly allowance, of the seconds a coordinator spends watching
+ * the Approve button, and of a mistake's blast radius. Five hundred is more
+ * than any single parish and small enough that the worst case is bounded.
+ *
+ * Truncation is logged rather than silent, the rule the police sync already
+ * follows: an audience quietly capped looks exactly like a village that is
+ * smaller than it is.
+ */
+export const MAX_EMAIL_RECIPIENTS = 500;
+
+/**
+ * How many messages go to Resend in one `batch.send` call.
+ *
+ * One hundred is the API's own limit. It is worth stating as a constant rather
+ * than folding into the loop because it is the number that decides how many
+ * round trips a village-wide alert costs — at 500 recipients this is five
+ * calls, not five hundred, which is the difference between a publish that
+ * returns in a second and one that spends a minute against Resend's per-second
+ * rate limit.
+ */
+export const EMAIL_BATCH_SIZE = 100;
+
 // ---------------------------------------------------------------------------
 // WhatsApp Channel
 // ---------------------------------------------------------------------------
@@ -1724,8 +1753,14 @@ export const PRICING = [
  * the documents have not moved either. VW-20 asks for a test in the shape of
  * `tests/supabase-templates.test.ts` to make the rule mechanical rather than
  * remembered; that is still open.
+ *
+ * Moved to 31 August 2026 when §6's paragraph on Resend changed: three of the
+ * four email templates gained a caller, and the notice had been saying that a
+ * report's contents never appear in an email — which the incident alert now
+ * carries, in the anonymised form already on the map. A processor paragraph
+ * that describes the wrong messages is the kind of change this date exists for.
  */
-export const LEGAL_LAST_UPDATED = "2026-08-30";
+export const LEGAL_LAST_UPDATED = "2026-08-31";
 
 /**
  * The data controller under UK GDPR.

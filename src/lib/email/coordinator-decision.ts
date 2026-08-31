@@ -14,13 +14,12 @@ import {
  * What an applicant is told when an administrator decides on their coordinator
  * application.
  *
- * **Nothing sends this one yet.** There is a transport now — `./send.ts`, over
- * Resend — and `welcomeEmail` is its only caller, so the decision reaches the
- * applicant as a push notification today — `notifyApplicantOfCoordinatorDecision` in
- * `src/lib/notifications.ts` — and this is the same message ready for the day a
- * mailer is wired in. Push is the fallback that actually runs, not the other way
- * round: a phone with notifications denied is common, and an application somebody
- * waited a week on should not be decided in silence.
+ * `sendCoordinatorDecisionEmail` in `./send.ts` sends it, called by
+ * `decideCoordinatorRequest` in `src/lib/coordinator-requests.ts` beside the
+ * push it already fires (`notifyApplicantOfCoordinatorDecision`). Neither is the
+ * other's fallback: a phone with notifications denied is common, an application
+ * somebody waited a week on should not be decided in silence, and an approval is
+ * a briefing that does not fit in a push body.
  *
  * Two things shape the wording:
  *

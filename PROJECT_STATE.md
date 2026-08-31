@@ -24,7 +24,7 @@ in `BACKLOG.md`.
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 14, `20260726161847_init` → `20260823120000_incident_votes`. **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`. **There is no `ACTIVE` village at all.** This row said the only one was `prisma/seed.ts`'s placeholder until 31 August; that was an inference from the script existing rather than from a query, and it was wrong — the seed has only ever been run against local scratch databases. See BACKLOG L7 |
-| Test suite | Vitest, **39 files, 622 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar two component tests, both rendered to a string with no DOM: `period-control.test.tsx` and `legal-placeholders.test.tsx`. Three route handlers are now covered — retention, the vote, and **`POST /api/incidents`**, which closed the gap this file and two others named for a month |
+| Test suite | Vitest, **39 files, 634 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar two component tests, both rendered to a string with no DOM: `period-control.test.tsx` and `legal-placeholders.test.tsx`. Three route handlers are now covered — retention, the vote, and **`POST /api/incidents`**, which closed the gap this file and two others named for a month |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -61,6 +61,93 @@ PRs because they were asked for as PRs.
 ---
 
 ## Open items
+
+### The three unused email templates are wired up — 31 August 2026
+
+`welcomeEmail` had been the only thing `src/lib/email/send.ts` ever sent. The
+other three were written before there was a transport, kept pure on purpose, and
+then left with no caller for long enough that two of their own headers were
+describing a state of affairs that no longer applied. All four have a caller
+now, and **not one line of any template changed to wire them in** — which was
+the whole argument for having kept the rendering and the transport apart.
+
+| Template | Caller | Audience |
+| --- | --- | --- |
+| `welcomeEmail` | both registration routes | the new resident |
+| `incidentNotificationEmail` | `emailIncidentPublished`, from `applyModeration` and `announce()` | residents with `notifyEmail`, same severity floor and distance test as the push |
+| `weeklyDigestEmail` | `emailCoordinatorsOfDigest`, from `/api/digest` | that village's coordinators |
+| `coordinatorDecisionEmail` | `decideCoordinatorRequest` | the applicant |
+
+**No migration.** Every column this reads has existed since the first one.
+
+Five decisions in it are worth a reviewer's time, and the first two are the ones
+that would have been easy to get wrong:
+
+- **One message per recipient, never one message addressed to the village.**
+  `sendEmail`'s `to` takes a list and a village-wide alert is exactly the shape
+  that invites passing one — at which point every address is in the `To:` header
+  of the copy every other resident receives. That is a neighbourhood watch
+  scheme's membership list disclosed to everybody on it, forwarded and
+  unrecallable, and it says who reports on their neighbours. `sendBulkEmail`
+  fans out through Resend's batch endpoint (100 separate messages per call,
+  capped at 500 recipients and logged when truncated), and
+  `BulkEmailRecipient.to` is a single address so the wrong shape is not
+  expressible. Asserted in `tests/email-send.test.ts` anyway.
+- **The incident email is deliberately not inside `notifyIncidentPublished`.**
+  That function has three callers and only two of them are a publish; the third
+  is `POST /api/notifications`, a coordinator re-sending an alert OneSignal
+  dropped. A push can be repeated and an email cannot be unsent, so a re-send
+  that also mailed the village a second copy would turn a repair into a
+  nuisance. The two genuine publish transitions call it themselves — the same
+  pair that writes the `incident.publish` audit row.
+- **`notifyEmail` went onto `/settings` in the same commit**, because a
+  dispatch honouring a preference nobody can change is a village that cannot
+  stop the email. The column had existed since the first migration with nothing
+  reading it and no control in front of it.
+- **`/privacy` §6 was saying something that had just become false.** It stated
+  that a report's contents never appear in an email; the incident alert carries
+  the anonymised `description` — the text already on the map. The paragraph was
+  rewritten rather than left, a second one added on how to turn village email
+  off, and `LEGAL_LAST_UPDATED` moved to 31 August 2026. `IncidentEmailInput`
+  still has no field that could carry `rawDescription`, `lat` or `lng`.
+- **The digest and the decision emails ignore `notifyEmail`**, mirroring their
+  pushes. The digest is a working document for coordinators rather than village
+  news; the decision is the outcome of something the recipient submitted and
+  waited on.
+
+**12 new tests** (622 → 634), all in `tests/email-send.test.ts` and
+`tests/incident-create-route.test.ts`. **Nothing has been delivered to a real
+inbox.** With no `RESEND_API_KEY` set every message is logged, which looks
+exactly like a working deployment until somebody asks why they never got one —
+and the two failure modes on a first real send are both quiet: an unverified
+sending domain is refused into the server log, and `RESEND_FROM_EMAIL` may have
+reached `.env.local` and not Vercel. The batch path in particular has never
+spoken to Resend.
+
+### The Supabase auth email correction — 31 August 2026
+
+A documentation fix with no code behind it, and the kind worth recording because
+the file was believed. `CLAUDE.md`, this file and
+`docs/SUPABASE_EMAIL_SETUP.md` all said the project was still on Supabase's
+built-in mailer sending stock grey templates. **It is not, and has not been.**
+The project sends auth email over **Resend as the custom SMTP sender**, and the
+four branded templates in `src/lib/email/supabase-templates/` are pasted into
+Authentication → Emails → Templates — steps 2 and 3 of that document, confirmed
+by the operator.
+
+**Nothing in this repository can verify any of it**, which is why it was wrong
+for a week and why the correction says so rather than reading as checked.
+`tests/supabase-templates.test.ts` compares the committed `.html` against the
+module that generates it; it cannot see a dashboard. A password reset and a look
+at what arrives is the only check there is. Two consequences:
+
+- **Editing the module is not editing what residents receive.** Re-run
+  `npm run generate:supabase-templates` *and* paste the result back in, or the
+  deployment keeps sending the previous version while the test passes.
+- **Step 1 is still worth confirming** — the hourly limit under
+  Auth → Rate Limits is a separate box from the SMTP one and stays wherever it
+  was last set. It is no longer the binding constraint, but nobody has read the
+  figure off the screen since the sender changed.
 
 ### Four tracked items closed, none of them by a code change — 31 August 2026
 
@@ -361,13 +448,15 @@ an `outputFileTracingIncludes` line.
   only, never the per-address limit, which would say whether an address has an
   account. 17 new tests.
 
-  **What has not been done is the part that stops the limit being hit**: the
-  project is still on Supabase's built-in mailer, whose quota is small and which
-  Supabase documents as being for development.
-  `docs/SUPABASE_EMAIL_SETUP.md` is the procedure — raise the hourly limit under
-  Auth → Rate Limits, and set Resend as the custom SMTP sender under Auth →
-  Emails → SMTP Settings. Both are dashboard settings and neither is in this
-  repository. **Resend is now used in the codebase as well**, through
+  **The part that stops the limit being hit has been done, and this paragraph
+  said otherwise until 31 August 2026.** The project sends its auth email over
+  Resend as the custom SMTP sender, and the four branded templates from
+  `src/lib/email/supabase-templates/` are pasted into Auth → Emails → Templates
+  — steps 2 and 3 of `docs/SUPABASE_EMAIL_SETUP.md`, confirmed by the operator.
+  Both are dashboard settings, so **nothing in this repository can verify
+  either**; a password reset and a look at what arrives is the check. The one
+  box still worth confirming is the hourly limit under Auth → Rate Limits, which
+  is separate from the SMTP settings and stays wherever it was last set. **Resend is now used in the codebase as well**, through
   `src/lib/email/send.ts` — a separate thing entirely, sending the emails
   VillageWatch itself renders, with no effect on Supabase's quota; see the entry
   below. Until somebody does the two dashboard settings, a village onboarding a

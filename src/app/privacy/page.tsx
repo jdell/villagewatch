@@ -107,14 +107,24 @@ export const metadata: Metadata = {
  *     notice rather than a stale one. It is in §6 because a resident reading
  *     "who else sees it" is entitled to know about every request made on their
  *     behalf, including the ones with nothing of theirs in them.
- *   - §6's paragraph on Resend, which is the newest and the first one about
- *     email this service actually sends. `src/lib/email/send.ts` is the one
- *     transport and `welcomeEmail` is the one message; what it carries — a
- *     first name and a village name, and never a report's contents — is a claim
- *     in the same sense as the rest. `IncidentEmailInput` has no field that
- *     could carry `rawDescription`, so the promise is structural, but nothing
- *     stops a future caller handing `sendEmail` something else and this
- *     paragraph is what would then be false.
+ *   - §6's paragraph on Resend, and it changed on 31 August 2026 because the
+ *     code under it did. `src/lib/email/send.ts` is still the one transport,
+ *     but the welcome is no longer the one message: an incident alert now goes
+ *     to residents who asked for one, and the weekly digest to coordinators.
+ *     **The paragraph used to say a report's contents never appear in an
+ *     email, and that is exactly what the incident alert carries** — the
+ *     anonymised `description`, the same text already on the map. Leaving the
+ *     old sentence there would have been the plainest kind of false statement
+ *     in a privacy notice. What is still true and still structural is the
+ *     boundary: `IncidentEmailInput` has no field that could carry
+ *     `rawDescription`, `lat` or `lng` — the same guard `AlertIncident` and
+ *     `ExportIncident` use. Change what an email carries and this changes with
+ *     it.
+ *   - §6's paragraph on **who** gets one, which is a claim about
+ *     `residentsToEmail` in `src/lib/notifications.ts`: `notifyEmail`, the same
+ *     severity floor and the same distance test the push uses, and a control on
+ *     `/settings` that turns it off. That control arrived in the same commit as
+ *     the dispatch, because a preference nothing can change is not a preference.
  *   - §§2, 6 and 7 on votes (`src/lib/votes.ts`, `IncidentVote`). Three claims,
  *     and the second is the one worth guarding: the totals are public within the
  *     village and **no screen anywhere puts a name against a vote**. That is
@@ -632,13 +642,28 @@ export default function PrivacyPage() {
           </Definition>
           <Definition term="Resend, which delivers our email">
             Your email address, your first name and your village&rsquo;s name,
-            so that the message can be addressed and sent. Two kinds of email go
-            out: the sign-up confirmation and password reset links, which are
-            sent when you ask for them; and a welcome message when you join a
+            so that the message can be addressed and sent. Four kinds of email
+            go out. The sign-up confirmation and password reset links, which are
+            sent when you ask for them. A welcome message when you join a
             village, which explains what happens to a report once you file one.
-            We send no marketing. A report&rsquo;s contents never appear in an
-            email — an inbox is forwarded and searched, and a report is not ours
-            to put there.
+            An alert when a report is published in your village, if you have
+            asked for those — it carries the published description, which is the
+            same anonymised text your neighbours can already read on the map,
+            and never the reporter&rsquo;s original wording, never an address,
+            never coordinates and never a photograph. And, for coordinators
+            only, a weekly summary of what their village published. We send no
+            marketing.
+          </Definition>
+          <Definition term="Choosing whether we email you">
+            Village alerts by email are a setting, sitting beside the one for
+            notifications on your phone. The two are independent — you can have
+            either, both or neither — and the same choices about how serious an
+            incident has to be, and how close to your home, apply to both. Turn
+            either off at any time in your settings. Two kinds of message are
+            not covered by that switch and will still reach you: the
+            confirmation and password links you ask for, and messages about
+            something you did yourself — joining a village, or a decision on an
+            application you made.
           </Definition>
           <Definition term="Slack (Salesforce), and why it is listed separately">
             Administrative notifications only, to a private channel that only

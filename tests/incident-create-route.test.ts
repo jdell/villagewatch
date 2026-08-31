@@ -58,6 +58,7 @@ const mocks = vi.hoisted(() => ({
   queryRaw: vi.fn(),
   notifyCoordinators: vi.fn(),
   notifyPublished: vi.fn(),
+  emailPublished: vi.fn(),
   notifySlack: vi.fn(),
   /** Read through a getter below, so a test can turn the AI pass on. */
   ai: { configured: false },
@@ -88,6 +89,7 @@ vi.mock("@/lib/compliance", async (importOriginal) => {
 vi.mock("@/lib/notifications", () => ({
   notifyCoordinatorsOfPendingReport: mocks.notifyCoordinators,
   notifyIncidentPublished: mocks.notifyPublished,
+  emailIncidentPublished: mocks.emailPublished,
 }));
 
 vi.mock("@/lib/slack", () => ({ notifySlack: mocks.notifySlack }));
@@ -184,6 +186,7 @@ beforeEach(() => {
   mocks.auditCreate.mockReset().mockResolvedValue({});
   mocks.notifyCoordinators.mockReset().mockResolvedValue(undefined);
   mocks.notifyPublished.mockReset().mockResolvedValue(undefined);
+  mocks.emailPublished.mockReset().mockResolvedValue(undefined);
   mocks.notifySlack.mockReset().mockResolvedValue(undefined);
 
   // Two reads of the same row for two different reasons. Told apart by what
@@ -351,6 +354,9 @@ describe("auto-approve off — the queue", () => {
     expect(response.status).toBe(201);
     expect(created().status).toBe("PENDING_REVIEW");
     expect(mocks.notifyPublished).not.toHaveBeenCalled();
+    // And nothing lands in a resident's inbox about a report the village has
+    // not cleared (domain rule 6).
+    expect(mocks.emailPublished).not.toHaveBeenCalled();
   });
 });
 
@@ -371,9 +377,32 @@ describe("auto-approve on — published on arrival", () => {
     await post(report());
 
     expect(mocks.notifyPublished).toHaveBeenCalledTimes(1);
+    // The email is the third surface of that fan-out, and it goes on a publish
+    // rather than on every dispatch — see `emailIncidentPublished`.
+    expect(mocks.emailPublished).toHaveBeenCalledTimes(1);
     expect(mocks.notifySlack).toHaveBeenCalledTimes(1);
     // Nobody is waiting on a queue that this report never entered.
     expect(mocks.notifyCoordinators).not.toHaveBeenCalled();
+  });
+
+  it("emails the anonymised description and never the reporter's wording", async () => {
+    await post(
+      report({
+        description: "A van window was smashed overnight near the bus stop.",
+        rawDescription: "Dave at number 42 smashed the window on the white van.",
+      }),
+    );
+
+    const emailed = mocks.emailPublished.mock.calls[0]?.[0];
+
+    expect(emailed.description).toBe(
+      "A van window was smashed overnight near the bus stop.",
+    );
+    // Domain rule 1. An inbox is the one place a leak is permanent and
+    // forwarded, so the payload has no field that could carry the raw column.
+    expect(JSON.stringify(emailed)).not.toContain("number 42");
+    expect(emailed.rawDescription).toBeUndefined();
+    expect(emailed.reference).toBeTruthy();
   });
 
   it("writes an incident.publish row with no before", async () => {

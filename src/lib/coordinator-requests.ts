@@ -6,6 +6,7 @@ import {
   notifyApplicantOfCoordinatorDecision,
 } from "@/lib/notifications";
 import { notifySlack } from "@/lib/slack";
+import { sendCoordinatorDecisionEmail } from "@/lib/email/send";
 import { canApplyForCoordinator } from "@/lib/constants";
 import type { CoordinatorRequestInput } from "@/lib/validations";
 
@@ -244,7 +245,11 @@ export async function decideCoordinatorRequest(input: {
       status: true,
       userId: true,
       villageId: true,
-      user: { select: { fullName: true, role: true, verifiedAt: true } },
+      // `email` for the decision email below — the applicant's own address,
+      // used to tell them about their own application and nothing else.
+      user: {
+        select: { fullName: true, email: true, role: true, verifiedAt: true },
+      },
       village: { select: { name: true } },
     },
   });
@@ -347,6 +352,40 @@ export async function decideCoordinatorRequest(input: {
     approved,
     note,
   });
+
+  /*
+    And the same decision by email. The two are not redundant and neither is the
+    fallback for the other: push needs a browser permission, a service worker
+    and a device that has been opened recently, and an application somebody
+    waited a week on should not be decided in silence because a phone had
+    notifications denied. An approval is also a briefing — the person can now
+    read their neighbours' verbatim reports, audited each time (domain rule 1) —
+    and that does not fit in a push body.
+
+    Sent regardless of `notifyEmail`, on the same reasoning the push ignores
+    `notifyPush`: this is the outcome of something they personally submitted, not
+    village news. Cannot throw — the promotion is already written and an email
+    that failed must not turn a completed decision into an error on the
+    administrator's screen.
+  */
+  const decisionEmail = await sendCoordinatorDecisionEmail({
+    to: request.user.email,
+    fullName: request.user.fullName,
+    villageName: request.village.name,
+    approved,
+    note,
+  });
+
+  if (!decisionEmail.sent && decisionEmail.skipped !== "not_configured") {
+    // The applicant still has the push and the state on `/settings`, so this is
+    // a log rather than a failure — but a decision that reached nobody is worth
+    // being able to find afterwards.
+    console.warn(
+      "Coordinator decision email for request %s was not sent: %s",
+      requestId,
+      decisionEmail.error ?? decisionEmail.skipped,
+    );
+  }
 
   // The reviewer's note is deliberately not in the Slack line. It is written by
   // one person to another about why they were turned down, and a staff channel

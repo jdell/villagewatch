@@ -578,6 +578,17 @@ export const settingsFormSchema = z.object({
     .union([z.literal("on"), z.literal("")])
     .optional()
     .transform((value) => value === "on"),
+  /**
+   * The column existed from the first migration and had no control in front of
+   * it for as long as nothing honoured it. Both are now true at once —
+   * `emailIncidentPublished` reads it, and this is where a resident turns it
+   * off — which is the order they had to arrive in: a dispatch honouring a
+   * preference nobody can change is a village that cannot stop the email.
+   */
+  notifyEmail: z
+    .union([z.literal("on"), z.literal("")])
+    .optional()
+    .transform((value) => value === "on"),
   notifyMinSeverity: z.enum(SEVERITY_VALUES),
   notifyRadiusMeters: z
     .string()

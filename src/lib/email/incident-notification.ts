@@ -16,13 +16,20 @@ import {
 } from "@/lib/email/layout";
 
 /**
- * The email a resident gets when push could not reach them.
+ * The email a resident gets when a report is published in their village.
  *
  * Push is the primary channel and always will be — an alert about a break-in
  * two streets away is worth something in the ten minutes after it is published
  * and very little the next morning. But push needs a browser permission, a
  * service worker and a device that has been opened recently, and a good number
- * of residents will have none of those. This is the fallback for them.
+ * of residents will have none of those. This is what reaches them.
+ *
+ * **It is not conditional on push having failed**, though this header said so
+ * while nothing called it. Doing that would mean asking OneSignal who it could
+ * not deliver to — a report that arrives long after the request has returned,
+ * for residents who mostly have no subscription at all rather than a failed one.
+ * `notifyPush` and `notifyEmail` are independent columns, presented that way in
+ * `/settings`, and a resident who ticks both has asked for both.
  *
  * ## The input type is the point
  *
@@ -36,9 +43,11 @@ import {
  * payload, because an email has room for it and a resident deciding whether to
  * go and check their shed needs more than a title.
  *
- * Nothing calls this yet. Email delivery is unimplemented (see "Not built yet"
- * in CLAUDE.md); `User.notifyEmail` is settable in the schema, absent from the
- * settings screen, and honoured by no dispatch.
+ * `emailIncidentPublished` in `src/lib/notifications.ts` is the caller, from the
+ * two genuine publish transitions — a coordinator's Approve, and a report filed
+ * into a village running auto-approve. The audience is that module's, resolved
+ * on `notifyEmail` with the same severity floor and the same distance test the
+ * push uses.
  */
 
 export type IncidentEmailInput = {

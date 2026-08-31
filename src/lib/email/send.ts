@@ -1,7 +1,16 @@
 import { Resend } from "resend";
-import { APP_HOST, APP_NAME } from "@/lib/constants";
+import {
+  APP_HOST,
+  APP_NAME,
+  EMAIL_BATCH_SIZE,
+  MAX_EMAIL_RECIPIENTS,
+} from "@/lib/constants";
 import type { EmailMessage } from "@/lib/email/layout";
 import { welcomeEmail } from "@/lib/email/welcome";
+import {
+  coordinatorDecisionEmail,
+  type CoordinatorDecisionEmailInput,
+} from "@/lib/email/coordinator-decision";
 
 /**
  * The transport. **Server only** — `RESEND_API_KEY` has no `NEXT_PUBLIC_`
@@ -215,6 +224,201 @@ export async function sendEmail(input: {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Many recipients, one message each
+// ---------------------------------------------------------------------------
+
+/** One rendered message and the single address it is addressed to. */
+export type BulkEmailRecipient = {
+  to: string;
+  message: EmailMessage;
+};
+
+export type BulkEmailDispatchResult = {
+  /** Addresses the audience rules selected and this module was handed. */
+  matched: number;
+  /** Messages Resend accepted. Zero when unconfigured. */
+  sent: number;
+  /** Why nothing was sent, when nothing was. */
+  skipped?: "not_configured" | "no_recipients" | "failed";
+  /** The provider's wording, for the server log. Never shown to a resident. */
+  error?: string;
+};
+
+/**
+ * Sends one message **per recipient** to a resolved audience.
+ *
+ * ## Never one message addressed to the village
+ *
+ * This is the whole reason the function exists rather than the callers passing
+ * an array to {@link sendEmail}. `to` accepts a list, and a list is what a
+ * village-wide alert looks like — but every address in it is rendered into the
+ * `To:` header of the message every other resident receives. That is the
+ * membership list of a neighbourhood watch scheme, disclosed to everybody on
+ * it, in a form that is forwarded and unrecallable. It also says who reports on
+ * their neighbours, which is the one fact this product exists to keep quiet.
+ *
+ * So the audience is fanned out into one message each, and the type makes it
+ * impossible to do otherwise: {@link BulkEmailRecipient} carries a single `to`,
+ * not a list.
+ *
+ * ## Batched, because the alternative is a rate limit
+ *
+ * Resend's batch endpoint takes {@link EMAIL_BATCH_SIZE} separate messages in
+ * one call, which is what makes the fan-out affordable: 500 residents is five
+ * round trips rather than five hundred, and five hundred sequential sends would
+ * spend well over a minute against a per-second rate limit while a coordinator
+ * watches the Approve button. `batchValidation: "permissive"` is deliberate —
+ * under the default a single malformed address in a village fails the other
+ * ninety-nine messages in its chunk, and `User.email` is a plain string column.
+ *
+ * ## The contract is {@link sendEmail}'s
+ *
+ * **Nothing throws.** A missing key, a refused batch, a timeout and a chunk
+ * that fails halfway through all resolve to a result. Publishing a report must
+ * not fail because an email did — the incident is on the map either way, and
+ * the alert is the extra. A failing chunk does not abandon the ones after it:
+ * a partial delivery is worth more than none, and the shortfall is in the
+ * returned figures rather than in a log nobody reads.
+ */
+export async function sendBulkEmail(
+  recipients: readonly BulkEmailRecipient[],
+): Promise<BulkEmailDispatchResult> {
+  const addressed = recipients
+    .map((recipient) => ({
+      to: recipient.to.trim(),
+      message: recipient.message,
+    }))
+    .filter((recipient) => recipient.to.length > 0);
+
+  const matched = addressed.length;
+
+  if (matched === 0) {
+    return { matched: 0, sent: 0, skipped: "no_recipients" };
+  }
+
+  const audience = addressed.slice(0, MAX_EMAIL_RECIPIENTS);
+
+  if (audience.length < matched) {
+    // No silent caps. An audience quietly truncated looks exactly like a
+    // village smaller than it is, which is the one way this could mislead
+    // somebody with nothing appearing to be wrong.
+    console.warn(
+      "[email:truncated] audience for %s cut from %d to %d recipients",
+      audience[0]?.message.subject,
+      matched,
+      audience.length,
+    );
+  }
+
+  if (!isEmailConfigured) {
+    // The branch a fresh clone takes. One line for the whole audience rather
+    // than one per resident — the message is identical and the count is the
+    // part worth reading.
+    console.log(
+      "[email:not-configured] subject=%s recipients=%d\n%s",
+      audience[0]?.message.subject,
+      audience.length,
+      audience[0]?.message.text,
+    );
+    return { matched, sent: 0, skipped: "not_configured" };
+  }
+
+  let sent = 0;
+  let firstError: string | undefined;
+
+  for (let index = 0; index < audience.length; index += EMAIL_BATCH_SIZE) {
+    const chunk = audience.slice(index, index + EMAIL_BATCH_SIZE);
+
+    const outcome = await sendChunk(chunk);
+
+    sent += outcome.sent;
+    firstError ??= outcome.error;
+  }
+
+  if (sent === 0) {
+    return { matched, sent: 0, skipped: "failed", error: firstError };
+  }
+
+  return { matched, sent, ...(firstError ? { error: firstError } : {}) };
+}
+
+/** One `batch.send` call, resolved either way. */
+async function sendChunk(
+  chunk: readonly BulkEmailRecipient[],
+): Promise<{ sent: number; error?: string }> {
+  try {
+    /*
+      Raced rather than cancelled, for the reason `EMAIL_TIMEOUT_MS` gives. The
+      timeout is per chunk rather than for the whole fan-out: a village of five
+      hundred is five calls, and a bound that covered all of them would either
+      be too tight for the last chunk or too loose to be a bound at all.
+    */
+    const result = await Promise.race([
+      client().batch.send(
+        chunk.map((recipient) => ({
+          from: FROM,
+          to: recipient.to,
+          subject: recipient.message.subject,
+          text: recipient.message.text,
+          ...(recipient.message.html ? { html: recipient.message.html } : {}),
+        })),
+        { batchValidation: "permissive" as const },
+      ),
+      new Promise<"timeout">((resolve) =>
+        setTimeout(() => resolve("timeout"), EMAIL_TIMEOUT_MS),
+      ),
+    ]);
+
+    if (result === "timeout") {
+      console.warn(
+        "Resend did not answer within %dms for a batch of %d",
+        EMAIL_TIMEOUT_MS,
+        chunk.length,
+      );
+      return { sent: 0, error: "timeout" };
+    }
+
+    if (result.error) {
+      // The provider's wording goes to the log and no further, the same rule
+      // `sendEmail` and `src/lib/auth-errors.ts` apply.
+      console.error(
+        "Resend refused a batch of %d: %s",
+        chunk.length,
+        result.error.message,
+      );
+      return { sent: 0, error: result.error.message };
+    }
+
+    const rejected = result.data?.errors ?? [];
+
+    if (rejected.length > 0) {
+      // Permissive validation: the batch went, minus these. Logged by count and
+      // reason rather than by address — a server log is not the place to write
+      // out which residents of a village have a malformed email on file.
+      console.warn(
+        "Resend rejected %d of %d messages in a batch: %s",
+        rejected.length,
+        chunk.length,
+        rejected.map((failure) => failure.message).join("; "),
+      );
+    }
+
+    return {
+      sent: result.data?.data.length ?? 0,
+      ...(rejected.length > 0
+        ? { error: `${rejected.length} address(es) rejected` }
+        : {}),
+    };
+  } catch (cause) {
+    console.error("Could not send a batch of %d", chunk.length, cause);
+    return {
+      sent: 0,
+      error: cause instanceof Error ? cause.message : String(cause),
+    };
+  }
+}
+
 /**
  * The welcome email, rendered and sent.
  *
@@ -240,6 +444,36 @@ export async function sendWelcomeEmail(input: {
     message: welcomeEmail({
       fullName: input.fullName,
       villageName: input.villageName,
+    }),
+  });
+}
+
+/**
+ * The coordinator decision, rendered and sent.
+ *
+ * Called by `decideCoordinatorRequest` in `src/lib/coordinator-requests.ts`,
+ * beside the push it already sends. The two are not redundant: push needs a
+ * browser permission, a service worker and a device that has been opened
+ * recently, and an application somebody waited a week on should not be decided
+ * in silence because a phone had notifications denied.
+ *
+ * Sent regardless of `User.notifyEmail`, for the reason
+ * `notifyApplicantOfCoordinatorDecision` ignores `notifyPush`: that column is a
+ * preference about *village news*, and this is the outcome of something the
+ * recipient personally submitted and waited on. It is transactional, it goes
+ * once, and a rejection carries the reviewer's own words — which is the whole
+ * reason `coordinatorRequestDecisionSchema` demands a note.
+ */
+export async function sendCoordinatorDecisionEmail(
+  input: CoordinatorDecisionEmailInput & { to: string },
+): Promise<EmailDispatchResult> {
+  return sendEmail({
+    to: input.to,
+    message: coordinatorDecisionEmail({
+      fullName: input.fullName,
+      villageName: input.villageName,
+      approved: input.approved,
+      note: input.note,
     }),
   });
 }

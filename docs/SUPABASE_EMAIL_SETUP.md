@@ -38,6 +38,34 @@ deploys because it has nothing to do with them.
 
 ---
 
+## Status: steps 2 and 3 have been done
+
+As of **31 August 2026**, on the operator's confirmation: the project sends its
+auth email over **Resend as the custom SMTP sender** (step 2), and the four
+branded templates in `src/lib/email/supabase-templates/` are pasted into
+**Authentication → Emails → Templates** (step 3). `CLAUDE.md` and
+`PROJECT_STATE.md` both said otherwise for a week and have been corrected.
+
+Two things follow, and both are easy to get wrong later:
+
+- **Nothing in this repository can check any of it.**
+  `tests/supabase-templates.test.ts` asserts that the committed `.html` matches
+  the module that generates it. It cannot assert that either has ever been
+  pasted into a dashboard, so a template that has drifted out of the project
+  fails no test and looks exactly like one that has not. Trigger a password
+  reset and read what arrives — that is the only check there is, and it is also
+  the only way to see the rendering in a real client.
+- **A change to the module is not a change to what residents receive.** Editing
+  `index.ts` and running `npm run generate:supabase-templates` updates the
+  repository and nothing else. Step 3 has to be repeated, or the deployment goes
+  on sending the previous version while the test comparing the two carries on
+  passing.
+
+Step 1 is a separate box and stays wherever it was last set. It is worth reading
+off the screen once now that the SMTP sender is no longer the constraint.
+
+---
+
 ## 1. Raise the hourly email limit
 
 **Supabase dashboard** → your project → **Authentication** → **Rate Limits** →
