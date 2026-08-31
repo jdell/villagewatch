@@ -3,6 +3,19 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.50](https://github.com/jdell/villagewatch/compare/v0.1.49...v0.1.50) (2026-08-31)
+
+
+### Features
+
+* **email:** give the three unused templates a caller ([88ec135](https://github.com/jdell/villagewatch/commit/88ec135e16789de141d71db2d72f432fb0e3aa4b))
+
+
+### Documentation
+
+* **backlog:** close B3, L4, L7, T11 and the heatmap row ([60b9f1a](https://github.com/jdell/villagewatch/commit/60b9f1a1d94de93164c90e5ca80d0ead7098a535))
+* **gtm:** revise the go-to-market plan against v0.1.49 ([000b49c](https://github.com/jdell/villagewatch/commit/000b49c3b2a6a853c33e2fe4634e3c09c7959209))
+
 ### [0.1.49](https://github.com/jdell/villagewatch/compare/v0.1.48...v0.1.49) (2026-08-31)
 
 
