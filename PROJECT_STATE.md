@@ -237,7 +237,7 @@ an `outputFileTracingIncludes` line.
   A10 (breach procedure) or A5/L2 — in community mode those attach to the
   coordinator, who is the controller.
 
-- **`docs/MARKETING_GTM_PLAN.md`** — positioning, the coordinator-first funnel,
+- **`docs/MARKETING_GTM_PLAN.md`** — **revised 31 August** against `v0.1.49`, and the revision's own finding is that six days of releases moved the pilot no closer: no village activated, no compliance acceptance anywhere, L5 unwalked. It gains a §0 recording what closed (L4, L7, L2's code half, the security audit, the written resident quick start, the first cron firing) and what did not; the launch phases are re-anchored to **activation day** rather than to calendar months that had already passed; §12 is rewritten as one afternoon's sequence with the OneSignal items struck off. Three new constraints are written down: the enforcing CSP means an analytics origin needs a line in `src/lib/csp.ts` or the channel reports nothing silently, the brand Facebook Page and a village's own Page in `docs/AUTO_POST_CHANNELS_PLAN.md` are different surfaces under different rules, and the written resident quick start is missing the one sentence about a denied notification prompt being unrecoverable. As first written it covered positioning, the coordinator-first funnel,
   the four launch phases, Facebook and SEO, analytics, pricing validation,
   growth targets and the grant pipeline as marketing. Three things in it are
   findings rather than plan: **there is no analytics of any kind in the project**

@@ -1,16 +1,18 @@
 # VillageWatch — go-to-market plan
 
-**Written:** 25 August 2026 · **Repo version:** `v0.1.43` · **Live at:**
-https://villagewatch.app
+**Written:** 25 August 2026 against `v0.1.43`. **Revised:** 31 August 2026
+against `main` at `v0.1.49`. **Live at:** https://villagewatch.app
 
 This is the plan for getting VillageWatch from a deployed application with no
 users to a product a parish clerk pays for. It covers positioning, the
 acquisition funnel, the channels, the content, the numbers to watch and the
 pricing to test.
 
-**Read `docs/LAUNCH_BLOCKERS.md` first.** Five things stand between the code and
-the first real resident, and none of the marketing below matters until they are
-cleared. Phase 0 is that list.
+**Read `docs/LAUNCH_BLOCKERS.md` first.** It listed five things standing
+between the code and the first real resident. **Three of them remain** — L1, L2
+and L3 — plus L5, which is the verification pass proving the other three landed.
+None of the marketing below matters until they are cleared. Phase 0 is that
+list, and §0 below is what has moved under it since this plan was written.
 
 **Every claim made to a parish clerk is held to the same rule `/privacy` is
 held to.** A grant application, a Facebook post and a landing page are all
@@ -22,6 +24,48 @@ that is not true.
 
 **This document is read by people and rendered by nothing.** It needs **no**
 `outputFileTracingIncludes` entry.
+
+---
+
+## 0. What changed since 25 August
+
+**Six days of releases and no operational movement whatever.** That is the
+finding this revision exists to record, and it is the only thing on this page
+that decides whether any of the rest of it happens. The plan was written on
+25 August against a pilot that had not started. It is 31 August and the pilot
+has not started:
+
+- **No village has ever been activated.** L3's code has been complete since
+  27 July — **thirty-five days** — and has never been run. All 270 seeded
+  Cambridgeshire parishes are `PENDING` and there is no `ACTIVE` village at all.
+- **No compliance acceptance of any kind has ever been recorded**, in either
+  model. The gate is live and enforcing, so every village in the directory is
+  refusing reports right now with a 403 before the request body is parsed.
+- **The chain in L5 has never been walked.**
+
+None of that is a code problem, and none of it can be fixed by writing more
+code. Every remaining item is an act somebody has to perform once.
+
+### What closed
+
+| | What | Where |
+|---|---|---|
+| **L4** | **Push works.** OneSignal delivers to a real device — 31 August. Nothing in the application changed and nothing could have: every condition was a Vercel variable, a redeploy or a field in the OneSignal dashboard, which is why it sat open for a month against correct code. **This removes one of L5's two dependencies** | `BACKLOG.md` B3/L4 |
+| **L7** | **The seed village was never there.** "Clear the placeholder village before activating Histon" was an inference from the seed script existing, repeated across three documents for a month. `prisma/seed.ts` has only ever been run against local scratch databases. The first activation therefore lands in an empty directory with nothing to clear out of its way | `BACKLOG.md` L7 |
+| **L2, in part** | `DATA_CONTROLLER` is filled in — Yakasista Ltd, an address, an email and the ICO application reference — published as the **operator's** contact route in a box saying in bold that it is not the controller. `/privacy` now answers Article 13. It still names no controller, because that is per village | PR #22, 30 Aug |
+| — | **A security audit of the whole tree**, 29 August: 34 findings, **none Critical**, four High. Six were closed the next day in PR #22 — the four High plus VW-15 and VW-16 | `docs/SECURITY_AUDIT_2026-08-29.md` |
+| — | **The resident quick start is written**, with a printable PDF beside it. Both are **uncommitted on the working tree** as at 31 August — see §5 | `docs/RESIDENT_QUICK_START.md` |
+| — | **The first cron in the project's life fired** — the police-data sync, 22 August. It came back 429 for every village, cost two bug fixes, and the outbound pace is now 1/s rather than the documented 15/s. **No village holds a month of police figures yet** | `PROJECT_STATE.md` |
+| — | Two product surfaces landed after this plan was written and both are resident-facing: the **coordinator's five tabs** (PR #16) and **incident voting** (N19) — the latter is on every published report and the resident quick start describes it | `BACKLOG.md` N20, N19 |
+
+### What did not
+
+**L1** — nothing accepted, anywhere. **L2's remainder** — the ICO registration
+(application **C2018564**, pending, and the longest lead item on the whole list),
+the pilot village's named controller, and a review of the notice by somebody with
+UK data-protection standing. **L3** — never run. **L5** — never walked. The
+**pitch message** is still not in the repository (§5). There is still **no
+analytics** (§8) and **no blog** (§7).
 
 ---
 
@@ -67,12 +111,28 @@ with, in this order:
 3. **Pattern detection is a radius query and a count, not a guess.** Reports within 200 metres over 30 days are flagged as recurring. Describe the clustering as automatic and the AI as the layer on top — that distinction is in `docs/FUNDING.md` for a reason.
 4. **A UK GDPR pack, in the product.** A village cannot file a single report until its coordinator has read and accepted the agreement that authorises the processing. Every other tool leaves that as the clerk's problem.
 
+### A fifth claim, available since 30 August, and the exact words for it
+
+The whole tree was reviewed for security on 29 August — 34 findings, **none
+rated Critical** — and six were closed the next day, including all four rated
+High. That is a fair thing to tell a clerk and a fair thing to hand over:
+`docs/SECURITY_AUDIT_2026-08-29.md` is written to be read.
+
+**Say "an internal source-level review".** That is what it was: manual review of
+the source, plus `npm audit`. No dynamic testing, no authenticated scanning, no
+third-party penetration test and no access to the Supabase, Vercel, OneSignal or
+Resend dashboards. A clerk who hears "audited" and later finds out it was
+written in-house has been misled by a sentence that was true, which is the exact
+failure mode §11's rules exist to prevent.
+
 ### What not to say
 
 - Not "GDPR compliant" — that is not available until L1 and L2 close.
 - Not "trusted by N villages" until somebody can point at the list. `VILLAGES_LIVE` is null and the landing page renders no figure, which is the right way to be wrong.
-- Not "£15 per month" anywhere public until there is something to charge with. See §8.
-- Not "the Histon pilot is under way" until a village is activated. A grant draft claimed this and it was corrected.
+- Not "£15 per month" anywhere public until there is something to charge with. See §9.
+- Not "the Histon pilot is under way" until a village is activated. A grant draft claimed this and it was corrected. **It is still true on 31 August**, and it is the claim most likely to be made carelessly now that the plan itself has been written down.
+- Not "penetration tested", "independently audited" or "third-party verified". See above.
+- Not "here is what the police figures say about your village" until a sync has actually completed for it. The cron has fired once, came back 429 for every village, and no village holds a month of data.
 
 ---
 
@@ -108,22 +168,40 @@ start per household instead of per village.
 Nothing below starts until these are done. Full detail, with action items, is in
 `docs/LAUNCH_BLOCKERS.md`.
 
-| | Blocker | The short version |
-|---|---|---|
-| L1 | DPIA / compliance pack | Gate is live and enforcing; nothing accepted anywhere. **Run the pilot in `community` mode** and it is one document, not three |
-| L2 | `DATA_CONTROLLER` placeholders | Still `[Data controller name]` in source. ICO registration is the long-lead item — start it today |
-| L3 | Village activation | Code done since July, **never run**. No village has ever been activated |
-| L4 | OneSignal push | Credentials missing in Vercel. Every failure mode here is silent |
-| L5 | Coordinator flow | Never exercised as a chain against a database |
+| | Blocker | State on 31 August | The short version |
+|---|---|---|---|
+| **L1** | Compliance acceptance | **Open** | Gate is live and enforcing; **nothing accepted anywhere, in either model**. Run the pilot in `community` mode and it is one document, one volunteer, in force the moment it is accepted — not three documents waiting on a council meeting |
+| **L2** | Controller and ICO | **Narrowed** | The constant was filled in on 30 August as the **operator's** contact route, so no placeholder reaches a resident. What is left is not code: the ICO registration (**C2018564, pending**), naming the pilot village's controller, setting `Village.parishCouncil`, and a review by somebody with UK data-protection standing |
+| **L3** | Village activation | **Open — thirty-five days** | Code complete since 27 July and never run. `npm run db:activate-village -- --slug histon-cambridgeshire --admin <email>` is dry-run by default and needs no browser, no session and no redeploy |
+| ~~L4~~ | ~~OneSignal push~~ | **Closed 31 Aug** | A push reaches a real device |
+| **L5** | Coordinator flow | **Open** | Never walked against a database. **L1 and L3 are now the only things in front of it** |
 
-Plus **L7** — the seed village `your-village`, with five invented incidents and
-the join code `VILLAGE1`, is the only `ACTIVE` village in the database. Clear it
-in the same sitting as L3.
+~~Plus **L7**~~ — **closed 31 August as a wrong premise.** There is no sample
+seed village in the live database and there never was; `prisma/seed.ts` has only
+ever run against local scratch databases. So nothing has to be cleared before
+Histon is activated, and there is no `ACTIVE` village at all rather than a
+fictional one.
 
-**Exit criterion:** one real report filed by a real resident in Histon, reviewed
-by the coordinator, published, and a push notification received on a phone.
+**Exit criterion:** unchanged — one real report filed by a real resident in
+Histon, reviewed by the coordinator, published, and a push notification received
+on a phone. Three of those four legs have never run; the fourth now has a
+working transport under it.
 
-### Phase 1 — the Histon pilot (month 1–2)
+**The whole of Phase 0 is one afternoon's work by one person**, and it has not
+happened for five weeks. That is worth stating plainly rather than leaving in
+the shape of a table: activation is a dry run and a `--confirm`, the compliance
+acceptance is a coordinator reading one agreement and ticking one box, and L5 is
+filing a report and approving it. What is genuinely slow is the ICO registration,
+which is with somebody else and does not block any of the other three.
+
+**The months below run from activation day, not from the calendar.** Written on
+25 August, "month 1" meant September; the pilot has not started, so restating a
+date that has already passed would be the second time this plan carried one.
+**D0 is the day Histon is activated and its coordinator has accepted the
+agreement.** Every date in the rest of this section is relative to it, and a
+target that slides every time it is missed has stopped being a target.
+
+### Phase 1 — the Histon pilot (D0 → D0 + 8 weeks)
 
 **Target: 1 village, 10 residents, 5+ real incidents.**
 
@@ -131,17 +209,19 @@ Deliberately small. The point of this phase is not growth — it is evidence, an
 evidence needs a village where somebody can knock on the door when something
 looks wrong.
 
-- Activate Histon; appoint the coordinator; walk them through `/dashboard/compliance` in person and watch reporting open.
+- Activate Histon — `npm run db:activate-village -- --slug histon-cambridgeshire`, dry run first — and appoint the coordinator in the same pass. **Record the minted join code somewhere that is not a screenshot**: it is a credential, it is not in the audit trail, and the run that prints it is the only place it appears.
+- Walk the coordinator through `/dashboard/compliance` in person and watch reporting open. In `community` mode that is one agreement and the coordinator is the controller, which is what they already are in fact — `ControllerDuties` puts the three duties with a deadline on the same screen, and being shown them is not the same as having a procedure. Give them `docs/BREACH_PROCEDURE.md` on the day.
 - Recruit 5–10 households through the coordinator's existing group. Face to face or in the group they already read; no advertising.
-- Ship the **resident quick start guide** (§5) — one side of A4, printed, handed over.
-- Watch the first of everything, because everything degrades quietly rather than failing: the first AI pass, the first face blur, the first push, the first pasted alert, the first police-data sync, the first retention run.
+- Ship the **resident quick start guide** (§5) — written on 28 August, **not yet committed**, and one sentence short of what it needs. Commit it, add the notifications line, print it, hand it over.
+- Watch the first of everything, because everything degrades quietly rather than failing: the first AI pass, the first face blur, the first push (the transport works; the deep link opening the right report on the device does not follow from that), the first pasted alert, the first police-data sync, the first retention run, and the first vote.
+- **Watch the first signed-in session under the enforcing Content-Security-Policy.** It landed on 30 August and the three surfaces most likely to violate it cannot be reached without a signed-in resident of a live village — the Leaflet tile layer, the MediaPipe WASM face blur and whatever the OneSignal SDK loads after its bootstrap. A blocked script there is a resident who cannot attach a photograph, with nothing in a server log to say so. The audit asks for a fortnight of `CSP_REPORT_ONLY=true` first; Phase 1 is the fortnight it was asking for.
 - At week 4 and week 8, sit with the coordinator for half an hour and write down what they actually did, in their words. That is the case-study material and it cannot be reconstructed later.
 
 **What Phase 1 produces:** a testimonial, a screenshot of a real map, a
 first-month incident count, and one named coordinator willing to speak to
 another village. That last one is the actual product of this phase.
 
-### Phase 2 — the neighbours (month 3–4)
+### Phase 2 — the neighbours (D0 + 2 to D0 + 4 months)
 
 **Target: 3–5 more villages, 50 residents total.**
 
@@ -152,7 +232,7 @@ another village. That last one is the actual product of this phase.
 
 **Exit criterion:** a village that we did not personally recruit asks to join.
 
-### Phase 3 — SaaS launch (month 6+)
+### Phase 3 — SaaS launch (D0 + 6 months)
 
 **Target: 25+ villages, first paying council.**
 
@@ -208,28 +288,40 @@ not be pushed.
 
 | Material | State | Note |
 |---|---|---|
-| **Coordinator guide** | **Exists — 24 pages** | `docs/COORDINATOR_GUIDE.md`, rendered at `/dashboard/guide` and as `docs/VillageWatch-Coordinator-Guide.pdf`. Nine sections from Welcome to Getting help. Verified 24 pages |
-| **Pitch message** | **Not in the repo** | Referred to as existing; there is no file. Write it down and commit it — an uncommitted pitch is a pitch that drifts per send and cannot be checked against `docs/FUNDING.md` |
-| **Resident quick start** | **Does not exist** | One side of A4. The Phase 1 blocker of the three |
+| **Coordinator guide** | **Exists — 24 pages** | `docs/COORDINATOR_GUIDE.md`, rendered at `/dashboard/guide` and as `docs/VillageWatch-Coordinator-Guide.pdf`. Nine sections from Welcome to Getting help. The PDF is a committed build artefact and goes stale silently — rebuild it in the same commit as the Markdown |
+| **Resident quick start** | **Written 28 August — not committed** | `docs/RESIDENT_QUICK_START.md` and `docs/VillageWatch-Quick-Start-Guide.pdf`, both untracked on the working tree as at 31 August. It was one of the three Phase 1 materials and is now a `git add` and one missing sentence — see below |
+| **Pitch message** | **Still not in the repo** | Referred to as existing; there is no file, six days after this plan said so. Write it down and commit it — an uncommitted pitch is a pitch that drifts per send and cannot be checked against `docs/FUNDING.md` |
 | **Printable invite sheet** | Exists | `/invite/[slug]` — public, `noindex`, needs no account. Print one before printing a hundred |
-| **QR invite** | Exists | `InviteShare` on `/dashboard`. Link, code, copy, WhatsApp, QR |
+| **QR invite** | Exists | `InviteShare` on `/dashboard` → Village settings. Link, code, copy, WhatsApp, QR. Never scanned end to end |
 | **PDF period report** | Exists | The leave-behind for a council meeting or a PCSO. Never built from a real village's reports |
+| **Compliance pack** | Exists — four documents | `DPIA.md`, `APD_TEMPLATE.md`, `DATA_PROCESSING_AGREEMENT.md` and `COMMUNITY_DPA.md`, rendered in full on `/dashboard/compliance`. The clerk-facing proof of §1's fourth point, and the thing to put in front of a council rather than describe |
+| **Breach procedure** | Exists | `docs/BREACH_PROCEDURE.md`, written 27 August — DPIA action A10. Deliberately **not** in the compliance gate, because a fourth document there would re-close every village that had been through it. Hand it to the coordinator on the day they become a controller |
+| **Security audit** | Exists | `docs/SECURITY_AUDIT_2026-08-29.md`. A leave-behind for a clerk who asks the question in §7's eighth blog post. Describe it as internal — see §1 |
 
-### Resident quick start — the one page
+### Resident quick start — written, and one sentence short
 
-Six steps and nothing else. It is handed over on a doorstep, so it fits on one
-side and assumes nothing:
+`docs/RESIDENT_QUICK_START.md` is the document and
+`docs/VillageWatch-Quick-Start-Guide.pdf` is the printable version, generated by
+`scripts/generate-quick-start-pdf.tsx` through the same Markdown parser
+`/dashboard/guide` renders with. **Both are uncommitted as at 31 August.**
+Commit them before either is handed to anybody: a sheet on a doorstep that is
+not in the repository is a version nobody can find again, and the printed one is
+the one a resident keeps.
 
-1. Scan the QR code, or go to the link.
-2. Check it says **Histon**. Enter the join code from this sheet.
-3. Set a password. Optionally drop a pin on your home so alerts can be filtered by distance — you can skip this.
-4. **Allow notifications** when asked. This is the one prompt worth getting right: denying it cannot be undone from the same website.
-5. To report: tap **Report**, describe it in your own words, and check the rewritten version before you send. Your original wording is never published.
-6. Photos are fine. Faces are covered on your phone before the photo is uploaded — the original never leaves the device.
+Six sections — join your village, find your way around, report what you saw, say
+how serious it is, browse the map, stay informed — and it opens with the 999 line
+rather than boxing it at the foot, which is at least as prominent and is fine. It
+is better than the sketch that stood here, because it describes the vote, which
+shipped on 23 August after this plan was written.
 
-Plus one boxed line at the foot: **In an emergency call 999. This is not a
-police reporting service.** That line is not optional and belongs on every
-resident-facing material.
+**One thing the original six steps asked for is missing, and it is the one that
+cannot be repaired afterwards.** Step 4 read: *allow notifications when asked —
+this is the one prompt worth getting right, because denying it cannot be undone
+from the same website.* The written "Stay informed" section says to turn
+notifications on in Settings and does not say what a dismissed browser prompt
+costs. A resident who denies it has removed themselves from every alert the
+village sends, permanently, from that browser, and neither they nor the
+coordinator will ever know. **Add the sentence before it is printed.**
 
 ### Pitch message — commit it
 
@@ -263,7 +355,7 @@ allowed to post.
 
 ### Setup
 
-- Create the **VillageWatch** Page. Profile image is the shield from `src/components/logo.tsx`; cover is a real map screenshot once Histon has pins on it (not before — a fake map is exactly the kind of claim this document exists to prevent).
+- Create the **VillageWatch** Page. Profile image is the shield from `src/components/logo.tsx`; cover is a real map screenshot once Histon has pins on it (not before — a fake map is exactly the kind of claim this document exists to prevent). **There are no pins anywhere yet**, so the cover waits on Phase 0 like everything else.
 - About: the one-liner from §1, `https://villagewatch.app`, and Cambridgeshire as the location.
 - **Meta Business Suite for scheduling.** Write a week ahead in one sitting, schedule, and never post ad hoc. Two or three posts a week that arrive is far better than five that stop after a fortnight.
 
@@ -274,11 +366,29 @@ allowed to post.
 | Type | Frequency | Notes |
 |---|---|---|
 | Community safety tip | Weekly | Genuinely useful and product-free. This is what gets shared |
-| "Did you know" from data.police.uk | Fortnightly | Real Home Office figures for a named area. Cite the Open Government Licence v3.0 — it is a licence condition, not a courtesy |
+| "Did you know" from data.police.uk | Fortnightly | Real Home Office figures for a named area. Cite the Open Government Licence v3.0 — it is a licence condition, not a courtesy. **No village holds a month of these yet**: the cron has fired once and came back 429 for every village, so until a sync completes these figures come from the service's own website by hand rather than from the product |
 | Feature explainer | Fortnightly | One feature, plain English, one screenshot |
 | Pilot village story | Monthly | Only once there is one. Coordinator quoted by name with permission |
 | Pattern insight, anonymised | Monthly | **Never before Phase 2.** See the rule below |
 | Coordinator spotlight | Monthly | A volunteer, named, with permission |
+
+### Two Facebook Pages, and conflating them is the mistake
+
+`docs/AUTO_POST_CHANNELS_PLAN.md` was written on 24 August and expanded on the
+25th. **Nothing in it is built.** It plans posting a published report to **a
+village's own** WhatsApp, Telegram or Facebook Page automatically, replacing the
+coordinator's copy-and-paste. This section is about the **VillageWatch** brand
+Page, which is a marketing surface and nothing else.
+
+The rule below governs this Page. It does **not** govern a village's own, where
+a report is published to the village's own audience, by the village's own
+coordinator, under the village's own settings — which is a decision that plan
+takes seriously and treats as the sharpest privacy question in it.
+
+Keep them separate in every sense: separate Pages, separate audiences, separate
+decisions, and never a marketing post drawn from a village's feed on the grounds
+that it is "already public over there". A village of 200 publishing to its own
+neighbours has not consented to be a case study.
 
 ### The rule on posting about incidents
 
@@ -340,7 +450,7 @@ than Phase 3 — six months of age is the asset.
 
 ### The blog does not exist yet
 
-There is no `src/app/blog` route. This is a build item, not a content item.
+There is no `src/app/blog` route — still true at `v0.1.49`, checked on 31 August. This is a build item, not a content item.
 Keep it small: MDX or a flat Markdown directory parsed by the existing
 `src/lib/markdown.ts` — which already parses to a typed tree that
 `MarkdownView` renders with no `dangerouslySetInnerHTML`, so there is nothing to
@@ -389,8 +499,8 @@ pilot case studies from Phase 2 onwards.
 ## 8. Analytics
 
 **There is no analytics of any kind in the project today** — no
-`@vercel/analytics`, no PostHog, no Plausible in `package.json`. This is a build
-item.
+`@vercel/analytics`, no PostHog, no Plausible in `package.json`. Re-checked at
+`v0.1.49` on 31 August and still true. This is a build item.
 
 ### What to add
 
@@ -409,6 +519,19 @@ script in a tool that sells privacy is the worst possible way to be found out.
 
 **If in doubt, ship Plausible only.** Cookieless and EU-hosted is a much shorter
 paragraph to write and a much easier one to defend at a council meeting.
+
+### The Content-Security-Policy is now a hard constraint on adding one
+
+`src/lib/csp.ts` did not exist when this section was written; it landed on
+30 August closing VW-02, and `src/proxy.ts` applies it to every response with a
+per-request nonce. It is **enforced** unless `CSP_REPORT_ONLY` says otherwise.
+Two consequences for whoever adds the first analytics script:
+
+- **A script whose origin is not in `src/lib/csp.ts` is blocked in production**, and it fails in the worst possible register: the vendor's "waiting for your first data" screen is indistinguishable from a site nobody visited. Add the origin to `script-src` *and* `connect-src` in the same commit — the beacon and the tag are two different directives, which is the mistake the MediaPipe loader already cost this codebase once.
+- **`'strict-dynamic'` means a conforming browser ignores host expressions in `script-src` entirely.** Trust propagates from a nonced script to what it loads, which is how the OneSignal SDK gets in through `next/script`. Load an analytics tag the same way rather than pasting a vendor snippet into the layout, or it will work in a CSP2-only browser and nowhere else.
+
+`tests/csp.test.ts` pins the load-bearing directives, so a change that reached
+for `'unsafe-inline'` to make a snippet work fails CI rather than shipping.
 
 ### What to track
 
@@ -476,12 +599,17 @@ anything on the strength of a price on a card.
 
 ## 10. Growth targets
 
+**Counted from activation day (D0), not from the calendar**, for the reason
+given in §3. Written on 25 August as calendar months, these were already wrong
+six days later: no village has been activated, so month 1 has not begun.
+Re-anchoring rather than sliding the dates is deliberate.
+
 | | Villages | Residents | Reports | Revenue | The thing that actually has to be true |
 |---|---|---|---|---|---|
-| **Month 1** | 1 | 10 | 5+ | £0 | Histon files a real report and the coordinator does not need help to publish it |
-| **Month 3** | 5 | 50 | 30+ | £0 | One village joined because another village recommended it |
-| **Month 6** | 15 | 200 | 100+ | first paying council | A clerk asked what it costs before we said |
-| **Month 12** | 50 | 1,000 | 500+ | ~£750 MRR | 50 coordinators still moderating, which is the real ceiling |
+| **D0 + 1 month** | 1 | 10 | 5+ | £0 | Histon files a real report and the coordinator does not need help to publish it |
+| **D0 + 3 months** | 5 | 50 | 30+ | £0 | One village joined because another village recommended it |
+| **D0 + 6 months** | 15 | 200 | 100+ | first paying council | A clerk asked what it costs before we said |
+| **D0 + 12 months** | 50 | 1,000 | 500+ | ~£750 MRR | 50 coordinators still moderating, which is the real ceiling |
 
 **£750 MRR at month 12 is 50 villages × £15.** That is every village paying, and
 it will not be — the free community tier is the acquisition channel and most
@@ -494,6 +622,14 @@ and if they stop, everything else stops with them.
 days**. It is the number that will look like growth and is not, and it is the
 one a grant report should carry beside the headline count.
 
+**And the counter-metric for this document.** Watch **days since the last
+operational step**. Between 25 and 31 August it was six days against a plan whose
+first phase is an afternoon's work, and the six days went into code — a dashboard
+redesign, a security audit and its fixes — all of which was worth doing and none
+of which moved the pilot one day closer. The failure mode this plan is most
+exposed to is not a bad channel or a wrong price. It is a well-maintained
+codebase with no users in it.
+
 ---
 
 ## 11. Grants as marketing
@@ -504,7 +640,7 @@ is the tracker; this is what each is worth as *marketing*.
 
 | Pipeline | Status | Marketing value |
 |---|---|---|
-| **UKDI** | Reported as **submitted, awaiting Stage 1 review** | Not tracked in `docs/FUNDING.md` — **add it as P6 with the submission date and what was claimed**, so the claims are checkable against the code like every other application |
+| **UKDI** | Reported as **submitted, awaiting Stage 1 review** | **Still not tracked in `docs/FUNDING.md`** — re-checked 31 August; that file was last updated on 21 August and still lists five priorities. **Add it as P6 with the submission date and what was claimed**, so its claims are checkable against the code like every other application's. This is the second time of asking, and an application whose claims nobody can check is the one that will be wrong |
 | **PCC Prevention / Community Safety Fund** | Application drafted, needs a sponsor | The one that matters most in Phase 2. A PCC-funded scheme is a fact a parish clerk trusts immediately. £500–£35,000, rolling — the sponsor is the blocker, and a pilot village's PCSO is the obvious one |
 | **NL Community Fund — AI programme** | Window expected autumn 2026. Draft written: `docs/GRANT_APPLICATION_NL_AI.md` | £3m pot UK-wide. Prepare now; the draft has already been rewritten against sixteen findings and is checked against the codebase |
 | Neighbourhood Watch Community Grants | Not started | £100–£300. Small money, and the *relationship* with the national body is the point |
@@ -515,21 +651,56 @@ is the tracker; this is what each is worth as *marketing*.
 
 1. **A grant application is a statement about how the code behaves.** Change the behaviour, change the document — the same rule `/privacy` is held to.
 2. **Check every claim against `docs/FUNDING.md`'s claims table**, which exists because a previous draft claimed data was all held in the UK (it is *stored* in the UK; three processors are not), that pattern detection was AI (it is a radius query and a count), that a coordinator can share any incident (published only, coordinators only), and that the Histon pilot was under way (no village had been activated).
-3. **Every third-party figure has a date it was read.** Re-verify before reuse; the "External figures" table at the foot of `docs/FUNDING.md` lists all seven and what to check each against.
+3. **Every third-party figure has a date it was read.** Re-verify before reuse; the "External figures" table at the foot of `docs/FUNDING.md` lists all seven and what to check each against. Every one of them was read in August, and the NL AI window is expected in the autumn — re-verify the pot, the grant size and the route in before that draft is submitted, not after.
+
+**One claim in the pipeline is now available and was not on 25 August**, and it
+is the strongest thing on this page for a funder: `docs/DPIA.md` assesses twelve
+privacy risks and rates **none high after mitigation**, the compliance pack is
+four written documents rendered in the product, and a source-level security
+review found nothing Critical. State it exactly as §1 says to — internal review,
+DPIA *drafted* rather than signed off, and no "GDPR compliant" until L1 and L2
+close.
 
 ---
 
 ## 12. What to do this week
 
-In order. Each unblocks the next.
+**Revised 31 August.** Three of the original eight are done and half of a
+fourth was never real. What is left is short, and it has been short for five
+weeks — which is the argument for doing it in one sitting rather than one item
+a week.
 
-1. **Start the ICO registration.** Longest lead time and L2 cannot close without it.
-2. **Decide the pilot's mode.** Recommend `community` — it takes A1, A2 and a council's review of the DPIA off the critical path and replaces them with one agreement one volunteer can accept.
-3. **Set the three OneSignal variables in Vercel and redeploy.** The public one is inlined at build time, so setting it without a redeploy changes nothing.
-4. **Set the OneSignal dashboard's service worker path to `/onesignal/`.** A 404 there reports a healthy init that never delivers.
-5. **Clear the seed village** (`your-village`, join code `VILLAGE1`) and **activate Histon** in the same sitting.
-6. **Commit the pitch message** and **write the resident quick start**. One page, six steps, 999 line at the foot.
-7. **Walk the coordinator through the compliance screen** and confirm reporting actually opens. Nobody has ever done this.
-8. **File one report end to end and receive one push.** That is Phase 0's exit criterion and everything in this document waits behind it.
+### The afternoon that unblocks everything
 
-Then, and only then, create the Facebook Page.
+In order. Each is a precondition of the next, and the whole sequence is one
+person at one desk.
+
+1. **Dry-run the activation.** `npm run db:activate-village -- --slug histon-cambridgeshire --admin <your ADMIN_EMAILS address>`. It prints the village's status, resident count, compliance model and gate state before it offers to change anything.
+2. **Re-run with `--confirm` and `--coordinator <email>`.** One pass activates Histon and appoints its first coordinator. **Write the minted join code down somewhere that is not a screenshot** — it is a credential, it is not in the audit trail, and that run is the only place it appears.
+3. **Sit with the coordinator and accept `COMMUNITY_DPA.md`** on `/dashboard/compliance`. Watch reporting actually open; until this, the village 403s every report before the body is parsed. Give them `docs/BREACH_PROCEDURE.md` and name the decision-maker its §2 asks for — in community mode that is them.
+4. **Walk L5's chain once.** File a report from a real phone with a face in the photo, confirm `PENDING_REVIEW`, confirm the coordinator's phone rings, approve it, confirm the map pin, the list entry and the `incident.publish` audit row. That is Phase 0's exit criterion and everything in this document waits behind it.
+
+### In parallel, because none of it blocks the four above
+
+5. **Record the pilot's mode decision** in `docs/LAUNCH_BLOCKERS.md` §L1, with the date. The recommendation is unchanged and step 3 above already assumes it: `community`, which takes the council's Appropriate Policy Document, the countersigned Article 28(3) agreement and a council's review of an Article 35 assessment off the critical path and replaces them with one agreement one volunteer can accept. It has been the recommendation since 25 August and has never been written down as a decision.
+6. **Chase the ICO registration** (application **C2018564**) and replace the pending reference when it lands. Longest lead item on the list and it is with somebody else.
+7. **Name the pilot village's controller** and set `Village.parishCouncil` on `/dashboard/settings`, so the police and council documents stop falling back to the operator's name in their footer. `/reports` shows an amber warning until this is done, and it is now the *wrong body* rather than a visibly empty field — which is the worse failure of the two.
+8. **Commit the resident quick start**, with the notifications sentence added (§5). Print one QR sheet before printing a hundred.
+9. **Write and commit the pitch message** (§5). It has been "not in the repo" for six days of it being written down as a gap.
+10. **Apply `20260823120000_incident_votes` and re-run `prisma/sql/rls_policies.sql`.** The votes table arrives with RLS off, which would let the anon key read who in a village thought which of their neighbours' reports was overblown. Confirm the same file was re-run after the police-data merge while you are there — `PROJECT_STATE.md` still lists that as unconfirmed.
+11. **Re-run the police-data sync by hand** for Histon once it is active — `?village=histon-cambridgeshire` with the secret — and read the response. The first scheduled run came back 429 for every village; the pace is 1/s now and nothing has confirmed that is enough.
+
+### Then, and only then
+
+12. **Create the Facebook Page** (§6), with a cover image taken from a map that has real pins on it.
+13. **Start the blog** (§7) and **ship Plausible** (§8), remembering that the analytics origin needs a line in `src/lib/csp.ts` or it reports nothing, silently.
+14. **Add UKDI to `docs/FUNDING.md` as P6** (§11).
+
+### What has come off the original list
+
+- ~~Set the three OneSignal variables in Vercel and redeploy.~~ **Done.** Push reaches a real device (31 August).
+- ~~Set the OneSignal dashboard's service worker path to `/onesignal/`.~~ **Done**, all four fields including the updater filename, which is the one that catches people. `curl -I https://villagewatch.app/onesignal/OneSignalSDKWorker.js` is the standing check, worth re-running after any dashboard change.
+- ~~Clear the seed village.~~ **Never necessary** — there was no seed village in the live database and there never was. That was half of the original item 5; the activation half is item 1 above.
+- ~~Start the ICO registration.~~ **Submitted** — C2018564, pending. Item 6 above is the chase, not the start.
+
+Everything else on the original list is still on it, six days later.

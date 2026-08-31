@@ -3,6 +3,7 @@
 **Audited:** 25 August 2026 against `main` at `v0.1.43`.
 **Re-audited:** 27 August 2026 against `main` at `v0.1.46`, on
 `fix/launch-blockers`.
+**Two rows overtaken on 31 August** — see the note under the summary table.
 **Scope:** the five items standing between the code as it is today and a real
 resident filing a real report in a real village.
 
@@ -26,8 +27,31 @@ documents in `docs/` that the app renders from disk, it needs **no**
 | **L1** | DPIA and the compliance pack | Complete — gate is live and enforcing. **A10 written 27 Aug**; A4 found already written | Nothing accepted, nowhere | **Yes** — but see the community-mode finding below |
 | **L2** | `DATA_CONTROLLER` placeholders | **Constant filled in 30 Aug** — Yakasista Ltd, address, email and the ICO application reference, published as the *operator* contact route, not as a claim of control | ICO registration pending (C2018564); no pilot village's controller named; notice unreviewed | **Yes**, and the ICO registration is the long lead |
 | **L3** | Village activation from cold | Complete and audited since 27 Jul; join-code enforcement fixed 13 Aug. **CLI added 27 Aug** | **Never run.** No village has ever been activated | **Yes** |
-| **L4** | OneSignal push | Complete; three env vars blank | Credentials missing in Vercel; no push ever delivered | **Yes** for the alert leg |
-| **L5** | Coordinator flow end-to-end | **Named test-suite gap closed 27 Aug** — the queue is asserted. The chain is still untested | Never exercised against a database | **Yes** |
+| ~~**L4**~~ | ~~OneSignal push~~ | Complete; three env vars blank | Credentials missing in Vercel; no push ever delivered | ~~**Yes** for the alert leg~~ — **closed 31 Aug** |
+| **L5** | Coordinator flow end-to-end | **Named test-suite gap closed 27 Aug** — the queue is asserted. The chain is still untested | Never exercised against a database | **Yes** — and **L1 and L3 are now all that is in front of it** |
+
+### Overtaken on 31 August
+
+The table above is what the 27 August pass found and is left as written. Two of
+its rows have since moved, and §L4 below is left in place for the same reason —
+it is the diagnosis to repeat after any OneSignal dashboard change, not a record
+of a past state.
+
+- **L4 is closed.** A push reaches a real device. Nothing in the application
+  changed and nothing could have: every condition on its list is a Vercel
+  variable, a redeploy or a field in the OneSignal dashboard. **This removes one
+  of L5's two dependencies**; L1 is the other, together with L3's activation to
+  have a village to walk the chain in.
+- **L7 is closed as a wrong premise**, which changes what L3 walks into. There
+  is no sample seed village in the live database and there never was —
+  `prisma/seed.ts` has only ever run against local scratch databases — so the
+  first activation lands in a directory of 270 `PENDING` parishes with nothing
+  to clear out of its way, and there is no `ACTIVE` village *at all* rather than
+  a fictional one. Every mention of `your-village` and `VILLAGE1` below is
+  therefore describing something that is not there. See `BACKLOG.md` L7.
+
+**The clearing order is now L2 → L1 → L3 → L5**, and `docs/MARKETING_GTM_PLAN.md`
+§12 is the same sequence written as an afternoon's work.
 
 ### What the 27 August pass changed
 
@@ -61,9 +85,10 @@ assessment — is the *council* model's, and Histon does not have to launch as o
 See L1 below. This is the difference between a pilot gated on a parish council
 meeting and a pilot gated on one volunteer reading one agreement.
 
-**Clearing order.** L2 → L1 → L3 → L4 → L5. L2 first because it is an hour of
-work and both L1 and L3 print its output; L5 last because it is the verification
-pass that proves the other four landed.
+**Clearing order.** L2 → L1 → L3 → L4 → L5, as it stood on 27 August; L4 has
+since dropped out of it. L2 first because it is an hour of work and both L1 and
+L3 print its output; L5 last because it is the verification pass that proves the
+others landed.
 
 ---
 
