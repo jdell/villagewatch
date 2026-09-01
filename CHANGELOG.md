@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.51](https://github.com/jdell/villagewatch/compare/v0.1.50...v0.1.51) (2026-09-01)
+
+
+### Features
+
+* **email:** brand all four transactional templates with the shared shield header ([baafd6a](https://github.com/jdell/villagewatch/commit/baafd6a05e9975338310e0c3a81845cc72c4bbee))
+
 ### [0.1.50](https://github.com/jdell/villagewatch/compare/v0.1.49...v0.1.50) (2026-08-31)
 
 
