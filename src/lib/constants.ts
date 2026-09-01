@@ -1760,7 +1760,7 @@ export const PRICING = [
  * carries, in the anonymised form already on the map. A processor paragraph
  * that describes the wrong messages is the kind of change this date exists for.
  */
-export const LEGAL_LAST_UPDATED = "2026-08-31";
+export const LEGAL_LAST_UPDATED = "2026-09-01";
 
 /**
  * The data controller under UK GDPR.

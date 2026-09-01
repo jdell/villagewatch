@@ -171,9 +171,14 @@ export async function sendEmail(input: {
       may still arrive. See `EMAIL_TIMEOUT_MS` for why that is the right way
       round.
 
-      `html` is spread conditionally: `welcomeEmail` is deliberately text-only
-      (see its header), and Resend requires at least one of `html`, `text` or
-      `react` rather than accepting an explicit `undefined` alongside `text`.
+      `html` is spread conditionally rather than passed through. Every template
+      renders one today — the welcome was the last that did not, and gained one
+      when the four were brought under the shared branded shell — but `html` is
+      optional on `EmailMessage`, and Resend requires at least one of `html`,
+      `text` or `react` rather than accepting an explicit `undefined` alongside
+      `text`. So the guard stays: it is what a text-by-design template added
+      later needs, and the shape it prevents fails at the provider rather than
+      at the type.
     */
     const result = await Promise.race([
       client().emails.send({

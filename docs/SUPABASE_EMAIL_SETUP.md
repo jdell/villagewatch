@@ -198,6 +198,19 @@ Three things worth knowing before you do:
   `npm run generate:supabase-templates`, and `tests/supabase-templates.test.ts`
   fails if a committed file and the module disagree. Change the wording in the
   module, regenerate, paste again.
+- **The wording is not the only thing that changes them.** They render through
+  `src/lib/email/layout.ts`, the shell shared with every email the app sends
+  itself, so a change to the header, the footer or the brand colours rewrites
+  all four of these files too. That test compares the committed HTML against the
+  module and **cannot see the dashboard**: after any such change the deployment
+  carries on sending the previous version while CI stays green. Regenerate and
+  paste all four again. The shell last changed on **1 September 2026**, when it
+  gained the shield in its header bar.
+- **The header loads one image**, `https://villagewatch.app/android-chrome-192x192.png`.
+  It is decorative — the wordmark sits beside it — so a client with remote
+  images blocked shows the bar and the name, and nothing is lost. It is the only
+  asset any of these emails fetches, and there is no tracking pixel anywhere in
+  them.
 
 The subject lines and the plain-text version of each message are in the same
 module, so what a resident reads exists in a diff rather than only in a form

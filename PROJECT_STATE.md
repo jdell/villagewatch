@@ -1,6 +1,6 @@
 # VillageWatch — project state
 
-**Last updated:** 31 August 2026 · **Repo version:** `v0.1.49` · **Branch:**
+**Last updated:** 1 September 2026 · **Repo version:** `v0.1.49` · **Branch:**
 `main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
@@ -24,7 +24,7 @@ in `BACKLOG.md`.
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 14, `20260726161847_init` → `20260823120000_incident_votes`. **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`. **There is no `ACTIVE` village at all.** This row said the only one was `prisma/seed.ts`'s placeholder until 31 August; that was an inference from the script existing rather than from a query, and it was wrong — the seed has only ever been run against local scratch databases. See BACKLOG L7 |
-| Test suite | Vitest, **39 files, 634 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar two component tests, both rendered to a string with no DOM: `period-control.test.tsx` and `legal-placeholders.test.tsx`. Three route handlers are now covered — retention, the vote, and **`POST /api/incidents`**, which closed the gap this file and two others named for a month |
+| Test suite | Vitest, **40 files, 660 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar two component tests, both rendered to a string with no DOM: `period-control.test.tsx` and `legal-placeholders.test.tsx`. Three route handlers are now covered — retention, the vote, and **`POST /api/incidents`**, which closed the gap this file and two others named for a month |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -61,6 +61,46 @@ PRs because they were asked for as PRs.
 ---
 
 ## Open items
+
+### All eight emails share one branded shell — 1 September 2026
+
+The four the app sends and the four Supabase Auth sends now render through the
+same `renderEmail` in `src/lib/email/layout.ts`, and the shell gained the shield
+from `src/components/logo.tsx` in its header bar.
+
+Most of this was already true and had been since the templates were written —
+one table, the brand bar, the footer with its three routes. Two things were not:
+
+- **There was no mark anywhere.** The header was the wordmark on a coloured bar,
+  which is a brand colour rather than a brand. It is now
+  `public/android-chrome-192x192.png` at 36px beside the wordmark — the icon
+  generator's own asset, borrowed rather than reproduced, so the email header
+  and the app header stay one drawing. An `<img>` and not inline SVG, which
+  Gmail strips and Outlook draws as nothing.
+- **The welcome was text-only**, and its header argued for staying that way. The
+  argument had not weighed the consequence: it was the only email VillageWatch
+  sent that did not look like VillageWatch, arriving straight after a branded
+  confirmation, which reads as a different sender. It renders HTML now and **its
+  text part is unchanged** — that is what the old reasoning was protecting.
+
+**Two things are owed to a human and neither can be checked from here.**
+
+1. **Re-paste the four templates into the Supabase dashboard.** The committed
+   `.html` files changed, and `tests/supabase-templates.test.ts` only compares
+   them against the module that generates them — it cannot see the dashboard. A
+   deployment carries on sending the previous version while that test passes.
+   Authentication → Emails → Templates; `docs/SUPABASE_EMAIL_SETUP.md` §5.
+2. **Look at one in Outlook.** The mark is a nested table in the header, and
+   Word's engine is where a nested table goes wrong. Everything else has been
+   checked by eye in a browser and the asset is confirmed live
+   (`https://villagewatch.app/android-chrome-192x192.png`, 200, `image/png`).
+
+`/privacy` §6 gained a paragraph in the same commit, and `LEGAL_LAST_UPDATED`
+moved with it. A remote image in an email is the shape a tracking pixel takes,
+so the notice says what this one is: our own origin, the same URL for every
+recipient, the only asset an email loads, and nothing reading the access log.
+Add a second image, a per-recipient URL or any measurement of opens and that
+paragraph is false.
 
 ### The three unused email templates are wired up — 31 August 2026
 
@@ -916,7 +956,7 @@ as working — to anybody, and least of all in a grant application.
 | The coordinator flow end to end | Never run | The **suite** now asserts that a village with auto-approve **off** files `PENDING_REVIEW` (`tests/incident-create-route.test.ts`, 27 Aug). What has never happened is the chain: no compliance acceptance exists, so step one 403s, and the coordinator's push depends on L4 |
 | Incident votes | Nobody has voted; migration 14 is unapplied | The toggle across two devices, the concern panel's ordering, and a village with one vote producing **no** report section rather than one with a single line in it |
 | Email from the app | No message has reached a real inbox | An unverified Resend sending domain is refused and the refusal is only in the server log; both env vars have to reach Vercel |
-| The Supabase auth templates | Never pasted into the dashboard | Outlook's Word engine is the one that surprises people; the fallback link under the button is what a client that eats the button table leaves behind |
+| The Supabase auth templates | Pasted into the dashboard on 31 August — but **the branded shell changed on 1 September and they have not been re-pasted since** | Re-paste all four first, or the deployment keeps sending the pre-logo version while `supabase-templates.test.ts` goes on passing. Then Outlook's Word engine, which is the one that surprises people — the mark is a nested table now, and the fallback link under the button is what a client that eats the button table leaves behind |
 
 ---
 

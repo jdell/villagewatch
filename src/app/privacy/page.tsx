@@ -120,6 +120,18 @@ export const metadata: Metadata = {
  *     `rawDescription`, `lat` or `lng` — the same guard `AlertIncident` and
  *     `ExportIncident` use. Change what an email carries and this changes with
  *     it.
+ *   - §6's paragraph on **the one image in an email**, added 1 September 2026
+ *     when the four templates were brought under one branded shell and the
+ *     shell gained the shield in its header (`src/lib/email/layout.ts`). It is
+ *     the police-data entry's reasoning applied to an inbound request rather
+ *     than an outbound one: a remote image is the shape a tracking pixel takes,
+ *     opening the message reveals an address and a time to our own server, and
+ *     a resident reading "who else sees it" is entitled to be told so by us
+ *     rather than to find it out. What makes the paragraph true is that the
+ *     mark is the **only** remote asset, its URL is the same for every
+ *     recipient, and nothing reads the access log. Add a second image, a
+ *     per-recipient URL or any measurement of opens and this is a false
+ *     sentence.
  *   - §6's paragraph on **who** gets one, which is a claim about
  *     `residentsToEmail` in `src/lib/notifications.ts`: `notifyEmail`, the same
  *     severity floor and the same distance test the push uses, and a control on
@@ -653,6 +665,17 @@ export default function PrivacyPage() {
             never coordinates and never a photograph. And, for coordinators
             only, a weekly summary of what their village published. We send no
             marketing.
+          </Definition>
+          <Definition term="The one image in an email">
+            Every email we send carries our logo, and your email program fetches
+            it from {APP_HOST} when it opens the message. That request tells our
+            server your internet address and the fact that the message was
+            opened. It is our own address, not a third party&rsquo;s, and it is
+            the only thing an email loads &mdash; there is no tracking pixel, no
+            link that reports back, and nothing anywhere that reads those
+            requests to work out who opened what. Most email programs block
+            remote images until you allow them, and the message reads correctly
+            either way.
           </Definition>
           <Definition term="Choosing whether we email you">
             Village alerts by email are a setting, sitting beside the one for

@@ -17,9 +17,11 @@ import { APP_NAME, APP_ORIGIN } from "@/lib/constants";
  * Because email clients do. Outlook renders with Word's engine, Gmail strips
  * `<style>` blocks in some contexts and `<head>` entirely in others, and none
  * of them support flexbox or grid reliably. So: one table, inline styles on
- * every element, no external stylesheet, no web font, no image. An email that
- * degrades to legible text in a client nobody tested is worth more than one
- * that looks right in three and breaks in the fourth.
+ * every element, no external stylesheet, no web font, and exactly one image —
+ * the brand mark in the header, which is decorative and which the wordmark
+ * beside it makes redundant. An email that degrades to legible text in a client
+ * nobody tested is worth more than one that looks right in three and breaks in
+ * the fourth.
  *
  * ## Every email ships a text part
  *
@@ -72,6 +74,41 @@ const INK = "#0f172a";
 const MUTED = "#475569";
 const BORDER = "#e2e8f0";
 const CANVAS = "#f8fafc";
+
+/**
+ * The shield in the header bar, as an absolute URL.
+ *
+ * `public/android-chrome-192x192.png` rather than a new asset: it is the
+ * outline weight of the same shield `src/components/logo.tsx` draws and
+ * `scripts/generate-icons.mjs` renders, on the same brand gradient, with the
+ * same rounded corners. Borrowing it is what keeps the email header and the app
+ * header the same drawing without a second generator to keep in step — the
+ * constraint that script's own header sets out. It is served from `public/`, so
+ * it needs no build step and no CDN.
+ *
+ * **An `<img>` rather than inline SVG, and that is not a preference.** Gmail
+ * strips `<svg>` entirely, Outlook renders it through Word's engine and draws
+ * nothing, and Yahoo removes it — so an inline mark is a blank space in most of
+ * the inboxes this reaches. A hosted PNG is the one form every client agrees on.
+ *
+ * Displayed at 36px from a 192px source, so it stays sharp on a retina screen.
+ * Width and height are set as attributes as well as in the style, because
+ * Outlook reserves the box from the attributes and ignores the style.
+ *
+ * **`alt` is empty on purpose.** The wordmark sits in the cell beside it and
+ * already says the name, so a described image would have a reader hear
+ * "VillageWatch VillageWatch" — and a client with images off would print it
+ * twice. Decorative, and marked as such.
+ *
+ * It is also the only request an opened email makes, it is to this service's
+ * own origin, and nothing counts it. That is worth saying plainly, because a
+ * remote image in an email is the shape a tracking pixel takes: there is no
+ * pixel here, no per-recipient URL, and nothing anywhere that reads the access
+ * log to work out who opened what. Keep it that way.
+ */
+function markImage(): string {
+  return `<img src="${escapeHtml(appUrl("/android-chrome-192x192.png"))}" width="36" height="36" alt="" style="display:block;width:36px;height:36px;border:0;border-radius:10px;">`;
+}
 
 /** A section heading inside the body. */
 export function heading(text: string): string {
@@ -201,8 +238,13 @@ export function renderEmail(input: {
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid ${BORDER};border-radius:16px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 
         <tr>
-          <td style="padding:22px 28px;background:${BRAND};">
-            <span style="font-size:17px;font-weight:600;color:#ffffff;letter-spacing:-0.01em;">${escapeHtml(APP_NAME)}</span>
+          <td style="padding:20px 28px;background:${BRAND};">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td width="36" valign="middle" style="padding-right:12px;">${markImage()}</td>
+                <td valign="middle"><span style="font-size:17px;font-weight:600;color:#ffffff;letter-spacing:-0.01em;">${escapeHtml(APP_NAME)}</span></td>
+              </tr>
+            </table>
           </td>
         </tr>
 

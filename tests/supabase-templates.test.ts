@@ -111,9 +111,14 @@ describe("the Supabase auth templates", () => {
     for (const template of SUPABASE_AUTH_TEMPLATE_LIST) {
       expect(template.html.startsWith("<!doctype html>")).toBe(true);
       expect(template.html.trimEnd().endsWith("</html>")).toBe(true);
-      // The header bar. Not a wording assertion — it is the one thing that
-      // makes these look like the product rather than like Supabase.
+      // The header bar and the shield in it. Not a wording assertion — they
+      // are the two things that make these look like the product rather than
+      // like Supabase, and the mark is shared with the four emails the app
+      // sends itself (`tests/email-branding.test.ts`).
       expect(template.html).toContain("#0f2557");
+      expect(template.html).toContain(
+        "https://villagewatch.app/android-chrome-192x192.png",
+      );
     }
   });
 });

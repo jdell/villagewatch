@@ -404,7 +404,9 @@ src/
                               Content-Security-Policy
     email/                    layout, welcome, weekly-digest,
                               incident-notification, coordinator-decision — pure
-                              functions to `{ subject, text, html }`
+                              functions to `{ subject, text, html }`. `layout.ts`
+                              is the one branded shell all eight emails render
+                              through, the auth templates included
     email/send.ts             The transport, over Resend. Never throws, logs the
                               message with no key set. `sendBulkEmail` beside it
                               fans one message out per recipient — never one
@@ -631,6 +633,12 @@ tests/                        Vitest, unit only — see The test suite
                               domain rules it enforces, the 404 that is not a
                               403, the quota that is not spent on a report the
                               caller cannot see, and a response naming nobody
+  email-branding.test.ts      The one shell, across every email the app sends
+                              itself — both parts rendered, a complete document,
+                              the brand bar and the mark, the footer's three
+                              routes, and the mark's URL being absolute, which
+                              is the one a relative-path refactor would break
+                              invisibly in every inbox
   email-send.test.ts          The transport and the fan-out — one message per
                               recipient and never one addressed to the village,
                               the batching, the cap, a chunk failing without
@@ -1312,14 +1320,16 @@ linked from `SiteFooter` and the registration form.
   processing is the kind of thing a regulator asks about first. Legitimate
   interests is the stated basis; the public task is described beside it as what
   a council may rely on instead. **Change one and change the other.**
-- The privacy notice makes nine claims that are statements about how the code
+- The privacy notice makes ten claims that are statements about how the code
   behaves: on-device blur with no server-side fallback (domain rule 3),
   coordinate jitter (domain rule 2), report text going to Anthropic, what the
   Slack staff channel is told, whether a human sees a report before it is
   published, that the reporter's original wording is deleted when the report
   is archived, that a village's map centre and a calendar month are all that
   is sent to data.police.uk, what an email carries and who delivers it
-  (`src/lib/email/send.ts`, Resend), and that no screen puts a name against a
+  (`src/lib/email/send.ts`, Resend), that the only thing an email loads is our
+  own logo and nothing counts the request (`src/lib/email/layout.ts` — see The
+  branded shell), and that no screen puts a name against a
   vote. If any of those changes, `/privacy` changes in the same commit. The seventh is the only one describing an outbound request with
   **nothing** of a resident's in it, and it is in §6 anyway — a resident reading
   "who else sees it" is entitled to know about every request made on their
@@ -1472,6 +1482,39 @@ was finally wired in** — which is the whole argument for having kept them apar
 - `IncidentEmailInput` has no field that could carry `rawDescription`. An inbox
   is barely more private than a lock screen, and an email is the one place a
   leak is permanent and forwarded.
+
+### The branded shell
+
+`renderEmail` in `layout.ts`, and **all eight emails go through it** — the four
+this codebase sends and the four Supabase auth templates beside them. There is
+one shell, so there is one place to change the brand.
+
+- **The welcome was the exception until 1 September 2026, and it argued for
+  being one.** Its header made the case that six sentences in a table read as
+  marketing. What that reasoning had not weighed is that it made the welcome the
+  only email VillageWatch sent that did not look like VillageWatch, arriving
+  immediately after a branded confirmation — which reads as a different sender.
+  It renders HTML now; **its text part is unchanged and is still the message**,
+  which is what the old argument was actually protecting.
+- **There is exactly one image, and it is the shield in the header.**
+  `public/android-chrome-192x192.png`, borrowed rather than generated afresh, so
+  the email header and the app header stay the same drawing with one generator
+  between them (`scripts/generate-icons.mjs`). An `<img>` and not inline SVG,
+  which Gmail strips, Outlook draws as nothing and Yahoo removes. `alt` is empty
+  because the wordmark in the cell beside it already says the name.
+- **The mark's URL is absolute and that is load-bearing.** An email has no base
+  href, so a relative `src` is a broken image in every inbox and nothing in the
+  application would show it. `tests/email-branding.test.ts` asserts it.
+- **A remote image is the shape a tracking pixel takes, so `/privacy` §6 says
+  what this one is.** Our own origin, the same URL for every recipient, the only
+  asset an email loads, and nothing reading the access log. Add a second image,
+  a per-recipient URL or any measurement of opens and that paragraph becomes
+  false — see The legal pages.
+- **Changing the shell changes the four committed Supabase `.html` files.** Run
+  `npm run generate:supabase-templates` in the same commit, or
+  `tests/supabase-templates.test.ts` fails — and **paste the result into the
+  Supabase dashboard**, or the deployment carries on sending the previous
+  version while that test goes on passing. See The Supabase auth templates.
 
 ### The transport
 
@@ -1652,7 +1695,7 @@ Authentication → Emails → Templates.
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Thirty-nine files, 634 tests, covering the
+between the typecheck and the build. Forty files, 660 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1666,7 +1709,8 @@ police figures — the client's typed failures, the month arithmetic, the
 published-and-empty-versus-never-fetched distinction, and the caveat that has to
 travel with a comparison — the markup of the three period controls, the
 landing page's pricing promises, the mapper in front of every Supabase auth
-failure, the email transport's failure modes, the four Supabase auth templates,
+failure, the email transport's failure modes, the branded shell every email
+renders through, the four Supabase auth templates,
 the vote — its toggle, its ordering, and the two domain rules its route
 enforces — the one change a coordinator may make to a resident's role, the
 mask in front of every email address on the resident list, the report route's
@@ -1773,6 +1817,16 @@ directives.
   because one a project does not populate renders as an empty string rather than
   an error. The sentences are deliberately not asserted, for the reason
   `compliance-documents.test.ts` gives.
+- **`email-branding.test.ts` pins a shell rather than a sentence.** The four
+  Supabase templates have had a test watching them since they were written and
+  the four the app sends had none, which is how the welcome came to be the only
+  email the service sent that did not look like the service. It asserts that all
+  of them still go through `renderEmail` — both parts, a complete document, the
+  brand bar, the mark, the footer's three routes — and one thing that is not
+  cosmetic: **the mark's `src` is absolute**. An email has no base href, so a
+  relative path is a broken image in every inbox and there is no screen in the
+  application on which it would show. The wording is deliberately not asserted,
+  for the reason `compliance-documents.test.ts` gives.
 - **`email-send.test.ts` asserts one privacy property as well as a contract.**
   The property is that `sendBulkEmail` addresses one message to each recipient
   and never one message to all of them — a village's membership list in the
