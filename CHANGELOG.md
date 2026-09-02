@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.52](https://github.com/jdell/villagewatch/compare/v0.1.51...v0.1.52) (2026-09-02)
+
+
+### Features
+
+* **legal:** publish the ICO registration and drop the pending reference ([047fbe1](https://github.com/jdell/villagewatch/commit/047fbe14587eaf93551e0e3b2f239a7633d48e7d))
+
 ### [0.1.51](https://github.com/jdell/villagewatch/compare/v0.1.50...v0.1.51) (2026-09-01)
 
 
