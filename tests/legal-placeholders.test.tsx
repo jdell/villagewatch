@@ -116,11 +116,11 @@ describe("the placeholder detector", () => {
     // address reading `[Town]`.
     //
     // `icoRegistration` is deliberately outside this check and always has been.
-    // It is the one field whose honest value can be a sentence rather than a
-    // number — a registration is applied for and then waited on — so "filled in"
-    // is not the right question to ask of it. What it still may not be is
-    // bracket text, which the page-level assertions below enforce on it like
-    // any other rendered value.
+    // "Filled in" is not the right question to ask of it: it held a pending
+    // application's reference for as long as the ICO was still considering one,
+    // which is neither bracket text nor an answer. It carries the register's own
+    // number now, and the assertion that matters to it is its shape rather than
+    // its presence — see the ICO registration tests below.
     const filled = [
       DATA_CONTROLLER.name,
       ...DATA_CONTROLLER.addressLines,
@@ -169,9 +169,24 @@ describe("the fallback contact block", () => {
   it("publishes the ICO registration line", () => {
     // It moves between two boxes depending on `FALLBACK_CONTROLLER_IS_OPERATOR`,
     // and a refactor that merges them is exactly where a line gets dropped. The
-    // reference is what makes a pending registration checkable rather than a
-    // claim, so losing it silently is losing the point of publishing it.
+    // number is the one claim on either page a resident can check against a
+    // third party, so losing it silently is losing the point of publishing it.
     expect(privacy).toContain(DATA_CONTROLLER.icoRegistration);
+  });
+
+  it("publishes a registration number and never a sentence about one", () => {
+    // The page prints this value immediately after the words "ICO
+    // registration:", so whatever is in it reads as the register's answer
+    // rather than as ours. While the application was pending the field held
+    // `Registration pending (ref: C2018564)` — true then, and false the moment
+    // `ZC233685` was issued.
+    //
+    // This asserts the shape the ICO issues rather than the digits: a lapse, a
+    // re-application or a second entity is the situation that tempts somebody
+    // to put a status back in a field a reader will take for a register entry.
+    // It is structural for the reason `tests/pricing.test.ts` gives — nothing
+    // here is asserting wording under revision.
+    expect(DATA_CONTROLLER.icoRegistration).toMatch(/^Z[A-Z]\d{6}$/);
   });
 
   it("publishes somewhere to write", () => {

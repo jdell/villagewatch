@@ -1240,7 +1240,7 @@ linked from `SiteFooter` and the registration form.
   Before it was filled in they told a resident looking for somewhere to send a
   subject access request that there was none to give, which is honest and is not
   an Article 13 answer. It now names Yakasista Ltd with a postal address, an
-  email and the ICO application reference, and §13 points a request there.
+  email and the ICO registration `ZC233685`, and §13 points a request there.
 - **Filling it in put a self-contradiction on `/privacy` §1, and only the
   rendered page showed it.** That section draws a box for the fallback controller
   and, beneath it, a box for the operator saying in bold that it is **not** the
@@ -1261,13 +1261,25 @@ linked from `SiteFooter` and the registration form.
   worse than one naming a role. If a deployment ever serves one village with one
   named controller, that is the line to reconsider, and those two sentences have
   to be rewritten in the same commit.
-- **The ICO registration is the one field still waiting on something**, and it
-  waits on an external body rather than a decision: `Registration pending (ref:
-  C2018564)`, carrying a `TODO(VW-19)`. Deliberately **not** bracketed — brackets
-  are the form `isPlaceholderDetail` recognises and the test refuses to let reach
-  a resident, and a pending application with a reference is a true, checkable
-  statement rather than a rendering fault a reader will assume is a bug and not
-  report.
+- **The ICO registration is `ZC233685`, confirmed 2 September 2026**, and it is
+  the only claim on either legal page a resident can check against a **third
+  party**. The register is public, so a number there is verifiable in a way a
+  company name and a town are not. It held `Registration pending (ref:
+  C2018564)` under a `TODO(VW-19)` from 30 August until the application was
+  granted — deliberately not bracketed even then, because brackets are the form
+  `isPlaceholderDetail` recognises and the test refuses to let reach a resident,
+  and a pending application with a reference was a true, checkable statement
+  rather than a rendering fault a reader would assume is a bug and not report.
+  **It has to stay a registration number rather than a sentence about one**:
+  `/privacy` prints it straight after the words "ICO registration:", so a status
+  in that position reads as the register's answer instead of ours.
+  `tests/legal-placeholders.test.tsx` pins the shape the register issues — `Z`,
+  a letter, six digits — rather than the digits, which is the assertion a lapse
+  or a re-application would otherwise walk past. Change it only from the
+  register: publishing a number it does not hold is a false statement in a
+  privacy notice. **It is the processor's registration and not any village's** —
+  DPIA action A5 asks for the *council's*, and a council that controls in its own
+  right registers in its own right.
 - **No telephone is published and `phone` is `null` rather than a placeholder.**
   Article 13(1)(a) asks for contact details, not for a telephone; an email and a
   postal address satisfy it. Inventing a number would be the one thing worse than
@@ -1292,7 +1304,10 @@ linked from `SiteFooter` and the registration form.
   was written. `/privacy` §1 and §13 and `/terms` §12 all changed substance, which
   is exactly what the constant's own rule is about. VW-20 counts five earlier
   rewrites that left it at 27 July, and asks for a test to make the rule
-  mechanical rather than remembered; that is still open.
+  mechanical rather than remembered; that is still open. It moved again on
+  31 August with §6's Resend paragraph, and on **2 September** when the ICO
+  confirmed the registration — §1 stated a pending one and now states a real
+  one.
 - **Naming Yakasista Ltd as the *controller* would still be the wrong fix**, and
   the distinction survives this change rather than being settled by it. It is the
   **processor** in both models, and `COMMUNITY_DPA.md` makes the coordinator
@@ -1300,8 +1315,8 @@ linked from `SiteFooter` and the registration form.
   agreement they signed. What was published is a contact route, labelled
   "Operator (processor)" on the page and saying in bold that it is not the
   controller. `Village.mode` still decides who is, `/privacy` §1 still explains
-  both models first, and the ICO registration and the named pilot controller
-  remain L2.
+  both models first, and the named pilot controller remains L2. The ICO
+  registration was the third thing L2 was waiting on and landed on 2 September.
 - **The placeholders are mode-neutral, and that was a real bug rather than a
   wording preference.** `name` read `[Parish Council name]` and the address and
   email matched it. That string is not decoration: it prints at the foot of a
@@ -4343,15 +4358,16 @@ open:
   after any migration that adds a table or a column** — a new table arrives with
   RLS off, and the column grants are enumerated at run time.
 - **`DATA_CONTROLLER` is filled in, and what is left of L2 is not a code
-  change.** Since 30 August 2026 it names Yakasista Ltd with a postal address, an
-  email and the ICO application reference, so `/privacy` and `/terms` give a
-  resident somewhere to write — see The legal pages. **Still open:** the ICO
-  registration itself (application C2018564, pending — the longest lead item on
-  the list), naming the controller for the first pilot village, and having the
-  finished notice read by somebody with UK data-protection standing. A
-  coordinator can name their own council on `/dashboard`, which covers the
-  `/reports` footers; that is per village, and the constant is only ever the
-  fallback beneath it.
+  change.** Since 30 August 2026 it names Yakasista Ltd with a postal address and
+  an email, and since 2 September the ICO registration **`ZC233685`** rather than
+  the pending application's reference — so `/privacy` and `/terms` give a
+  resident somewhere to write and one line they can check against the register.
+  See The legal pages. **Still open:** naming the controller for the first pilot
+  village, and having the finished notice read by somebody with UK
+  data-protection standing. Both are decisions; the registration was the item
+  that was in somebody else's hands and it is closed. A coordinator can name
+  their own council on `/dashboard`, which covers the `/reports` footers; that is
+  per village, and the constant is only ever the fallback beneath it.
 - **Slack is disclosed rather than covered by its own agreement, and `/privacy`
   §6 now says so in as many words.** The blanket claim that every processor acts
   under a written data processing agreement was untrue for Slack, and a false

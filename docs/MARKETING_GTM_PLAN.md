@@ -52,7 +52,7 @@ code. Every remaining item is an act somebody has to perform once.
 |---|---|---|
 | **L4** | **Push works.** OneSignal delivers to a real device — 31 August. Nothing in the application changed and nothing could have: every condition was a Vercel variable, a redeploy or a field in the OneSignal dashboard, which is why it sat open for a month against correct code. **This removes one of L5's two dependencies** | `BACKLOG.md` B3/L4 |
 | **L7** | **The seed village was never there.** "Clear the placeholder village before activating Histon" was an inference from the seed script existing, repeated across three documents for a month. `prisma/seed.ts` has only ever been run against local scratch databases. The first activation therefore lands in an empty directory with nothing to clear out of its way | `BACKLOG.md` L7 |
-| **L2, in part** | `DATA_CONTROLLER` is filled in — Yakasista Ltd, an address, an email and the ICO application reference — published as the **operator's** contact route in a box saying in bold that it is not the controller. `/privacy` now answers Article 13. It still names no controller, because that is per village | PR #22, 30 Aug |
+| **L2, in part** | `DATA_CONTROLLER` is filled in — Yakasista Ltd, an address, an email and, since 2 September, the ICO registration **`ZC233685`** — published as the **operator's** contact route in a box saying in bold that it is not the controller. `/privacy` now answers Article 13. It still names no controller, because that is per village | PR #22, 30 Aug; registration 2 Sep |
 | — | **A security audit of the whole tree**, 29 August: 34 findings, **none Critical**, four High. Six were closed the next day in PR #22 — the four High plus VW-15 and VW-16 | `docs/SECURITY_AUDIT_2026-08-29.md` |
 | — | **The resident quick start is written**, with a printable PDF beside it. Both are **uncommitted on the working tree** as at 31 August — see §5 | `docs/RESIDENT_QUICK_START.md` |
 | — | **The first cron in the project's life fired** — the police-data sync, 22 August. It came back 429 for every village, cost two bug fixes, and the outbound pace is now 1/s rather than the documented 15/s. **No village holds a month of police figures yet** | `PROJECT_STATE.md` |
@@ -60,12 +60,12 @@ code. Every remaining item is an act somebody has to perform once.
 
 ### What did not
 
-**L1** — nothing accepted, anywhere. **L2's remainder** — the ICO registration
-(application **C2018564**, pending, and the longest lead item on the whole list),
-the pilot village's named controller, and a review of the notice by somebody with
-UK data-protection standing. **L3** — never run. **L5** — never walked. The
-**pitch message** is still not in the repository (§5). There is still **no
-analytics** (§8) and **no blog** (§7).
+**L1** — nothing accepted, anywhere. **L2's remainder** — the pilot village's
+named controller, and a review of the notice by somebody with UK data-protection
+standing. The ICO registration was the third of these and the longest lead item
+on the whole list; it landed on **2 September** as `ZC233685`. **L3** — never
+run. **L5** — never walked. The **pitch message** is still not in the repository
+(§5). There is still **no analytics** (§8) and **no blog** (§7).
 
 ---
 
@@ -171,7 +171,7 @@ Nothing below starts until these are done. Full detail, with action items, is in
 | | Blocker | State on 31 August | The short version |
 |---|---|---|---|
 | **L1** | Compliance acceptance | **Open** | Gate is live and enforcing; **nothing accepted anywhere, in either model**. Run the pilot in `community` mode and it is one document, one volunteer, in force the moment it is accepted — not three documents waiting on a council meeting |
-| **L2** | Controller and ICO | **Narrowed** | The constant was filled in on 30 August as the **operator's** contact route, so no placeholder reaches a resident. What is left is not code: the ICO registration (**C2018564, pending**), naming the pilot village's controller, setting `Village.parishCouncil`, and a review by somebody with UK data-protection standing |
+| **L2** | Controller and ICO | **Narrowed further** | The constant was filled in on 30 August as the **operator's** contact route, so no placeholder reaches a resident, and the **ICO registration landed on 2 September** — `ZC233685`, published in `/privacy` §1. What is left is not code and no longer includes the long-lead item: naming the pilot village's controller, setting `Village.parishCouncil`, and a review by somebody with UK data-protection standing |
 | **L3** | Village activation | **Open — thirty-five days** | Code complete since 27 July and never run. `npm run db:activate-village -- --slug histon-cambridgeshire --admin <email>` is dry-run by default and needs no browser, no session and no redeploy |
 | ~~L4~~ | ~~OneSignal push~~ | **Closed 31 Aug** | A push reaches a real device |
 | **L5** | Coordinator flow | **Open** | Never walked against a database. **L1 and L3 are now the only things in front of it** |
@@ -683,7 +683,7 @@ person at one desk.
 ### In parallel, because none of it blocks the four above
 
 5. **Record the pilot's mode decision** in `docs/LAUNCH_BLOCKERS.md` §L1, with the date. The recommendation is unchanged and step 3 above already assumes it: `community`, which takes the council's Appropriate Policy Document, the countersigned Article 28(3) agreement and a council's review of an Article 35 assessment off the critical path and replaces them with one agreement one volunteer can accept. It has been the recommendation since 25 August and has never been written down as a decision.
-6. **Chase the ICO registration** (application **C2018564**) and replace the pending reference when it lands. Longest lead item on the list and it is with somebody else.
+6. ~~**Chase the ICO registration** (application **C2018564**) and replace the pending reference when it lands. Longest lead item on the list and it is with somebody else.~~ **Done 2 September — `ZC233685`.** `/privacy` §1 publishes the number and `LEGAL_LAST_UPDATED` moved with it. The one item on this list that was entirely in somebody else's hands is closed.
 7. **Name the pilot village's controller** and set `Village.parishCouncil` on `/dashboard/settings`, so the police and council documents stop falling back to the operator's name in their footer. `/reports` shows an amber warning until this is done, and it is now the *wrong body* rather than a visibly empty field — which is the worse failure of the two.
 8. **Commit the resident quick start**, with the notifications sentence added (§5). Print one QR sheet before printing a hundred.
 9. **Write and commit the pitch message** (§5). It has been "not in the repo" for six days of it being written down as a gap.
@@ -701,6 +701,6 @@ person at one desk.
 - ~~Set the three OneSignal variables in Vercel and redeploy.~~ **Done.** Push reaches a real device (31 August).
 - ~~Set the OneSignal dashboard's service worker path to `/onesignal/`.~~ **Done**, all four fields including the updater filename, which is the one that catches people. `curl -I https://villagewatch.app/onesignal/OneSignalSDKWorker.js` is the standing check, worth re-running after any dashboard change.
 - ~~Clear the seed village.~~ **Never necessary** — there was no seed village in the live database and there never was. That was half of the original item 5; the activation half is item 1 above.
-- ~~Start the ICO registration.~~ **Submitted** — C2018564, pending. Item 6 above is the chase, not the start.
+- ~~Start the ICO registration.~~ **Confirmed 2 September — `ZC233685`.** Submitted as C2018564 and granted; item 6 above is closed with it, and the application reference is of no further use to anybody.
 
 Everything else on the original list is still on it, six days later.

@@ -297,9 +297,9 @@ export default function PrivacyPage() {
           </p>
           <p className="mt-1 font-semibold text-slate-900">{OPERATOR.name}</p>
           {/*
-            The postal address and the ICO reference ride in this box when the
-            two are the same body, because this is then the only box and a
-            resident needs somewhere to write to. `DATA_CONTROLLER` is where both
+            The postal address and the ICO registration number ride in this
+            box when the two are the same body, because this is then the only
+            box and a resident needs somewhere to write to. `DATA_CONTROLLER` is where both
             live — see the constant for why that object is a contact route rather
             than an answer to who controls a given village.
           */}

@@ -386,10 +386,14 @@ enforced by nothing — the first cannot be enforced from application code at al
 because the append-only trigger rejects DELETE from the owner too, and the second
 means deleting an `auth.users` row, which wants its own route and its own review.
 
-**Before launch:** `DATA_CONTROLLER` in `src/lib/constants.ts` is placeholders
-and reads `[Parish Council name]`. The privacy policy and terms both render it.
-Fill it in, register with the ICO, and have the council review both documents.
-The full list is at the end of [SETUP.md](SETUP.md).
+**Before launch:** `DATA_CONTROLLER` in `src/lib/constants.ts` is filled in —
+Yakasista Ltd, a postal address, an email and ICO registration `ZC233685` — and
+`/privacy` and `/terms` render it as the **operator's** contact route rather
+than as a claim of control. What that constant is *not* is an answer to who
+controls a given village: `Village.mode` decides that, and no pilot village has
+named its controller yet. That decision and a review of the notice by somebody
+with UK data-protection standing are what remain. The full list is at the end of
+[SETUP.md](SETUP.md).
 
 ---
 

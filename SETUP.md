@@ -1122,12 +1122,23 @@ goes under it.
 
 None of these are optional, and none of them are code.
 
-- [ ] **Fill in `DATA_CONTROLLER`** in `src/lib/constants.ts`. It currently
-      reads `[Parish Council name]`. A privacy notice that does not name a
+- [x] ~~**Fill in `DATA_CONTROLLER`** in `src/lib/constants.ts`.~~ **Done
+      30 August 2026.** It names Yakasista Ltd, a postal address and an email —
+      the **operator's** contact route, in a box on `/privacy` §1 that says in
+      bold it is not the controller. A privacy notice that does not name a
       controller and give a working contact address does not satisfy Article 13,
-      and `/privacy` and `/terms` both render it.
-- [ ] **Register with the ICO.** The registration number goes in the same
-      constant.
+      and `/privacy` and `/terms` both render it. `addressLines` is the town and
+      country rather than a street and wants replacing from the Companies House
+      record.
+- [x] ~~**Register with the ICO.** The registration number goes in the same
+      constant.~~ **Done 2 September 2026 — `ZC233685`**, in
+      `DATA_CONTROLLER.icoRegistration`. It is the **processor's** registration;
+      a council that controls a village in its own right registers in its own
+      right, and that is DPIA action A5.
+- [ ] **Name the controller for the village.** This is what is actually left of
+      the two above, and no code change reaches it — `Village.mode` decides
+      whether it is the parish council or the coordinator personally, and
+      `Village.parishCouncil` on `/dashboard/settings` is where the name goes.
 - [ ] **Point Supabase Auth at a real SMTP sender.** The built-in mailer's
       hourly quota is small and shared by every flow, so a village onboarding a
       dozen households in one evening runs out and the rest are turned away. Step

@@ -1759,8 +1759,13 @@ export const PRICING = [
  * report's contents never appear in an email — which the incident alert now
  * carries, in the anonymised form already on the map. A processor paragraph
  * that describes the wrong messages is the kind of change this date exists for.
+ *
+ * Moved to 2 September 2026 when the ICO confirmed the registration. §1 stated
+ * that the registration was pending and now names `ZC233685`, which is the one
+ * line on either page a reader can check against a third party — so the date
+ * beside it has to be the date it became true.
  */
-export const LEGAL_LAST_UPDATED = "2026-09-01";
+export const LEGAL_LAST_UPDATED = "2026-09-02";
 
 /**
  * The data controller under UK GDPR.
@@ -2036,19 +2041,27 @@ export const DATA_CONTROLLER = {
   /**
    * Registration number from the ICO's public register.
    *
-   * TODO(VW-19): replace with the registration number once the ICO confirms
-   * application **C2018564**. This is the only field in this object still
-   * waiting on something, and what it waits on is an external body rather than
-   * a decision — see `docs/LAUNCH_BLOCKERS.md` L2.
+   * **Confirmed on 2 September 2026.** Yakasista Ltd is registered as
+   * `ZC233685`, and this field carried `Registration pending (ref: C2018564)`
+   * from 30 August until it landed — application C2018564 is the reference that
+   * produced this number and is of no further use to a reader.
    *
-   * Deliberately **not** a bracketed placeholder, which is the form
-   * `isPlaceholderDetail` recognises and `tests/legal-placeholders.test.tsx`
-   * refuses to let reach a resident. A pending application is a true statement
-   * about the state of things and the reference makes it checkable, so it is
-   * something a reader can act on rather than a rendering fault they will
-   * assume is a bug and not report.
+   * It is now the one thing on `/privacy` a resident can check without taking
+   * our word for anything: the ICO publishes the register, so a number here is
+   * verifiable against a third party in a way that a name and an address are
+   * not. That is what a pending sentence could not do, and it is why the field
+   * is printed rather than merely held.
+   *
+   * It must stay a **registration number** rather than a sentence about one.
+   * The page prints it directly after the words "ICO registration:", so a
+   * status in this field reads as the register's answer instead of ours.
+   * `tests/legal-placeholders.test.tsx` pins the shape the register issues —
+   * `Z`, a letter, six digits — which is the assertion that would fail if a
+   * lapse or a re-application ever tempted somebody to put prose back here.
+   * Publishing a number the register does not hold is a false statement in a
+   * privacy notice, so change it only from the register itself.
    */
-  icoRegistration: "Registration pending (ref: C2018564)",
+  icoRegistration: "ZC233685",
 } as const;
 
 /**

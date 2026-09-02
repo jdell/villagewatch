@@ -1,6 +1,6 @@
 # VillageWatch — project state
 
-**Last updated:** 1 September 2026 · **Repo version:** `v0.1.49` · **Branch:**
+**Last updated:** 2 September 2026 · **Repo version:** `v0.1.51` · **Branch:**
 `main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
@@ -19,7 +19,7 @@ in `BACKLOG.md`.
 | | |
 | --- | --- |
 | Live at | https://villagewatch.app (Vercel, `lhr1`) |
-| Repo version | `v0.1.49` in `package.json` on `main` — `version.yml` released the map-corners fix as 0.1.43, the coordinator dashboard redesign (PR #16) as 0.1.44, the resident list's email masking (PR #18) as 0.1.45, the AI rewrite quota (PR #20) as 0.1.46, the launch-blocker audit (PR #21) as 0.1.47, the PDF test timeout (PR #19) as 0.1.48 and the four high-severity audit findings (PR #22) as 0.1.49 |
+| Repo version | `v0.1.51` in `package.json` on `main` — `version.yml` released the map-corners fix as 0.1.43, the coordinator dashboard redesign (PR #16) as 0.1.44, the resident list's email masking (PR #18) as 0.1.45, the AI rewrite quota (PR #20) as 0.1.46, the launch-blocker audit (PR #21) as 0.1.47, the PDF test timeout (PR #19) as 0.1.48, the four high-severity audit findings (PR #22) as 0.1.49, the three unused email templates gaining a caller as 0.1.50 and the shared branded email shell as 0.1.51 |
 | Version on screen | expect **v0.1.41** — the release commit carries `[skip ci]`, so production is built from the commit before the bump and sits one patch behind `main` until the next real change deploys. This is designed behaviour, not a failed deploy (see "The version on screen" in `CLAUDE.md`) |
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | 14, `20260726161847_init` → `20260823120000_incident_votes`. **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
@@ -61,6 +61,44 @@ PRs because they were asked for as PRs.
 ---
 
 ## Open items
+
+### The ICO registration landed — 2 September 2026
+
+Yakasista Ltd is on the ICO's public register as **`ZC233685`**.
+`DATA_CONTROLLER.icoRegistration` in `src/lib/constants.ts` carried
+`Registration pending (ref: C2018564)` from 30 August; it carries the number
+now, and `/privacy` §1 prints it in the **Operator (processor)** box. The
+application reference is of no further use to anybody and is gone from the
+constant, the notice and every live checklist in `docs/`.
+
+- **It closes the longest-lead item under L2** — the one thing on the whole
+  launch-blocker list that was in somebody else's hands. What is left of L2 is
+  two decisions and no code: naming the controller for the first pilot village,
+  and having the finished notice read by somebody with UK data-protection
+  standing. `docs/LAUNCH_BLOCKERS.md` §L2 is the runbook.
+- **It is the processor's registration, not any village's.** DPIA action **A5**
+  asks for the *council's* number, and a council that is a controller in its own
+  right registers in its own right. `ZC233685` answers the fallback contact
+  route on the two sessionless pages and answers nothing about who controls a
+  given village, which is still `Village.mode` and `Village.parishCouncil`. A
+  grant application may cite it as the operator's and may not read it as a
+  village being registered — `docs/FUNDING.md` says so in the claims table.
+- **It is the only claim on either legal page a resident can check against a
+  third party.** The register is public, so a number there is verifiable in a
+  way a company name and a town are not. That is what a pending sentence could
+  never do, and it is why the field has to stay a **number**: `/privacy` prints
+  it straight after the words "ICO registration:", so a status in that position
+  reads as the register's answer rather than as ours.
+- **`tests/legal-placeholders.test.tsx` pins the shape rather than the
+  digits** — `Z`, a letter, six digits. A lapse, a re-application or a second
+  entity is the situation that tempts somebody to put prose back into a field a
+  reader will take for a register entry, and asserting the digits would fail on
+  a legitimate change while asserting nothing would let that one through. It is
+  structural for the reason `tests/pricing.test.ts` gives.
+- **`LEGAL_LAST_UPDATED` moved to 2 September**, its third move. §1 stated a
+  pending registration and now states a real one, which is exactly the kind of
+  substance change that date exists for. `src/app/sitemap.ts` publishes it as
+  `lastModified` for both legal pages, so it moves there too.
 
 ### All eight emails share one branded shell — 1 September 2026
 
@@ -242,7 +280,8 @@ no version bump behind it; what moved is what the tracker claims is true.
 
 **What none of this changes.** The critical path is L1, L2, L3 and L5 — a
 compliance acceptance, the ICO registration and a named controller, the first
-activation, and the chain walked end to end. No village is `ACTIVE`, no
+activation, and the chain walked end to end. (The ICO registration came off that
+list on 2 September — `ZC233685`.) No village is `ACTIVE`, no
 acceptance of any kind has ever been recorded, and every village in the
 directory is refusing reports right now.
 
@@ -1124,7 +1163,8 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
   resident of a live village, which does not exist yet.
 - **`VW-19` — `DATA_CONTROLLER` is filled in, as a contact route rather than as
   a claim of control.** Yakasista Ltd, `Cambridge` / `United Kingdom`,
-  `info@yakasista.com`, ICO `Registration pending (ref: C2018564)`. `/privacy` §1
+  `info@yakasista.com`, ICO `Registration pending (ref: C2018564)` — replaced by
+  the register's own `ZC233685` on 2 September. `/privacy` §1
   publishes them in one box headed **Operator (processor)** which says in bold
   that it is not the controller and to write there if your village has not named
   one; §13 points a subject access request at the same address with a working
@@ -1156,9 +1196,11 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 - **`LEGAL_LAST_UPDATED` moved to 30 August 2026**, for the first time since it
   was written, because §1, §13 and `/terms` §12 all changed substance. That is
   half of **VW-20**; the test that would make the rule mechanical is still open.
-- **What is left of L2 is not a code change**: the ICO registration itself
-  (C2018564, pending), naming the controller for the first pilot village, and a
-  review by somebody with UK data-protection standing. Naming Yakasista Ltd as
+- **What is left of L2 is not a code change**: naming the controller for the
+  first pilot village, and a review by somebody with UK data-protection
+  standing. The ICO registration was the third of these and the longest lead;
+  it landed on 2 September as `ZC233685` — see the entry at the top of Open
+  items. Naming Yakasista Ltd as
   the *controller* would still be the wrong fix — it is the processor in both
   models and `COMMUNITY_DPA.md` makes the coordinator personally answerable — and
   the page is careful not to.
@@ -1207,7 +1249,8 @@ recorded as more.
 
 What changed in the repository, and the boundary is the point — **none of these
 activates a village, accepts an agreement, registers with the ICO or delivers a
-push**:
+push** (the second and fourth of those have since happened, on their own and not
+because of anything below):
 
 - **L5's named gap is closed**, and the rider that came with it was wrong.
   "Nothing asserts that a village with auto-approve off still queues" appeared in
@@ -1257,7 +1300,7 @@ a blank code. Both were caught by reading the code rather than the file.
 | Blocker | The act nobody has performed |
 |---|---|
 | L1 | No compliance acceptance has ever been recorded, in either model. Every village is refusing reports right now |
-| L2 | Nobody has decided who the controller is; nobody has registered with the ICO — the longest lead item |
+| L2 | Nobody has decided who the controller is. **The ICO registration — the longest-lead item — landed on 2 September (`ZC233685`)**, so the decision and the review are all that is left |
 | L3 | No village has ever been activated. There is no `ACTIVE` village at all — the seed placeholder this row named until 31 August was never in this database (L7), so the first activation lands in an empty directory |
 | ~~L4~~ | **Done 31 August.** The three variables, the redeploy and the four dashboard fields are all in place, and a push has reached a real device |
 | L5 | The chain has never been walked. **L4 no longer blocks it**; L1 still does — the compliance gate is live and no acceptance has ever been recorded, so step one 403s |

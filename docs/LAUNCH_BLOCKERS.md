@@ -4,6 +4,7 @@
 **Re-audited:** 27 August 2026 against `main` at `v0.1.46`, on
 `fix/launch-blockers`.
 **Two rows overtaken on 31 August** — see the note under the summary table.
+**L2's ICO registration landed on 2 September** — `ZC233685`. See §L2.
 **Scope:** the five items standing between the code as it is today and a real
 resident filing a real report in a real village.
 
@@ -25,7 +26,7 @@ documents in `docs/` that the app renders from disk, it needs **no**
 | # | Blocker | Code | Operationally | Blocks the pilot? |
 |---|---------|------|---------------|-------------------|
 | **L1** | DPIA and the compliance pack | Complete — gate is live and enforcing. **A10 written 27 Aug**; A4 found already written | Nothing accepted, nowhere | **Yes** — but see the community-mode finding below |
-| **L2** | `DATA_CONTROLLER` placeholders | **Constant filled in 30 Aug** — Yakasista Ltd, address, email and the ICO application reference, published as the *operator* contact route, not as a claim of control | ICO registration pending (C2018564); no pilot village's controller named; notice unreviewed | **Yes**, and the ICO registration is the long lead |
+| **L2** | `DATA_CONTROLLER` placeholders | **Constant filled in 30 Aug**, **ICO registration published 2 Sep** — Yakasista Ltd, address, email and `ZC233685`, published as the *operator* contact route, not as a claim of control | **ICO registration confirmed 2 Sep**; no pilot village's controller named; notice unreviewed | **Yes** — but the long-lead item is gone; what is left is a decision and a review |
 | **L3** | Village activation from cold | Complete and audited since 27 Jul; join-code enforcement fixed 13 Aug. **CLI added 27 Aug** | **Never run.** No village has ever been activated | **Yes** |
 | ~~**L4**~~ | ~~OneSignal push~~ | Complete; three env vars blank | Credentials missing in Vercel; no push ever delivered | ~~**Yes** for the alert leg~~ — **closed 31 Aug** |
 | **L5** | Coordinator flow end-to-end | **Named test-suite gap closed 27 Aug** — the queue is asserted. The chain is still untested | Never exercised against a database | **Yes** — and **L1 and L3 are now all that is in front of it** |
@@ -134,7 +135,7 @@ Its §9 carries five actions marked **Blocker / Before launch**:
 | **A1** | Adopt an Appropriate Policy Document under DPA 2018 Sch 1 Pt 4 for criminal offence data | Template drafted, not adopted |
 | **A2** | Execute a written Article 28(3) processing agreement with Yakasista Ltd | Template drafted, in the gate, **unsigned by either party** |
 | **A4** | Coordinator terms and review guidance — what to reject, reports about a child, misuse consequences | **Not started** |
-| **A5** | Replace the placeholder controller details and ICO registration number | Placeholders in place — this is L2 |
+| **A5** | Replace the placeholder controller details and ICO registration number | Placeholders in place — this is L2. *Since: constant filled in 30 Aug, registration number published 2 Sep; naming the pilot's controller is what is left* |
 | **A10** | Personal data breach procedure — detection, 72-hour ICO notification, who decides | **Not started** |
 
 And four more rated **High / Before launch**: A9 (verify Anthropic's transfer
@@ -198,6 +199,22 @@ C2018564)`. What that buys is the Article 13 half: a resident looking for
 somewhere to send a subject access request had nowhere to write, and now has an
 address, an email and a working `mailto:` in `/privacy` §1 and §13.
 
+**2 September 2026 — the ICO registration landed, and the longest-lead item on
+this page is gone.** Yakasista Ltd is on the register as **`ZC233685`**, and
+`DATA_CONTROLLER.icoRegistration` carries the number where it carried the
+pending application's reference. `LEGAL_LAST_UPDATED` moved to 2 September with
+it, since §1 stated a pending registration and now states a real one.
+
+Worth keeping about that field specifically: it is the only claim on either
+legal page a resident can **check against a third party**. The register is
+public, so a number there is verifiable in a way a company name and a town are
+not, and that is what a pending sentence could never do. It has to stay a
+number for the same reason — the page prints it straight after "ICO
+registration:", so a status in that position reads as the register's answer
+rather than ours. `tests/legal-placeholders.test.tsx` pins the shape the
+register issues (`Z`, a letter, six digits) rather than the digits themselves,
+which is the assertion a lapse or a re-application would otherwise walk past.
+
 **What it deliberately does not do is call Yakasista Ltd the controller.** It is
 the *processor* in both models — that is what `DATA_PROCESSING_AGREEMENT.md` and
 `COMMUNITY_DPA.md` are — and the community agreement makes the coordinator
@@ -224,12 +241,11 @@ Three things that came out of doing it, worth keeping:
   **when processed on a large scale**. At one parish it is not. That is a
   threshold, so re-read it before onboarding a county.
 
-**What remains under L2, and none of it is a code change:** register with the
-ICO and replace the pending reference (application **C2018564** is submitted and
-waiting on confirmation — the longest lead item on the whole list), name the
-controller for the first pilot village, and have the finished notice read by
-somebody with UK data-protection standing. `LEGAL_LAST_UPDATED` also moved to
-30 August, which is half of VW-20.
+**What remains under L2, and none of it is a code change:** name the controller
+for the first pilot village, and have the finished notice read by somebody with
+UK data-protection standing. The ICO registration was the third item here and
+the longest lead of the three; it is closed. `LEGAL_LAST_UPDATED` moved to
+30 August and again to 2 September, which is half of VW-20.
 
 ### What has changed since it was raised
 
@@ -287,8 +303,8 @@ would contradict the agreement the coordinator signs.
 
 ### Where it still leaks
 
-- **Nobody has decided who the controller is.** That is the actual blocker and no code change reaches it.
-- **No ICO registration.** A separate act with a fee, not a string to type, and the longest lead item on this page.
+- **Nobody has decided who the controller is.** That is the actual blocker and no code change reaches it, and with the registration in it is now the *only* long-lead item left under L2.
+- ~~**No ICO registration.**~~ **Closed 2 September 2026** — `ZC233685`, published in `/privacy` §1. It was the longest-lead item on this page, and it was the one nobody here could hurry.
 - Any village that has not filled in `Village.parishCouncil` still prints `[Data controller name]` on documents addressed to a PCSO. Left as-is deliberately: `/reports` already shows an amber warning, and a police report is read by somebody who can act on a visibly unfinished field, unlike a resident.
 
 This is **DPIA action A5**, now recorded there as partly closed and still a
@@ -297,8 +313,8 @@ Blocker.
 ### Action items
 
 - [ ] Decide who the controller is for the pilot. In `community` mode this is the Histon coordinator personally, at an address they are willing to publish.
-- [ ] **Register with the ICO** if not already registered, and obtain the registration number. This is the long-lead item — do it first.
-- [ ] Fill in all six fields in `DATA_CONTROLLER`. **All of them or none** — the test asserts it, because a real name above an address reading `[Town]` is the state that puts a placeholder back on the page.
+- [x] ~~**Register with the ICO** if not already registered, and obtain the registration number. This is the long-lead item — do it first.~~ **Done 2 September 2026 — `ZC233685`**, in `DATA_CONTROLLER.icoRegistration` and on `/privacy` §1.
+- [x] ~~Fill in all six fields in `DATA_CONTROLLER`. **All of them or none** — the test asserts it, because a real name above an address reading `[Town]` is the state that puts a placeholder back on the page.~~ **Done — five on 30 August, `icoRegistration` on 2 September.** The all-or-none rule still stands and is still asserted; `addressLines` is the town and country rather than a street and wants replacing from the Companies House record.
 - [ ] Set `Village.parishCouncil` for Histon on `/dashboard` so the report footers name it too.
 - [ ] Re-read `/privacy` §1 and `/terms` §1 end to end with the real values in place, and have whoever is now the controller review them. `/privacy` makes nine claims about how the code behaves; the controller is the person answerable for them.
 
