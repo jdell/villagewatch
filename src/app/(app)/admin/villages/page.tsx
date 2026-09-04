@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Search, ShieldCheck } from "lucide-react";
+import { GitMerge, Search, ShieldCheck } from "lucide-react";
 import type { VillageStatus } from "@/generated/prisma/enums";
 import {
   VillageCard,
@@ -171,6 +171,21 @@ export default async function AdminVillagesPage({
         the sign-up screens. Until then a parish is a directory entry that
         nobody can join.
       </p>
+
+      {/*
+        Linked rather than embedded, and deliberately not gated here. The merge
+        screen needs `SUPER_ADMIN_EMAILS` and explains that itself to whoever
+        opens it — hiding the link from an administrator who lacks the grant
+        would leave the one person who can set it unable to find out that it
+        exists. Nothing behind the link runs without the second check.
+      */}
+      <Link
+        href="/admin/villages/merge"
+        className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition hover:text-slate-900"
+      >
+        <GitMerge className="size-4" aria-hidden />
+        Merge two villages
+      </Link>
 
       <nav className="mt-5 flex gap-1 border-b border-slate-200" aria-label="Villages">
         {TABS.map((item) => {

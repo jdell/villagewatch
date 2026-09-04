@@ -897,6 +897,43 @@ export const villageParishCouncilFormSchema = z.object({
     .transform((value) => value || null),
 });
 
+/**
+ * The village merge — `POST /api/admin/villages/merge`.
+ *
+ * Ids rather than slugs, because the selectors on the screen are populated from
+ * the database and a slug would be a second lookup that can disagree with what
+ * the administrator was shown. The reviewed SQL script takes slugs instead, and
+ * for the opposite reason: a slug is checkable by eye in a file somebody reads
+ * before running it, and a UUID is not.
+ *
+ * **Neither id decides anything on its own.** `mergeVillages` re-reads both
+ * villages inside the transaction and re-checks every guard; this schema only
+ * establishes that two different, well-formed ids arrived.
+ */
+export const villageMergeSchema = z
+  .object({
+    /** Absorbed and archived. */
+    originId: z.uuid("Choose the village to merge in"),
+    /** Survives, and receives everything. */
+    targetId: z.uuid("Choose the village to keep"),
+    /**
+     * Optional new display name for the target, e.g. "Histon & Impington".
+     * Empty renames nothing. The **slug is deliberately not renamed** and
+     * cannot be from here: `/join/<slug>` is printed on every invite sheet and
+     * QR code already handed out, and there is no redirect behind it.
+     */
+    renameTo: z
+      .string()
+      .trim()
+      .max(120, "Keep the village name under 120 characters")
+      .optional()
+      .transform((value) => value || null),
+  })
+  .refine((value) => value.originId !== value.targetId, {
+    message: "Choose two different villages",
+    path: ["originId"],
+  });
+
 // ---------------------------------------------------------------------------
 // Moderation and editing
 // ---------------------------------------------------------------------------
