@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.54](https://github.com/jdell/villagewatch/compare/v0.1.53...v0.1.54) (2026-09-04)
+
+
+### Features
+
+* **admin:** merge one village into another ([8f18ac4](https://github.com/jdell/villagewatch/commit/8f18ac4b2c7ea390967a64c8ee37f21aece352bd))
+
+
+### Documentation
+
+* spec the AI severity proposal ([05a4f99](https://github.com/jdell/villagewatch/commit/05a4f99d0aa50924371c42eb726c8278e2ead6b2))
+
 ### [0.1.53](https://github.com/jdell/villagewatch/compare/v0.1.52...v0.1.53) (2026-09-04)
 
 
