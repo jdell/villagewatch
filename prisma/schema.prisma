@@ -526,6 +526,31 @@ model Incident {
   /// Public, AI-anonymised description — this is what the map and list render.
   description String
 
+  /// The severity the reporter chose in the wizard, where they chose one.
+  ///
+  /// Nullable and unset by default: step 2 asks for it optionally now, and the
+  /// AI pass proposes the value that actually files. This column is what makes
+  /// a *disagreement* visible — a coordinator reviewing the queue can see where
+  /// the model and the resident differed, which is the signal the wizard used
+  /// to throw away by overwriting silently.
+  ///
+  /// Deliberately absent from the `incidents` SELECT grant in
+  /// `prisma/sql/rls_policies.sql`: it is a resident's own judgement about
+  /// their neighbours, it belongs on the moderation queue, and it is not
+  /// something the anon key should be able to read.
+  reporterSeverity Severity? @map("reporter_severity")
+
+  /// One sentence saying why the AI proposed the severity it did.
+  ///
+  /// Shown to the reporter on the preview beside the suggestion, and to a
+  /// coordinator on the queue. Public-safe by construction — the prompt holds
+  /// it to `pattern_note`'s rule (a count and an area, never a landmark or a
+  /// reference) and `structuredIncidentSchema` caps it at 140 characters.
+  ///
+  /// Null on every report filed before this existed, and on any report whose
+  /// AI pass did not run — which is an ordinary state, not a failure.
+  severityRationale String? @map("severity_rationale")
+
   // AI processing metadata.
   aiSummary     String?   @map("ai_summary")
   aiModel       String?   @map("ai_model")

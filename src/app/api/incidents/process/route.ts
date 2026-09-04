@@ -9,6 +9,7 @@ import {
   findNearbyIncidents,
 } from "@/lib/ai/detect-patterns";
 import { structureIncident } from "@/lib/ai/structure-incident";
+import { getSeverityContext } from "@/lib/ai/severity-context";
 import {
   COMPLIANCE_BLOCKED_MESSAGE,
   canVillageAcceptIncidents,
@@ -120,6 +121,25 @@ export async function POST(request: NextRequest) {
     lng: input.lng,
   });
 
+  /**
+   * Fetched alongside the history rather than after it, because neither
+   * depends on the other and this page is the one the reporter is already
+   * waiting on. Null where the village is younger than
+   * `MIN_VILLAGE_AGE_DAYS` or the query failed, and the prompt omits the whole
+   * block in both cases — a baseline of zero would read to the model as "this
+   * street has never had anything happen on it".
+   *
+   * Deliberately **not** behind `isAiConfigured`: it is two indexed reads, and
+   * hoisting it above that check would be one more thing to get wrong the day
+   * somebody surfaces the baseline outside the prompt.
+   */
+  const severityContext = await getSeverityContext({
+    villageId,
+    lat: input.lat,
+    lng: input.lng,
+    type: input.type,
+  });
+
   const heuristic = detectPatternHeuristic(
     history,
     input.type ?? "OTHER",
@@ -167,6 +187,7 @@ export async function POST(request: NextRequest) {
     villageName: village?.name ?? "this village",
     image: image ?? undefined,
     history,
+    severityContext,
   });
 
   if (!result.ok) {

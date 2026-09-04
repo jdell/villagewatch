@@ -442,6 +442,10 @@ src/
     ai/client.ts              Anthropic client + isAiConfigured — server only
     ai/structure-incident.ts  Claude call, structured output, typed failures
     ai/detect-patterns.ts     200m/30d lookup + deterministic pattern heuristic
+    ai/severity-context.ts    The area baseline and the category trend — the two
+                              factors detect-patterns does not answer. Returns
+                              nothing at all for a village too young to have a
+                              baseline. Server only
     media/face-blur.ts        MediaPipe WASM face detection + canvas blur
     media/storage.ts          Signed URLs + base64 stills — service-role, server only
     supabase/                 server.ts, client.ts, admin.ts, env.ts
@@ -595,6 +599,11 @@ tests/                        Vitest, unit only — see The test suite
                               continuing from the target's highest per year, the
                               reference code following a rename, and the audit
                               row carrying id lists rather than counts
+  severity-context.test.ts    The two contextual factors — the young-village
+                              guard that refuses to claim a baseline, the radius
+                              filter, the village and status narrowing, a rise
+                              from nothing not being a trend, and the prompt
+                              block being absent rather than zeroed
   village-join.test.ts        checkVillageJoin — the blank code, the empty
                               string, normalisation, the legacy null, and status
                               refusing before the code is looked at
@@ -2364,6 +2373,50 @@ reporter reads and edits the result, and `POST /api/incidents` saves it.
 - **Reports land in `PENDING_REVIEW` unless the village turned that off.** The
   rewrite is good; it is not a moderation queue. See Auto-approve below — the
   queue is still the default and the setting is the village's own decision.
+- **Severity is proposed, explained, and no longer silently overwritten.** Step
+  2's control is **optional and unset by default**; it used to be required and
+  default to `LOW`, so every reporter committed to a level before the model had
+  read a word and the preview then replaced it with no notice. Asking for a
+  judgement and discarding it is worse than not asking. It is now a hint in the
+  prompt and a column beside the published value — `Incident.reporterSeverity` —
+  so a **disagreement** is visible on the moderation queue rather than lost.
+  `severity_rationale` is the model's one sentence for the level, capped at 140
+  characters and held to `pattern_note`'s rule: a count and an area, never a
+  landmark or a reference. The reporter reads it on the preview and the existing
+  Edit control is still the only override — two ways to change one field is how
+  they drift.
+- **`severity-context.ts` supplies the two factors `detect-patterns.ts` does
+  not.** That module asks "is this one of a cluster?"; this asks "is a cluster
+  unusual *here*?" and "is this category unusual *now*?" — the difference
+  between a third break-in on a street that has one a year and a third on one
+  that has three a month. It rides on the same Claude call; a second call would
+  double the cost of the most-used AI path and spend a reporter's `aiProcess`
+  quota twice per report.
+- **A young village gets no block at all, and that is the load-bearing part.**
+  Under `MIN_VILLAGE_AGE_DAYS` (90) the module reports `insufficientHistory` and
+  the prompt omits the whole section, because "this street is normally quiet"
+  computed over three weeks would be true of every street in every village in
+  its first month. The system prompt says explicitly that **no block means say
+  nothing about how busy the area is** — so a block of zeroes would be worse
+  than none, and `formatSeverityContextForPrompt` returns an empty string that
+  the caller drops rather than a section full of noughts. Same rule
+  `police-data.ts` follows for a month nobody fetched.
+- **It changes nothing about who decides.** Severity drives the push audience
+  (`notifyMinSeverity`) and the WhatsApp Channel floor (`whatsappMinSeverity`),
+  so a model that could raise it unchallenged would be deciding who gets woken
+  up. It proposes; the reporter accepts or overrides; a coordinator still
+  reviews unless the village turned that off. And where the AI pass fails **and**
+  the reporter skipped the question, the old `LOW` default applies and the queue
+  is the backstop — being rate limited must never block filing a report.
+- **Two nullable columns, and `reporter_severity` is deliberately withheld from
+  the anon grant.** `severity_rationale` is in the `incidents` SELECT list in
+  `rls_policies.sql` because it is public-safe by construction;
+  `reporter_severity` is a resident's own judgement about their neighbours, read
+  on the moderation queue by a coordinator, and there is no reason for the anon
+  key to have it. **Re-run `rls_policies.sql` after the migration** — the grant
+  is enumerated per column, so a new one is invisible through PostgREST until it
+  is named, and the omission of the other is a decision that file records rather
+  than an oversight.
 - `rawDescription` and `description` now hold different text — the reporter's
   words and the published rewrite. When no rewrite happened, both hold the
   reporter's words. That was unconditionally safe while everything went through

@@ -16,7 +16,12 @@ import {
   IncidentCard,
   type IncidentCardMedia,
 } from "@/components/incident-card";
-import { INCIDENT_TYPES, SEVERITIES } from "@/lib/constants";
+import { SeverityBadge } from "@/components/severity-badge";
+import {
+  INCIDENT_TYPES,
+  SEVERITIES,
+  SEVERITY_LABELS,
+} from "@/lib/constants";
 
 /**
  * The report as everyone else will see it.
@@ -65,6 +70,20 @@ type AiPreviewProps = {
   aiError?: string | null;
   /** Cross-referencing result, when there is one worth showing. */
   patternNote?: string | null;
+  /**
+   * The model's one sentence for the severity it proposed. Null before the pass
+   * has run, and on a report where it failed.
+   */
+  severityRationale?: string | null;
+  /**
+   * What the reporter chose in step 2, where they chose anything.
+   *
+   * Rendered only when it **differs** from the level now on the card. Saying
+   * "you said High" beside a card that says High is noise; saying it beside one
+   * that says Medium is the entire point — the model changed their answer, and
+   * before this they were never told.
+   */
+  reporterSeverity?: Severity | null;
   /**
    * Whether the reporter's village publishes on submit. Copy only — it changes
    * what this screen promises and nothing about what the server does. Defaults
@@ -209,6 +228,8 @@ export function AiPreview({
   processing = false,
   aiError,
   patternNote,
+  severityRationale,
+  reporterSeverity,
   autoApprove = false,
   footer,
 }: AiPreviewProps) {
@@ -244,6 +265,40 @@ export function AiPreview({
         aiError={aiError}
         autoApprove={autoApprove}
       />
+
+      {/*
+        The proposal, said out loud.
+        
+        This screen used to change the severity badge between step 2 and here
+        with nothing to say it had — a silent overwrite of a resident's own
+        judgement. The rationale is why, and `reporterSeverity` is rendered only
+        when the two disagree, which is the case worth interrupting somebody for.
+        The override is the existing "Edit" control below; this does not add a
+        second one, because two ways to change the same field is how they drift.
+      */}
+      {severityRationale && (
+        <div className="rounded-xl bg-brand-50 p-3.5 ring-1 ring-brand-100">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-brand-900">Suggested</span>
+            <SeverityBadge severity={fields.severity} size="sm" />
+            {reporterSeverity && reporterSeverity !== fields.severity && (
+              <span className="text-sm text-brand-800">
+                — you said {SEVERITY_LABELS[reporterSeverity]}
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 text-sm leading-relaxed text-brand-800">
+            {severityRationale}
+          </p>
+          {reporterSeverity && reporterSeverity !== fields.severity && (
+            <p className="mt-1.5 text-xs leading-relaxed text-brand-700">
+              Keep it, or change it back with Edit below. Both answers are
+              recorded either way, so your coordinator can see where you
+              disagreed.
+            </p>
+          )}
+        </div>
+      )}
 
       {patternNote && (
         <div className="flex gap-3 rounded-xl bg-amber-50 p-3.5 ring-1 ring-amber-200">

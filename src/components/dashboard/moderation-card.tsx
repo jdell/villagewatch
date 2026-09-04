@@ -4,11 +4,19 @@ import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
-import { Check, Eye, Loader2, Pencil, Sparkles, X } from "lucide-react";
+import {
+  Check,
+  Eye,
+  Loader2,
+  Pencil,
+  Sparkles,
+  TrendingUp,
+  X,
+} from "lucide-react";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { SeverityBadge } from "@/components/severity-badge";
-import { INCIDENT_TYPE_LABELS } from "@/lib/constants";
+import { INCIDENT_TYPE_LABELS, SEVERITY_LABELS } from "@/lib/constants";
 import { formatDateTime, formatTimeAgo } from "@/lib/format";
 import {
   moderateIncidentAction,
@@ -45,6 +53,14 @@ export type QueuedIncident = {
   occurredAt: string;
   reportedAt: string;
   reporterName: string | null;
+  /**
+   * What the reporter chose before the AI pass, where they chose anything.
+   * Null on a report filed before this was recorded, and on one where step 2
+   * was skipped — neither is the same as agreement.
+   */
+  reporterSeverity: Severity | null;
+  /** The model's one sentence for the level it proposed. Public-safe text. */
+  severityRationale: string | null;
   /**
    * The reporter's initials, computed on the server by `initialsOf` in
    * `src/lib/format.ts`.
@@ -156,6 +172,24 @@ export function ModerationCard({
 
         <SeverityBadge severity={incident.severity} size="sm" />
 
+        {/*
+          Only where the two differ, and this is the payoff of recording the
+          reporter's own answer at all. A coordinator deciding whether a level
+          is right is helped by knowing the resident who was there disagreed
+          with it; a chip on every report saying they agreed would be a column
+          of noise that trains people to stop reading this row.
+        */}
+        {incident.reporterSeverity &&
+          incident.reporterSeverity !== incident.severity && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20"
+              title="The reporter chose a different level from the one the AI proposed. Both are recorded."
+            >
+              <TrendingUp className="size-3.5" aria-hidden />
+              Reporter said {SEVERITY_LABELS[incident.reporterSeverity]}
+            </span>
+          )}
+
         <span className="font-mono text-xs text-slate-500">
           {incident.reference}
         </span>
@@ -167,6 +201,13 @@ export function ModerationCard({
           Filed <time suppressHydrationWarning>{formatTimeAgo(incident.reportedAt)}</time>
         </span>
       </div>
+
+      {incident.severityRationale && (
+        <p className="mt-2.5 text-xs leading-relaxed text-slate-500">
+          <span className="font-medium text-slate-600">Why that level:</span>{" "}
+          {incident.severityRationale}
+        </p>
+      )}
 
       <h3 className="mt-2.5 text-base font-semibold text-slate-900">
         <Link

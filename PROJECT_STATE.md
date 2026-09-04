@@ -1,6 +1,6 @@
 # VillageWatch — project state
 
-**Last updated:** 4 September 2026 · **Repo version:** `v0.1.51` · **Branch:**
+**Last updated:** 5 September 2026 · **Repo version:** `v0.1.51` · **Branch:**
 `main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
@@ -1107,6 +1107,40 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 ---
 
 ## Recent completions
+
+**The AI severity proposal — 5 September 2026.** `docs/AI_SEVERITY_PROPOSAL_PLAN.md`,
+implemented.
+
+- **Step 2's severity is optional and unset by default.** It was required and
+  defaulted to `LOW`, and the preview then overwrote it silently — asking a
+  resident for a judgement and discarding it. It is now a hint in the prompt and
+  a column beside the published value, so a disagreement survives to the
+  moderation queue instead of being lost.
+- **`severity-context.ts`** adds the two factors `detect-patterns.ts` does not:
+  the area baseline within 200m over 12 months, and whether the category is
+  rising village-wide. Both ride on the existing Claude call.
+- **A village under 90 days old gets no block at all.** `insufficientHistory`,
+  and the prompt omits the section entirely rather than sending zeroes the model
+  would read as "nothing has ever happened here". This is the assertion the new
+  test file leads with.
+- **`severity_rationale`** is the model's one sentence, capped at 140 characters
+  and held to `pattern_note`'s public-safe rule. Over the cap the whole response
+  is `invalid_output` and the wizard falls back — a truncated half-sentence
+  explaining a severity is worse than none.
+- **Migration `20260905090000_incident_severity_proposal`** adds two nullable
+  columns. **It is not applied** — `prisma migrate dev` needs `DIRECT_URL` and
+  there is none on the machine this was written on, so the SQL is hand-written
+  in the repo's format and `database.yml` applies it on the merge.
+  **`rls_policies.sql` must be re-run with it**: `severity_rationale` is added to
+  the `incidents` SELECT grant and `reporter_severity` is deliberately withheld.
+  `postgis.sql` does not need re-running — no geography column.
+- **`/privacy` changed in the same commit** and `LEGAL_LAST_UPDATED` moved to
+  5 September: §2 now says both severity answers are kept where they differ, and
+  the AI section says the model gives a sentence for the level it chose.
+- **Nothing has run against a real report.** 720 tests across 43 files, and no
+  Anthropic call has been made with the new prompt block in it — the first real
+  one is where to check that the rationale stays inside 140 characters and names
+  an area rather than a street.
 
 **The two missing Supabase auth templates — 4 September 2026.** `Invite user`
 and `Reauthentication`, bringing `src/lib/email/supabase-templates/` to six.

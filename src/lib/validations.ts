@@ -109,6 +109,21 @@ export const structuredIncidentSchema = z.object({
   pattern_note: z.string().trim().max(300).nullable(),
   /** 0–1. Stored as `Incident.aiConfidence`; shown to coordinators, not residents. */
   confidence: z.number().min(0).max(1),
+  /**
+   * One sentence saying why *that* severity, shown to the reporter on the
+   * preview beside the suggestion.
+   *
+   * Capped hard at 140 because it is rendered inline under a badge and a
+   * paragraph there is a paragraph nobody reads — and because an over-long
+   * answer is the model narrating instead of deciding. Over the cap the whole
+   * response is `invalid_output` and the wizard falls back, rather than a
+   * truncated half-sentence reaching a resident.
+   *
+   * **Public-safe text**, held to the same rule as `pattern_note`: a count and
+   * an area, never a landmark, a reference or a street. The system prompt says
+   * so explicitly; this only bounds the length.
+   */
+  severity_rationale: z.string().trim().min(1).max(140),
 });
 
 export type StructuredIncident = z.output<typeof structuredIncidentSchema>;
@@ -159,6 +174,27 @@ export const incidentAiMetaSchema = z.object({
   peopleCount: z.number().int().min(0).max(500).optional(),
   recurring: z.boolean().default(false),
   patternNote: z.string().trim().max(300).optional(),
+  /**
+   * The model's one sentence for the severity it proposed, carried back so it
+   * can be stored beside the report a coordinator reviews.
+   *
+   * Same 140-character cap as `structuredIncidentSchema`, and advisory in
+   * exactly the sense the block's header describes: a crafted request could put
+   * any sentence here. What stops that mattering is that it decides nothing —
+   * it is displayed to a coordinator on the queue, next to the severity it
+   * claims to explain, by somebody who can change both.
+   */
+  severityRationale: z.string().trim().max(140).optional(),
+  /**
+   * What the reporter chose in step 2, where they chose anything.
+   *
+   * Sent back rather than re-derived, because by publish time the form field
+   * holds the value that is actually filing — the reporter's own answer is
+   * gone from it the moment they accept a different suggestion. Optional
+   * because step 2 is optional: no answer is a real state and is not the same
+   * as agreeing.
+   */
+  reporterSeverity: z.enum(SEVERITY_VALUES).optional(),
 });
 
 /**
@@ -284,7 +320,19 @@ const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 export const incidentFormSchema = z
   .object({
     type: z.enum(INCIDENT_TYPE_VALUES, { error: "Choose what happened" }),
-    severity: z.enum(SEVERITY_VALUES, { error: "Choose how serious this is" }),
+    /**
+     * **Optional, and unset by default.** It used to be required and defaulted
+     * to `LOW`, which meant every reporter committed to a level before the
+     * model had read a word — and the preview step then overwrote it silently.
+     * Asking for a judgement and discarding it is worse than not asking.
+     *
+     * It is now a hint that goes into the prompt and a value recorded beside
+     * the published one, so a coordinator can see where the two differed.
+     * `publish()` falls back to `LOW` if nothing ever set it — which happens
+     * only when the reporter skipped the question *and* the AI pass failed, and
+     * the moderation queue is the backstop for that.
+     */
+    severity: z.enum(SEVERITY_VALUES).optional(),
 
     title: z
       .string()
