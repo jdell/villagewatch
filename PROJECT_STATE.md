@@ -1,6 +1,6 @@
 # VillageWatch — project state
 
-**Last updated:** 2 September 2026 · **Repo version:** `v0.1.51` · **Branch:**
+**Last updated:** 4 September 2026 · **Repo version:** `v0.1.51` · **Branch:**
 `main` · **Domain:** https://villagewatch.app
 
 This is the running answer to "where is this project right now". It is a status
@@ -979,6 +979,7 @@ as working — to anybody, and least of all in a grant application.
 | Feature | What has never happened | What to watch on the first run |
 | --- | --- | --- |
 | ~~Push notifications~~ | **Delivered to a real device, 31 August** | Out of this table. Both failure modes were silent and both are now known-good: the `/onesignal/` worker path and the three keys reaching Vercel with a redeploy behind them. Re-check with `curl -I https://villagewatch.app/onesignal/OneSignalSDKWorker.js` after any OneSignal dashboard change |
+| The public incident preview | No link has ever been opened against a real report, and no card has been rendered by a real crawler | `/incident/[id]` and the two routes under `/api/incidents`. The 404 path, the OG card and the public/protected split are all verified locally against a build; what needs a real report is: **what the card looks like** pasted into WhatsApp, which is the whole point of the page; **that the extract is an extract** — view source on a real report and confirm only ~100 characters of the description are in the HTML, and that the landmark and coordinates are absent rather than merely blurred; **that a `PENDING_REVIEW` id 404s**, which is domain rule 6 with no signed-in resident behind it; and **an unanonymised report**, where `description` is the reporter's own wording and the extract is the first line of it. Blocked behind L7 like everything else — there is no `ACTIVE` village |
 | The retention job | Never run against data | It deletes files and takes reports off the map. Read the counts in the response before trusting the schedule |
 | Erasure | `removeIncident` / `eraseAccount` have never touched a bucket | Confirm the object is gone, not just the row |
 | The weekly digest | Cron has never fired | It is the only thing that creates `PatternAlert` rows — and nothing renders them |
@@ -1105,6 +1106,81 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 ---
 
 ## Recent completions
+
+**The public incident preview — 4 September 2026.** A page at `/incident/[id]`
+that opens with no account, so a link shared into a village WhatsApp group shows
+a neighbour who has not joined yet something other than a sign-in redirect.
+
+- **It is `/incident`, singular, and that is not cosmetic.** `/incidents/[id]`
+  is the authenticated detail page, it is in `PROTECTED_ROUTES`, and two pages
+  cannot serve one path. The singular is public without a proxy change:
+  `isProtected` matches on an exact route or the route plus a slash, and
+  `/incident/…` is neither against `/incidents`. `robots.ts` is the same story.
+- **What it shows** is the category, the severity, roughly when, which village,
+  and the first ~100 characters of the anonymised description, cut on a word
+  boundary. Not the title, the landmark, the coordinates, the reference or the
+  pattern note. `src/lib/public-incident.ts` is a separate read for exactly that
+  reason: `PUBLIC_INCIDENT_SELECT` is "public" in the sense of *inside the
+  village*, and every caller of it is already behind `requireSession()`. The
+  full description never leaves that module — it is truncated there, so no
+  caller can ship the whole string and trim it for display.
+- **Two public route handlers beside it**, both reusing that one read so the
+  access decision has a single home: `GET /api/incidents/[id]/public` and
+  `GET /api/incidents/stats`. Neither is rate limited, and the reasoning is in
+  the file: `rate-limit.ts` keys on a Supabase auth user id, there is no user
+  here, and the obvious substitute — the caller's IP — is the one key this
+  codebase has already ruled out because a village shares a broadband line. What
+  bounds it instead is that a UUID is unguessable, so there is no id to
+  enumerate.
+- **The counters are deployment-wide and every figure is a real count.**
+  `getCommunityStats` scopes to `ACTIVE` villages, so the 270 seeded `PENDING`
+  parishes are not counted — which would have turned the line into the invented
+  figure `VILLAGES_LIVE` is null to refuse. A failed read returns null and the
+  line is omitted, rather than publishing "0 incidents recorded by 0 residents".
+- **A dead link answers `200`, not `404`, and that is documented Next
+  behaviour rather than a defect.** A streamed response has already sent its
+  headers by the time `notFound()` is reached; Next's `not-found` reference says
+  it returns "200 for streamed responses, and 404 for non-streamed" and injects
+  `<meta name="robots" content="noindex">` so the URL is not indexed anyway.
+  Measured across all four combinations of `loading.tsx` and a `notFound()` in
+  `generateMetadata` — every one is 200, because the page suspends on the
+  database read regardless. The only route to a real 404 is a database lookup in
+  `src/proxy.ts` on every request to this path, which Next's own guidance warns
+  against and which is not worth it for a page that is already `noindex`.
+  Raising `notFound()` in `generateMetadata` is still kept: it is what lets
+  `not-found.tsx` supply its own title instead of the fallback "Incident".
+- **The blurred panel is placeholder bars, not the report under a filter.** CSS
+  blur is paint: real text behind one is still in the HTML, still in view
+  source, still read aloud by a screen reader and still handed to every
+  link-preview crawler. Nothing withheld is fetched, so there is nothing on the
+  page to reveal.
+- **`noindex`, and deliberately not in `robots.txt`.** A UUID is unguessable, so
+  the page is *unlisted* rather than public — visible to whoever holds the link.
+  Indexing would make every published report a searchable record automatically,
+  with no coordinator deciding each time, outliving the twelve-month archive. A
+  `robots.txt` disallow would have gone further and stopped the preview crawlers
+  fetching it at all, which kills the card the page exists for. One line in
+  `generateMetadata` reverses it if that is ever wanted.
+- **Two documents were making claims this falsified, and both changed with it.**
+  `/privacy` §6 said following a shared link "still needs an account in your
+  village"; the landing FAQ said "nobody outside your village sees any of it".
+  Both now describe the preview and name the description extract.
+  `LEGAL_LAST_UPDATED` moved to 4 September — a new audience for a resident's
+  report is the clearest case that date exists for.
+- **The description extract is the one decision to revisit if anything here
+  moves.** It is the AI-anonymised column the map already renders, and a
+  coordinator can already paste a longer extract of the very same column onto a
+  public WhatsApp Channel — so it is not a new *kind* of disclosure, only one
+  that no longer waits for a coordinator to decide each time. Where the AI pass
+  never ran, that column holds the reporter's own wording; `Incident.anonymized`
+  records which and is returned by the API so a consumer can tell. Lengthening
+  the extract is the change that would make that matter.
+- **Not done, and it is the half that closes the loop:** `incidentUrl` in
+  `src/lib/format-alert.ts` still points at the authenticated page, so a
+  coordinator's pasted WhatsApp alert still lands on a sign-in redirect.
+  `publicIncidentPath()` is exported ready for it. Pointing the alert here is a
+  decision about what a village publishes rather than a tidy-up, and it changes
+  the text on three surfaces and one test.
 
 **The four high-severity audit findings, closed — 30 August 2026.** `VW-14`,
 `VW-01`, `VW-02` and `VW-19`, plus the two Mediums that travel with the first —

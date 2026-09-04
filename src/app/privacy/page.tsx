@@ -595,11 +595,26 @@ export default function PrivacyPage() {
             An alert carries a headline, an approximate area, how long ago it
             happened, a short extract of the same report your neighbours see,
             and a link back to this app. Never your name, never the
-            coordinates, and never a photograph. Following the link still needs
-            an account in your village. A WhatsApp Channel is switched off
-            unless your coordinator sets one up; sharing to Facebook needs no
-            setting, so on a published report it is always one of the options in
-            front of them.
+            coordinates, and never a photograph. A WhatsApp Channel is switched
+            off unless your coordinator sets one up; sharing to Facebook needs
+            no setting, so on a published report it is always one of the options
+            in front of them.
+          </Definition>
+          <Definition term="Anyone given a link to a published report">
+            Every published report has a preview page that opens without an
+            account, so that a link shared with your village actually shows
+            something to a neighbour who has not joined yet. It carries the
+            category, how serious it was, roughly when it happened, which
+            village, and the first line or so of the same anonymised
+            description your neighbours see &mdash; about a hundred characters,
+            cut off mid-sentence. Never the rest of it, never the landmark or
+            the map location, never a photograph, and never your name. Reading
+            the report itself still needs an account in your village. The page
+            is not listed in search engines and its address cannot be guessed,
+            so in practice it is visible to whoever was handed the link
+            &mdash; which, for a report your coordinator has shared publicly, is
+            the same audience as the alert above, and a shorter extract than the
+            alert carries.
           </Definition>
           <Definition term="Your local police officer, in a summary from a coordinator">
             Your village coordinator can produce a written summary — of one

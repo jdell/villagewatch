@@ -185,7 +185,7 @@ const FAQS = [
   {
     question: 'Who can see what I report?',
     answer:
-      'Your neighbours see a rewritten version with names, registrations and house numbers taken out. Your village coordinator can see your original wording, and every time they do it is written to an audit trail with their name against it. Nobody outside your village sees any of it — not another village, not us. The exception is a coordinator posting an alert somewhere public — your village’s WhatsApp Channel, or Facebook. Nothing is posted automatically; a coordinator copies a published report and posts it themselves, as a headline, an area, a short extract and a link, and nothing else.',
+      'Your neighbours see a rewritten version with names, registrations and house numbers taken out. Your village coordinator can see your original wording, and every time they do it is written to an audit trail with their name against it. Nobody outside your village reads the report itself — not another village, not us. There are two exceptions, and both apply only once a report is published. A coordinator can post an alert somewhere public — your village’s WhatsApp Channel, or Facebook; nothing is posted automatically, and a coordinator copies it and posts it themselves, as a headline, an area, a short extract and a link. And that link opens a preview page anyone can see, which carries the category, how serious it was, roughly when it happened, which village, and the first line of the same rewritten description your neighbours see — never the rest of it, never the location, never a photograph, and never your name.',
   },
   {
     question: 'How does the AI work?',
