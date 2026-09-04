@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.56](https://github.com/jdell/villagewatch/compare/v0.1.55...v0.1.56) (2026-09-04)
+
+
+### Fixes
+
+* **admin:** narrow the merge selectors and show what each village holds ([d78640f](https://github.com/jdell/villagewatch/commit/d78640f4ae47055bfa9087ba4bae8f7296a32334))
+
 ### [0.1.55](https://github.com/jdell/villagewatch/compare/v0.1.54...v0.1.55) (2026-09-04)
 
 
