@@ -3,6 +3,19 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.53](https://github.com/jdell/villagewatch/compare/v0.1.52...v0.1.53) (2026-09-04)
+
+
+### Features
+
+* **alert:** point shared links at the public preview ([d278713](https://github.com/jdell/villagewatch/commit/d27871330963df1ebe6679e338afd1070180ac62))
+* **incident:** public preview page to drive registrations ([0e1b640](https://github.com/jdell/villagewatch/commit/0e1b640879bdbd046ebb0a079f0a6c9d23ed359f))
+
+
+### Documentation
+
+* add Histon/Impington village merge SQL script (not yet executed) ([60ddb90](https://github.com/jdell/villagewatch/commit/60ddb90e1bfef0dc6f840b2c11ddc83814f8cee7))
+
 ### [0.1.52](https://github.com/jdell/villagewatch/compare/v0.1.51...v0.1.52) (2026-09-02)
 
 
