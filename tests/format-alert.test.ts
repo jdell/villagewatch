@@ -74,7 +74,7 @@ describe("formatIncidentAlert", () => {
     const alert = formatIncidentAlert(incident(), APP_URL);
 
     expect(alert).toContain("A garden shed was forced open overnight");
-    expect(alert).toContain(`View details: ${APP_URL}/incidents/abc123`);
+    expect(alert).toContain(`View details: ${APP_URL}/incident/abc123`);
   });
 
   it("adds the pattern note only when the report is recurring", () => {
@@ -97,7 +97,7 @@ describe("formatIncidentAlert", () => {
     );
 
     // The half a reader can do something with.
-    expect(alert).toContain(`View details: ${APP_URL}/incidents/abc123`);
+    expect(alert).toContain(`View details: ${APP_URL}/incident/abc123`);
     expect(alert).toContain("📍 The lane behind the village hall");
     expect(alert.length).toBeLessThanOrEqual(WHATSAPP_POST_MAX_CHARS);
   });
@@ -125,7 +125,7 @@ describe("formatIncidentAlert", () => {
     // shorter link in a clipboard, not a blank screen.
     const alert = formatIncidentAlert(incident(), "not a url");
 
-    expect(alert).toContain("View details: /incidents/abc123");
+    expect(alert).toContain("View details: /incident/abc123");
   });
 
   it("carries no coordinates and no verbatim wording", () => {
@@ -163,7 +163,7 @@ describe("the share links", () => {
       "https://www.facebook.com/sharer/sharer.php",
     );
     // `u` is the half that does the work — Facebook builds the card from it.
-    expect(parsed.searchParams.get("u")).toBe(`${APP_URL}/incidents/abc123`);
+    expect(parsed.searchParams.get("u")).toBe(`${APP_URL}/incident/abc123`);
     expect(parsed.searchParams.get("quote")).toBe("🔴 HIGH — Shed broken into");
   });
 
@@ -178,11 +178,35 @@ describe("the share links", () => {
 
   it("refuses a relative URL rather than posting a dead link", () => {
     // `incidentUrl` falls back to a path on a malformed base, and a share of
-    // `/incidents/abc123` would post `facebook.com/incidents/abc123` to a public
+    // `/incident/abc123` would post `facebook.com/incident/abc123` to a public
     // feed — a broken link that reads as a working one. The button is hidden.
-    expect(incidentUrl("abc123", "not a url")).toBe("/incidents/abc123");
-    expect(facebookShareUrl("/incidents/abc123", "text")).toBeNull();
+    expect(incidentUrl("abc123", "not a url")).toBe("/incident/abc123");
+    expect(facebookShareUrl("/incident/abc123", "text")).toBeNull();
     expect(facebookShareUrl("", "text")).toBeNull();
+  });
+
+  /**
+   * The growth loop, pinned.
+   *
+   * Every link a coordinator shares has to reach somebody with no account.
+   * Aimed at `/incidents/[id]` — the authenticated detail page, which is in
+   * `PROTECTED_ROUTES` — these are a redirect to `/login`, and the person who
+   * tapped the link has never heard of VillageWatch. The singular is the public
+   * preview.
+   *
+   * Asserted on the path rather than the whole string, and asserted negatively
+   * as well, because the two differ by one letter: a "tidy-up" that pluralised
+   * it back would break every shared link and nothing else in the suite would
+   * notice.
+   */
+  it("points every shared link at the public preview, never the private page", () => {
+    expect(new URL(url).pathname).toBe("/incident/abc123");
+    expect(new URL(url).pathname.startsWith("/incidents")).toBe(false);
+
+    const alert = formatIncidentAlert(incident(), APP_URL);
+
+    expect(alert).toContain(`${APP_URL}/incident/abc123`);
+    expect(alert).not.toContain(`${APP_URL}/incidents/`);
   });
 
   it("refuses a scheme that is not http or https", () => {

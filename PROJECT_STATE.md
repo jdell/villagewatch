@@ -1175,12 +1175,29 @@ a neighbour who has not joined yet something other than a sign-in redirect.
   never ran, that column holds the reporter's own wording; `Incident.anonymized`
   records which and is returned by the API so a consumer can tell. Lengthening
   the extract is the change that would make that matter.
-- **Not done, and it is the half that closes the loop:** `incidentUrl` in
-  `src/lib/format-alert.ts` still points at the authenticated page, so a
-  coordinator's pasted WhatsApp alert still lands on a sign-in redirect.
-  `publicIncidentPath()` is exported ready for it. Pointing the alert here is a
-  decision about what a village publishes rather than a tidy-up, and it changes
-  the text on three surfaces and one test.
+- **The loop is closed.** `incidentUrl` in `src/lib/format-alert.ts` builds from
+  `publicIncidentPath` and points at `/incident/[id]`, so the "View details"
+  line of a pasted WhatsApp alert and the Facebook share button both reach
+  somebody with no account instead of a `/login` redirect. `publicIncidentPath`
+  had to *move* into `format-alert.ts` to make that possible:
+  `public-incident.ts` imports Prisma, `format-alert.ts` is imported by
+  `copy-alert.tsx`, and that file's header promises no Prisma client in the
+  bundle — so the dependency only runs one way, the way `truncateWords` already
+  travelled. It is deliberately not re-exported from `public-incident.ts`.
+- **A side effect worth knowing:** the Facebook and WhatsApp card is now the
+  incident's rather than the product's. `CLAUDE.md` said under The public share
+  buttons that the crawler lands on a sign-in redirect and the card falls back
+  to the generic image; that was true of `/incidents/[id]` and is not true of
+  the preview, which exports its own `opengraph-image`. Both `CLAUDE.md` and
+  `docs/AUTO_POST_CHANNELS_PLAN.md` are corrected. The original warning in that
+  plan still stands: the fix is a separate public page, never making
+  `/incidents/[id]` crawlable.
+- **Three link surfaces are deliberately unchanged**, because each addresses
+  somebody who already has an account: the push deep link
+  (`notifications.ts`), the resident email (`email/incident-notification.ts`)
+  and the "Full report" line of the police summary
+  (`community-report.ts`) — where an auth-gated link is a containment feature
+  rather than a gap, since the summary already carries the detail a PCSO needs.
 
 **The four high-severity audit findings, closed — 30 August 2026.** `VW-14`,
 `VW-01`, `VW-02` and `VW-19`, plus the two Mediums that travel with the first —

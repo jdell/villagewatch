@@ -53,8 +53,8 @@ vi.mock("@/lib/prisma", () => ({
 import {
   getCommunityStats,
   getPublicIncidentPreview,
-  publicIncidentPath,
 } from "@/lib/public-incident";
+import { publicIncidentPath } from "@/lib/format-alert";
 
 const ID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
 

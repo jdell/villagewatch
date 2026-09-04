@@ -76,7 +76,46 @@ export function appBaseUrl(): string {
 }
 
 /**
- * Absolute link to one report.
+ * The path a published report's **public preview** lives at.
+ *
+ * `/incident`, singular — deliberately not `/incidents/[id]`, which is the
+ * authenticated detail page and is in `PROTECTED_ROUTES`. The two differ by one
+ * letter and by everything else: the plural renders the full description, the
+ * landmark, the map pin, the media and the vote buttons to a signed-in resident
+ * of that village; the singular shows a category, a severity, a date, a village
+ * and the first line of the anonymised description to anybody holding the link.
+ *
+ * ## Why it is defined here and not in `src/lib/public-incident.ts`
+ *
+ * That module owns everything else about the preview and would be the obvious
+ * home. It cannot be: it imports Prisma, and this file is imported by
+ * `copy-alert.tsx`, which is a Client Component. Pulling the server module in
+ * would drag the Prisma client into a browser bundle and break the build — the
+ * import budget in this file's header ("no Prisma client, no `node:crypto`, no
+ * environment secret") is the constraint being honoured, not an accident of
+ * layering. `public-incident.ts` already imports `truncateWords` from here for
+ * the same reason, so the direction of the dependency is established.
+ */
+export function publicIncidentPath(id: string): string {
+  return `/incident/${id}`;
+}
+
+/**
+ * Absolute link to one report, for a coordinator to share.
+ *
+ * **It points at the public preview, not the authenticated detail page**, and
+ * that is the entire purpose of this function rather than a detail of it. Every
+ * caller is a coordinator putting a report in front of people who are not
+ * signed in — the "View details" line of a pasted WhatsApp alert, and the
+ * Facebook share button beside it. Aimed at `/incidents/[id]` those links were
+ * a redirect to `/login`: a neighbour who has never had an account taps a link
+ * from their village's WhatsApp group and is asked to sign in to something they
+ * have never heard of, which is the point at which most of them stop.
+ *
+ * The pair of links a resident *should* follow into the app are built
+ * elsewhere and are untouched by this: the push deep link in
+ * `notifications.ts` and the email link in `email/layout.ts` both address
+ * somebody who already has an account, so both still point at the full report.
  *
  * Falls back to the relative path rather than throwing on a malformed base. This
  * runs inside a render, and a broken `NEXT_PUBLIC_APP_URL` should cost a shorter
@@ -87,7 +126,7 @@ export function appBaseUrl(): string {
  * coordinator would post a card pointing at one report with the text of another.
  */
 export function incidentUrl(id: string, appUrl: string = appBaseUrl()): string {
-  const path = `/incidents/${id}`;
+  const path = publicIncidentPath(id);
 
   try {
     return new URL(path, appUrl).toString();

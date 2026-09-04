@@ -20,9 +20,9 @@ import { SiteFooter } from "@/components/site-footer";
 import {
   getCommunityStats,
   getPublicIncidentPreview,
-  publicIncidentPath,
   type CommunityStats,
 } from "@/lib/public-incident";
+import { publicIncidentPath } from "@/lib/format-alert";
 import { APP_NAME, INCIDENT_TYPE_LABELS } from "@/lib/constants";
 import { formatDate, formatTimeAgo } from "@/lib/format";
 

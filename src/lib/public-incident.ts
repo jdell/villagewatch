@@ -223,21 +223,20 @@ export async function getCommunityStats(): Promise<CommunityStats | null> {
 }
 
 /**
- * The path a preview lives at.
+ * `publicIncidentPath` used to live here and now lives in
+ * `src/lib/format-alert.ts`, beside `incidentUrl`, which builds the absolute
+ * link from it.
  *
- * `/incident`, singular, and **not** `/incidents/[id]`, which is the
- * authenticated detail page and is in `PROTECTED_ROUTES`. Two reasons it could
- * not simply be made public in place: the proxy would have to learn an
- * exception to a denylist that is otherwise a straight prefix match, and the
- * page itself renders the full description, the landmark, the map pin, the
- * media and the vote buttons — everything this preview exists to withhold.
+ * It had to move. This module imports Prisma; `format-alert.ts` is imported by
+ * `copy-alert.tsx`, a Client Component, and its header promises no Prisma
+ * client in the bundle — so the dependency can only run in one direction, and
+ * it is the direction `truncateWords` above already travels. Looking for the
+ * path builder here is the obvious mistake, hence this note rather than a
+ * silent absence.
  *
- * Exported so that anything building a shareable link has one definition to
- * call rather than assembling the string. Note that `incidentUrl` in
- * `src/lib/format-alert.ts` still points at the authenticated page, which is
- * what a coordinator pasting a WhatsApp alert sends today; pointing it here
- * instead is a deliberate decision about what a village publishes, not a tidy-up.
+ * Deliberately **not** re-exported from here. A pass-through would keep the old
+ * import working and hand a Client Component a way to reach `publicIncidentPath`
+ * through a module that pulls in Prisma — which fails at build time, loudly, but
+ * only after somebody has written the import and wondered why. One definition,
+ * one import path.
  */
-export function publicIncidentPath(id: string): string {
-  return `/incident/${id}`;
-}
