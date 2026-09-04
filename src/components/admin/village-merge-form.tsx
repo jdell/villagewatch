@@ -9,6 +9,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import type {
+  MergeCandidate,
   VillageMergePreview,
   VillageMergeSummary,
 } from "@/lib/village-merge";
@@ -38,17 +39,20 @@ import type {
  * 10,670.
  */
 
-type MergeableVillage = {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
-  residents: number;
-};
-
-function villageLabel(v: MergeableVillage): string {
+/**
+ * "Histon (12 residents, 5 incidents) — active · histon-cambridgeshire"
+ *
+ * The counts are the point of the label: they are what tells an administrator
+ * which of two similarly named parishes is the one people actually joined, and
+ * therefore which way round the merge goes. The slug stays because names
+ * collide — the ONS directory has 44 English name/county pairs that do — and
+ * the status stays because only an `ACTIVE` village may be the target.
+ */
+function villageLabel(v: MergeCandidate): string {
   const residents = `${v.residents} resident${v.residents === 1 ? "" : "s"}`;
-  return `${v.name} · ${v.slug} · ${v.status.toLowerCase()} · ${residents}`;
+  const incidents = `${v.incidents} incident${v.incidents === 1 ? "" : "s"}`;
+
+  return `${v.name} (${residents}, ${incidents}) — ${v.status.toLowerCase()} · ${v.slug}`;
 }
 
 /** One figure in the preview's grid. */
@@ -63,15 +67,25 @@ function Count({ label, value }: { label: string; value: number }) {
   );
 }
 
-export function VillageMergeForm({
-  villages,
-}: {
-  villages: MergeableVillage[];
-}) {
+export function VillageMergeForm({ villages }: { villages: MergeCandidate[] }) {
   const [originId, setOriginId] = useState("");
   const [targetId, setTargetId] = useState("");
   const [renameTo, setRenameTo] = useState("");
   const [typed, setTyped] = useState("");
+
+  /**
+   * Off by default, so the common case is a short list of villages actually in
+   * service. On, it adds the ones that are not in service but hold residents or
+   * reports — which is the case this whole tool exists for: two parishes that
+   * ought to be one, where people have already joined the wrong half.
+   *
+   * Both sets arrive from the server in the one payload
+   * (`listMergeableVillages` returns `ACTIVE` ∪ has-data), so this filters what
+   * is already here rather than fetching again. A round trip per toggle would
+   * buy nothing — the whole list is a handful of rows however large the ONS
+   * directory grows, because the seeded parishes are inert and excluded.
+   */
+  const [showAll, setShowAll] = useState(false);
 
   const [merging, setMerging] = useState(false);
   const [summary, setSummary] = useState<VillageMergeSummary | null>(null);
@@ -141,6 +155,38 @@ export function VillageMergeForm({
 
     return () => controller.abort();
   }, [pairKey]);
+
+  /**
+   * What the two selectors offer. `villages` is already `ACTIVE` ∪ has-data;
+   * this narrows it to the active half unless the checkbox is on.
+   */
+  const visible = showAll
+    ? villages
+    : villages.filter((v) => v.status === "ACTIVE");
+
+  /** The ones the checkbox reveals — named on its label so it is worth pressing. */
+  const extras = villages.length - villages.filter((v) => v.status === "ACTIVE").length;
+
+  /**
+   * Turning the checkbox off must not leave a selection pointing at a village
+   * that is no longer in the list: the `<select>` would render a value with no
+   * matching `<option>`, which browsers resolve by silently showing the first
+   * one — so the form would say a different village from the one it holds.
+   */
+  function toggleShowAll(next: boolean) {
+    setShowAll(next);
+
+    if (!next) {
+      const stillThere = (id: string) =>
+        villages.some((v) => v.id === id && v.status === "ACTIVE");
+
+      if (originId && !stillThere(originId)) {
+        setOriginId("");
+        setTyped("");
+      }
+      if (targetId && !stillThere(targetId)) setTargetId("");
+    }
+  }
 
   const origin = villages.find((v) => v.id === originId) ?? null;
   const blocked = (preview?.blockers.length ?? 0) > 0;
@@ -215,7 +261,38 @@ export function VillageMergeForm({
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 sm:grid-cols-2">
+        {/*
+          Rendered even when it would reveal nothing, and disabled instead. An
+          administrator looking for a village that is not in the list needs an
+          answer either way, and "no other villages hold any data" is the
+          answer — a control that vanishes when the count is zero leaves them
+          wondering whether the filter exists at all.
+        */}
+        <label
+          className={`flex items-start gap-2.5 text-sm ${
+            extras === 0 ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={showAll}
+            disabled={extras === 0}
+            onChange={(event) => toggleShowAll(event.target.checked)}
+            className="mt-0.5 size-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-2 focus:ring-brand-500/20"
+          />
+          <span>
+            <span className="font-medium text-slate-700">
+              Include villages that are not in service but hold data
+            </span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
+              {extras === 0
+                ? "No other villages hold any residents or reports. The seeded directory is not listed — an empty parish has nothing to merge."
+                : `${extras} more ${extras === 1 ? "village has" : "villages have"} residents or reports without being in service. That is the case this tool is for: two parishes that ought to be one, where people have already joined the wrong half. The seeded directory is never listed.`}
+            </span>
+          </span>
+        </label>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <div>
             <label
               htmlFor="merge-origin"
@@ -236,7 +313,7 @@ export function VillageMergeForm({
               className="mt-2 block h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
             >
               <option value="">Choose a village…</option>
-              {villages.map((v) => (
+              {visible.map((v) => (
                 <option key={v.id} value={v.id} disabled={v.id === targetId}>
                   {villageLabel(v)}
                 </option>
@@ -252,7 +329,7 @@ export function VillageMergeForm({
               Target village
             </label>
             <p className="mt-0.5 text-xs text-slate-500">
-              Survives and receives everything.
+              Survives and receives everything. Must be in service.
             </p>
             <select
               id="merge-target"
@@ -261,7 +338,7 @@ export function VillageMergeForm({
               className="mt-2 block h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
             >
               <option value="">Choose a village…</option>
-              {villages.map((v) => (
+              {visible.map((v) => (
                 <option key={v.id} value={v.id} disabled={v.id === originId}>
                   {villageLabel(v)}
                 </option>
