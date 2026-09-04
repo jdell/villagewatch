@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.57](https://github.com/jdell/villagewatch/compare/v0.1.56...v0.1.57) (2026-09-04)
+
+
+### Features
+
+* **ai:** propose severity with a reason, and stop overwriting the reporter ([2dc3852](https://github.com/jdell/villagewatch/commit/2dc3852c3fbb5284bdb629edb47de255c831895a))
+
 ### [0.1.56](https://github.com/jdell/villagewatch/compare/v0.1.55...v0.1.56) (2026-09-04)
 
 
