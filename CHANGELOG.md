@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.55](https://github.com/jdell/villagewatch/compare/v0.1.54...v0.1.55) (2026-09-04)
+
+
+### Features
+
+* **email:** add the two missing Supabase auth templates ([8483bd1](https://github.com/jdell/villagewatch/commit/8483bd1a0312d514e5828a130aad786b9641cefa))
+
 ### [0.1.54](https://github.com/jdell/villagewatch/compare/v0.1.53...v0.1.54) (2026-09-04)
 
 
