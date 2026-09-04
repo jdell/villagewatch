@@ -6,7 +6,7 @@ import type { User } from "@/generated/prisma/client";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { prisma } from "@/lib/prisma";
-import { isAdminEmail } from "@/lib/admin";
+import { isAdminEmail, isSuperAdminEmail } from "@/lib/admin";
 import { COORDINATOR_ROLES } from "@/lib/constants";
 
 export type Session = {
@@ -125,6 +125,18 @@ export async function requireAdmin(nextPath?: string): Promise<Session> {
   }
 
   return session;
+}
+
+/**
+ * Whether this session may perform an operation that cannot be undone.
+ *
+ * Decided against `SUPER_ADMIN_EMAILS`, and it is **not** implied by
+ * `isPlatformAdmin` — see `src/lib/admin.ts` for why the two lists are
+ * separate. Reads `session.user.email` for the reason `isPlatformAdmin` does:
+ * it is the address the identity provider signed.
+ */
+export function isSuperAdmin(session: Session | null): boolean {
+  return isSuperAdminEmail(session?.user.email);
 }
 
 /**

@@ -72,3 +72,57 @@ export function isAdminEmail(email: string | null | undefined): boolean {
 export function adminEmails(): readonly string[] {
   return ADMIN_EMAILS;
 }
+
+// ---------------------------------------------------------------------------
+// Super administrators
+// ---------------------------------------------------------------------------
+
+/**
+ * A second, narrower list for the operations that cannot be undone.
+ *
+ * Today that is exactly one screen: the village merge at
+ * `/admin/villages/merge`, which rewrites `village_id` on every resident and
+ * every report of one village and archives it. `src/lib/village-merge.ts`
+ * explains what survives a reversal and what does not; the short version is
+ * that the audit trail cannot be moved back and the absorbed village's join
+ * code is deliberately not recorded anywhere.
+ *
+ * ## Why a second variable rather than reusing `ADMIN_EMAILS`
+ *
+ * The two lists answer different questions. `ADMIN_EMAILS` is "who reviews
+ * coordinator applications and activates villages" — day-to-day operational
+ * work that a deployment will want to hand to more than one person as it grows.
+ * This is "who may destroy a village", and the set of people who should hold
+ * that is smaller than the set who should hold the first, permanently. On a
+ * deployment with one administrator the two are the same address written twice,
+ * which is the cost of being able to separate them later without a migration.
+ *
+ * **It fails closed and there is no default.** With `SUPER_ADMIN_EMAILS` unset
+ * nobody is a super administrator and the merge screen refuses everyone,
+ * including whoever is in `ADMIN_EMAILS`. The address is deliberately **not**
+ * hardcoded here or defaulted in `.env.example`: BACKLOG B5 records a real
+ * address shipping in `.env.example` and granting platform admin to any clone
+ * of this repository, and that is the mistake this comment exists to not repeat.
+ */
+const SUPER_ADMIN_EMAILS: readonly string[] = (
+  process.env.SUPER_ADMIN_EMAILS ?? ""
+)
+  .split(",")
+  .map((entry) => entry.trim().toLowerCase())
+  .filter((entry) => entry.length > 0);
+
+/**
+ * False on a deployment that has not set the variable, which is every
+ * deployment until somebody does it deliberately.
+ *
+ * The merge page reads this to explain itself rather than 404 silently: an
+ * administrator who cannot see a screen they were told exists should be told it
+ * needs configuring, not left to guess.
+ */
+export const isSuperAdminConfigured = SUPER_ADMIN_EMAILS.length > 0;
+
+/** Whether this address may perform an irreversible operation. */
+export function isSuperAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return SUPER_ADMIN_EMAILS.includes(email.trim().toLowerCase());
+}

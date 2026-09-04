@@ -980,6 +980,7 @@ as working — to anybody, and least of all in a grant application.
 | --- | --- | --- |
 | ~~Push notifications~~ | **Delivered to a real device, 31 August** | Out of this table. Both failure modes were silent and both are now known-good: the `/onesignal/` worker path and the three keys reaching Vercel with a redeploy behind them. Re-check with `curl -I https://villagewatch.app/onesignal/OneSignalSDKWorker.js` after any OneSignal dashboard change |
 | The public incident preview | No link has ever been opened against a real report, and no card has been rendered by a real crawler | `/incident/[id]` and the two routes under `/api/incidents`. The 404 path, the OG card and the public/protected split are all verified locally against a build; what needs a real report is: **what the card looks like** pasted into WhatsApp, which is the whole point of the page; **that the extract is an extract** — view source on a real report and confirm only ~100 characters of the description are in the HTML, and that the landmark and coordinates are absent rather than merely blurred; **that a `PENDING_REVIEW` id 404s**, which is domain rule 6 with no signed-in resident behind it; and **an unanonymised report**, where `description` is the reporter's own wording and the extract is the first line of it. Blocked behind L7 like everything else — there is no `ACTIVE` village |
+| The village merge | No villages have ever been merged, by the script or the screen | `/admin/villages/merge`. It needs `SUPER_ADMIN_EMAILS` set (there is no default) **and** an `ACTIVE`, compliance-complete target — neither exists yet, so the guard refuses today and would move nothing if it did not. Rehearse against a restored copy before the first real one. Three things to read afterwards: the reference mapping on the `village.merged` audit entry, which is the only thing a reversal can be built from; that the archived village's `/dashboard/audit` history is unreachable, as designed; and that the coordinators of the absorbed village now hold coordinator access in the survivor |
 | The retention job | Never run against data | It deletes files and takes reports off the map. Read the counts in the response before trusting the schedule |
 | Erasure | `removeIncident` / `eraseAccount` have never touched a bucket | Confirm the object is gone, not just the row |
 | The weekly digest | Cron has never fired | It is the only thing that creates `PatternAlert` rows — and nothing renders them |
@@ -1106,6 +1107,41 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 ---
 
 ## Recent completions
+
+**The admin village merge — 4 September 2026.** `/admin/villages/merge`, which
+generalises `scripts/merge-histon-impington.sql` into a screen. Same nine steps,
+same transaction, same three constraints; the two slugs became arguments.
+
+- **A second environment list, `SUPER_ADMIN_EMAILS`.** Checked *in addition to*
+  `ADMIN_EMAILS`, never instead of it, so removing somebody from the wider list
+  removes this too. Fails closed with no default — BACKLOG B5 records what
+  happened last time a real address shipped in `.env.example`, and this is the
+  one operation in the app with no undo. **It must be set in Vercel before the
+  screen works**; the page says so rather than 404ing, because the person who
+  cannot see it is the person who can set it.
+- **The three constraints the SQL script found are what the module is shaped
+  by**, and they are restated in its header rather than left in the `.sql`:
+  `audit_logs` is append-only so the trail cannot move and the origin village
+  cannot be deleted (it is archived, join code nulled);
+  `incidents_village_year_number_key` forces renumbering onto the end of the
+  target's sequence with the reference strings rebuilt; police rows are deleted
+  rather than moved, because the weekly sync refetches them.
+- **The audit row carries id lists, not counts.** Once `village_id` is rewritten
+  nothing else says what moved, so `village.merged` holds the moved user,
+  alert, application and unnumbered-incident ids plus the full old-to-new
+  reference mapping. It is the rollback record. `village.merged` is now in
+  `AUDIT_ACTIONS` — the script noted its absence, which was right while nothing
+  wrote it and there was no screen behind it.
+- **A cap rather than a timeout.** `MAX_MERGE_INCIDENTS` (2000) refuses a
+  village outside a parish's shape with a sentence, instead of discovering it
+  when the transaction times out halfway and rolls back with nothing on screen.
+  Above that, run the SQL script, which renumbers in one statement.
+- **The confirmation asks for the origin's name typed out**, `delete-account`'s
+  pattern: the mistake worth catching is swapping the two selectors, and typing
+  the name makes somebody read which village is about to be archived.
+- **Verified** against a production build: `GET` and `POST` both 401 signed out,
+  the page 307s, 689 tests pass across 42 files. What has *not* happened is a
+  merge — see the table above.
 
 **The public incident preview — 4 September 2026.** A page at `/incident/[id]`
 that opens with no account, so a link shared into a village WhatsApp group shows

@@ -1146,6 +1146,25 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    value: "village.merged",
+    label: "Village merged in",
+    description:
+      "A super administrator merged another village into this one — its residents and reports moved here, and it was archived",
+    // The most sensitive entry in this list, and the only one that is also a
+    // rollback record. `before` carries the moved id lists and the full
+    // old-to-new reference mapping, because once `village_id` has been
+    // rewritten nothing else in the database says what moved. Written against
+    // the *surviving* village so the coordinators who have to live with the
+    // result can read it; the absorbed village's own trail stays where it is
+    // and is unreachable — see `src/lib/village-merge.ts`.
+    //
+    // `scripts/merge-histon-impington.sql` notes this action is deliberately
+    // absent from here, which was true while the script was the only thing that
+    // wrote it and there was no screen behind it. `/admin/villages/merge` is
+    // that screen, so the label is now earned.
+    tone: "sensitive",
+  },
+  {
     value: "village.resident_role_changed",
     label: "Resident verified",
     description:

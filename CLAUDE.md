@@ -138,6 +138,9 @@ src/
                               rotate its join code, appoint its first
                               coordinator. Platform-admin only, all audited —
                               this is the bootstrap, over src/lib/villages.ts
+      admin/villages/merge/   Merge one village into another. SUPER_ADMIN_EMAILS
+                              only, and the one screen with no undo behind it —
+                              see Merging villages
       coordinator-apply/      The resident's application form + its action
       map/                    Full-screen Leaflet map, severity pins, heatmap
       incidents/              List with type + severity filters (GET form)
@@ -188,6 +191,8 @@ src/
     api/auth/reset-password/  Sets a new password for the current session
     api/coordinator-requests/   POST apply (resident), GET list (admin only)
     api/coordinator-requests/[id]/  PATCH approve or reject — admin only
+    api/admin/villages/merge/ GET previews a merge, POST performs it. The only
+                              route gated on SUPER_ADMIN_EMAILS
     api/incidents/            POST create report (writes AI fields + tags)
     api/incidents/[id]/       DELETE the reporter's own report — 204/403/404
     api/incidents/[id]/vote/  POST a resident's view of how serious a published
@@ -231,6 +236,8 @@ src/
     admin/coordinator-request-card.tsx  One application, approve or reject
     admin/village-card.tsx    One directory entry: activate, rotate the code,
                               appoint a coordinator
+    admin/village-merge-form.tsx  Two selectors, a preview of what moves, and a
+                              confirmation that asks for the village's name
     incident-form.tsx         5-step wizard, react-hook-form + Zod
     media-uploader.tsx        Blur-then-upload; never touches the original
     location-picker.tsx       Leaflet pin picker — dynamic import, ssr: false
@@ -324,7 +331,13 @@ src/
     prisma.ts                 Singleton + pg driver adapter
     auth.ts                   getSession / requireSession / requireRole /
                               requireCoordinator / requireAdmin
-    admin.ts                  ADMIN_EMAILS — the platform admin allow-list
+    admin.ts                  ADMIN_EMAILS — the platform admin allow-list —
+                              and SUPER_ADMIN_EMAILS, the narrower second list
+                              for the operations with no undo
+    village-merge.ts          Merging one village into another: the generalised
+                              form of scripts/merge-histon-impington.sql. Server
+                              only, one transaction, and the audit row it writes
+                              is the rollback record
     auth-errors.ts            Every Supabase auth failure, in words a resident
                               can act on. Client-safe, and no provider message
                               ever leaves it — see Auth email and its limits
@@ -575,6 +588,11 @@ tests/                        Vitest, unit only — see The test suite
                               directions of the verifiedAt pair, and each of
                               the five refusals, including a coordinator as the
                               target and the caller as the target
+  village-merge.test.ts       The merge — both gates, the guards that refuse
+                              before anything is written, the renumbering
+                              continuing from the target's highest per year, the
+                              reference code following a rename, and the audit
+                              row carrying id lists rather than counts
   village-join.test.ts        checkVillageJoin — the blank code, the empty
                               string, normalisation, the legacy null, and status
                               refusing before the code is looked at
@@ -2155,6 +2173,13 @@ replacement for them.
   read at module load, and it **fails closed** — unset, nobody is an
   administrator and the coordinator queue refuses everyone while applications
   keep arriving. Set it in Vercel as well as `.env.local`.
+- **`SUPER_ADMIN_EMAILS` is a second, narrower list and is not implied by the
+  first.** It gates `/admin/villages/merge` and nothing else today. Same shape —
+  server-only, comma-separated, read at module load, fails closed — and it is
+  checked **in addition to** `ADMIN_EMAILS`, so an address in one and not the
+  other opens nothing. There is deliberately no default and none in
+  `.env.example`; with it unset the merge screen explains itself and refuses.
+  See Merging villages.
 - **Fail-open and fail-closed are per module, and the disagreement is the
   design.** `rate-limit.ts` fails **open**, because a database blip must not
   become "you cannot file a report". `getVillageAutoApprove` fails **closed**,
@@ -3397,6 +3422,68 @@ no quota.
   Licence v3.0, the same licence `ONS_ATTRIBUTION` carries, and it asks for the
   acknowledgement wherever the data is shown. It is under the dashboard panel and
   in every report section, not in a credits page nobody opens.
+
+## Merging villages
+
+`src/lib/village-merge.ts` does it, `/admin/villages/merge` is the screen, and
+`scripts/merge-histon-impington.sql` is the reviewed reference the module was
+generalised from. Where the two disagree, read the SQL: its header carries the
+reasoning in full.
+
+- **`SUPER_ADMIN_EMAILS`, checked in addition to `ADMIN_EMAILS`.** Two lists
+  answering two questions: who reviews coordinator applications and activates
+  villages, and who may destroy a village. The second is smaller than the first
+  permanently, and on a deployment with one administrator it is the same address
+  written twice — the cost of being able to separate them later without a
+  migration. Both fail closed, and **there is no default**: BACKLOG B5 is the
+  record of a real address shipping in `.env.example` and granting platform
+  admin to every clone. `requireAdmin()` guards the page and a second check
+  renders an explanation rather than redirecting, because the administrator who
+  cannot see the screen is the one who can set the variable.
+- **Three constraints shape every step, and none of them is a preference.**
+  `audit_logs` is append-only at the database, so the trail cannot follow the
+  reports and the origin village **cannot be deleted** — `ON DELETE SET NULL` on
+  `audit_logs.village_id` is an UPDATE the trigger refuses. It is archived, with
+  its join code nulled. `incidents_village_year_number_key` forces every moved
+  report onto the end of the target's sequence for its year, with the reference
+  string rebuilt from the target's code. And the police rows are **deleted**:
+  `police_neighbourhoods` is unique per village, both may hold one, and the
+  weekly sync refetches whatever the live centre needs.
+- **The consequence to say out loud**: the merged village's `/dashboard/audit`
+  will not show the absorbed village's history, because that viewer is scoped by
+  `village_id`. The history is not gone; it is attached to a village nobody can
+  open. The SQL script carries a commented block that moves it using the
+  trigger's own disable hatch, off by default — rewriting a row to say a
+  decision was taken in a village where it was not is a worse trade than an
+  unreachable trail.
+- **The audit row carries id lists, not counts, and that is the whole point.**
+  Once `users.village_id` has been rewritten there is nothing else in the
+  database that says who used to be in the absorbed village. `village.merged`
+  holds the moved user, alert, application and unnumbered-incident ids plus the
+  full old-to-new reference mapping, against the **surviving** village so the
+  coordinators who live with the result can read it. It never carries the join
+  code: a credential in an append-only table cannot be rotated out of it.
+- **The rename happens before the references are rebuilt.** Step 4 then step 6,
+  because the reference code is derived from the name — reverse them and every
+  rebuilt reference carries the old village's letters. Asserted.
+- **The slug is never renamed** and cannot be from the screen. `/join/<slug>` is
+  printed on every invite sheet and QR code already handed out and there is no
+  redirect behind it.
+- **`MAX_MERGE_INCIDENTS` (2000) refuses rather than times out.** Each numbered
+  report is renumbered individually, because its new number depends on its
+  position in the filing order; a village far outside a parish's shape gets a
+  sentence instead of a transaction that dies halfway and rolls back silently.
+  Above the cap, run the SQL script — it renumbers in one statement.
+- **A coordinator of the absorbed village becomes a coordinator of the merged
+  one**, with the resident email reveal and the audited read of reporters'
+  verbatim words that carries. `verifiedAt` travels too. Both are left alone
+  deliberately — clearing verification would un-verify people nobody asked
+  about — and the preview says so, because a privilege grant that happens
+  silently is the thing worth putting on screen.
+- **The gate is asserted three times**: on the page, in the route handler
+  (`src/proxy.ts` passes `/api/` straight through, so a handler that trusted the
+  proxy would be open to anybody who could guess the path), and at the module
+  boundary beside the write, which is `villages.ts`'s convention.
 
 ## The village invite
 
