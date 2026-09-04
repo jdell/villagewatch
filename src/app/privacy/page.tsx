@@ -389,6 +389,9 @@ export default function PrivacyPage() {
           <LI>
             The category, how serious you judged it, when it happened, any
             landmark you typed, and whether you have reported it to the police.
+            Where the AI suggests a different level from yours and you accept
+            it, both answers are kept, so your coordinator can see that the two
+            differed.
           </LI>
         </UL>
 
@@ -517,8 +520,9 @@ export default function PrivacyPage() {
           sent to{" "}
           <strong>Anthropic</strong>, the company behind the Claude AI models, and
           processed on their servers. Claude rewrites the report with identifying
-          details removed, suggests a category and a severity, and pulls out a
-          few keywords.
+          details removed, suggests a category and a severity &mdash; with one
+          sentence saying why it chose that level &mdash; and pulls out a few
+          keywords.
         </P>
         <UL>
           <LI>

@@ -1804,6 +1804,13 @@ export const PRICING = [
  * line on either page a reader can check against a third party — so the date
  * beside it has to be the date it became true.
  *
+ * Moved to 5 September 2026 for the AI severity proposal: §2 now says both
+ * severity answers are kept where the reporter and the model differ, and §"How
+ * the AI is used" says the model gives a sentence for the level it chose. The
+ * first is a new column holding a resident's own judgement; the second is new
+ * text generated about their report and shown to their coordinator. Neither is
+ * a rewording.
+ *
  * Moved again on 4 September 2026 for the public incident preview at
  * `/incident/[id]`. §6 said in as many words that following a shared link
  * "still needs an account in your village", and that stopped being true the
@@ -1811,7 +1818,7 @@ export const PRICING = [
  * village to somebody signed out. It is the clearest case this date exists for:
  * not a rewording, but a new audience for a resident's report.
  */
-export const LEGAL_LAST_UPDATED = "2026-09-04";
+export const LEGAL_LAST_UPDATED = "2026-09-05";
 
 /**
  * The data controller under UK GDPR.

@@ -487,6 +487,14 @@ GRANT SELECT (
   title, description,
   ai_summary, ai_model, ai_processed_at, ai_confidence, anonymized,
   people_count, recurring, pattern_note, is_anonymous,
+  -- The AI's one-sentence reason for the severity it proposed. Public-safe by
+  -- construction: the prompt holds it to `pattern_note`'s rule — a count and an
+  -- area, never a landmark or a reference — and the Zod schema caps it at 140
+  -- characters. `reporter_severity` is deliberately NOT here beside it: that is
+  -- a resident's own judgement about their neighbours, it is read on the
+  -- moderation queue by a coordinator, and there is no reason for the anon key
+  -- to have it.
+  severity_rationale,
   occurred_at, reported_at, resolved_at,
   location_text, lat, lng, location_point, location_fuzz_meters,
   reported_to_police, police_reference,

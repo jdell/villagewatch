@@ -49,6 +49,7 @@ function modelRecord(overrides: Record<string, unknown> = {}) {
     recurring: false,
     pattern_note: null,
     confidence: 0.8,
+    severity_rationale: "Forced entry to an occupied property overnight.",
     ...overrides,
   };
 }
@@ -101,6 +102,52 @@ describe("a successful pass", () => {
     expect(result.data.confidence).toBeCloseTo(0.8);
     expect(result.model).toBe("claude-sonnet-5");
     expect(result.usage).toEqual({ inputTokens: 900, outputTokens: 210 });
+  });
+
+  it("puts the area context in the prompt when there is a baseline", async () => {
+    mocks.create.mockResolvedValue(modelResponse(modelRecord()));
+
+    await structureIncident(
+      input({
+        severityContext: {
+          areaBaselinePerMonth: 0.4,
+          areaLast30Days: 3,
+          categoryTrend: { type: "VEHICLE_CRIME", recent: 3, priorRate: 0.7 },
+          insufficientHistory: false,
+        },
+      }),
+    );
+
+    const body = JSON.stringify(mocks.create.mock.calls[0][0].messages);
+
+    expect(body).toContain("area_context");
+    expect(body).toContain("0.4");
+  });
+
+  it("omits the area block entirely for a village with no baseline", async () => {
+    mocks.create.mockResolvedValue(modelResponse(modelRecord()));
+
+    await structureIncident(
+      input({
+        severityContext: {
+          areaBaselinePerMonth: 0,
+          areaLast30Days: 0,
+          categoryTrend: null,
+          insufficientHistory: true,
+        },
+      }),
+    );
+
+    const request = mocks.create.mock.calls[0][0];
+
+    /**
+     * Absent, not present-and-empty. The system prompt tells the model to say
+     * nothing about how quiet an area is when no block is given, and a block
+     * of zeroes would read as "nothing has ever happened here" — which is the
+     * opposite of "we do not know yet".
+     */
+    expect(JSON.stringify(request.messages)).not.toContain("area_context");
+    expect(request.system).toMatch(/If no .*area_context.* block is given/);
   });
 
   it("sends the reporter's words under a system prompt that forbids names", async () => {
@@ -308,6 +355,40 @@ describe("when the response is unusable", () => {
       ok: false,
       code: "invalid_output",
     });
+  });
+
+  it("rejects a severity rationale over the cap rather than truncating it", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // The rationale is rendered inline under a badge on the preview. Over the
+    // cap the whole response is invalid and the wizard falls back to the
+    // reporter's own wording — a truncated half-sentence explaining a severity
+    // is worse than no sentence, because the reporter reads it as the reason.
+    mocks.create.mockResolvedValue(
+      modelResponse(modelRecord({ severity_rationale: "x".repeat(141) })),
+    );
+
+    expect(await structureIncident(input())).toMatchObject({
+      ok: false,
+      code: "invalid_output",
+    });
+
+    logged.mockRestore();
+  });
+
+  it("rejects a record with no severity rationale at all", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    mocks.create.mockResolvedValue(
+      modelResponse(modelRecord({ severity_rationale: "  " })),
+    );
+
+    expect(await structureIncident(input())).toMatchObject({
+      ok: false,
+      code: "invalid_output",
+    });
+
+    logged.mockRestore();
   });
 
   it("rejects a record that is well-formed and still wrong", async () => {

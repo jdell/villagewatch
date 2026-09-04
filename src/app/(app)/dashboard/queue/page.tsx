@@ -69,6 +69,12 @@ export default async function QueuePage() {
           occurredAt: true,
           reportedAt: true,
           anonymized: true,
+          // The two halves of the severity proposal. Read here rather than on
+          // the detail page because the queue is where a coordinator decides
+          // whether the level is right, and a disagreement between the reporter
+          // and the model is the signal that it might not be.
+          reporterSeverity: true,
+          severityRationale: true,
           isAnonymous: true,
           reporter: { select: { fullName: true } },
           tags: { select: { label: true }, orderBy: { label: "asc" } },
@@ -130,6 +136,8 @@ export default async function QueuePage() {
       ? null
       : initialsOf(row.reporter?.fullName),
     anonymized: row.anonymized,
+    reporterSeverity: row.reporterSeverity,
+    severityRationale: row.severityRationale,
     tags: row.tags.map((tag) => tag.label),
     mediaCount: row._count.media,
   }));

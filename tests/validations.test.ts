@@ -184,6 +184,7 @@ describe("structuredIncidentSchema", () => {
     recurring: false,
     pattern_note: null,
     confidence: 0.8,
+    severity_rationale: "Forced entry to an occupied property overnight.",
   };
 
   it("accepts the model's record and lowercases the tags", () => {

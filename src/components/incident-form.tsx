@@ -138,7 +138,9 @@ const STEPS = [
 /** Fields validated before each step will let you past it. */
 const STEP_FIELDS: readonly (readonly (keyof IncidentFormValues)[])[] = [
   [],
-  ["type", "severity", "title", "description", "occurredAt"],
+  // `severity` is deliberately absent: it is optional now, and gating step 2
+  // on it would make "optional" mean "required with no asterisk".
+  ["type", "title", "description", "occurredAt"],
   ["lat", "lng", "locationText"],
   [],
   [],
@@ -216,6 +218,18 @@ type AiState = {
   peopleCount: number | null;
   recurring: boolean;
   patternNote: string | null;
+  /** The model's one sentence for the severity it proposed. */
+  severityRationale: string | null;
+  /**
+   * What the reporter had chosen when the pass ran, captured **before** the
+   * writeback overwrites the form field.
+   *
+   * It cannot be read off the form at publish time: by then the field holds
+   * whatever is actually filing, which is usually the model's answer. Without
+   * this there is nothing left anywhere that says the two ever differed, which
+   * is the whole thing this feature exists to record.
+   */
+  reporterSeverity: Severity | null;
   error: string | null;
   /**
    * The inputs the current record was produced from. Editing any of them on an
@@ -228,6 +242,8 @@ type AiState = {
 const IDLE_AI: AiState = {
   status: "idle",
   model: null,
+  severityRationale: null,
+  reporterSeverity: null,
   confidence: null,
   peopleCount: null,
   recurring: false,
@@ -268,7 +284,9 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
     mode: "onTouched",
     defaultValues: {
       type: "SUSPICIOUS_ACTIVITY",
-      severity: "LOW",
+      // No default. See `incidentFormSchema` — an unanswered severity is a real
+      // state and is not the same as the reporter having chosen the lowest one.
+      severity: undefined,
       title: "",
       description: "",
       publicDescription: "",
@@ -440,6 +458,13 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
 
       const incident = result.incident;
 
+      /**
+       * Read **before** the writeback below, which is the only moment it is
+       * still available: `setValue("severity", …)` replaces it, and by publish
+       * time the field holds whatever is actually filing.
+       */
+      const chosenBySeverity = values.severity ?? null;
+
       setValue("type", incident.type, { shouldValidate: true });
       setValue("severity", incident.severity, { shouldValidate: true });
       setValue("title", incident.title, { shouldValidate: true });
@@ -463,6 +488,8 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
         // cluster Claude decided was a coincidence.
         recurring: incident.recurring || (result.pattern?.recurring ?? false),
         patternNote: incident.pattern_note ?? result.pattern?.patternNote ?? null,
+        severityRationale: incident.severity_rationale,
+        reporterSeverity: chosenBySeverity,
         error: null,
         signature,
       });
@@ -533,6 +560,11 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
                   peopleCount: ai.peopleCount ?? undefined,
                   recurring: ai.recurring,
                   patternNote: ai.patternNote ?? undefined,
+                  severityRationale: ai.severityRationale ?? undefined,
+                  // Only when the reporter actually answered step 2. Sending
+                  // the filed value here would record agreement on a question
+                  // they were never asked.
+                  reporterSeverity: ai.reporterSeverity ?? undefined,
                 }
               : undefined,
         }),
@@ -929,7 +961,13 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
             mode={step === PREVIEW_STEP ? "review" : "publish"}
             fields={{
               type: selectedType,
-              severity: selectedSeverity,
+              /**
+               * `LOW` only where the reporter skipped step 2 *and* the AI pass
+               * did not answer — the one state the spec leaves to the
+               * moderation queue. Every other path has a real value here: the
+               * reporter's own, or the model's writeback.
+               */
+              severity: selectedSeverity ?? "LOW",
               title,
               // Falls back to the reporter's own words for the moment between
               // arriving at this step and the rewrite coming back.
@@ -938,6 +976,8 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
               tags,
             }}
             onFieldsChange={applyPreviewFields}
+            severityRationale={ai.severityRationale}
+            reporterSeverity={ai.reporterSeverity}
             occurredAt={new Date(occurredAt)}
             media={previewMedia}
             onPublish={publish}

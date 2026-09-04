@@ -414,6 +414,15 @@ export async function POST(request: NextRequest) {
           peopleCount: ai?.peopleCount,
           recurring: ai?.recurring ?? false,
           patternNote: ai?.patternNote,
+          /**
+           * The reporter's own view and the model's reason for differing from
+           * it, stored together because either alone says less. Both null on a
+           * report the AI pass never touched, and `reporterSeverity` is null
+           * again where step 2 was left unanswered — which is a real state, and
+           * not the same as the reporter agreeing.
+           */
+          reporterSeverity: ai?.reporterSeverity,
+          severityRationale: ai?.severityRationale,
           isAnonymous: report.isAnonymous,
           occurredAt: report.occurredAt,
           locationText: report.locationText,
@@ -473,6 +482,12 @@ export async function POST(request: NextRequest) {
             anonymized: Boolean(ai),
             aiModel: ai?.model ?? null,
             recurring: ai?.recurring ?? false,
+            // Only when the two differ. A row saying "the reporter agreed" on
+            // every report is a column of noise in a trail whose whole value is
+            // that entries in it mean something.
+            ...(ai?.reporterSeverity && ai.reporterSeverity !== report.severity
+              ? { reporterSeverity: ai.reporterSeverity }
+              : {}),
           },
           ipAddress: request.headers.get("x-forwarded-for"),
           userAgent: request.headers.get("user-agent"),

@@ -8,6 +8,12 @@ import {
   type NearbyIncident,
 } from "@/lib/ai/detect-patterns";
 import {
+  BASELINE_MONTHS,
+  TREND_RECENT_DAYS,
+  formatSeverityContextForPrompt,
+  type SeverityContext,
+} from "@/lib/ai/severity-context";
+import {
   INCIDENT_TYPES,
   INCIDENT_TYPE_LABELS,
   SEVERITIES,
@@ -70,6 +76,13 @@ export type StructureIncidentInput = {
   image?: { mediaType: "image/jpeg" | "image/png" | "image/webp"; data: string };
   /** Published incidents within 200m in the last 30 days. */
   history: readonly NearbyIncident[];
+  /**
+   * How busy this area normally is and whether the category is rising.
+   * Null or omitted where the village is too young to say — see
+   * `severity-context.ts`, which returns the block or nothing rather than a
+   * baseline of zero the model would read as "nothing ever happens here".
+   */
+  severityContext?: SeverityContext | null;
   /** Injected in tests; defaults to now. */
   now?: Date;
 };
@@ -98,6 +111,7 @@ const OUTPUT_SCHEMA = {
     "recurring",
     "pattern_note",
     "confidence",
+    "severity_rationale",
   ],
   properties: {
     type: {
@@ -159,6 +173,11 @@ const OUTPUT_SCHEMA = {
       description:
         "0 to 1. How confident you are that this record faithfully represents the report.",
     },
+    severity_rationale: {
+      type: "string",
+      description:
+        "One short sentence, under 140 characters, saying why that severity and not one either side of it. Name the thing that decided it — what was described, and the area figures where they are what tipped it. Area-level only: a count and an area, never a landmark, a street, a reference or a past report's details. The reporter reads this.",
+    },
   },
 } as const;
 
@@ -204,7 +223,24 @@ You are given the published incidents reported within ${PATTERN_RADIUS_METERS}m 
 
 - Set \`recurring\` true only when this report genuinely belongs with them — a similar kind of incident, in the same area, close enough in time to be worth telling neighbours about. Two unrelated things happening near each other is not a pattern.
 - \`pattern_note\` is one plain sentence, e.g. "4th report of vehicle crime within 200m this month". If \`recurring\` is false, \`pattern_note\` must be null.
-- If no nearby incidents are listed, \`recurring\` is false.`;
+- If no nearby incidents are listed, \`recurring\` is false.
+
+# How busy this area normally is
+
+Where an \`<area_context>\` block is given, it tells you the normal rate of reports within ${PATTERN_RADIUS_METERS}m averaged over ${BASELINE_MONTHS} months, how many there have been in the last ${TREND_RECENT_DAYS} days, and whether this category is rising across the village.
+
+- Use it to judge whether what happened is unusual **here**. Three break-ins in a month on a street that normally has one report a quarter is a different thing from three on a street that has four a month, and the severity a neighbour needs is not the same in both.
+- It is a reason to move severity by one step at most, and only where the description leaves room. It is never a reason to overrule what the reporter described: a lost cat on a busy street is still a lost cat.
+- **If no \`<area_context>\` block is given, say nothing about how quiet or busy the area is.** The village may be too new to have a baseline. Inventing one, or implying it from the nearby incidents list, is the single worst thing you can do with this section.
+
+# Explaining the severity
+
+\`severity_rationale\` is one sentence, under 140 characters, and the reporter reads it on the screen where they can disagree with you.
+
+- Name what decided it. "Forced entry to an occupied property overnight" is a reason; "this seems serious" is not.
+- Where the area figures are what tipped it, say so plainly: "Third report within 200m this month, on a street that averages under one."
+- Area-level only, exactly like \`location_name\`: a count and an area. Never a landmark, never a street, never a reference number, never a detail from a specific past report.
+- If you followed the reporter's own choice, say that: "Matches the level the reporter chose."`;
 
 export async function structureIncident(
   input: StructureIncidentInput,
@@ -348,6 +384,10 @@ function buildUserPrompt(input: StructureIncidentInput, now: Date): string {
       : "No image was attached.",
   );
 
+  const areaContext = formatSeverityContextForPrompt(
+    input.severityContext ?? null,
+  );
+
   return [
     "<report>",
     ...lines,
@@ -359,6 +399,14 @@ function buildUserPrompt(input: StructureIncidentInput, now: Date): string {
     `<recent_nearby_incidents radius_m="${PATTERN_RADIUS_METERS}" days="${PATTERN_WINDOW_DAYS}">`,
     formatHistoryForPrompt(input.history, now),
     "</recent_nearby_incidents>",
+    /**
+     * Spread rather than pushed as a possibly-empty string, because the blank
+     * lines either side of it are deliberate separators and a blanket
+     * `filter(Boolean)` would take those too. The prompt's own instruction is
+     * that **no** block means say nothing about how busy the area is, so an
+     * empty one has to be absent rather than present and blank.
+     */
+    ...(areaContext ? ["", areaContext] : []),
     "",
     "Produce the structured incident record.",
   ].join("\n");
