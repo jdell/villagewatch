@@ -9,12 +9,22 @@ import {
 } from "@/lib/email/layout";
 
 /**
- * The four emails Supabase Auth sends, in VillageWatch's own clothes.
+ * The six emails Supabase Auth sends, in VillageWatch's own clothes.
  *
  * **Nothing in this repository sends these**, and nothing can. Confirmation,
- * magic link, email change and password recovery all carry a token, and only
- * Supabase Auth can mint one — so the wording lives in the Supabase dashboard,
- * at Authentication → Emails → Templates, which is a form rather than a file.
+ * invitation, magic link, email change, password recovery and reauthentication
+ * all carry a token, and only Supabase Auth can mint one — so the wording lives
+ * in the Supabase dashboard, at Authentication → Emails → Templates, which is a
+ * form rather than a file.
+ *
+ * **Two of the six have no caller on this deployment today**, and are here
+ * anyway. Nothing invites a user through Supabase — a resident registers with a
+ * join code, and `/invite/[slug]` is a printed sheet rather than an email — and
+ * nothing calls `reauthenticate()`. Both are buttons somebody can press in the
+ * dashboard, or settings somebody can turn on, and the failure mode of leaving
+ * them is a stock grey Supabase email going out under this service's name with
+ * nobody having decided that it should. The `otp` and `resend` entries in
+ * `auth-errors.ts` are in the codebase for the same reason.
  *
  * That is the problem this directory exists for. A template edited in a
  * dashboard is a change nobody can review, nobody can diff and nobody finds
@@ -39,24 +49,33 @@ import {
  * ## Go template syntax, and the one string that must survive
  *
  * Supabase interpolates these with Go's `text/template`. `{{ .ConfirmationURL }}`
- * is the action link and it is the whole point of every one of these emails —
+ * is the action link and it is the whole point of five of these six emails —
  * anything else in that position produces a delivered email with a dead link,
  * which fails silently and looks to the resident exactly like an address they
- * mistyped. Every template carries it twice: once behind the button, and once
- * as visible text underneath, because a client that strips the button table
- * (and Outlook's Word engine does surprising things to nested tables) must
- * still leave something clickable.
+ * mistyped. Those five carry it twice: once behind the button, and once as
+ * visible text underneath, because a client that strips the button table (and
+ * Outlook's Word engine does surprising things to nested tables) must still
+ * leave something clickable.
  *
  * `escapeHtml` leaves it alone — there is no `&`, `<`, `>`, `"` or `'` in it —
  * and the test asserts the literal string is present rather than trusting that.
  *
- * Supabase also offers `{{ .Email }}`, `{{ .NewEmail }}`, `{{ .Token }}` and
- * `{{ .SiteURL }}`. **None of them is used here**, deliberately: a variable a
- * project's Supabase version does not populate renders as an empty string, and
- * an email with a blank line where an address should be reads as broken to the
- * one person who cannot tell whether it is. The change-of-address template is
- * worded so it is true of both copies Supabase sends — the old address and the
- * new one — rather than naming either.
+ * **Reauthentication is the sixth and is not a link at all.** Supabase sends a
+ * six-digit code there and populates `{{ .Token }}` rather than
+ * `{{ .ConfirmationURL }}`, so that template carries the code and no button —
+ * one pointing nowhere would be worse than none.
+ *
+ * Supabase also offers `{{ .Email }}`, `{{ .NewEmail }}` and `{{ .SiteURL }}`.
+ * **None of those is used here**, deliberately: a variable a project's Supabase
+ * version does not populate renders as an empty string, and an email with a
+ * blank line where an address should be reads as broken to the one person who
+ * cannot tell whether it is. `{{ .Token }}` is the exception that proves the
+ * rule rather than a hole in it — Supabase always populates it for the one
+ * template that uses it, so the blank cannot occur, and omitting it would leave
+ * a resident told to type a code the email does not contain. The
+ * change-of-address template is still worded so it is true of both copies
+ * Supabase sends — the old address and the new one — rather than naming
+ * either.
  *
  * ## Why the HTML looks like 2004
  *
@@ -88,6 +107,46 @@ function fallbackLink(): string {
 }
 
 /**
+ * Supabase's variable for the six-digit reauthentication code.
+ *
+ * The **one** exception to "no other Supabase variable", and it is not a
+ * loosening of that rule so much as the rule's own reasoning applied to a
+ * different email. The objection to `{{ .Email }}` and friends is that a
+ * project which does not populate them renders a blank where a fact should be.
+ * Supabase always populates this one for the reauthentication template — it is
+ * the entire content of that email — so the failure mode the rule guards
+ * against cannot occur, and refusing to use it would leave the resident with an
+ * email telling them to enter a code that is not in it.
+ *
+ * `{{ .ConfirmationURL }}` is the opposite: Supabase does **not** populate it
+ * for reauthentication, because there is no link to follow. A button there
+ * would go nowhere.
+ */
+const TOKEN = "{{ .Token }}";
+
+/**
+ * The code, set out to be read off a screen and typed into another one.
+ *
+ * Monospaced and widely letter-spaced because that is what makes a six-digit
+ * code transcribable — a proportional font at body size turns `1`, `l` and `7`
+ * into a guess. Centred and large for the same reason: this is the whole
+ * message, and somebody is reading it on a phone with the other screen already
+ * open in front of them.
+ *
+ * A table rather than a `div`, like everything else in these emails: Outlook's
+ * Word engine ignores `padding` on a block element and this needs its box.
+ */
+function code(): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px;">
+      <tr>
+        <td align="center" style="padding:20px 16px;background-color:#f1f5f9;border-radius:8px;">
+          <div style="font-family:'Courier New',Courier,monospace;font-size:32px;font-weight:700;letter-spacing:8px;color:#0f2557;">${TOKEN}</div>
+        </td>
+      </tr>
+    </table>`;
+}
+
+/**
  * The footer links on an auth email.
  *
  * Not the default three. The reader of one of these has not signed in — and for
@@ -104,9 +163,11 @@ const AUTH_FOOTER = `This email was sent by ${APP_NAME} because somebody used th
 
 type SupabaseTemplateId =
   | "confirmSignup"
+  | "inviteUser"
   | "magicLink"
   | "changeEmail"
-  | "resetPassword";
+  | "resetPassword"
+  | "reauthentication";
 
 export type SupabaseAuthTemplate = {
   id: SupabaseTemplateId;
@@ -173,7 +234,47 @@ function template(input: {
 }
 
 /**
- * The four templates, keyed by the thing they are for.
+ * The one template whose action is a code rather than a link.
+ *
+ * A separate builder rather than a flag on `template()`, because almost nothing
+ * is shared: no button, no fallback link, no `{{ .ConfirmationURL }}`, and the
+ * whole body is one block that has to be transcribable. A boolean threaded
+ * through the other one would make every branch of it read "unless this is the
+ * reauthentication email".
+ */
+function codeTemplate(input: {
+  id: SupabaseTemplateId;
+  dashboardName: string;
+  subject: string;
+  filename: string;
+  title: string;
+  preheader: string;
+  lead: readonly string[];
+  tail: readonly string[];
+  text: readonly string[];
+}): SupabaseAuthTemplate {
+  return {
+    id: input.id,
+    dashboardName: input.dashboardName,
+    subject: input.subject,
+    filename: input.filename,
+    html: renderEmail({
+      title: input.title,
+      preheader: input.preheader,
+      footer: AUTH_FOOTER,
+      links: AUTH_LINKS,
+      body: [
+        ...input.lead.map(paragraph),
+        code(),
+        ...input.tail.map(note),
+      ].join("\n            "),
+    }),
+    text: [...input.text, "", textFooter()].join("\n"),
+  };
+}
+
+/**
+ * The six templates, keyed by the thing they are for.
  *
  * Ordered the way the dashboard orders its tabs, so working down this file and
  * working across that screen are the same pass.
@@ -203,6 +304,38 @@ export const SUPABASE_AUTH_TEMPLATES = {
       "",
       "The link is good for 24 hours. If you did not create an account, ignore",
       "this email — nothing will happen and the address will not be used again.",
+    ],
+  }),
+
+  inviteUser: template({
+    id: "inviteUser",
+    dashboardName: "Invite user",
+    subject: `You have been invited to ${APP_NAME}`,
+    filename: "invite-user.html",
+    title: "You have been invited",
+    preheader: `Accept your invitation and join your village on ${APP_NAME}.`,
+    lead: [
+      `Somebody invited this address to ${APP_NAME}, the neighbourhood watch your village runs itself. Accept the invitation to set up your account.`,
+      "You will be asked which village you are in, and for the join code your coordinator gave you. Without the code you can still create an account, but a coordinator has to confirm you before you count as a verified resident.",
+    ],
+    action: "Accept the invitation",
+    tail: [
+      "The link is good for 24 hours and can be used once.",
+      "If you were not expecting this, ignore the email. No account has been created and this address will not be used again.",
+    ],
+    text: [
+      "Hello,",
+      "",
+      `Somebody invited this address to ${APP_NAME}, the neighbourhood watch your`,
+      "village runs itself. Accept the invitation to set up your account:",
+      "",
+      CONFIRMATION_URL,
+      "",
+      "You will be asked which village you are in, and for the join code your",
+      "coordinator gave you.",
+      "",
+      "The link is good for 24 hours and can be used once. If you were not",
+      "expecting this, ignore the email — no account has been created.",
     ],
   }),
 
@@ -294,9 +427,38 @@ export const SUPABASE_AUTH_TEMPLATES = {
       "nobody has been signed in.",
     ],
   }),
+
+  reauthentication: codeTemplate({
+    id: "reauthentication",
+    dashboardName: "Reauthentication",
+    subject: `Your ${APP_NAME} confirmation code`,
+    filename: "reauthentication.html",
+    title: "Confirm it is you",
+    preheader: "Your confirmation code, good for a few minutes.",
+    lead: [
+      `${APP_NAME} asked for this code before making a change to your account. Type it into the screen that asked for it.`,
+    ],
+    tail: [
+      "The code is good for a few minutes and can be used once. Nobody will ever ask you for it by phone, by text or in a reply to this email.",
+      "If you did not ask for it, ignore this email and change your password. Somebody knows your address, and they may know more than that.",
+    ],
+    text: [
+      "Hello,",
+      "",
+      `${APP_NAME} asked for a code before making a change to your account.`,
+      "Type this into the screen that asked for it:",
+      "",
+      `    ${TOKEN}`,
+      "",
+      "The code is good for a few minutes and can be used once. Nobody will ever",
+      "ask you for it by phone, by text or in a reply to this email.",
+      "",
+      "If you did not ask for it, ignore this email and change your password.",
+    ],
+  }),
 } as const satisfies Record<SupabaseTemplateId, SupabaseAuthTemplate>;
 
-/** The four, in dashboard order — for the generator and the test to walk. */
+/** The six, in dashboard order — for the generator and the test to walk. */
 export const SUPABASE_AUTH_TEMPLATE_LIST: readonly SupabaseAuthTemplate[] =
   Object.values(SUPABASE_AUTH_TEMPLATES);
 
@@ -305,6 +467,13 @@ export const SUPABASE_AUTH_TEMPLATE_LIST: readonly SupabaseAuthTemplate[] =
  * it and the module producing it cannot disagree about what it is.
  */
 export const SUPABASE_CONFIRMATION_URL_TOKEN = CONFIRMATION_URL;
+
+/**
+ * The other one, for the single template that sends a code instead of a link.
+ * Exported for the same reason as the URL above: the test asserting the literal
+ * and the module emitting it must not be able to drift apart.
+ */
+export const SUPABASE_TOKEN_TOKEN = TOKEN;
 
 /** Where the generated files live, relative to the repository root. */
 export const SUPABASE_TEMPLATE_DIR = "src/lib/email/supabase-templates";

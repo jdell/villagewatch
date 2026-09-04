@@ -418,16 +418,18 @@ src/
     email/                    layout, welcome, weekly-digest,
                               incident-notification, coordinator-decision — pure
                               functions to `{ subject, text, html }`. `layout.ts`
-                              is the one branded shell all eight emails render
-                              through, the auth templates included
+                              is the one branded shell all ten emails render
+                              through, the six auth templates included
     email/send.ts             The transport, over Resend. Never throws, logs the
                               message with no key set. `sendBulkEmail` beside it
                               fans one message out per recipient — never one
                               addressed to the village. All four templates have
                               a caller
-    email/supabase-templates/ The four auth emails Supabase sends, as branded
+    email/supabase-templates/ The six auth emails Supabase sends, as branded
                               HTML to paste into its dashboard. Generated from
-                              `index.ts`; the `.html` files are the artefact
+                              `index.ts`; the `.html` files are the artefact.
+                              Reauthentication carries `{{ .Token }}` and no
+                              link — the one exception to "one variable" 
     ai/weekly-digest.ts       Claude weekly summary, structured, typed failures
     ai/report-narrative.ts    Claude pattern analysis for a date range — same
                               contract, written for a PCSO rather than residents
@@ -676,8 +678,10 @@ tests/                        Vitest, unit only — see The test suite
                               `script-src` as well as `connect-src`, never
                               `'unsafe-inline'` in `script-src`, and report-only
                               differing from enforcing in exactly one directive
-  supabase-templates.test.ts  The four auth templates — `{{ .ConfirmationURL }}`
-                              present, no other Go variable, and the committed
+  supabase-templates.test.ts  The six auth templates — `{{ .ConfirmationURL }}`
+                              present in the five that link, `{{ .Token }}` and
+                              *no* link in reauthentication, no other Go
+                              variable in any of them, and the committed
                               `.html` matching the module that generates it
 vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
@@ -1518,8 +1522,8 @@ was finally wired in** — which is the whole argument for having kept them apar
 
 ### The branded shell
 
-`renderEmail` in `layout.ts`, and **all eight emails go through it** — the four
-this codebase sends and the four Supabase auth templates beside them. There is
+`renderEmail` in `layout.ts`, and **all ten emails go through it** — the four
+this codebase sends and the six Supabase auth templates beside them. There is
 one shell, so there is one place to change the brand.
 
 - **The welcome was the exception until 1 September 2026, and it argued for
@@ -1663,11 +1667,20 @@ feed it. All four templates have a caller now; three of them gained one on
 
 ### The Supabase auth templates
 
-`src/lib/email/supabase-templates/`. Four emails — confirm signup, magic link,
-change email address, reset password — that **this codebase cannot send and
-never will**: each carries a token only Supabase Auth can mint. What lives here
-is the wording and the branded HTML to paste into
+`src/lib/email/supabase-templates/`. Six emails — confirm signup, invite user,
+magic link, change email address, reset password, reauthentication — that **this
+codebase cannot send and never will**: each carries a token only Supabase Auth
+can mint. What lives here is the wording and the branded HTML to paste into
 Authentication → Emails → Templates.
+
+**Two of the six have no caller on this deployment and are here anyway.**
+Nothing invites a user through Supabase — a resident registers with a join code,
+and `/invite/[slug]` is a printed sheet rather than an email — and nothing calls
+`reauthenticate()`. Both are a button somebody can press in the dashboard or a
+setting somebody can turn on, and the failure mode of leaving them out is a
+stock grey Supabase email going out under this service's name with nobody having
+decided that it should. Same reasoning as the `otp` and `resend` entries in
+`auth-errors.ts`.
 
 - **The problem it solves is that a dashboard is not version controlled.** A
   template edited in a form is a change nobody can review, diff or find again —
@@ -1693,12 +1706,23 @@ Authentication → Emails → Templates.
   table must still leave something clickable. Anything else in that position is
   a delivered email with a dead link, which fails *silently* and reads to the
   resident as an address they mistyped. Asserted rather than trusted.
+- **Reauthentication is the one that carries no link, and that is not an
+  oversight to fix.** Supabase populates `{{ .Token }}` for it and *not*
+  `{{ .ConfirmationURL }}`, because the email is a six-digit code to type into a
+  screen the resident already has open. So that template has the code and no
+  button — one pointing nowhere would be worse than none — set monospaced and
+  letter-spaced, because at body size in a proportional font a six-digit code is
+  a guess between `1`, `l` and `7`. The test asserts the absence of the link as
+  well as the presence of the code.
 - **No other Supabase variable is used.** `{{ .Email }}`, `{{ .NewEmail }}` and
-  `{{ .Token }}` render as an empty string where a project does not populate
+  `{{ .SiteURL }}` render as an empty string where a project does not populate
   them, and a blank line where an address should be reads as broken to the one
-  person who cannot tell whether it is. The change-of-address template is
-  therefore worded to be true of both copies Supabase sends — the old address
-  and the new — rather than naming either. Asserted too.
+  person who cannot tell whether it is. `{{ .Token }}` is the exception that
+  proves that rule rather than a hole in it: Supabase always populates it for
+  the one template that uses it, so the blank cannot occur, and refusing it
+  would leave a resident told to type a code the email does not contain. The
+  change-of-address template is still worded to be true of both copies Supabase
+  sends — the old address and the new — rather than naming either. Asserted.
 - **The footer links are Privacy and Terms, not Notification settings.** The
   reader has not signed in and, for the confirmation, cannot; the default row
   offers the one page to the one person it will not let through. That is the
@@ -1743,7 +1767,7 @@ published-and-empty-versus-never-fetched distinction, and the caveat that has to
 travel with a comparison — the markup of the three period controls, the
 landing page's pricing promises, the mapper in front of every Supabase auth
 failure, the email transport's failure modes, the branded shell every email
-renders through, the four Supabase auth templates,
+renders through, the six Supabase auth templates,
 the vote — its toggle, its ordering, and the two domain rules its route
 enforces — the one change a coordinator may make to a resident's role, the
 mask in front of every email address on the resident list, the report route's
@@ -2027,7 +2051,7 @@ npm run db:activate-village -- --slug <slug> --admin <email>  # Activate one —
 npx prisma studio        # Browse data
 npm run release:patch    # Bump version + changelog by hand (CI usually does it)
 node scripts/generate-icons.mjs   # Re-render the favicons + PWA icons from the mark
-npm run generate:supabase-templates   # Re-render the four Supabase auth email templates
+npm run generate:supabase-templates   # Re-render the six Supabase auth email templates
 npx tsx scripts/generate-guide-pdf.tsx   # Rebuild the coordinator guide PDF from the Markdown
 psql "$DIRECT_URL" -f prisma/sql/postgis.sql        # PostGIS triggers + indexes
 psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql  # Row-level security
