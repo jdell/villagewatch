@@ -785,20 +785,30 @@ Two options, in order of preference:
 2. **Supabase Vault**, pre-installed in every Supabase project. Heavier, and it
    puts a second access path in front of a value only one module reads.
 
-### The card is going to be generic, and that is correct
+### The card is no longer generic — superseded 4 September 2026
 
-Facebook builds its preview by crawling the `link`. `/incidents/[id]` is behind
-`requireSession()`, so the crawler lands on the sign-in redirect and the card
-falls back to the site's own Open Graph image and tagline. `CLAUDE.md` already
-says so under The public share buttons, and it is the right outcome: a card
-rendering a village's incident detail for a logged-out crawler would be domain
-rule 6 leaking through a preview.
+This section used to say the card would be generic and that it was the right
+outcome, because `/incidents/[id]` is behind `requireSession()` and a crawler
+landed on the sign-in redirect. That reasoning still holds for the *detail*
+page, which is unchanged and still behind the session.
 
-Expect every auto-post to carry the generic VillageWatch card. **Do not "fix" it
-by making incident pages crawlable.** If a per-report card is ever wanted, the
-answer is a dedicated public OG route that renders the category, the area and
-the date and nothing else — which is a separate decision with its own privacy
-paragraph.
+What changed is the link. `incidentUrl` in `src/lib/format-alert.ts` now builds
+from `publicIncidentPath` and points at **`/incident/[id]`** — the public
+preview, which renders a category, a severity, a date, a village and about a
+hundred characters of the anonymised description, and exports its own
+`opengraph-image`. So a shared report now carries a per-incident card.
+
+That is the escape hatch this section named: *"a dedicated public OG route that
+renders the category, the area and the date and nothing else — a separate
+decision with its own privacy paragraph."* It was taken deliberately and the
+privacy paragraph exists — `/privacy` §6, "Anyone given a link to a published
+report", plus the landing FAQ.
+
+**The original warning still stands and is worth restating**: do not fix
+anything here by making `/incidents/[id]` crawlable. The two paths differ by one
+letter and by everything else — the plural renders the full description, the
+landmark, the map pin, the media and the votes to a signed-in resident. The
+preview is a separate page written to be scraped, and it is `noindex`.
 
 ### Per-village configuration
 

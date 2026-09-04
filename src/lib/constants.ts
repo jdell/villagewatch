@@ -835,6 +835,26 @@ export const WHATSAPP_POST_MAX_CHARS = 900;
 export const ALERT_DESCRIPTION_MAX_CHARS = 240;
 
 /**
+ * Characters of the anonymised description shown on the public preview page.
+ *
+ * Shorter than the alert above, and the gap is deliberate rather than a taste
+ * about layout. A pasted alert is read by whoever a coordinator sent it to,
+ * having decided to send it; `/incident/[id]` renders to anybody holding a
+ * link, with nobody deciding each time. So this is a first line — enough to say
+ * what kind of thing happened and whether it is worth an account, and short
+ * enough that a sentence naming a street or a vehicle is cut off rather than
+ * completed.
+ *
+ * It is **not** a safety boundary and must not be read as one. The column is
+ * the AI-anonymised rewrite, and where the AI pass never ran it holds the
+ * reporter's own wording (`Incident.anonymized` is what records which) — so the
+ * protection is that the column is already the public one every resident sees,
+ * and this is a truncation of it. `src/lib/format-alert.ts` trims on a word
+ * boundary, and `truncateWords` is shared with the alert.
+ */
+export const PUBLIC_PREVIEW_DESCRIPTION_CHARS = 100;
+
+/**
  * Where a coordinator creates the channel, linked from `/settings` for anyone
  * whose village has not set one up.
  */
@@ -1764,8 +1784,15 @@ export const PRICING = [
  * that the registration was pending and now names `ZC233685`, which is the one
  * line on either page a reader can check against a third party — so the date
  * beside it has to be the date it became true.
+ *
+ * Moved again on 4 September 2026 for the public incident preview at
+ * `/incident/[id]`. §6 said in as many words that following a shared link
+ * "still needs an account in your village", and that stopped being true the
+ * moment a page rendered a published report's category, severity, age and
+ * village to somebody signed out. It is the clearest case this date exists for:
+ * not a rewording, but a new audience for a resident's report.
  */
-export const LEGAL_LAST_UPDATED = "2026-09-02";
+export const LEGAL_LAST_UPDATED = "2026-09-04";
 
 /**
  * The data controller under UK GDPR.

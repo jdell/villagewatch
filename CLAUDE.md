@@ -2901,12 +2901,28 @@ the format they carry.
   reliable, not a nicety on top of it. The note under the buttons says so, so a
   coordinator meeting an empty composer knows to paste rather than assuming the
   feature is broken.
-- **Facebook's crawler cannot read the card it is building.** `/incidents/[id]`
-  is behind `requireSession()`, so the scrape lands on the sign-in redirect and
-  the card falls back to the site's own Open Graph image and tagline. That is
-  the right outcome and worth stating rather than rediscovering: a card that
-  rendered a village's incident detail for a logged-out crawler would be domain
-  rule 6 leaking through a preview.
+- **Both buttons now share the public preview, and the crawler can read it.**
+  This entry used to say the opposite, and the reasoning it gave was sound for
+  the code as it stood: `incidentUrl` pointed at `/incidents/[id]`, that page is
+  behind `requireSession()`, so the scrape landed on the sign-in redirect and
+  the card fell back to the site's own Open Graph image and tagline — and a card
+  rendering a village's incident *detail* to a logged-out crawler would indeed
+  be domain rule 6 leaking through a preview.
+
+  What changed is not the rule but what is on the other end of the link.
+  `incidentUrl` builds from `publicIncidentPath` and points at
+  `/incident/[id]`, which is public by design and renders a category, a
+  severity, a date, a village and ~100 characters of the anonymised
+  description — a page written to be scraped. It exports its own
+  `opengraph-image`, so the card is now the incident's rather than the
+  product's. The detail page it used to point at is unchanged and still behind
+  the session; what a logged-out crawler can reach is the preview, and the
+  preview is `noindex`.
+
+  The thing worth not undoing: the two paths differ by one letter.
+  `tests/format-alert.test.ts` asserts the singular positively *and* the plural
+  negatively, because a tidy-up that pluralised it back would send every shared
+  link to a login screen and nothing else in the suite would notice.
 - **No new gate, no new audit row, no new environment variable.** The two
   village switches gate the channel *log line* and never gated the copy button
   (see The WhatsApp Channel); Facebook has no configuration at all, so on a
