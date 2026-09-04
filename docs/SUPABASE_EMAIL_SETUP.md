@@ -41,7 +41,7 @@ deploys because it has nothing to do with them.
 ## Status: steps 2 and 3 have been done
 
 As of **31 August 2026**, on the operator's confirmation: the project sends its
-auth email over **Resend as the custom SMTP sender** (step 2), and the four
+auth email over **Resend as the custom SMTP sender** (step 2), and the six
 branded templates in `src/lib/email/supabase-templates/` are pasted into
 **Authentication → Emails → Templates** (step 3). `CLAUDE.md` and
 `PROJECT_STATE.md` both said otherwise for a week and have been corrected.
@@ -100,7 +100,8 @@ being used to send somebody else a stream of password-reset emails.
   dashboard. With no key it logs the message instead of sending it, which is the
   same supported state OneSignal and Slack have.
 - **Inside Supabase**, as the SMTP sender for the auth emails Supabase mints
-  itself — confirmation, magic link, email change and recovery. Only Supabase
+  itself — confirmation, invitation, magic link, email change, recovery and
+  reauthentication. Only Supabase
   can mint those tokens, so it has to send them, and pointing it at Resend is
   what lifts the hourly quota this document exists for. That half is
   configuration on the Supabase project and adds no environment variable here.
@@ -166,12 +167,25 @@ the same shell as every other email in the product:
 | File | Dashboard template | Subject |
 | --- | --- | --- |
 | `confirm-signup.html` | Confirm signup | Confirm your VillageWatch account |
+| `invite-user.html` | Invite user | You have been invited to VillageWatch |
 | `magic-link.html` | Magic Link | Your VillageWatch sign-in link |
 | `change-email.html` | Change Email Address | Confirm your new VillageWatch email address |
 | `reset-password.html` | Reset Password | Reset your VillageWatch password |
+| `reauthentication.html` | Reauthentication | Your VillageWatch confirmation code |
+
+**Two of these six are for flows this deployment does not use today** — nothing
+invites a user through Supabase, and nothing calls `reauthenticate()`. Paste
+them anyway. They are a button in this dashboard and a setting on this project
+respectively, and the state they are in until somebody pastes is Supabase's own
+grey unbranded template going out under VillageWatch's name.
+
+**Reauthentication is the one with no link in it.** Supabase sends a six-digit
+code there rather than an action URL, so that template carries `{{ .Token }}`
+and no button. If you are checking the pasted result by eye, that one is
+supposed to look different from the other five.
 
 **Supabase dashboard** → **Authentication** → **Emails** → **Templates**. For
-each of the four:
+each of the six:
 
 1. Pick the template by the name in the middle column above.
 2. Put the subject in **Subject heading**.
@@ -201,10 +215,10 @@ Three things worth knowing before you do:
 - **The wording is not the only thing that changes them.** They render through
   `src/lib/email/layout.ts`, the shell shared with every email the app sends
   itself, so a change to the header, the footer or the brand colours rewrites
-  all four of these files too. That test compares the committed HTML against the
+  all six of these files too. That test compares the committed HTML against the
   module and **cannot see the dashboard**: after any such change the deployment
   carries on sending the previous version while CI stays green. Regenerate and
-  paste all four again. The shell last changed on **1 September 2026**, when it
+  paste all six again. The shell last changed on **1 September 2026**, when it
   gained the shield in its header bar.
 - **The header loads one image**, `https://villagewatch.app/android-chrome-192x192.png`.
   It is decorative — the wordmark sits beside it — so a client with remote

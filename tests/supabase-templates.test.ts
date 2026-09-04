@@ -5,6 +5,7 @@ import {
   SUPABASE_AUTH_TEMPLATES,
   SUPABASE_AUTH_TEMPLATE_LIST,
   SUPABASE_CONFIRMATION_URL_TOKEN,
+  SUPABASE_TOKEN_TOKEN,
   SUPABASE_TEMPLATE_DIR,
 } from "@/lib/email/supabase-templates";
 
@@ -36,19 +37,30 @@ import {
 
 const dir = path.join(process.cwd(), SUPABASE_TEMPLATE_DIR);
 
+/**
+ * The five that carry an action link. Reauthentication is excluded because
+ * Supabase sends it a code instead — asserted on its own below, both that the
+ * code is there and that the link is not.
+ */
+const LINK_TEMPLATES = SUPABASE_AUTH_TEMPLATE_LIST.filter(
+  (template) => template.id !== "reauthentication",
+);
+
 describe("the Supabase auth templates", () => {
-  it("covers the four templates the dashboard has", () => {
+  it("covers the six templates the dashboard has", () => {
     expect(Object.keys(SUPABASE_AUTH_TEMPLATES).sort()).toEqual([
       "changeEmail",
       "confirmSignup",
+      "inviteUser",
       "magicLink",
+      "reauthentication",
       "resetPassword",
     ]);
 
-    expect(SUPABASE_AUTH_TEMPLATE_LIST).toHaveLength(4);
+    expect(SUPABASE_AUTH_TEMPLATE_LIST).toHaveLength(6);
   });
 
-  it.each(SUPABASE_AUTH_TEMPLATE_LIST)(
+  it.each(LINK_TEMPLATES)(
     "$dashboardName carries the confirmation URL in the link and in the text",
     (template) => {
       // Twice in the HTML: once as the button's href, once as the visible
@@ -63,6 +75,25 @@ describe("the Supabase auth templates", () => {
     },
   );
 
+  /**
+   * Reauthentication is the one email with no link, and asserting that
+   * *negatively* is the point: Supabase does not populate
+   * `{{ .ConfirmationURL }}` for it, so a button added here later would render
+   * with an empty `href` and go nowhere — a dead button in an email about
+   * account security, which is the worst place in the product to put one.
+   */
+  it("sends a code rather than a link for reauthentication", () => {
+    const { reauthentication } = SUPABASE_AUTH_TEMPLATES;
+
+    expect(reauthentication.html).not.toContain(SUPABASE_CONFIRMATION_URL_TOKEN);
+    expect(reauthentication.html).toContain(SUPABASE_TOKEN_TOKEN);
+    expect(reauthentication.text).toContain(SUPABASE_TOKEN_TOKEN);
+
+    // Monospaced, or a six-digit code is a guess between 1, l and 7 for
+    // somebody transcribing it onto another screen.
+    expect(reauthentication.html).toContain("monospace");
+  });
+
   it.each(SUPABASE_AUTH_TEMPLATE_LIST)(
     "$dashboardName uses no other Supabase template variable",
     (template) => {
@@ -73,9 +104,19 @@ describe("the Supabase auth templates", () => {
       const actions = template.html.match(/\{\{[^}]*\}\}/g) ?? [];
 
       expect(actions.length).toBeGreaterThan(0);
-      expect(new Set(actions)).toEqual(
-        new Set([SUPABASE_CONFIRMATION_URL_TOKEN]),
-      );
+
+      /**
+       * One variable per template, and which one depends on what the email is
+       * for. `{{ .Token }}` is allowed only in reauthentication, where Supabase
+       * always populates it; everywhere else the empty-string failure the rule
+       * guards against is real.
+       */
+      const allowed =
+        template.id === "reauthentication"
+          ? SUPABASE_TOKEN_TOKEN
+          : SUPABASE_CONFIRMATION_URL_TOKEN;
+
+      expect(new Set(actions)).toEqual(new Set([allowed]));
     },
   );
 

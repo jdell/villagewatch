@@ -1108,6 +1108,33 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 
 ## Recent completions
 
+**The two missing Supabase auth templates — 4 September 2026.** `Invite user`
+and `Reauthentication`, bringing `src/lib/email/supabase-templates/` to six.
+
+- **The audit found nothing else to do.** All four app-sent emails — welcome,
+  incident notification, weekly digest, coordinator decision — already render
+  through `renderEmail`, and `tests/email-branding.test.ts` already asserts the
+  brand bar, the mark, the absolute mark URL and the footer routes on every one
+  of them. The welcome stopped being the exception on 1 September. So the brief's
+  "wrap the unbranded ones" had no subject: there were none.
+- **Reauthentication is not a link email**, which is the one interesting thing
+  here. Supabase populates `{{ .Token }}` for it and not
+  `{{ .ConfirmationURL }}` — it is a six-digit code to type into a screen the
+  resident already has open — so it needs its own builder: the code set
+  monospaced and letter-spaced, and no button, because one pointing nowhere is
+  worse than none. It is the single exception to the "one variable, and never
+  `{{ .Token }}`" rule the module has carried since it was written, and the rule
+  survives intact for the other five.
+- **Neither new template has a caller on this deployment.** Nothing invites a
+  user through Supabase and nothing calls `reauthenticate()`. They are here
+  because both are a button in the dashboard or a setting on the project, and
+  the state they were in was Supabase's grey stock template going out under
+  VillageWatch's name with nobody having decided it should.
+- **`docs/SUPABASE_EMAIL_SETUP.md` gained both rows** and now says six
+  throughout. **Both still have to be pasted into the dashboard** — that is
+  state nothing in this repository can verify, and the test only proves the
+  committed `.html` matches the module that generates it.
+
 **The admin village merge — 4 September 2026.** `/admin/villages/merge`, which
 generalises `scripts/merge-histon-impington.sql` into a screen. Same nine steps,
 same transaction, same three constraints; the two slugs became arguments.
