@@ -3508,6 +3508,28 @@ reasoning in full.
   (`src/proxy.ts` passes `/api/` straight through, so a handler that trusted the
   proxy would be open to anybody who could guess the path), and at the module
   boundary beside the write, which is `villages.ts`'s convention.
+- **The selectors list `ACTIVE` **or** holds-data, never the seeded directory.**
+  It was "everything that is not archived", which at 271 parishes produced a
+  271-item `<select>` with one joinable entry in it — and the national seed is
+  10,670. It cannot be narrowed to `ACTIVE` either, because the case this tool
+  exists for is a village that is *not* in service and *does* hold data: two
+  parishes that ought to be one, where residents have already joined the wrong
+  half. `listMergeableVillages` computes the union; the screen shows the
+  `ACTIVE` half and puts the rest behind a checkbox, so the common case is a
+  two-item list and the real case is one click away. `ARCHIVED` is in neither —
+  it is where a merge *leaves* a village, and offering one as an origin would
+  invite merging the same village twice.
+- **Three queries whatever the directory holds.** Two `groupBy`s return one row
+  per village that has rows at all — a handful, not one per parish — and both
+  are covered by existing indexes. A `_count` on a `findMany` over every village
+  is a subquery per parish, which is the shape that stops working at 10,670.
+  Residents exclude closed accounts, matching `previewVillageMerge`: a selector
+  saying twelve beside a preview saying nine is the disagreement that stops
+  somebody trusting either figure.
+- **Unchecking the box clears a selection it would have hidden.** A `<select>`
+  holding a value with no matching `<option>` silently displays the first one,
+  so the form would name a different village from the one it holds — on the
+  screen where naming the wrong village archives it.
 
 ## The village invite
 

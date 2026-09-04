@@ -31,8 +31,10 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
   villageFindUnique: vi.fn(),
   villageUpdate: vi.fn(),
+  villageFindMany: vi.fn(),
   incidentCount: vi.fn(),
   incidentGroupBy: vi.fn(),
+  userGroupBy: vi.fn(),
   incidentFindMany: vi.fn(),
   incidentUpdate: vi.fn(),
   incidentUpdateMany: vi.fn(),
@@ -50,7 +52,11 @@ const mocks = vi.hoisted(() => ({
 
 /** The shape both `prisma` and the `tx` handed to the callback present. */
 const client = {
-  village: { findUnique: mocks.villageFindUnique, update: mocks.villageUpdate },
+  village: {
+    findUnique: mocks.villageFindUnique,
+    update: mocks.villageUpdate,
+    findMany: mocks.villageFindMany,
+  },
   incident: {
     count: mocks.incidentCount,
     groupBy: mocks.incidentGroupBy,
@@ -58,7 +64,11 @@ const client = {
     update: mocks.incidentUpdate,
     updateMany: mocks.incidentUpdateMany,
   },
-  user: { findMany: mocks.userFindMany, updateMany: mocks.userUpdateMany },
+  user: {
+    findMany: mocks.userFindMany,
+    updateMany: mocks.userUpdateMany,
+    groupBy: mocks.userGroupBy,
+  },
   patternAlert: {
     findMany: mocks.patternFindMany,
     updateMany: mocks.patternUpdateMany,
@@ -125,6 +135,8 @@ beforeEach(() => {
   );
   mocks.incidentCount.mockResolvedValue(0);
   mocks.incidentGroupBy.mockResolvedValue([]);
+  mocks.userGroupBy.mockResolvedValue([]);
+  mocks.villageFindMany.mockResolvedValue([]);
   mocks.incidentFindMany.mockResolvedValue([]);
   mocks.incidentUpdateMany.mockResolvedValue({ count: 0 });
   mocks.userFindMany.mockResolvedValue([]);
@@ -418,5 +430,102 @@ describe("mergeVillages — the merge", () => {
 
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.error).toContain("nothing was changed");
+  });
+});
+
+
+describe("listMergeableVillages", () => {
+  const ACTIVE_EMPTY = {
+    id: "v-active",
+    name: "Barton",
+    slug: "barton-cambridgeshire",
+    status: "ACTIVE",
+  };
+  const PENDING_WITH_DATA = {
+    id: "v-pending",
+    name: "Impington",
+    slug: "impington-cambridgeshire",
+    status: "PENDING",
+  };
+
+  it("asks for ACTIVE villages OR the ones holding data, never the whole directory", async () => {
+    mocks.userGroupBy.mockResolvedValue([
+      { villageId: "v-pending", _count: { _all: 12 } },
+    ]);
+    mocks.incidentGroupBy.mockResolvedValue([
+      { villageId: "v-pending", _count: { _all: 5 } },
+    ]);
+    mocks.villageFindMany.mockResolvedValue([ACTIVE_EMPTY, PENDING_WITH_DATA]);
+
+    const { listMergeableVillages } = await load();
+    await listMergeableVillages();
+
+    const [{ where }] = mocks.villageFindMany.mock.calls[0];
+
+    /**
+     * The predicate that keeps 270 seeded parishes — 10,670 once England is
+     * seeded — out of a `<select>`. A regression here is either an unusable
+     * dropdown or a village somebody needs going missing.
+     */
+    expect(where.status).toEqual({ not: "ARCHIVED" });
+    expect(where.OR).toEqual([
+      { status: "ACTIVE" },
+      { id: { in: ["v-pending"] } },
+    ]);
+  });
+
+  it("counts residents excluding closed accounts, matching the preview", async () => {
+    const { listMergeableVillages } = await load();
+    await listMergeableVillages();
+
+    // A selector saying twelve residents beside a preview saying nine is the
+    // disagreement that stops somebody trusting either number.
+    expect(mocks.userGroupBy).toHaveBeenCalledWith({
+      by: ["villageId"],
+      where: { villageId: { not: null }, deletedAt: null },
+      _count: { _all: true },
+    });
+  });
+
+  it("returns both counts and a hasData flag per village", async () => {
+    mocks.userGroupBy.mockResolvedValue([
+      { villageId: "v-pending", _count: { _all: 12 } },
+    ]);
+    mocks.incidentGroupBy.mockResolvedValue([
+      { villageId: "v-pending", _count: { _all: 5 } },
+    ]);
+    mocks.villageFindMany.mockResolvedValue([ACTIVE_EMPTY, PENDING_WITH_DATA]);
+
+    const { listMergeableVillages } = await load();
+    const rows = await listMergeableVillages();
+
+    expect(rows).toEqual([
+      { ...ACTIVE_EMPTY, residents: 0, incidents: 0, hasData: false },
+      { ...PENDING_WITH_DATA, residents: 12, incidents: 5, hasData: true },
+    ]);
+  });
+
+  it("counts a village with reports but no residents as holding data", async () => {
+    // A parish somebody filed into and then closed their account on still has
+    // reports to move, and is exactly what the checkbox is for.
+    mocks.userGroupBy.mockResolvedValue([]);
+    mocks.incidentGroupBy.mockResolvedValue([
+      { villageId: "v-pending", _count: { _all: 3 } },
+    ]);
+    mocks.villageFindMany.mockResolvedValue([PENDING_WITH_DATA]);
+
+    const { listMergeableVillages } = await load();
+    const rows = await listMergeableVillages();
+
+    expect(rows[0]!.hasData).toBe(true);
+    expect(rows[0]!.residents).toBe(0);
+  });
+
+  it("returns nothing at all with no database configured", async () => {
+    delete process.env.DATABASE_URL;
+    const { listMergeableVillages } = await load();
+
+    await expect(listMergeableVillages()).resolves.toEqual([]);
+    expect(mocks.villageFindMany).not.toHaveBeenCalled();
   });
 });

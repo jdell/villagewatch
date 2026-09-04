@@ -1166,6 +1166,13 @@ same transaction, same three constraints; the two slugs became arguments.
 - **The confirmation asks for the origin's name typed out**, `delete-account`'s
   pattern: the mistake worth catching is swapping the two selectors, and typing
   the name makes somebody read which village is about to be archived.
+- **The selectors list `ACTIVE` or holds-data, with counts.** The first cut
+  listed everything not archived, which is a 271-item dropdown today and 10,670
+  once England is seeded. It defaults to the `ACTIVE` half and puts villages
+  that hold residents or reports without being in service behind a checkbox —
+  which is the case the tool is actually for. Each row carries both counts, so
+  an administrator can see which of two similarly named parishes people
+  actually joined, and therefore which way round the merge goes.
 - **Verified** against a production build: `GET` and `POST` both 401 signed out,
   the page 307s, 689 tests pass across 42 files. What has *not* happened is a
   merge — see the table above.

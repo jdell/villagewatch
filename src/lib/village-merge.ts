@@ -643,37 +643,99 @@ export async function mergeVillages(input: {
   }
 }
 
+/** One row in the merge selectors. */
+export type MergeCandidate = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  residents: number;
+  incidents: number;
+  /** Residents or reports — the thing that makes a `PENDING` parish worth listing. */
+  hasData: boolean;
+};
+
 /**
- * The villages a merge can pick between — every one that is not already
- * archived, newest activity first is meaningless here so it is alphabetical.
+ * The villages a merge can pick between.
  *
- * Deliberately **not** narrowed to `ACTIVE`. The origin may legitimately be a
- * `PENDING` directory entry — merging a duplicate parish out of the directory
- * before anybody joins it is the cheapest time to do it, and the guards only
- * require the *target* to be in service.
+ * ## Why this is not simply "everything that is not archived"
+ *
+ * It was, and at a directory of 271 parishes that produced a 271-item
+ * `<select>` of which one entry was joinable and 270 were empty seeded rows —
+ * and the national seed is 10,670. The list has to be narrow enough to read,
+ * and it cannot be narrowed to `ACTIVE`, because the case this tool exists for
+ * is exactly a village that is **not** active and does hold data: two parishes
+ * that ought to be one, where residents have already joined the wrong half.
+ *
+ * So the rule is `ACTIVE` **or** holds something — any resident or any report.
+ * That covers every village a merge could sensibly name on either side and
+ * excludes the seeded directory, which is inert by definition. The screen
+ * defaults to the `ACTIVE` subset and offers the rest behind a checkbox, so the
+ * common case is a two-item list and the real case is one click away.
+ *
+ * `ARCHIVED` stays out of both. It is where a merge *leaves* a village, and
+ * offering one as an origin would invite merging the same village twice.
+ *
+ * ## Three queries, whatever the directory holds
+ *
+ * The two `groupBy`s return one row per village that has rows at all, which is
+ * a handful — not one row per parish. Both are covered by existing indexes
+ * (`@@index([villageId, role])` on users, `@@index([villageId, status,
+ * occurredAt])` on incidents). Counting with `_count` on a `findMany` over
+ * every village instead would be a subquery per parish, which is the shape that
+ * stops working at 10,670.
+ *
+ * Residents exclude closed accounts (`deletedAt`), matching
+ * `previewVillageMerge` — a selector saying twelve residents beside a preview
+ * saying nine is the kind of disagreement that stops somebody trusting either.
  */
-export async function listMergeableVillages(): Promise<
-  { id: string; name: string; slug: string; status: string; residents: number }[]
-> {
+export async function listMergeableVillages(): Promise<MergeCandidate[]> {
   if (!process.env.DATABASE_URL) return [];
 
+  const [residentRows, incidentRows] = await Promise.all([
+    prisma.user.groupBy({
+      by: ["villageId"],
+      where: { villageId: { not: null }, deletedAt: null },
+      _count: { _all: true },
+    }),
+    prisma.incident.groupBy({
+      by: ["villageId"],
+      _count: { _all: true },
+    }),
+  ]);
+
+  const residents = new Map<string, number>();
+  for (const row of residentRows) {
+    if (row.villageId) residents.set(row.villageId, row._count._all);
+  }
+
+  const incidents = new Map<string, number>();
+  for (const row of incidentRows) {
+    incidents.set(row.villageId, row._count._all);
+  }
+
+  const withData = [
+    ...new Set([...residents.keys(), ...incidents.keys()]),
+  ];
+
   const villages = await prisma.village.findMany({
-    where: { status: { not: "ARCHIVED" } },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      status: true,
-      _count: { select: { users: true } },
+    where: {
+      status: { not: "ARCHIVED" },
+      OR: [{ status: "ACTIVE" }, { id: { in: withData } }],
     },
+    select: { id: true, name: true, slug: true, status: true },
     orderBy: [{ status: "asc" }, { name: "asc" }],
   });
 
-  return villages.map((v) => ({
-    id: v.id,
-    name: v.name,
-    slug: v.slug,
-    status: v.status,
-    residents: v._count.users,
-  }));
+  return villages.map((v) => {
+    const residentCount = residents.get(v.id) ?? 0;
+    const incidentCount = incidents.get(v.id) ?? 0;
+
+    return {
+      ...v,
+      residents: residentCount,
+      incidents: incidentCount,
+      hasData: residentCount > 0 || incidentCount > 0,
+    };
+  });
 }
