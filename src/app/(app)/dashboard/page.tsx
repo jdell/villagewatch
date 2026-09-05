@@ -19,6 +19,7 @@ import {
   type ConcernRow,
 } from "@/components/dashboard/concern-list";
 import { ExportCsvButton } from "@/components/dashboard/export-csv-button";
+import { PoliceAlertsPanel } from "@/components/dashboard/police-alerts-panel";
 import { PoliceCrimePanel } from "@/components/dashboard/police-crime-panel";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { HotspotHeatmap } from "@/components/map/hotspot-heatmap";
@@ -36,6 +37,7 @@ import {
   getVillagePoliceComparison,
   getVillagePoliceTeam,
 } from "@/lib/police-data";
+import { getVillageEcopsAlerts } from "@/lib/ecops/alerts";
 import { prisma } from "@/lib/prisma";
 import {
   ACTIVITY_FEED_SIZE,
@@ -147,6 +149,7 @@ export default async function DashboardPage({
     compliance,
     policeComparison,
     policeTeam,
+    ecopsAlerts,
     voteRows,
     activityRows,
   ] = await Promise.all([
@@ -275,6 +278,23 @@ export default async function DashboardPage({
         })
       : Promise.resolve(null),
     getVillagePoliceTeam(villageId),
+    /*
+      The force's own bulletins, which are a different thing from its figures:
+      recorded crime says what happened two months ago, an alert says what a
+      force is telling people right now.
+
+      Stored rows again — nothing here reaches Neighbourhood Alert, for
+      `police-data`'s reason one paragraph up. Returns an empty result on a
+      database without `20260905140000_ecops_alerts` applied and for any village
+      with no site configured, which is every village until a coordinator sets
+      one; the panel renders nothing at all in both cases.
+
+      Deliberately **not** filtered by `range`. The period control governs this
+      village's own reports, and a force's notices are not in that series — a
+      coordinator narrowing to "last 7 days" to read their queue should not
+      silently lose the scam warning that went out a fortnight ago.
+    */
+    getVillageEcopsAlerts(villageId),
     /*
       Every vote cast on a published report in this period, two rows per report
       at most.
@@ -709,6 +729,14 @@ export default async function DashboardPage({
         team={policeTeam}
         periodLabel={range.label}
       />
+
+      {/*
+        Beneath the figures, because it answers a different question about the
+        same subject: those are what was recorded, these are what the force is
+        saying. Renders nothing at all until a coordinator sets a site — see
+        `PoliceAlertsPanel`.
+      */}
+      <PoliceAlertsPanel data={ecopsAlerts} />
 
       {/*
         Last, because it is the only thing on the page that is not about the

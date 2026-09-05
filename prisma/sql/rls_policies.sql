@@ -122,6 +122,36 @@ AS $$
   SELECT u.village_id FROM public.users u WHERE u.id = (SELECT auth.uid());
 $$;
 
+/**
+ * The Neighbourhood Alert site the caller's village reads, or NULL.
+ *
+ * The fifth helper, and the only one that answers a question about a village
+ * rather than about a person. It exists because `ecops_alerts` is the one table
+ * in this schema that is **not** village-scoped: a site is a force's whole
+ * portal, so ten parishes served by one force share its rows and there is no
+ * `village_id` on them to compare against.
+ *
+ * `SECURITY DEFINER` for the reason the other four are — a policy that read
+ * `villages` through the caller would be subject to the `villages` policies,
+ * and `search_path` is pinned empty because a definer function resolving names
+ * through the caller's path is an escalation primitive.
+ *
+ * NULL for a caller in no village, or in a village with no site configured.
+ * `site_id = NULL` is never true in SQL, so both cases return no rows — which
+ * is the same answer a village that has never synced gets.
+ */
+CREATE OR REPLACE FUNCTION public.vw_current_ecops_site_id()
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT v.ecops_site_id
+  FROM public.villages v
+  WHERE v.id = public.vw_current_village_id();
+$$;
+
 CREATE OR REPLACE FUNCTION public.vw_current_role()
 RETURNS public.user_role
 LANGUAGE sql
@@ -212,6 +242,8 @@ ALTER TABLE public.audit_logs               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.police_crimes            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.police_data_syncs        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.police_neighbourhoods    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ecops_alerts             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ecops_site_syncs         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."_PatternAlertIncidents" ENABLE ROW LEVEL SECURITY;
 
 -- Nothing in this schema is public. `anon` is the role a signed-out browser
@@ -278,6 +310,7 @@ GRANT SELECT (
   village_code,
   alert_threshold, contact_email, contact_phone, auto_approve,
   parish_council, privacy_level,
+  ecops_site_id,
   mode,
   dpia_accepted_at, apd_accepted_at, dpa_accepted_at,
   community_dpa_accepted_at,
@@ -1282,6 +1315,63 @@ CREATE POLICY police_neighbourhoods_select_village
   ON public.police_neighbourhoods FOR SELECT
   TO authenticated
   USING (village_id = public.vw_current_village_id());
+
+-- ---------------------------------------------------------------------------
+-- ecops_alerts, ecops_site_syncs
+-- ---------------------------------------------------------------------------
+--
+-- Public bulletins from Neighbourhood Alert, scoped to the caller's village's
+-- site.
+--
+-- **These are the only two tables in this file with no `village_id`**, and the
+-- reason is in `20260905140000_ecops_alerts`: a site is a force's whole portal,
+-- so the rows are shared by every village that force covers. The scope is
+-- therefore one indirection longer than everywhere else —
+-- `vw_current_ecops_site_id()` resolves the caller's village to its site, and
+-- the policy compares against that.
+--
+-- Nothing here is personal data in the sense `incidents` is: every row is a
+-- notice a force published to anybody who subscribes to its portal, and the
+-- bodies were stripped to plain text and truncated to an excerpt before they
+-- were stored. `sender_name` is an officer's byline on a public bulletin — the
+-- same category as the team already granted on `police_neighbourhoods`. So
+-- there is no column to withhold and SELECT is granted table-wide.
+--
+-- What the scope is for is the same thing it is for on the police figures, and
+-- it is correctness rather than secrecy: a Warwickshire bulletin served to a
+-- Hampshire resident would be somebody else's county's news presented as their
+-- own. Being liberal here would cost nothing in privacy and would undo the one
+-- thing `ECOPS_AREA_NOTE` is trying to keep straight.
+--
+-- **No INSERT, UPDATE or DELETE to anybody.** Both tables are written by
+-- `GET|POST /api/cron/ecops` alone, through Prisma as the table owner, which
+-- bypasses every policy in this file. A client that could write here could put
+-- a fabricated police warning on a village's dashboard under a real force's
+-- name — which is a worse outcome than a wrong crime figure, because a bulletin
+-- is written to be acted on.
+--
+-- `ecops_site_syncs` is granted SELECT alongside the alerts rather than held
+-- back, on `police_data_syncs`'s reasoning: it is the row that says whether an
+-- empty panel is a quiet week, a feed we have never read, or a `SiteId`
+-- somebody mistyped. A client able to read the alerts but not that distinction
+-- could not tell the three apart — and here, unlike the police figures, the
+-- feed itself answers all three identically.
+
+GRANT SELECT ON public.ecops_alerts TO authenticated;
+
+DROP POLICY IF EXISTS ecops_alerts_select_site ON public.ecops_alerts;
+CREATE POLICY ecops_alerts_select_site
+  ON public.ecops_alerts FOR SELECT
+  TO authenticated
+  USING (site_id = public.vw_current_ecops_site_id());
+
+GRANT SELECT ON public.ecops_site_syncs TO authenticated;
+
+DROP POLICY IF EXISTS ecops_site_syncs_select_site ON public.ecops_site_syncs;
+CREATE POLICY ecops_site_syncs_select_site
+  ON public.ecops_site_syncs FOR SELECT
+  TO authenticated
+  USING (site_id = public.vw_current_ecops_site_id());
 
 -- ---------------------------------------------------------------------------
 -- Verify

@@ -286,6 +286,21 @@ model Village {
   dpaAcceptedById String?   @map("dpa_accepted_by_id") @db.Uuid
   dpaAcceptedBy   User?     @relation("VillageDpaAcceptor", fields: [dpaAcceptedById], references: [id], onDelete: SetNull)
 
+  /// Which Neighbourhood Alert ("eCops") portal this village's police alerts
+  /// come from, or null for none — which is the default and means the feature
+  /// is simply off.
+  ///
+  /// **A site is a force area or a scheme, never a parish**, and that is the
+  /// whole of what this column can promise. `SiteId=2` is Warwickshire
+  /// Connected; there is no narrower filter the feed will honour, so every
+  /// surface that renders these alerts carries `ECOPS_AREA_NOTE` saying so.
+  ///
+  /// Null rather than a default of 0: `SiteId=0` is the national firehose of
+  /// every force's messages, and defaulting a Cambridgeshire parish into
+  /// Cornwall's notices is worse than showing nothing. Set by the village's own
+  /// coordinator on `/dashboard/settings`, and audited.
+  ecopsSiteId Int? @map("ecops_site_id")
+
   /// Minimum severity that triggers a broadcast push to every resident.
   alertThreshold Severity @default(HIGH) @map("alert_threshold")
 
@@ -1195,4 +1210,120 @@ model PoliceNeighbourhood {
 
   @@index([forceId, neighbourhoodId])
   @@map("police_neighbourhoods")
+}
+
+// ---------------------------------------------------------------------------
+// eCops — Neighbourhood Alert
+// ---------------------------------------------------------------------------
+//
+// Public bulletins published by police forces and Neighbourhood Watch schemes
+// through the Neighbourhood Alert platform. Open data about a *notice*, not
+// data about a person — the same category as the police models above, and held
+// apart from `Incident` for the same reason the recorded-crime figures are: one
+// is what a resident of this village reported, the other is what somebody else
+// published for a whole county. Folding them together would make a village's
+// own figures move with a force's press schedule.
+//
+// **Rows are scoped by site, not by village**, which is the one thing here that
+// differs from every other table in this schema. A site is a force's portal —
+// Warwickshire Connected, Hampshire Alert — so two villages served by the same
+// force read the same rows, and duplicating a county's notices per parish would
+// be storing the same bulletin ten thousand times. `Village.ecopsSiteId` is the
+// join, and `vw_current_ecops_site_id()` in `prisma/sql/rls_policies.sql` is
+// what makes that safe through PostgREST.
+
+/// One message from a force or scheme.
+///
+/// Everything in it is public by construction: it is a bulletin published to
+/// anybody who subscribes to that portal. `summary` is an **excerpt** rather
+/// than the message — the feed carries a copyright line and no open licence, so
+/// what is stored is what an RSS consumer is entitled to store, and `link`
+/// carries a reader to the original. See `ECOPS_SUMMARY_MAX_CHARS`.
+model EcopsAlert {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// The Neighbourhood Alert site this came from — `Village.ecopsSiteId`.
+  siteId Int @map("site_id")
+
+  /// The feed's own message id. Stable across fetches, which is what makes a
+  /// re-fetch an upsert rather than a duplicate.
+  externalId String @map("external_id")
+
+  title String
+
+  /// The body as plain text, truncated. **Never markup** — the feed publishes
+  /// HTML and `toPlainText` in `src/lib/ecops/fetch-alerts.ts` strips it before
+  /// it is ever stored, which is where third-party HTML is stopped in this
+  /// codebase rather than at whichever component would eventually render it.
+  summary String
+
+  /// The force's own free-text message type — "Burglary", "Meeting notice",
+  /// "Residential: Scam alert". Deliberately **not** mapped onto `IncidentType`:
+  /// the two taxonomies are not the same taxonomy, this one is inconsistent
+  /// even within itself (two spellings of "Anti-social behaviour" appear in one
+  /// day's feed), and a mapping would let a force's labelling decide what a
+  /// village's own breakdown says.
+  category String?
+
+  /// "The Police", "Neighbourhood Watch", and a handful of scheme names.
+  sentBy String? @map("sent_by")
+
+  /// The named officer or coordinator who sent it. A public official's byline
+  /// on a public bulletin — the same category as the officer names already held
+  /// in `police_neighbourhoods.team`, and the answer to "who do I reply to".
+  senderName String? @map("sender_name")
+
+  /// The message on the force's own portal. `http(s)` only — the guard is in
+  /// `fetch-alerts.ts`, because this ends up in an `href` and it came out of
+  /// two dozen different content management systems.
+  link String?
+
+  publishedAt DateTime @map("published_at")
+  fetchedAt   DateTime @map("fetched_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// Per site rather than global. The ids look globally unique today, and a
+  /// global constraint would mean one site's fetch failing on a message another
+  /// site had already stored — a shared id is not this table's business.
+  @@unique([siteId, externalId], map: "ecops_alerts_site_external_key")
+  @@index([siteId, publishedAt(sort: Desc)])
+  @@map("ecops_alerts")
+}
+
+/// What happened the last time a site's feed was read.
+///
+/// It exists for one reason, and it is `PoliceDataSync`'s reason exactly: a
+/// `count(*)` over `ecops_alerts` returns zero both for a site that has
+/// published nothing and for a site nobody has ever fetched — and, uniquely
+/// here, for a `SiteId` somebody mistyped. **The feed cannot tell those apart
+/// for us**: an unknown site answers 200 with a well-formed, empty channel, so
+/// there is no upstream error to surface and the distinction has to be recorded
+/// on our side or lost.
+///
+/// Without this a coordinator who typed the wrong number would see an empty
+/// panel that looks exactly like a quiet week, indefinitely.
+model EcopsSiteSync {
+  siteId Int @id @map("site_id")
+
+  /// `ok` — items were stored. `empty` — the feed answered with no items, which
+  /// is either a quiet site or a wrong id. `failed` — we could not read it.
+  status String
+
+  /// Null until a fetch has succeeded. A failed refresh leaves the alerts
+  /// already held in place, on `police-data.ts`'s reasoning: a panel vanishing
+  /// over a timeout is worse than a stale one that says when it was read.
+  lastSuccessAt DateTime? @map("last_success_at")
+  lastAttemptAt DateTime  @map("last_attempt_at")
+
+  /// Items stored on the last successful read. Zero with `empty`.
+  itemCount Int @default(0) @map("item_count")
+
+  /// The failure, for an operator. Never a message body.
+  lastError String? @map("last_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ecops_site_syncs")
 }

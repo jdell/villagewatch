@@ -946,6 +946,40 @@ export const villageParishCouncilFormSchema = z.object({
 });
 
 /**
+ * The village's Neighbourhood Alert ("eCops") site — `saveEcopsSiteAction`.
+ *
+ * A number typed off the address bar of a force's own alert portal, so the
+ * field is a string on the way in and the schema is what turns it into a column
+ * value.
+ *
+ * **Empty clears it, and `0` is refused.** Those are different things and the
+ * distinction is the reason this schema exists rather than a bare `coerce`.
+ * Null means the feature is off. `SiteId=0` is a real value the feed accepts and
+ * it is the *national* firehose — every force's messages, from Cornwall to
+ * Northumberland — so a coordinator who typed it would get a panel full of
+ * bulletins about places a thousand miles away, with nothing on screen to
+ * explain why. It is rejected with a sentence instead.
+ *
+ * **Nothing here can tell a valid site from an invalid one**, and it must not
+ * pretend to. The feed answers an unknown id with a well-formed empty channel,
+ * so the only honest check available is the shape of the number; whether it is
+ * a real portal is settled by the first sync, which is why `EcopsSiteSync`
+ * records `empty` as an outcome and the dashboard says so.
+ */
+export const villageEcopsSiteFormSchema = z.object({
+  ecopsSiteId: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || /^\d{1,7}$/.test(value), {
+      message: "Enter the site number from your force's alert website, or leave it empty",
+    })
+    .transform((value) => (value === "" ? null : Number.parseInt(value, 10)))
+    .refine((value) => value === null || value > 0, {
+      message: "0 is the national feed, which carries every force in the country. Use your own force's site number.",
+    }),
+});
+
+/**
  * The village merge — `POST /api/admin/villages/merge`.
  *
  * Ids rather than slugs, because the selectors on the screen are populated from

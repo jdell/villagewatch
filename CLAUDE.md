@@ -28,7 +28,7 @@ flags clusters before anyone joins the dots by hand.
 | Push       | OneSignal — `@onesignal/node-onesignal` server, v16 web SDK   |
 | Email      | Resend — `src/lib/email/send.ts`; auth email is Supabase's     |
 | Toasts     | sonner                                                       |
-| Hosting    | Vercel, `lhr1` (two crons in `vercel.json`)                   |
+| Hosting    | Vercel, `lhr1` (four crons in `vercel.json`)                  |
 | Domain     | `villagewatch.app` — see The canonical origin                 |
 | Versioning | `standard-version` + Conventional Commits, bumped by CI       |
 
@@ -207,6 +207,11 @@ src/
                               The id in the path decides nothing — see The PDF
     api/digest/               Weekly cron — Claude summary, PatternAlert, push
     api/cron/retention/       Nightly cron — archives reports, deletes old media
+    api/cron/ecops/           Daily cron — the police and Neighbourhood Watch
+                              bulletins each configured Neighbourhood Alert site
+                              is publishing. One fetch per site, not per village
+                              — see Police alerts from eCops. Also on demand:
+                              ?site=
     api/cron/police-data/     Weekly cron — the Home Office's recorded-crime
                               figures for each active village, and the
                               neighbourhood team. Also the on-demand endpoint:
@@ -319,6 +324,13 @@ src/
                               posting switch, severity floor
     dashboard/privacy-level-form.tsx  How the village covers faces — four
                               levels, each with a preview of what it looks like
+    dashboard/police-alerts-panel.tsx  The force's own bulletins. A police
+                              badge in indigo rather than the severity scale,
+                              the sender named on every card, and the area
+                              caveat above the list rather than under it
+    dashboard/ecops-site-form.tsx  Which Neighbourhood Alert site the village
+                              reads. One number, and the copy says it cannot be
+                              checked when you save it
     dashboard/police-crime-panel.tsx  The Home Office's figures beside the
                               village's own, and the neighbourhood policing
                               team. Two counts, never one chart
@@ -385,6 +397,13 @@ src/
     police-data.ts            The Prisma half: syncing a village-month, and the
                               two reads the dashboard and /reports make. Server
                               only, and every read degrades on a missing table
+    ecops/fetch-alerts.ts     The Neighbourhood Alert RSS client and its
+                              parser — typed failures, never throws, and the
+                              only place third-party HTML is turned into text.
+                              Server only
+    ecops/alerts.ts           The Prisma half — syncing one site, the read the
+                              dashboard makes, and the sync row that tells a
+                              quiet site apart from a mistyped one. Server only
     police-report.ts          The types and the words for the comparison —
                               client-safe, so the browser can assemble the
                               report's police section like every other one
@@ -630,6 +649,14 @@ tests/                        Vitest, unit only — see The test suite
                               every failure a value rather than a throw, a 404
                               read as "not published", one bad record costing
                               one record, `bio` never arriving, and the pacer
+  ecops-alerts.test.ts        The Neighbourhood Alert client over a stubbed
+                              fetch — every failure a value rather than a throw,
+                              an **empty channel read as a success** (which is
+                              what a mistyped site number returns), the double
+                              decoding that a stripper alone would miss, the
+                              mail-merge placeholder that 125 of 200 real
+                              messages carry, one bad item costing one item, and
+                              a link that is http(s) or nothing
   police-months.test.ts       The calendar arithmetic and the labels — the two
                               months a period straddles, UTC boundaries, the
                               24-month bound, and a category the Home Office
@@ -1761,7 +1788,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty files, 660 tests, covering the
+between the typecheck and the build. Forty-four files, 738 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -3500,6 +3527,120 @@ no quota.
   acknowledgement wherever the data is shown. It is under the dashboard panel and
   in every report section, not in a credits page nobody opens.
 
+## Police alerts from eCops
+
+`src/lib/ecops/fetch-alerts.ts` reads the feed, `src/lib/ecops/alerts.ts` stores
+it, `GET|POST /api/cron/ecops` is what runs, and `PoliceAlertsPanel` on
+`/dashboard` is where a coordinator sees it. `Village.ecopsSiteId` turns it on,
+and it is null everywhere until somebody sets it.
+
+Neighbourhood Alert is the platform most UK forces and Neighbourhood Watch
+schemes publish their public bulletins through — Hampshire Alert, Warwickshire
+Connected, Met Engage and about twenty more are one site each on it. The feed is
+`GET https://v4-api.neighbourhoodalert.co.uk/RSS`: no key, no account, no quota.
+
+- **It answers a different question from `data.police.uk`, and the two are
+  deliberately not merged.** The Home Office series says what was *recorded*
+  around a village two months ago; this says what a force is *telling people
+  right now* — a scam doing the rounds, a spate of shed break-ins, a PCSO
+  drop-in on Tuesday. One is a statistic and the other is a notice. They render
+  as two panels for the same reason the police figures and the village's own
+  reports are two breakdowns rather than one chart.
+- **Three facts about the feed decided everything else, and all three were
+  established against the live endpoint rather than assumed.** They are worth
+  reading before changing anything here, because each of them is the answer to
+  an obvious-seeming request.
+  1. **There are no coordinates.** No point, no postcode, not even a place name
+     — the only geography in an item is which portal sent it. See *why there are
+     no pins* below.
+  2. **`SiteId` selects a whole portal.** `SiteId=2` is Warwickshire Connected.
+     `SiteId=0` — the default — is a national firehose of the last hundred
+     messages from every force in the country, which is why the column is
+     nullable rather than defaulting to 0 and why the form refuses 0 with a
+     sentence. **`AreaId` returns an empty channel for every value tried inside
+     a valid site**, so it is not usable without a lookup this API does not
+     publish, and nothing sends it. `tests/ecops-alerts.test.ts` asserts that it
+     is not sent, because the documentation says it works.
+  3. **An unknown site and a quiet site are the same response.** Both answer
+     `200` with a well-formed, item-less channel. There is no upstream error to
+     surface, so the distinction has to be carried on our side or lost — which
+     is what `EcopsSiteSync` is, and why `empty` is a recorded outcome rather
+     than an absence of one. Without it a coordinator who mistyped their site
+     number would see an empty panel that looks exactly like a quiet week, for
+     ever.
+- **Why there are no pins on the map.** This is the obvious next request and the
+  answer is no. The feed publishes no location, so the only options are the
+  village centre — which would state a location the source does not have, on the
+  one screen residents read as a map of what happened near them — or nothing.
+  It is nothing, and `ECOPS_NO_LOCATION_NOTE` says so on the panel rather than
+  leaving somebody to wonder. The recorded-crime figures are off the map for the
+  same reason and render as two counts.
+- **These rows are scoped by *site*, not by village, and it is the only table
+  pair in the schema that is.** A site is a force area, so ten parishes served
+  by one force share the rows and share the fetch; duplicating a county's
+  notices per parish would be storing one bulletin ten thousand times.
+  `Village.ecopsSiteId` is the join, and `vw_current_ecops_site_id()` in
+  `rls_policies.sql` — the fifth `SECURITY DEFINER` helper, and the only one
+  that asks a question about a village rather than a person — is what keeps that
+  safe through PostgREST.
+- **`ECOPS_AREA_NOTE` travels with every rendering**, the way
+  `POLICE_COMPARISON_NOTE` travels with the crime figures, and it is above the
+  list rather than under it: the obvious misreading of a burglary warning on a
+  village dashboard is "this happened here", and a caveat somebody reaches after
+  forming an impression has already failed.
+- **The summary is an excerpt and that is a copyright decision.** The feed
+  carries `© Neighbourhood Alert` and **no open licence** — unlike
+  data.police.uk, which is OGL. So what is stored is `ECOPS_SUMMARY_MAX_CHARS`
+  of plain text that always travels with a link back to the force's own page,
+  which is the ordinary bargain of consuming somebody's RSS. Raising that
+  constant is a decision about somebody else's copyright, not about how the card
+  looks.
+- **The bodies are HTML and are stripped before they are stored**, never
+  rendered. `toPlainText` decodes to a fixed point *before* it strips, and the
+  ordering is the point: the bodies are an HTML document entity-escaped to
+  travel inside an XML element, so stripping first leaves `&lt;p&gt;` untouched
+  and decoding only once lets `&amp;lt;script&amp;gt;` through as a literal
+  `<script>`. Both are asserted. Like `police-api.ts`'s `stripTags` it removes
+  tags rather than deciding which are safe.
+- **Unsubstituted mail-merge placeholders are removed, with their salutation.**
+  Measured rather than anticipated: `{FIRST_NAME}` appears in 125 of the 200
+  messages on one force's feed and 499 times across the six sampled. Dropping
+  the token alone turns `"Dear {FIRST_NAME} Appeal for Information"` into
+  `"Dear Appeal for Information"`, which reads as a sentence addressed to
+  "Appeal" — worse than leaving the placeholder, because it stops looking like
+  something is missing.
+- **A link is `http(s)` or it is nothing.** The same guard `police-api.ts` puts
+  in front of a force's CMS URL, and needed harder here: two dozen different
+  portals publish into one feed, so there is no host to check against.
+- **Nothing about a resident leaves.** The request is a site number. `/privacy`
+  §6 says so, and it is a claim about how the code behaves in the same sense the
+  data.police.uk paragraph beside it is — change what is sent and that paragraph
+  changes in the same commit.
+- **The sync is not audited; the setting is.** A cron refreshing a cache of
+  public notices is nobody's decision and `EcopsSiteSync` already records every
+  attempt with its outcome, so a row per site per night would bury the decisions
+  the trail exists for — the incident vote's argument about itself.
+  `village.ecops_site_changed` **is** audited and toned `sensitive`, because it
+  decides whose bulletins appear under a police badge, and the failure mode is
+  not an empty panel but a plausible one: another force's warnings, correctly
+  attributed, shown to a village as though they were about it.
+- **It prunes its own rows at `ECOPS_RETENTION_DAYS` and the nightly retention
+  sweep does not touch them.** That job enforces the schedule `/privacy` states
+  over residents' own data and every figure in it is a promise made to somebody;
+  a cache eviction of third-party press releases does not belong in the one job
+  whose counts a regulator might ask about.
+- **It is the fourth cron, and Vercel's Hobby plan allows two.** `0 5 * * *` in
+  `vercel.json`, an hour after the police sync so two outbound jobs are not
+  competing for the same minute. On Hobby, drop the entry and call the route
+  from an external scheduler — it is `CRON_SECRET`-guarded and `?site=` runs one
+  site on demand, which is also how a coordinator's number gets checked before
+  they are told it is wrong.
+- **Nothing maps a `category` onto `IncidentType`**, and it is the police data's
+  reasoning with an extra reason on top: the feed's own taxonomy is inconsistent
+  *within itself* — two spellings of "Anti-social behaviour", one with a
+  trailing space, appear in a single day's feed. A mapping would let a force's
+  labelling decide what a village's own breakdown says.
+
 ## Merging villages
 
 `src/lib/village-merge.ts` does it, `/admin/villages/merge` is the screen, and
@@ -4769,6 +4910,26 @@ open:
   visibly does not. None of the four can fail the page — every one of them
   degrades — which is exactly why they want looking at rather than waiting for
   a bug report.
+- **The police alerts have two tables, a panel, a settings form and no village
+  behind them.** `20260905140000_ecops_alerts` is new on a branch and unapplied,
+  `Village.ecopsSiteId` is null everywhere, and no request has ever been made to
+  Neighbourhood Alert from this deployment. The parser was built and checked
+  against six real site feeds — 200 items parsed with nothing dropped and no
+  residual markup — so what is untested is the storing and the rendering rather
+  than the reading. **Re-run `prisma/sql/rls_policies.sql` with the migration**:
+  two new tables arrive with RLS off, and `villages` grants SELECT per column,
+  so `ecops_site_id` is invisible through PostgREST until it is named there.
+  `postgis.sql` need not be re-run — there is no geography column, on purpose.
+
+  Four things to look at on the first real site, in the order they are likely to
+  surprise. **Whether the coordinator can find their site number at all** — it is
+  in the address of their force's alert website and nothing in the app can look
+  it up, which is the weakest part of this feature. **An `empty` result**, which
+  is the one outcome that means either "quiet week" or "wrong number" and cannot
+  be told apart from here. **What a real bulletin looks like in the panel** —
+  the bodies are somebody else's HTML and the excerpt is 400 characters, so a
+  message that is all headings or all links is the case that reads badly. And
+  **the fourth cron**, below.
 - **The third cron has never fired, and it is the third cron.** `0 4 * * 1` in
   `vercel.json`. Vercel's Hobby plan allows two, so if this deployment is on
   Hobby the entry has to go and the route be called from an external scheduler —
