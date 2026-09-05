@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.58](https://github.com/jdell/villagewatch/compare/v0.1.57...v0.1.58) (2026-09-05)
+
+
+### Features
+
+* **ecops:** pull police alerts from the Neighbourhood Alert RSS feed ([59e5187](https://github.com/jdell/villagewatch/commit/59e5187595236dc5912f9ff22609d114bca163c5))
+
 ### [0.1.57](https://github.com/jdell/villagewatch/compare/v0.1.56...v0.1.57) (2026-09-04)
 
 
