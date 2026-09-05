@@ -28,6 +28,7 @@ import {
   incidentModerationSchema,
   villageAutoApproveFormSchema,
   villageChannelFormSchema,
+  villageEcopsSiteFormSchema,
   villageParishCouncilFormSchema,
   villagePrivacyLevelFormSchema,
   villageResidentRoleFormSchema,
@@ -695,4 +696,135 @@ export async function revealResidentEmailAction(
   return result.ok
     ? { email: result.email, error: null }
     : { email: null, error: result.error };
+}
+
+
+// ---------------------------------------------------------------------------
+// The police alert feed
+// ---------------------------------------------------------------------------
+
+export type EcopsSiteState = {
+  ok: boolean;
+  message: string;
+  fieldErrors?: Record<string, string>;
+};
+
+/**
+ * Points the village's police-alert panel at a Neighbourhood Alert site.
+ *
+ * The fifth village setting, and the only one whose subject is a third party.
+ * The other four decide how this village's own reports are handled; this one
+ * decides **whose bulletins appear on the dashboard under a police badge**.
+ *
+ * That is why it is audited and toned `sensitive` alongside them. The failure
+ * mode is not an empty panel — an unrecognised number gives that, harmlessly —
+ * it is a *plausible* one: another force's warnings, correctly attributed to a
+ * real force, shown to a village as though they were about it. Nothing else in
+ * the app puts somebody else's words on a screen under somebody else's
+ * authority.
+ *
+ * **Nothing here can verify the number, and the copy on the form says so.** The
+ * feed answers an unknown `SiteId` with a well-formed empty channel rather than
+ * an error, so there is no check to make: whether it is a real portal is
+ * settled by the first sync, and `EcopsSiteSync` is what carries that answer
+ * back to the screen.
+ */
+export async function saveEcopsSiteAction(
+  _previous: EcopsSiteState,
+  formData: FormData,
+): Promise<EcopsSiteState> {
+  const session = await requireCoordinator("/dashboard/settings");
+  const villageId = session.profile?.villageId;
+
+  if (!villageId || !process.env.DATABASE_URL) {
+    return { ok: false, message: "You are not attached to a village." };
+  }
+
+  const parsed = villageEcopsSiteFormSchema.safeParse({
+    ecopsSiteId: formData.get("ecopsSiteId") ?? "",
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Check the highlighted field.",
+      fieldErrors: fieldErrors(parsed.error),
+    };
+  }
+
+  const { ecopsSiteId } = parsed.data;
+
+  // Read before the write, so the trail records what actually changed rather
+  // than what was submitted — `saveParishCouncilAction`'s reasoning.
+  let before: number | null = null;
+
+  try {
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      select: { ecopsSiteId: true },
+    });
+
+    before = village?.ecopsSiteId ?? null;
+
+    await prisma.village.update({
+      where: { id: villageId },
+      data: { ecopsSiteId },
+    });
+  } catch (error) {
+    console.error("[dashboard] could not save the eCops site", error);
+
+    /*
+      The column arrives with `20260905140000_ecops_alerts`, which a database
+      can be behind on. "Try again" would be a lie in that case — the
+      coordinator can press Save all afternoon — so the message names the fix
+      and whose job it is, the way `setVillageParishCouncil` does.
+    */
+    const code = (error as { code?: unknown } | null)?.code;
+    const unmigrated = code === "P2022" || code === "42703";
+
+    return {
+      ok: false,
+      message: unmigrated
+        ? "This village's database has not been updated for police alerts yet. Ask an administrator to apply the pending migration."
+        : "Could not save the site number. Try again.",
+    };
+  }
+
+  if (before !== ecopsSiteId) {
+    try {
+      await prisma.auditLog.create({
+        data: {
+          actorId: session.user.id,
+          actorEmail: session.user.email ?? null,
+          actorRole: session.profile?.role ?? null,
+          villageId,
+          action: "village.ecops_site_changed",
+          entityType: "village",
+          entityId: villageId,
+          // Two site numbers and nothing else. Neither is personal data, and
+          // both are what somebody asking "why is this village showing
+          // Warwickshire's alerts" needs to answer the question.
+          before: { ecopsSiteId: before },
+          after: { ecopsSiteId },
+        },
+      });
+    } catch (error) {
+      // The setting is saved. An audit write that fails after the act is
+      // swallowed everywhere in this file, because telling somebody their
+      // change failed when it succeeded would be false.
+      console.error("[dashboard] could not audit the eCops site change", error);
+    }
+  }
+
+  // Settings holds the form; Overview holds the panel it feeds.
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard");
+
+  return {
+    ok: true,
+    message:
+      ecopsSiteId === null
+        ? "Police alerts turned off for this village."
+        : `Police alerts will come from site ${ecopsSiteId}. The next scheduled fetch will fill the panel.`,
+  };
 }

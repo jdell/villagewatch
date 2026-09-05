@@ -3,6 +3,7 @@ import Link from "next/link";
 import { MessageCircle, ShieldCheck, Users } from "lucide-react";
 import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
 import { InviteShare } from "@/components/dashboard/invite-share";
+import { EcopsSiteForm } from "@/components/dashboard/ecops-site-form";
 import { ParishCouncilForm } from "@/components/dashboard/parish-council-form";
 import { PrivacyLevelForm } from "@/components/dashboard/privacy-level-form";
 import {
@@ -20,6 +21,7 @@ import {
   getVillagePrivacyLevel,
   listVillageResidents,
 } from "@/lib/villages";
+import { getVillageEcopsSiteId } from "@/lib/ecops/alerts";
 import { getVillageChannelSettings } from "@/lib/whatsapp-channel";
 import {
   RESIDENT_LIST_SIZE,
@@ -62,6 +64,7 @@ export default async function VillageSettingsPage() {
     autoApprove,
     parishCouncil,
     privacyLevel,
+    ecopsSiteId,
     compliance,
     residents,
   ] = await Promise.all([
@@ -91,6 +94,7 @@ export default async function VillageSettingsPage() {
     // is never null here: it ends up as a redaction mode, and there is no state
     // in which the right answer is to cover nothing.
     getVillagePrivacyLevel(villageId),
+    getVillageEcopsSiteId(villageId),
     // For `mode`, which decides what the controller field calls itself and
     // whether the upgrade form has anything to offer.
     getVillageCompliance(villageId),
@@ -290,6 +294,15 @@ export default async function VillageSettingsPage() {
           value={privacyLevel.value}
           available={privacyLevel.available}
         />
+
+        {/*
+          The one setting on this page whose subject is not this village at all.
+          It is in the "what leaves the village" group rather than beside the
+          invite because it is the reverse direction — somebody else's bulletins
+          coming *in*, onto a screen where everything else was written by a
+          resident here. See `ECOPS_AREA_NOTE`.
+        */}
+        <EcopsSiteForm value={ecopsSiteId} />
       </section>
 
       <p className="mt-10 text-sm text-slate-500">

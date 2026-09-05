@@ -1205,6 +1205,27 @@ export const AUDIT_ACTIONS = [
     tone: "neutral",
   },
   {
+    value: "village.ecops_site_changed",
+    label: "Police alert feed changed",
+    description:
+      "A coordinator changed which Neighbourhood Alert area this village's police alerts come from",
+    /*
+      Sensitive alongside the other village settings, and for a reason none of
+      them shares. This one decides **whose bulletins appear on the dashboard
+      under a police badge**, and a wrong number here is not an empty panel —
+      it is another force's warnings shown to a village as though they were
+      about it. Nothing else in the app puts a third party's words on a screen
+      under somebody else's authority.
+
+      The scheduled fetch itself is deliberately **not** audited. It writes no
+      village's data, nobody decides it, and `EcopsSiteSync` already records
+      every attempt with its outcome — a row per site per night would bury the
+      decisions the trail exists for, which is the argument the incident vote
+      makes about itself.
+    */
+    tone: "sensitive",
+  },
+  {
     value: "retention.sweep",
     label: "Retention sweep",
     description:
@@ -1817,6 +1838,12 @@ export const PRICING = [
  * moment a page rendered a published report's category, severity, age and
  * village to somebody signed out. It is the clearest case this date exists for:
  * not a rewording, but a new audience for a resident's report.
+ *
+ * It did **not** move for the Neighbourhood Alert paragraph added to §6 on
+ * 5 September 2026, because it was already this date — and that is worth a line
+ * rather than silence, since a reader checking whether the rule was followed
+ * would otherwise find a §6 change with no movement behind it. Two substantive
+ * edits landed on the same day; the constant records the day, not the count.
  */
 export const LEGAL_LAST_UPDATED = "2026-09-05";
 
@@ -2588,4 +2615,130 @@ export function formatPoliceMonth(month: string): string {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+// ---------------------------------------------------------------------------
+// eCops — Neighbourhood Alert
+// ---------------------------------------------------------------------------
+//
+// The second outside source of policing information in this codebase, and it
+// answers a different question from the first. `data.police.uk` says what was
+// *recorded* around a village two months ago; Neighbourhood Alert carries what
+// a force is *telling people right now* — a scam doing the rounds, a spate of
+// shed break-ins, a PCSO drop-in on Tuesday. One is a statistic and the other
+// is a notice, and neither substitutes for the other.
+//
+// **Three properties of the feed shape everything below**, and each was
+// established against the live endpoint rather than assumed:
+//
+//   1. **There are no coordinates.** Not a point, not a postcode, not a place
+//      name — no geographic field of any kind. See `ECOPS_NO_LOCATION_NOTE`.
+//   2. **`SiteId` selects a whole portal**, which is a force area or a scheme,
+//      never a parish. `AreaId` returned nothing for every value tried inside a
+//      valid site, so it is not usable without a lookup this API does not
+//      publish, and nothing here sends it.
+//   3. **An unknown `SiteId` is indistinguishable from a quiet one.** Both
+//      answer 200 with a well-formed channel and no items, which is why
+//      `EcopsSiteSync` exists — see `src/lib/ecops/alerts.ts`.
+
+/** The feed. One endpoint, no key, no account, no quota. */
+export const ECOPS_RSS_URL = "https://v4-api.neighbourhoodalert.co.uk/RSS";
+
+/**
+ * How long to wait for the feed.
+ *
+ * Longer than `POLICE_API_TIMEOUT_MS` looks wrong and is not: a site feed is a
+ * single ~1MB XML document rather than one of a paced sequence of small JSON
+ * ones, and the whole run is one request per configured site.
+ */
+export const ECOPS_TIMEOUT_MS = 25_000;
+
+/** Same reasoning as `POLICE_API_USER_AGENT` — an open feed with no key. */
+export const ECOPS_USER_AGENT = POLICE_API_USER_AGENT;
+
+/**
+ * How much of a message body is kept.
+ *
+ * **This is a copyright decision, not a layout one.** The feed is marked
+ * "© Neighbourhood Alert" — unlike data.police.uk it carries no open licence —
+ * so what is stored is an *excerpt* that always travels with a link back to the
+ * force's own page, which is the ordinary bargain of consuming somebody's RSS.
+ * Storing the whole message would be republishing it.
+ *
+ * Raising this is therefore a decision about somebody else's copyright and not
+ * a decision about how the card looks.
+ */
+export const ECOPS_SUMMARY_MAX_CHARS = 400;
+
+/** Items taken from one site's feed in one run. The feed returns up to 500. */
+export const ECOPS_MAX_ITEMS_PER_SYNC = 200;
+
+/** Alerts on the dashboard panel. The rest are one click away on the portal. */
+export const ECOPS_PANEL_SIZE = 5;
+
+/**
+ * How long a stored alert is kept.
+ *
+ * These are a cache of somebody else's public notices, not a resident's data,
+ * so this is housekeeping rather than retention in the `/privacy` sense — which
+ * is why the nightly retention sweep does not touch them and the eCops sync
+ * prunes its own rows.
+ */
+export const ECOPS_RETENTION_DAYS = 120;
+
+/**
+ * The caveat that travels with every rendering, the way
+ * `POLICE_COMPARISON_NOTE` travels with the recorded-crime figures.
+ *
+ * It exists because the obvious misreading is a bad one. A police alert shown
+ * on a village's dashboard reads as *"this happened here"*, and the feed cannot
+ * support that: the narrowest thing it can be filtered to is the whole portal,
+ * which is typically a force area. A resident who took a shed-break-in warning
+ * as being about their street would be wrong in the direction that causes
+ * alarm.
+ */
+export const ECOPS_AREA_NOTE =
+  "These alerts are published for the whole force or scheme area, not for this village. They are not reports made by residents here.";
+
+/**
+ * Why there are no police alerts on the map.
+ *
+ * Worth a constant rather than a comment, because "put them on the map" is the
+ * obvious next request and this is the answer to it. The feed publishes no
+ * coordinate, no postcode and no place name — the only geography in an item is
+ * which portal sent it. A pin dropped at the village centre would state a
+ * location the source does not have, on the one screen residents read as a map
+ * of what happened near them. The same reasoning keeps the recorded-crime
+ * figures off the map: they are rendered as two counts, never as pins.
+ */
+export const ECOPS_NO_LOCATION_NOTE =
+  "Neighbourhood Alert does not publish a location for these messages, so they are not shown on the map.";
+
+/** Required by the feed's own copyright line, and the link is the other half. */
+export const ECOPS_ATTRIBUTION =
+  "Source: Neighbourhood Alert (neighbourhoodalert.co.uk). Alerts are published by police forces and Neighbourhood Watch schemes; each links to the original message.";
+
+/**
+ * Who sent a message, as the feed spells it.
+ *
+ * Two values in practice — "The Police" and "Neighbourhood Watch" — and the
+ * distinction is worth keeping rather than flattening to "police alert",
+ * because a scheme's message and a force's message carry different authority.
+ * Free text upstream, so this narrows for display only and anything else falls
+ * through as itself.
+ */
+export const ECOPS_SENDER_LABELS: Record<string, string> = {
+  "The Police": "Police",
+  "Neighbourhood Watch": "Neighbourhood Watch",
+};
+
+/**
+ * True where a message came from a force rather than a watch scheme.
+ *
+ * Used only to pick the badge. It matches on the feed's own string and errs
+ * towards *not* claiming police authorship, because labelling a scheme's
+ * message as the police's is the error that matters.
+ */
+export function isPoliceSender(sentBy: string | null | undefined): boolean {
+  return (sentBy ?? "").trim().toLowerCase() === "the police";
 }

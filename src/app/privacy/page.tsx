@@ -107,6 +107,12 @@ export const metadata: Metadata = {
  *     notice rather than a stale one. It is in §6 because a resident reading
  *     "who else sees it" is entitled to know about every request made on their
  *     behalf, including the ones with nothing of theirs in them.
+ *   - §6's paragraph on Neighbourhood Alert, the second entry describing an
+ *     outbound request carrying **nothing** about a resident
+ *     (`src/lib/ecops/fetch-alerts.ts`). It says a site number is all that is
+ *     sent, and that is the whole request — no map centre this time, because
+ *     the feed has no geography to give one to. Held to the same rule as the
+ *     data.police.uk paragraph above it, and in §6 for the same reason.
  *   - §6's paragraph on Resend, and it changed on 31 August 2026 because the
  *     code under it did. `src/lib/email/send.ts` is still the one transport,
  *     but the welcome is no longer the one message: an incident alert now goes
@@ -756,6 +762,32 @@ export default function PrivacyPage() {
           data published under the Open Government Licence, in which every crime
           has already been anonymised by the police to a point &ldquo;on or
           near&rdquo; a street rather than an address.
+        </P>
+        {/*
+          The second outbound request with nothing of a resident's in it, and it
+          is here for the reason the one above is: a resident reading "who else
+          sees it" is entitled to know about every request the service makes on
+          their behalf.
+
+          It carries even less than the police one. There is no map centre,
+          because Neighbourhood Alert publishes no location at all — the request
+          is a site number and nothing else. A statement about how
+          `src/lib/ecops/fetch-alerts.ts` behaves, in the same sense the others
+          are: if it ever sends anything more, this changes in the same commit.
+        */}
+        <P>
+          If your village has turned them on, {APP_NAME} also shows the public
+          bulletins your police force and local watch schemes publish through
+          Neighbourhood Alert &mdash; scam warnings, appeals for information,
+          notices of local meetings. Those are fetched by our servers, and
+          nothing about you is sent to get them: the request carries a single
+          number identifying your force&rsquo;s alert website and nothing else.
+          No report, no account, no location of yours and not your IP address.
+          What comes back is a bulletin already published to anyone who
+          subscribes to that force&rsquo;s alerts, and we store a short extract
+          of it with a link to the original. These are published for a whole
+          force or scheme area rather than for your village, and they are not
+          reports made by anyone here.
         </P>
         <P>
           Some of our processors operate outside the UK. Where data is
