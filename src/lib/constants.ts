@@ -2673,8 +2673,27 @@ export const ECOPS_SUMMARY_MAX_CHARS = 400;
 /** Items taken from one site's feed in one run. The feed returns up to 500. */
 export const ECOPS_MAX_ITEMS_PER_SYNC = 200;
 
-/** Alerts on the dashboard panel. The rest are one click away on the portal. */
+/**
+ * Alerts on the dashboard panel.
+ *
+ * Five, because Overview is a page a coordinator skims and this is the one
+ * panel on it that is not about their own village. The rest are on
+ * `/dashboard/police-alerts`, which is what the panel's footer links to — see
+ * `ECOPS_PAGE_SIZE`.
+ */
 export const ECOPS_PANEL_SIZE = 5;
+
+/**
+ * Alerts on `/dashboard/police-alerts`.
+ *
+ * The page a coordinator opens when they actually want to read the force's
+ * bulletins rather than notice that there are some. Comfortably under
+ * `ECOPS_MAX_ITEMS_PER_SYNC`, so it is bounded by what a site publishes rather
+ * than by what one run stored, and it paginates no further: past fifty
+ * bulletins the useful move is the force's own portal, which every card links
+ * to.
+ */
+export const ECOPS_PAGE_SIZE = 50;
 
 /**
  * How long a stored alert is kept.

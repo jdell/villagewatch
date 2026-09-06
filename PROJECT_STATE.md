@@ -34,7 +34,7 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
-| `feat/ecops-rss-integration` | **In review.** Police and Neighbourhood Watch bulletins from the Neighbourhood Alert RSS feed: `src/lib/ecops/`, a daily cron, a dashboard panel, a coordinator setting, and migration 16. Build, typecheck, lint and 738 tests pass; the migration and `rls_policies.sql` were applied and the RLS isolation exercised against a throwaway Postgres, but **nothing has run against the real database and no request has ever been made to Neighbourhood Alert from this deployment.** | Review, merge, then apply migration 16 **and re-run `rls_policies.sql`** |
+| `feat/ecops-rss-integration` | **In review.** Police and Neighbourhood Watch bulletins from the Neighbourhood Alert RSS feed: `src/lib/ecops/`, a daily cron, a dashboard panel, a page of their own at `/dashboard/police-alerts` behind a sixth sidebar entry, a coordinator setting, and migration 16. Build, typecheck, lint and 738 tests pass; the migration and `rls_policies.sql` were applied and the RLS isolation exercised against a throwaway Postgres, but **nothing has run against the real database and no request has ever been made to Neighbourhood Alert from this deployment.** | Review, merge, then apply migration 16 **and re-run `rls_policies.sql`** |
 | `fix/security-audit-highs` | Merged as PR #22, 30 August. Released as `v0.1.49`. | Delete |
 | `fix/pdf-test-timeout` | Merged as PR #19, 28 August. Released as `v0.1.48`. | Delete |
 | `fix/launch-blockers` | Merged as PR #21, 27 August. Released as `v0.1.47`. | Delete |

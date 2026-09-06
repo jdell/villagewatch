@@ -16,6 +16,7 @@ import {
   Plus,
   Settings,
   Shield,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   X,
@@ -44,10 +45,12 @@ const NAV_ITEMS = [
   { href: "/map", label: "Map", icon: Map, tour: "map" },
   { href: "/incidents", label: "Incidents", icon: ClipboardList },
   /*
-    The five coordinator tabs, in the order a coordinator uses them — see
+    The coordinator tabs, in the order a coordinator uses them — see
     `docs/COORDINATOR_DASHBOARD_REDESIGN.md`. Overview is where they land,
-    Queue is where they spend the time, and the three below it are used
-    progressively less often.
+    Queue is where they spend the time, and the ones below it are used
+    progressively less often. The redesign named five destinations (those two,
+    Map, Reports and Village settings); Police alerts, Compliance and the Guide
+    were added to the block afterwards, each with its reason beside it.
 
     `requires: "coordinator"` covers the platform administrator who also holds
     `UserRole.ADMIN` — that role is in `COORDINATOR_ROLES`. An administrator by
@@ -83,6 +86,27 @@ const NAV_ITEMS = [
     href: "/reports",
     label: "Reports",
     icon: FileText,
+    requires: "coordinator",
+  },
+  /*
+    The force's own bulletins, below the documents the village sends out and
+    above the settings it sets once. A coordinator checks these the way they
+    check the news — often enough to want them in the sidebar, not so often
+    that they belong above the queue.
+
+    **Not conditional on `Village.ecopsSiteId`.** Every other coordinator link
+    goes to a screen that works; this one goes to a screen that explains itself
+    where no site is set, and that is deliberate — the site number lives in the
+    address of a force's own website and nothing in the app can find it, so a
+    link that appeared only once somebody had already configured the feature
+    would leave it undiscoverable. The panel on Overview takes the opposite
+    decision for the opposite reason: a permanently blank *card* on a working
+    page is clutter, where a destination is not.
+  */
+  {
+    href: "/dashboard/police-alerts",
+    label: "Police alerts",
+    icon: ShieldAlert,
     requires: "coordinator",
   },
   /*
@@ -210,9 +234,9 @@ export function AppShell({
     The *longest* matching prefix, not every matching one.
 
     The coordinator tabs are nested under `/dashboard`, so a plain
-    `startsWith` lights up Overview at the same time as Queue, Village settings,
-    Compliance and the Guide — five highlighted rows and no way to tell which
-    page you are on. Working out the best match once and comparing against it
+    `startsWith` lights up Overview at the same time as Queue, Police alerts,
+    Village settings, Compliance and the Guide — six highlighted rows and no way
+    to tell which page you are on. Working out the best match once and comparing against it
     keeps exactly one row current, and it does the right thing for the pages
     with no nav item of their own: `/dashboard/audit` falls back to Overview,
     which is where its link is.

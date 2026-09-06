@@ -1,13 +1,16 @@
-import { BadgeAlert, ExternalLink, ShieldAlert, Users } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, ShieldAlert } from "lucide-react";
+import {
+  EcopsAlertList,
+  EcopsEmptyState,
+} from "@/components/dashboard/ecops-alert-list";
 import {
   ECOPS_AREA_NOTE,
   ECOPS_ATTRIBUTION,
   ECOPS_NO_LOCATION_NOTE,
-  ECOPS_SENDER_LABELS,
-  isPoliceSender,
 } from "@/lib/constants";
 import type { VillageEcopsAlerts } from "@/lib/ecops/alerts";
-import { formatDate, formatTimeAgo } from "@/lib/format";
+import { formatTimeAgo } from "@/lib/format";
 
 /**
  * Bulletins published by the village's police force or watch scheme.
@@ -17,6 +20,12 @@ import { formatDate, formatTimeAgo } from "@/lib/format";
  * `src/lib/ecops/alerts.ts`; nothing here reaches Neighbourhood Alert, because a
  * page render that waited on a third party would put somebody else's uptime in
  * front of a coordinator's queue.
+ *
+ * The cards themselves are `EcopsAlertList`, shared with
+ * `/dashboard/police-alerts` — this file is the framing on Overview (the mark,
+ * the caveat, the last-read line and the way through), and that one is the
+ * bulletin. Two copies of a card would diverge on the day somebody fixed one,
+ * and the divergence that would matter is the sender badge.
  *
  * ## It is visibly not a village report, and that is the whole design
  *
@@ -104,136 +113,32 @@ export function PoliceAlertsPanel({ data }: { data: VillageEcopsAlerts }) {
       </p>
 
       {alerts.length === 0 ? (
-        <EmptyState status={status} siteId={data.siteId} />
+        <EcopsEmptyState status={status} siteId={data.siteId} />
       ) : (
-        <ul className="mt-4 divide-y divide-slate-100">
-          {alerts.map((alert) => (
-            <li key={alert.id} className="py-3 first:pt-0 last:pb-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
-                    isPoliceSender(alert.sentBy)
-                      ? "bg-indigo-50 text-indigo-800 ring-indigo-600/20"
-                      : "bg-slate-100 text-slate-700 ring-slate-500/20"
-                  }`}
-                >
-                  {isPoliceSender(alert.sentBy) ? (
-                    <BadgeAlert className="size-3" aria-hidden />
-                  ) : (
-                    <Users className="size-3" aria-hidden />
-                  )}
-                  {senderLabel(alert.sentBy)}
-                </span>
+        <EcopsAlertList alerts={alerts} />
+      )}
 
-                {alert.category && (
-                  <span className="text-[11px] text-slate-500">
-                    {alert.category}
-                  </span>
-                )}
-
-                <span className="text-[11px] text-slate-400">
-                  {formatDate(alert.publishedAt)}
-                </span>
-              </div>
-
-              <h3 className="mt-1.5 text-sm font-semibold text-slate-900">
-                {alert.title}
-              </h3>
-
-              {alert.summary && (
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                  {alert.summary}
-                </p>
-              )}
-
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                {alert.senderName && (
-                  <span className="text-slate-500">{alert.senderName}</span>
-                )}
-
-                {/*
-                  `link` has already been through the `http(s)`-only check in
-                  `fetch-alerts.ts` — the same guard `police-api.ts` puts in
-                  front of a force's CMS URL, and needed here for a sharper
-                  reason: two dozen different portals publish into this one
-                  feed, so there is no single host to check against.
-                */}
-                {alert.link && (
-                  <a
-                    href={alert.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-medium text-brand-700 hover:text-brand-800"
-                  >
-                    <ExternalLink className="size-3.5" aria-hidden />
-                    Read the full alert
-                  </a>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
+      {/*
+        The way through to the rest. The panel shows `ECOPS_PANEL_SIZE` because
+        Overview is skimmed, and a coordinator who wants to actually read the
+        force's bulletins wants a screen that is not competing with their own
+        village's figures — see `/dashboard/police-alerts`. Rendered only where
+        there is something to go and read, so a village whose feed has never
+        returned anything is not offered a fuller view of nothing.
+      */}
+      {alerts.length > 0 && (
+        <Link
+          href="/dashboard/police-alerts"
+          className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:text-brand-800"
+        >
+          View all police alerts
+          <ArrowRight className="size-3.5" aria-hidden />
+        </Link>
       )}
 
       <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400">
         {ECOPS_NO_LOCATION_NOTE} {ECOPS_ATTRIBUTION}
       </p>
     </section>
-  );
-}
-
-function senderLabel(sentBy: string | null): string {
-  const value = (sentBy ?? "").trim();
-
-  if (!value) return "Alert";
-
-  // Known senders get the short label; anything else — and the feed carries
-  // scheme names beyond the two common ones — falls through as itself rather
-  // than being flattened into "Police", which would be a claim.
-  return ECOPS_SENDER_LABELS[value] ?? value;
-}
-
-/**
- * The three states that are not "no alerts", and they want three sentences.
- *
- * A site nobody has fetched, a site that answered empty and a site whose fetch
- * failed all show zero alerts, and the coordinator's next move is different for
- * each. Collapsing them into "No alerts yet" would leave somebody who mistyped
- * their site number waiting indefinitely for a feed that is answering perfectly
- * well — with nothing.
- */
-function EmptyState({
-  status,
-  siteId,
-}: {
-  status: string | null;
-  siteId: number;
-}) {
-  if (status === "failed") {
-    return (
-      <p className="mt-4 text-sm text-slate-500">
-        The alert feed could not be reached at the last attempt. Anything
-        already fetched is still shown above; the next scheduled run will try
-        again.
-      </p>
-    );
-  }
-
-  if (status === "empty") {
-    return (
-      <p className="mt-4 text-sm text-slate-500">
-        Site {siteId} returned no messages. That is either a quiet week or a site
-        number that does not exist — the feed answers both the same way, so check
-        the number against your force&rsquo;s own alert website if nothing
-        appears here within a few days.
-      </p>
-    );
-  }
-
-  return (
-    <p className="mt-4 text-sm text-slate-500">
-      Nothing fetched yet. The scheduled job runs daily and will fill this panel
-      on its next run.
-    </p>
   );
 }

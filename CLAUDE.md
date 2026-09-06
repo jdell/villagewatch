@@ -164,6 +164,11 @@ src/
                               auto-approve, the WhatsApp Channel and the face
                               redaction level — and verifying a resident
       dashboard/audit/        Audit trail viewer — coordinator only, filterable
+      dashboard/police-alerts/  The force's own bulletins on a screen of their
+                              own — ECOPS_PAGE_SIZE of them, against the panel's
+                              five. Reads and writes nothing, and renders an
+                              explanation rather than an empty list where the
+                              village has no site set
       dashboard/compliance/   The legal gate — renders whichever documents the
                               village's mode calls for, in full, and records the
                               acceptance. Until they are accepted the village
@@ -324,10 +329,16 @@ src/
                               posting switch, severity floor
     dashboard/privacy-level-form.tsx  How the village covers faces — four
                               levels, each with a preview of what it looks like
-    dashboard/police-alerts-panel.tsx  The force's own bulletins. A police
-                              badge in indigo rather than the severity scale,
-                              the sender named on every card, and the area
-                              caveat above the list rather than under it
+    dashboard/police-alerts-panel.tsx  The force's own bulletins on Overview.
+                              A police badge in indigo rather than the severity
+                              scale, the area caveat above the list rather than
+                              under it, and the way through to the full page.
+                              The framing; the cards are the file below
+    dashboard/ecops-alert-list.tsx  One bulletin, and the three empty states
+                              that are not "no alerts". Shared by the panel and
+                              /dashboard/police-alerts so the sender badge
+                              cannot say one thing on one screen and another on
+                              the other
     dashboard/ecops-site-form.tsx  Which Neighbourhood Alert site the village
                               reads. One number, and the copy says it cannot be
                               checked when you save it
@@ -631,6 +642,13 @@ tests/                        Vitest, unit only — see The test suite
                               with auto-approve **off** files PENDING_REVIEW,
                               and a failed read of the setting fails closed to
                               the queue rather than publishing
+  police-alerts-surfaces.test.tsx  The third component test. The two screens
+                              that render a police bulletin, and the one thing
+                              they are meant to disagree about — the panel
+                              rendering nothing where the page renders an
+                              explanation. Also the three empty states being
+                              three, and a watch scheme never getting a police
+                              badge
   legal-placeholders.test.tsx The second component test. /privacy and /terms
                               rendered to a string: no bracketed placeholder
                               survives, there is always a working mailto, and
@@ -669,7 +687,7 @@ tests/                        Vitest, unit only — see The test suite
                               the caveat that must travel with them, the months
                               named as missing, and no section at all when
                               nothing is held
-  period-control.test.tsx     The only component test — the three period
+  period-control.test.tsx     The first component test — the three period
                               controls rendered to a string: no date input under
                               a preset, a chip under Custom. See The test suite
   auth-errors.test.ts         The mapper in front of every Supabase auth
@@ -1788,7 +1806,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty-four files, 738 tests, covering the
+between the typecheck and the build. Forty-five files, 745 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -1865,7 +1883,7 @@ directives.
   travel with them, the months named as missing, and **no section at all** when
   nothing is held, which is what keeps a deployment that never runs the sync
   producing exactly the report it produced before.
-- **`tests/period-control.test.tsx` is the one component test**, and it is the
+- **`tests/period-control.test.tsx` was the first component test**, and it is the
   third file to earn an exception rather than a fourth kind of test. It renders
   `TimeRangeFields` and `ReportPeriodPicker` to a string with `react-dom/server`
   and reads the markup — no secret, no database and no DOM, which is why
@@ -1967,8 +1985,22 @@ directives.
   named above an address still reading `[Town]` is the state that would slip a
   placeholder past a check on the name alone. It asserts no wording, for the
   reason `compliance-documents.test.ts` gives.
+- **`police-alerts-surfaces.test.tsx` is the third component test, and it pins
+  a deliberate inconsistency.** `PoliceAlertsPanel` renders nothing at all where
+  a village has no eCops site set; `/dashboard/police-alerts` renders an
+  explanation and a link to the setting. That is two different answers to the
+  same absence, chosen for two different reasons — a blank card on a working
+  page is clutter, a blank destination is a dead sidebar entry for the one
+  feature whose configuration cannot be discovered any other way — and it is
+  precisely the shape of thing a tidying pass would make consistent and call an
+  improvement. It also pins the three empty states being three rather than one,
+  and a watch scheme's message never rendering with the force's indigo badge,
+  which is the error this feature is most able to make. No wording is asserted;
+  the area caveat is located through the constant rather than a guess at its
+  sentence, so what is pinned is that it renders *above* the alerts.
+
 - **What is deliberately not covered**: three route handlers and no more, no
-  server action, no RLS policy, and no component beyond the two above — nothing
+  server action, no RLS policy, and no component beyond the three above — nothing
   interactive, nothing behind a click. Those need a database, a request context or a
   browser, and a suite that needed any of them would stop being the thing CI can
   run on every push. What the three route tests still cannot say is what
@@ -3530,9 +3562,11 @@ no quota.
 ## Police alerts from eCops
 
 `src/lib/ecops/fetch-alerts.ts` reads the feed, `src/lib/ecops/alerts.ts` stores
-it, `GET|POST /api/cron/ecops` is what runs, and `PoliceAlertsPanel` on
-`/dashboard` is where a coordinator sees it. `Village.ecopsSiteId` turns it on,
-and it is null everywhere until somebody sets it.
+it, `GET|POST /api/cron/ecops` is what runs, and there are **two** places a
+coordinator sees it: `PoliceAlertsPanel` on `/dashboard`, and
+`/dashboard/police-alerts`, which is the sixth sidebar entry.
+`Village.ecopsSiteId` turns it on, and it is null everywhere until somebody sets
+it.
 
 Neighbourhood Alert is the platform most UK forces and Neighbourhood Watch
 schemes publish their public bulletins through — Hampshire Alert, Warwickshire
@@ -3568,6 +3602,24 @@ Connected, Met Engage and about twenty more are one site each on it. The feed is
      than an absence of one. Without it a coordinator who mistyped their site
      number would see an empty panel that looks exactly like a quiet week, for
      ever.
+- **Two surfaces, one card, and they disagree about absence on purpose.** The
+  panel shows `ECOPS_PANEL_SIZE` (5) and the page `ECOPS_PAGE_SIZE` (50), both
+  through `EcopsAlertList` — one rendering of a bulletin, because the thing that
+  would diverge if there were two is the sender badge, and a scheme's message
+  carrying a force's authority on one screen and not the other is the error this
+  feature is most able to make. What they do **not** share is what they do when
+  no site is set: the panel renders `null`, because a permanently blank card on
+  a working page is clutter, and the page renders an explanation with a link to
+  the settings field, because it is a destination rather than a card and it is
+  the only way somebody finds out the feature exists. The sidebar entry is
+  unconditional for that reason — the site number is in the address of a force's
+  own website and nothing in the app can look it up, so an entry that appeared
+  only after configuration would leave the feature undiscoverable.
+- **The page reads and writes nothing, like Overview**, and has no refresh
+  button, on the recorded-crime figures' reasoning: the bulletins are identical
+  for every village on the site and the feed is read daily, so a button is a way
+  for twenty coordinators to spend twenty requests on a portal that has not
+  moved.
 - **Why there are no pins on the map.** This is the obvious next request and the
   answer is no. The feed publishes no location, so the only options are the
   village centre — which would state a location the source does not have, on the
@@ -3888,9 +3940,22 @@ is three routes now, and with `/map` and `/reports` the coordinator has five
 sidebar entries: **Overview** (`/dashboard`), **Queue** (`/dashboard/queue`),
 **Map**, **Reports** and **Village settings** (`/dashboard/settings`).
 
+- **It is six now, and the heading is kept as it is.** **Police alerts**
+  (`/dashboard/police-alerts`) joined them on 6 September 2026, between Reports
+  and Village settings. The five above are the redesign's own set and the
+  document named them; renaming this section every time the block grows would
+  cost the reference to `docs/COORDINATOR_DASHBOARD_REDESIGN.md` that makes the
+  reasoning findable. Compliance and the Guide are in the block too and were
+  never counted here, for the same reason — what the five are is the *design*,
+  not the row count.
+- **The sixth is the only entry that is not conditional on the screen behind it
+  working.** Every other coordinator link goes somewhere with something on it;
+  `/dashboard/police-alerts` goes to an explanation where `Village.ecopsSiteId`
+  is null, which is every village today. That is deliberate and it is the
+  opposite of what the panel on Overview does — see Police alerts from eCops.
 - **Sidebar entries, not a tab bar.** The app shell already has a navigation
   column with a coordinator block in it. A tab strip inside the page would be a
-  second navigation idiom for the same five destinations, and on a phone it
+  second navigation idiom for the same destinations, and on a phone it
   would be a horizontally scrolling row underneath a drawer already listing
   them.
 - **`/map` is deliberately not moved under `/dashboard`.** It is the one of the
@@ -4910,8 +4975,8 @@ open:
   visibly does not. None of the four can fail the page — every one of them
   degrades — which is exactly why they want looking at rather than waiting for
   a bug report.
-- **The police alerts have two tables, a panel, a settings form and no village
-  behind them.** `20260905140000_ecops_alerts` is new on a branch and unapplied,
+- **The police alerts have two tables, a panel, a page, a settings form and no
+  village behind them.** `20260905140000_ecops_alerts` is new on a branch and unapplied,
   `Village.ecopsSiteId` is null everywhere, and no request has ever been made to
   Neighbourhood Alert from this deployment. The parser was built and checked
   against six real site feeds — 200 items parsed with nothing dropped and no
@@ -4924,7 +4989,10 @@ open:
   Four things to look at on the first real site, in the order they are likely to
   surprise. **Whether the coordinator can find their site number at all** — it is
   in the address of their force's alert website and nothing in the app can look
-  it up, which is the weakest part of this feature. **An `empty` result**, which
+  it up, which is the weakest part of this feature, and now the thing
+  `/dashboard/police-alerts` asks somebody to go and do before it can show them
+  anything. That unconfigured screen is the **only** state of this feature any
+  village can reach today, so it is the one to read first. **An `empty` result**, which
   is the one outcome that means either "quiet week" or "wrong number" and cannot
   be told apart from here. **What a real bulletin looks like in the panel** —
   the bodies are somebody else's HTML and the excerpt is 400 characters, so a
