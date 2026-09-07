@@ -1,7 +1,15 @@
 # VillageWatch — project state
 
-**Last updated:** 5 September 2026 · **Repo version:** `v0.1.51` · **Branch:**
+**Last updated:** 7 September 2026 · **Repo version:** `v0.1.58` · **Branch:**
 `main` · **Domain:** https://villagewatch.app
+
+> **Parts of this file were stale when village suspension landed, and are
+> flagged rather than guessed at.** `package.json` on `main` reads `0.1.58` while
+> the Current status table below describes `v0.1.51` and names the releases up to
+> it, and `feat/ecops-rss-integration` is listed as "in review" though it merged
+> as PR #28. Reconciling the seven releases in between wants whoever made them —
+> inventing the list would put fabricated facts in the one file that is believed
+> because it is a status file. The rows this change touches are current.
 
 This is the running answer to "where is this project right now". It is a status
 file, not a design document: what is live, what is in flight, what is blocked,
@@ -24,7 +32,7 @@ in `BACKLOG.md`.
 | Database | Supabase Postgres + PostGIS, `eu-west-2` (London) |
 | Migrations in repo | **16**, `20260726161847_init` → `20260905140000_ecops_alerts`. Two are new since this row was last rewritten and **neither is applied**: `20260905090000_incident_severity_proposal` (two nullable columns on `incidents`) and `20260905140000_ecops_alerts` (two new tables and one nullable column on `villages`). **`rls_policies.sql` must be re-run with both** — the first adds columns to a table whose SELECT grant is enumerated per column, the second adds tables that arrive with RLS off. `postgis.sql` need not be re-run for either: no geography column in either, on purpose. The rest of this row describes the position up to `20260823120000_incident_votes` and has not been re-verified since. Original text: **13 are applied; the fourteenth is not.** `20260823120000_incident_votes` lands with this change — one table and one enum, no column added to any existing table, and every read on top of it degrades to "no votes yet", so nothing a resident can do changes when it applies. **`rls_policies.sql` must be re-run with it**: a new table arrives with RLS off, and here that means the anon key could read who in a village thought which of their neighbours' reports was overblown. `postgis.sql` need not be — no geography column, on purpose. `database.yml` applied 11 on the merge of PR #5 and 12 on the merge of PR #6, both on 21 August, each followed by `postgis.sql` and `rls_policies.sql`. The thirteenth landed with PR #10 on 22 August: three new tables, no change to any existing one. **It is applied, and the first cron run is the evidence** — `syncVillagePoliceData` reads `police_data_syncs` before it fetches anything, so a missing table would have failed the run with `P2021` before a single outbound request; instead the run reached data.police.uk and came back with 429s. Nothing here was ever schema drift: `keep_existing_crimes` appears in no migration and on no model, and the bug that stopped the run was code passing a field that has never existed. **Still to confirm: that `rls_policies.sql` was re-run on that merge** — a new table arrives with RLS off, and until it is re-run every police row is readable with the anon key. `postgis.sql` does not need re-running, because there is no geography column in it |
 | Villages seeded | 270 Cambridgeshire parishes, all `PENDING`. **There is no `ACTIVE` village at all.** This row said the only one was `prisma/seed.ts`'s placeholder until 31 August; that was an inference from the script existing rather than from a query, and it was wrong — the seed has only ever been run against local scratch databases. See BACKLOG L7 |
-| Test suite | Vitest, **44 files, 738 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar two component tests, both rendered to a string with no DOM: `period-control.test.tsx` and `legal-placeholders.test.tsx`. Three route handlers are now covered — retention, the vote, and **`POST /api/incidents`**, which closed the gap this file and two others named for a month |
+| Test suite | Vitest, **45 files, 765 tests**, all passing (~3.6s; the pacer test spends 3s of that genuinely measuring the wait) — runs with no `.env.local` and no database. Unit only bar two component tests, both rendered to a string with no DOM: `period-control.test.tsx` and `legal-placeholders.test.tsx`. Three route handlers are now covered — retention, the vote, and **`POST /api/incidents`**, which closed the gap this file and two others named for a month |
 | CI | `ci.yml` (lint → typecheck → test → build), `database.yml` (migrate + both SQL files), `version.yml` (standard-version bump, stepping past a tag that already exists) |
 
 ---
@@ -34,6 +42,7 @@ in `BACKLOG.md`.
 | Branch | State | Action |
 | --- | --- | --- |
 | `main` | The working branch. Auto-deploys to production. | — |
+| `feat/admin-village-disable` | **In review.** Suspend and reactivate a village from `/admin/villages`, super-administrator only: `suspendVillage` / `reactivateVillage` / `getVillageServiceState` in `src/lib/villages.ts`, a Suspended tab, a resident banner above every authenticated page, and gates on both report routes and the wizard host. **No migration** — `VillageStatus.SUSPENDED` has existed since the first one; what was missing was anything in the application that could write it. Build, typecheck, lint and 765 tests pass. **Nothing has ever been suspended** — there is still no `ACTIVE` village to suspend. | Review, merge. No migration to apply |
 | `feat/ecops-rss-integration` | **In review.** Police and Neighbourhood Watch bulletins from the Neighbourhood Alert RSS feed: `src/lib/ecops/`, a daily cron, a dashboard panel, a coordinator setting, and migration 16. Build, typecheck, lint and 738 tests pass; the migration and `rls_policies.sql` were applied and the RLS isolation exercised against a throwaway Postgres, but **nothing has run against the real database and no request has ever been made to Neighbourhood Alert from this deployment.** | Review, merge, then apply migration 16 **and re-run `rls_policies.sql`** |
 | `fix/security-audit-highs` | Merged as PR #22, 30 August. Released as `v0.1.49`. | Delete |
 | `fix/pdf-test-timeout` | Merged as PR #19, 28 August. Released as `v0.1.48`. | Delete |
@@ -62,6 +71,38 @@ PRs because they were asked for as PRs.
 ---
 
 ## Open items
+
+### A village can be taken out of service, and none ever has — 7 September 2026
+
+`/admin/villages` gains **Suspend** and **Put back in service**, behind
+`SUPER_ADMIN_EMAILS`. `activateVillage` had been the only thing in the
+application that ever wrote `Village.status`, so until now a village could be
+brought into service and never taken back out except by an `UPDATE` typed into
+psql.
+
+It uses `SUSPENDED` rather than a new `INACTIVE` value — the status has existed
+since the first migration, `checkVillageJoin` already refused it and both
+sign-up pickers already excluded it — so **there is no migration in this
+change** and nothing to apply.
+
+**Three things the unit suite cannot cover**, and the first is why the other two
+have not happened:
+
+1. **There is still no `ACTIVE` village**, so nothing has ever been suspended.
+   The 270 seeded Cambridgeshire parishes are `PENDING` and the buttons only act
+   on a live one.
+2. **No resident has seen the banner.** It renders from `(app)/layout.tsx` above
+   every authenticated page and was checked against a static harness rather than
+   a signed-in session.
+3. **The 403 has never reached a browser.** Both report routes and the wizard
+   host refuse a suspended village; `tests/incident-create-route.test.ts` pins
+   the route's own behaviour, including that it refuses before a rate-limit slot
+   is spent, but the wizard's own handling of that response is untested.
+
+Worth watching on the first real suspension: that the resident banner appears
+without a sign-out — the actions revalidate `/` as a layout, which is what
+rebuilds it — and that the village reappears under the **Suspended** tab rather
+than vanishing, since that tab is the only place the undo lives.
 
 ### The ICO registration landed — 2 September 2026
 

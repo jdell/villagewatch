@@ -233,6 +233,9 @@ src/
     site-footer.tsx           Public footer, incl. the legal links — shared
     legal-page.tsx            Shell + typography for /privacy and /terms
     status-screen.tsx         Shell behind not-found.tsx and error.tsx
+    village-service-banner.tsx  What a resident is told when their village is
+                              not in service. Rendered by (app)/layout.tsx above
+                              every authenticated page; absent when it is
     coordinator-apply-form.tsx  The application — role, detail, why
     coordinator-application.tsx Settings section: apply / pending / declined
     flash-toast.tsx           One toast after a redirecting server action
@@ -623,6 +626,11 @@ tests/                        Vitest, unit only — see The test suite
                               filter, the village and status narrowing, a rise
                               from nothing not being a trend, and the prompt
                               block being absent rather than zeroed
+  village-suspension.test.ts  Suspend and put back — both admin lists required,
+                              one status in and one out for each transition, the
+                              guarded write, the join code minted before the
+                              status, and the service read blocking on a failed
+                              lookup without claiming a village is suspended
   village-join.test.ts        checkVillageJoin — the blank code, the empty
                               string, normalisation, the legacy null, and status
                               refusing before the code is looked at
@@ -1788,7 +1796,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty-four files, 738 tests, covering the
+between the typecheck and the build. Forty-five files, 765 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -2234,12 +2242,13 @@ replacement for them.
   administrator and the coordinator queue refuses everyone while applications
   keep arriving. Set it in Vercel as well as `.env.local`.
 - **`SUPER_ADMIN_EMAILS` is a second, narrower list and is not implied by the
-  first.** It gates `/admin/villages/merge` and nothing else today. Same shape —
-  server-only, comma-separated, read at module load, fails closed — and it is
-  checked **in addition to** `ADMIN_EMAILS`, so an address in one and not the
-  other opens nothing. There is deliberately no default and none in
-  `.env.example`; with it unset the merge screen explains itself and refuses.
-  See Merging villages.
+  first.** It gates two things: `/admin/villages/merge`, and the Suspend / Put
+  back in service pair on `/admin/villages`. Same shape — server-only,
+  comma-separated, read at module load, fails closed — and it is checked **in
+  addition to** `ADMIN_EMAILS`, so an address in one and not the other opens
+  nothing. There is deliberately no default and none in `.env.example`; with it
+  unset the merge screen explains itself and refuses, and the suspend button is
+  simply absent. See Merging villages and Suspending a village.
 - **Fail-open and fail-closed are per module, and the disagreement is the
   design.** `rate-limit.ts` fails **open**, because a database blip must not
   become "you cannot file a report". `getVillageAutoApprove` fails **closed**,
@@ -3640,6 +3649,100 @@ Connected, Met Engage and about twenty more are one site each on it. The feed is
   *within itself* — two spellings of "Anti-social behaviour", one with a
   trailing space, appear in a single day's feed. A mapping would let a force's
   labelling decide what a village's own breakdown says.
+
+## Suspending a village
+
+`suspendVillage` and `reactivateVillage` in `src/lib/villages.ts`, two buttons on
+`/admin/villages`, and `getVillageServiceState` behind the resident's banner and
+the two report gates. **No migration** — see below.
+
+- **It is `SUSPENDED`, not a new `INACTIVE` status, and the brief said "or
+  equivalent".** `VillageStatus` has had the equivalent since the first
+  migration: `checkVillageJoin` already refuses it, both sign-up pickers already
+  exclude it, `VILLAGE_JOIN_MESSAGES` already has its wording and
+  `VILLAGE_STATUS_LABELS` its label. A fifth value would be a migration to add a
+  second name for a state that exists, leaving every predicate in the codebase
+  having to remember both.
+- **What was missing was never the status — it was that nothing could write
+  it.** `activateVillage` was the only function in the application that touched
+  `Village.status`, so a village could be brought into service and never taken
+  back out except by an `UPDATE` typed into psql. That is the whole gap this
+  closes, and it is why there is no schema change in it.
+- **`SUPER_ADMIN_EMAILS` in addition to `ADMIN_EMAILS`**, the pair
+  `village-merge.ts` checks. An ordinary platform administrator activates
+  villages and appoints coordinators; taking a live parish off the air is the
+  narrower grant. Checked three times — in the action, and again beside each
+  write in `villages.ts` — because a server action is a POST endpoint with a
+  generated URL and is reachable without the card ever having rendered.
+- **The button is absent rather than disabled for a non-super-admin**, which is
+  the opposite of what `/admin/villages/merge` does. That screen explains itself,
+  because hiding the link would leave the one person who can set the variable
+  unable to find out it exists. A fourth button on a card is not that, and a
+  disabled control invites somebody to work out why.
+- **Each transition runs from exactly one status.** Suspend is `ACTIVE` →
+  `SUSPENDED`; reactivate is `SUSPENDED` → `ACTIVE` and nothing else. `PENDING`
+  belongs to `activateVillage`, which is the screen that explains what a
+  coordinator is taking on, and **`ARCHIVED` is where a merge left a village** —
+  reactivating one would hand back a village whose residents and reports have
+  already been moved somewhere else. Both refusals are worded apart rather than
+  sharing one "cannot be suspended".
+- **Reactivating mints a join code where one is missing, before the status.**
+  `checkVillageJoin` reads "no code set" as "no code required", so an `ACTIVE`
+  village with a null code is one anybody in the picker can walk into.
+  `activateVillage` writes the code first for exactly that reason and this does
+  the same. Unreachable from suspension today — a village can only be suspended
+  from `ACTIVE`, which guarantees a code — and it is there because "unreachable
+  today" is not "cannot happen" and the cost of being wrong is an open village.
+- **Nothing is deleted, and the confirm panel says so in as many words.** The
+  only column written is `status`. Reports, residents, coordinators, votes, media
+  and the audit trail are all untouched, which is what makes the undo a button.
+- **Residents keep their read access.** The map, the incident list and their own
+  reports all still render. Suspension is a decision about *taking new reports*;
+  locking residents out of reports they filed would be a data-access change
+  nobody asked for, and it would contradict the promise the confirm panel makes.
+- **Four surfaces enforce it and they are not interchangeable.** The two sign-up
+  pickers filter on `ACTIVE` and `checkVillageJoin` refuses on status, so a
+  hand-crafted POST carrying a valid join code is refused too. `POST
+  /api/incidents` and `POST /api/incidents/process` both return 403 **before the
+  body is parsed and before a rate-limit slot is spent** — a resident whose
+  village is closed must not pay one of their ten daily reports to find out.
+  `/incidents/new` renders the refusal rather than relying on it. And
+  `(app)/layout.tsx` renders the banner above every authenticated page, so
+  somebody finds out on whatever screen they opened.
+- **The service gate sits in front of the compliance gate**, in both routes and
+  on the wizard host. A suspended village is not taking reports at all, so
+  telling a resident their coordinator has paperwork outstanding would send them
+  to ask about the wrong thing. `tests/incident-create-route.test.ts` asserts the
+  ordering rather than leaving it to the reading.
+- **A failed status read blocks and does not lie about why.**
+  `getVillageServiceState` returns `status: null` with
+  `VILLAGE_SERVICE_UNKNOWN_MESSAGE` — "we could not find out" is a different
+  fact from "suspended", and printing the second would send a resident to a
+  coordinator with nothing to fix. Blocking costs nothing real: the routes that
+  consult it need the database a few lines later anyway.
+- **Two crons already skip a suspended village and one deliberately does not.**
+  `/api/digest` and `/api/cron/police-data` both select `status: "ACTIVE"`, so a
+  suspended village stops receiving weekly summaries and police syncs for free.
+  `/api/cron/retention` does **not** filter and must not: the 12-month archive
+  and the 6-month media deletion are what `/privacy` §7 promises, and a promise
+  about deleting data does not pause because a village is closed.
+- **`SUSPENDED` got its own tab and its own badge colour.** It sat in the
+  directory sharing one grey with `ARCHIVED` while nothing could write it — a
+  state only reachable through psql belongs with the things nobody is looking at.
+  Now that suspending is one click, a village vanishes from the tab the
+  administrator is standing on the moment they press it, and the undo would
+  otherwise be behind a search of 10,670 parishes. The tab is where the undo
+  lives, and it lists without a search because "suspended" is a handful of
+  villages by definition.
+- **`village.suspended` and `village.reactivated` are audited and toned
+  `sensitive`.** They are the only entries in `AUDIT_ACTIONS` that describe
+  somebody stopping a whole village working, and the trail is where a coordinator
+  finds out why theirs stopped taking reports.
+- **`/privacy` and `/terms` did not change**, and that is a decision rather than
+  an omission. Suspension changes no processing: nothing new is collected, nothing
+  is disclosed to anybody new, nothing is deleted, and no retention period moves.
+  What changes is whether a form accepts a submission, which neither document
+  makes a promise about.
 
 ## Merging villages
 
