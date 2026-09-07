@@ -6,7 +6,7 @@ import {
   VillageCard,
   type AdminVillage,
 } from "@/components/admin/village-card";
-import { requireAdmin } from "@/lib/auth";
+import { isSuperAdmin, requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { COORDINATOR_ROLES, VILLAGE_ADMIN_PAGE_SIZE } from "@/lib/constants";
 
@@ -21,11 +21,13 @@ export const metadata: Metadata = { title: "Villages" };
  * contain nobody at all. `requireAdmin()` is the gate; `src/lib/villages.ts`
  * re-checks next to each privilege.
  *
- * Two tabs, because they answer different questions. **In service** is the
+ * Three tabs, because they answer different questions. **In service** is the
  * handful of villages actually running, and it is where the join code and the
- * coordinator live. **Directory** is the ONS import — 271 parishes today and
- * 10,670 once England is seeded — which is only ever useful searched, so it
- * says so rather than rendering an arbitrary alphabetical slice.
+ * coordinator live. **Suspended** is the ones a super-administrator has taken
+ * out of service, and it exists so the undo is somewhere findable rather than
+ * behind a search of the whole directory. **Directory** is the ONS import — 271
+ * parishes today and 10,670 once England is seeded — which is only ever useful
+ * searched, so it says so rather than rendering an arbitrary alphabetical slice.
  *
  * The search is a plain GET form, like the incident list's filters: the query
  * lands in the URL, so an administrator can link somebody to a village they are
@@ -34,6 +36,7 @@ export const metadata: Metadata = { title: "Villages" };
 
 const TABS = [
   { key: "active", label: "In service" },
+  { key: "suspended", label: "Suspended" },
   { key: "directory", label: "Directory" },
 ] as const;
 
@@ -46,14 +49,23 @@ function isTab(value: string | undefined): value is TabKey {
 /**
  * The statuses each tab covers.
  *
- * `SUSPENDED` and `ARCHIVED` sit with the directory rather than with the live
- * villages: neither is joinable, both are places a village can be sent back to,
- * and grouping them with `PENDING` keeps "In service" answering exactly one
- * question — which villages are open right now.
+ * **`SUSPENDED` has its own tab now, and that is a consequence of the button
+ * rather than a tidy-up.** It sat with `PENDING` and `ARCHIVED` in the directory
+ * while nothing in the application could write it — a state you could only
+ * arrive in through psql belongs with the other things nobody was looking at.
+ * Now that suspending is one click, a village that has just been suspended
+ * vanishes from the tab the administrator is standing on, and putting it back
+ * would mean finding it again among 10,670 parishes that the directory tab
+ * deliberately refuses to list unsearched. A tab of its own is where the undo
+ * lives.
+ *
+ * "In service" still answers exactly one question — which villages are open
+ * right now — which is why the suspended ones did not simply join it.
  */
 const TAB_STATUSES: Record<TabKey, VillageStatus[]> = {
   active: ["ACTIVE"],
-  directory: ["PENDING", "SUSPENDED", "ARCHIVED"],
+  suspended: ["SUSPENDED"],
+  directory: ["PENDING", "ARCHIVED"],
 };
 
 export default async function AdminVillagesPage({
@@ -62,7 +74,16 @@ export default async function AdminVillagesPage({
   // Next 16: `searchParams` is a Promise and has to be awaited.
   searchParams: Promise<{ tab?: string; q?: string }>;
 }) {
-  await requireAdmin("/admin/villages");
+  const session = await requireAdmin("/admin/villages");
+
+  /*
+    Decided here because `SUPER_ADMIN_EMAILS` is server-only and `VillageCard` is
+    a Client Component — the same reason `(app)/layout.tsx` computes `isAdmin`
+    rather than shipping the admin list to every browser. It hides a button and
+    nothing more: both actions re-check it, and `src/lib/villages.ts` checks it
+    again beside each write.
+  */
+  const canSuspend = isSuperAdmin(session);
 
   const { tab, q } = await searchParams;
   const active: TabKey = isTab(tab) ? tab : "active";
@@ -78,8 +99,13 @@ export default async function AdminVillagesPage({
     );
   }
 
-  // The directory is too big to render unsearched — see the empty state below.
-  const browsable = active === "active" || query.length > 0;
+  /*
+    Only the directory is too big to render unsearched — see the empty state
+    below. "Suspended" is a handful of villages by definition, and gating it on
+    a search would put the reactivate button behind guessing the name of the
+    village you had just suspended.
+  */
+  const browsable = active !== "directory" || query.length > 0;
 
   const where = {
     status: { in: TAB_STATUSES[active] },
@@ -259,12 +285,18 @@ export default async function AdminVillagesPage({
             <ShieldCheck className="size-6" aria-hidden />
           </span>
           <h2 className="mt-4 text-lg font-semibold text-slate-900">
-            {query ? "Nothing matched" : "No villages in service yet"}
+            {query
+              ? "Nothing matched"
+              : active === "suspended"
+                ? "Nothing is suspended"
+                : "No villages in service yet"}
           </h2>
           <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-slate-600">
             {query
-              ? "Try a shorter search, or check the other tab — a parish that has not been activated is in the directory."
-              : "Find a parish in the directory and activate it. That mints its join code and puts it in the picker on the sign-up screens."}
+              ? "Try a shorter search, or check another tab — a parish that has not been activated is in the directory."
+              : active === "suspended"
+                ? "Every village that has been activated is open. Suspending one takes it out of the sign-up pickers and stops new reports, and it lands here so it can be put back."
+                : "Find a parish in the directory and activate it. That mints its join code and puts it in the picker on the sign-up screens."}
           </p>
         </div>
       ) : (
@@ -272,7 +304,7 @@ export default async function AdminVillagesPage({
           <ul className="mt-4 space-y-3">
             {rows.map((village) => (
               <li key={village.id}>
-                <VillageCard village={village} />
+                <VillageCard village={village} canSuspend={canSuspend} />
               </li>
             ))}
           </ul>

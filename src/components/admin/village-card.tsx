@@ -3,12 +3,22 @@
 import { useActionState, useEffect, useId, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
-import { KeyRound, Loader2, MapPin, RefreshCw, UserPlus } from "lucide-react";
+import {
+  KeyRound,
+  Loader2,
+  MapPin,
+  PauseCircle,
+  PlayCircle,
+  RefreshCw,
+  UserPlus,
+} from "lucide-react";
 import type { VillageStatus } from "@/generated/prisma/enums";
 import {
   activateVillageAction,
   appointCoordinatorAction,
+  reactivateVillageAction,
   regenerateJoinCodeAction,
+  suspendVillageAction,
   type VillageAdminState,
 } from "@/app/(app)/admin/villages/actions";
 import { ControllerDuties } from "@/components/controller-duties";
@@ -51,12 +61,92 @@ export type AdminVillage = {
   coordinators: number;
 };
 
+/**
+ * Two-step, because one press should not take a village off the air.
+ *
+ * Suspension is reversible — the reactivate button is right there — so this is
+ * deliberately *not* the merge screen's "type the village's name" ceremony,
+ * which is what an operation with no undo earns. What it is is a beat: the
+ * confirm panel names the village and says what stops and what does not, which
+ * is the sentence an administrator needs in front of them rather than in a
+ * changelog afterwards.
+ */
+function SuspendConfirm({
+  villageName,
+  residents,
+  onCancel,
+}: {
+  villageName: string;
+  residents: number;
+  onCancel: () => void;
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <div className="mt-3 rounded-xl bg-red-50 p-3.5 ring-1 ring-inset ring-red-600/20">
+      <p className="text-xs font-semibold text-red-900">
+        Suspend {villageName}?
+      </p>
+      <ul className="mt-1.5 space-y-1 text-xs leading-relaxed text-red-900">
+        <li>
+          It leaves the picker on the sign-up screens — nobody new can join, even
+          with the join code.
+        </li>
+        <li>
+          Its{" "}
+          {residents === 1 ? "one resident" : `${residents} residents`} can still
+          open the map and everything already on it, and cannot file anything new.
+        </li>
+        <li>
+          Nothing is deleted. Reports, residents, coordinators and the audit trail
+          are all untouched, and one button puts it back.
+        </li>
+      </ul>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="submit"
+          disabled={pending}
+          className="inline-flex h-10 items-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
+        >
+          {pending ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <PauseCircle className="size-4" aria-hidden />
+          )}
+          Confirm suspension
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={pending}
+          className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const IDLE: VillageAdminState = { ok: true, message: "" };
 
+/**
+ * The badge, and the one thing worth saying about it: **`SUSPENDED` no longer
+ * looks like `ARCHIVED`.**
+ *
+ * The two shared one grey for as long as neither was reachable from a screen.
+ * They are different facts now — suspended is a village somebody took out of
+ * service this week and can put back with one button, archived is where a merge
+ * left one and is not coming back — and telling them apart at a glance is the
+ * whole job of a status badge on a list. Red rather than another amber, because
+ * `PENDING` already owns amber here and "waiting to be set up" and "was running
+ * and was stopped" are the pair most worth not confusing.
+ */
 const STATUS_CLASS: Record<VillageStatus, string> = {
   PENDING: "bg-amber-50 text-amber-800 ring-amber-600/20",
   ACTIVE: "bg-safe-50 text-safe-700 ring-safe-600/20",
-  SUSPENDED: "bg-slate-100 text-slate-600 ring-slate-500/20",
+  SUSPENDED: "bg-red-50 text-red-700 ring-red-600/20",
   ARCHIVED: "bg-slate-100 text-slate-600 ring-slate-500/20",
 };
 
@@ -118,25 +208,79 @@ function JoinCodePanel({ code }: { code: string }) {
   );
 }
 
-export function VillageCard({ village }: { village: AdminVillage }) {
+export function VillageCard({
+  village,
+  canSuspend = false,
+}: {
+  village: AdminVillage;
+  /**
+   * Whether the viewer is in `SUPER_ADMIN_EMAILS`.
+   *
+   * Computed on the server and passed in, for the reason `AppShellUser.isAdmin`
+   * gives: this is a Client Component and the list is a server-only environment
+   * variable with no `NEXT_PUBLIC_` prefix. **Hiding is all it is** — the two
+   * actions re-check the grant, and `src/lib/villages.ts` checks it again beside
+   * each write, because a server action is reachable without this card ever
+   * having rendered.
+   */
+  canSuspend?: boolean;
+}) {
   const [activateState, activate] = useActionState(activateVillageAction, IDLE);
   const [rotateState, rotate] = useActionState(regenerateJoinCodeAction, IDLE);
   const [appointState, appoint] = useActionState(appointCoordinatorAction, IDLE);
+  const [suspendState, suspend] = useActionState(suspendVillageAction, IDLE);
+  const [reactivateState, reactivate] = useActionState(
+    reactivateVillageAction,
+    IDLE,
+  );
   const [email, setEmail] = useState("");
+  const [confirmingSuspend, setConfirmingSuspend] = useState(false);
   const emailId = useId();
 
   useEffect(() => {
-    for (const state of [activateState, rotateState, appointState]) {
+    for (const state of [
+      activateState,
+      rotateState,
+      appointState,
+      suspendState,
+      reactivateState,
+    ]) {
       if (!state.message) continue;
       if (state.ok) toast.success(state.message);
       else toast.error(state.message);
     }
-  }, [activateState, rotateState, appointState]);
+  }, [activateState, rotateState, appointState, suspendState, reactivateState]);
+
+  /*
+    Close the confirm panel whenever the village's own status moves under it.
+
+    Adjusting state during render rather than in an effect, which is React's
+    documented shape for "reset some state when a prop changes" — the effect
+    version is a cascading render and the lint rule says so. What it fixes is not
+    only the obvious case: on a successful suspension `isActive` goes false and
+    the panel is gone by construction anyway. It is the one after that. A card
+    left with `confirmingSuspend` still true — a suspension that *failed*, and
+    was then followed by somebody reactivating the village — would pop the
+    confirm panel open on its own, with nobody having asked to suspend anything.
+
+    A failure on its own deliberately leaves the panel up: the toast says what
+    went wrong and the thing the administrator was trying to do is still in front
+    of them.
+  */
+  const [statusAtRender, setStatusAtRender] = useState(village.status);
+
+  if (statusAtRender !== village.status) {
+    setStatusAtRender(village.status);
+    setConfirmingSuspend(false);
+  }
 
   // Whichever action last minted one. Only one can be non-empty per render:
-  // activation mints on a PENDING village, rotation on an ACTIVE one.
-  const mintedCode = activateState.joinCode ?? rotateState.joinCode;
+  // activation mints on a PENDING village, rotation on an ACTIVE one, and
+  // reactivation only on the village that had somehow lost its code.
+  const mintedCode =
+    activateState.joinCode ?? rotateState.joinCode ?? reactivateState.joinCode;
   const isActive = village.status === "ACTIVE";
+  const isSuspended = village.status === "SUSPENDED";
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
@@ -198,7 +342,14 @@ export function VillageCard({ village }: { village: AdminVillage }) {
         the coordinator meets the same three again, in the second person, on
         their own compliance screen before they accept anything.
       */}
-      {!isActive && (
+      {/*
+        A suspended village is one somebody already took through this — its
+        coordinator is already the data controller and already accepted the
+        agreement — so the controller-duties panel is for the directory only.
+        Showing it beside "Put back in service" would read as a fresh
+        appointment of somebody who has been doing the job for months.
+      */}
+      {!isActive && !isSuspended && (
         <div className="mt-4 rounded-xl bg-brand-50/60 p-3.5 ring-1 ring-inset ring-brand-200">
           <h4 className="text-xs font-semibold text-slate-900">
             Activating makes its coordinator the data controller
@@ -215,8 +366,21 @@ export function VillageCard({ village }: { village: AdminVillage }) {
         </div>
       )}
 
+      {/*
+        What suspension actually did, on the card of a village in it. The badge
+        says "Suspended" and this says what that means for the people in it —
+        the question anybody looking at this row is about to ask.
+      */}
+      {isSuspended && (
+        <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs leading-relaxed text-red-900 ring-1 ring-inset ring-red-600/20">
+          Out of service. It is not in the sign-up pickers and no new report can
+          be filed, and its residents see a banner saying so. Nothing has been
+          deleted — every report, resident and audit row is untouched.
+        </p>
+      )}
+
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {!isActive && (
+        {!isActive && !isSuspended && (
           <form action={activate}>
             <input type="hidden" name="villageId" value={village.id} />
             <SubmitButton icon={KeyRound} tone="primary">
@@ -233,7 +397,47 @@ export function VillageCard({ village }: { village: AdminVillage }) {
             </SubmitButton>
           </form>
         )}
+
+        {/*
+          Super-administrators only, and the button is absent rather than
+          disabled for everyone else: a disabled control invites somebody to
+          work out why, and the answer is an environment variable they cannot
+          see. The merge screen takes the opposite line and explains itself
+          instead — it is a whole page, and hiding the link would leave the one
+          person who can set `SUPER_ADMIN_EMAILS` unable to find out it exists.
+          A fourth button on a card is not that.
+        */}
+        {canSuspend && isSuspended && (
+          <form action={reactivate}>
+            <input type="hidden" name="villageId" value={village.id} />
+            <SubmitButton icon={PlayCircle} tone="primary">
+              Put back in service
+            </SubmitButton>
+          </form>
+        )}
+
+        {canSuspend && isActive && !confirmingSuspend && (
+          <button
+            type="button"
+            onClick={() => setConfirmingSuspend(true)}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-medium text-red-700 shadow-sm transition hover:bg-red-50"
+          >
+            <PauseCircle className="size-4" aria-hidden />
+            Suspend
+          </button>
+        )}
       </div>
+
+      {canSuspend && isActive && confirmingSuspend && (
+        <form action={suspend}>
+          <input type="hidden" name="villageId" value={village.id} />
+          <SuspendConfirm
+            villageName={village.name}
+            residents={village.residents}
+            onCancel={() => setConfirmingSuspend(false)}
+          />
+        </form>
+      )}
 
       {mintedCode && <JoinCodePanel code={mintedCode} />}
 

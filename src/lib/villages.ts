@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 import type { UserRole, VillageStatus } from "@/generated/prisma/enums";
 import type { Session } from "@/lib/auth";
-import { isPlatformAdmin } from "@/lib/auth";
+import { isPlatformAdmin, isSuperAdmin } from "@/lib/auth";
 import { auditContext } from "@/lib/audit-context";
 import { prisma } from "@/lib/prisma";
 import {
@@ -9,6 +9,9 @@ import {
   DEFAULT_VILLAGE_MODE,
   JOIN_CODE_LENGTH,
   PUBLIC_INCIDENT_STATUSES,
+  VILLAGE_SERVICE_MESSAGES,
+  VILLAGE_SERVICE_UNKNOWN_MESSAGE,
+  VILLAGE_STATUS_LABELS,
   canApplyForCoordinator,
   isCoordinatorRole,
   resolvePrivacyLevel,
@@ -413,6 +416,336 @@ export async function appointCoordinator(input: {
       ? `${user.fullName} is now a coordinator of ${village.name}.`
       : `${user.fullName} is attached to ${village.name}. Their role was left as ${user.role} — it already carries coordinator access.`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Taking a village out of service, and putting it back
+// ---------------------------------------------------------------------------
+
+/**
+ * Why suspension is `SUSPENDED` rather than a new `INACTIVE` status.
+ *
+ * The brief asked for "INACTIVE (or equivalent)". `VillageStatus` already has
+ * the equivalent and has had since the first migration: `SUSPENDED` is refused
+ * by `checkVillageJoin`, excluded from both sign-up pickers, carries its own
+ * entry in `VILLAGE_JOIN_MESSAGES` ("Registration is temporarily closed for
+ * this village") and its own label. Adding a fifth value would need a migration
+ * to introduce a second name for a state that already exists, and would leave
+ * every predicate in the codebase having to remember both — the exact shape of
+ * bug `PUBLIC_INCIDENT_STATUSES` exists to prevent.
+ *
+ * What was missing was never the status. It was that **nothing in the
+ * application could write it**: `activateVillage` was the only function that
+ * touched `Village.status`, so a village could be brought into service and
+ * never taken back out except by an `UPDATE` typed into psql.
+ */
+
+/**
+ * Takes a live village out of service.
+ *
+ * `ACTIVE` → `SUSPENDED`. Nothing is deleted and nothing is anonymised: every
+ * report, resident, coordinator, vote and audit row survives untouched, and
+ * putting the village back is `reactivateVillage` below.
+ *
+ * ## What it actually changes
+ *
+ * - **The sign-up pickers stop offering it.** Both query `status: "ACTIVE"`, and
+ *   `checkVillageJoin` refuses on status server-side, so a hand-crafted POST
+ *   carrying a valid join code is refused too.
+ * - **No new report can be filed.** `POST /api/incidents` and
+ *   `POST /api/incidents/process` both check `getVillageServiceState` before
+ *   they read a body, the same shape the compliance gate uses.
+ * - **Residents keep everything they can already see.** The map, the incident
+ *   list and their own reports all still render, with a banner saying the
+ *   village is suspended. That is the proportionate reading of "temporarily
+ *   closed": suspension is a decision about *taking new reports*, and locking
+ *   residents out of reports they filed would be a data-access change nobody
+ *   asked for.
+ *
+ * ## Super-administrator only, and both lists are checked
+ *
+ * `SUPER_ADMIN_EMAILS` **in addition to** `ADMIN_EMAILS`, which is the pair
+ * `village-merge.ts` checks and for a related reason: this is not a step in a
+ * village's setup, it is the switch that stops a running village working. An
+ * ordinary platform administrator activates and appoints; taking a live parish
+ * off the air is the narrower grant.
+ */
+export async function suspendVillage(input: {
+  session: Session;
+  villageId: string;
+}): Promise<VillageOutcome> {
+  const { session, villageId } = input;
+
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "The database is not configured." };
+  }
+
+  // Both, for the reason `requireSuperAdmin` checks both — one is not implied
+  // by the other, so an address in `SUPER_ADMIN_EMAILS` alone opens nothing.
+  if (!isPlatformAdmin(session) || !isSuperAdmin(session)) {
+    return {
+      ok: false,
+      error:
+        "Suspending a village needs super-administrator access, which is granted by SUPER_ADMIN_EMAILS.",
+    };
+  }
+
+  const village = await prisma.village.findUnique({
+    where: { id: villageId },
+    select: { id: true, name: true, status: true },
+  });
+
+  if (!village) return { ok: false, error: "That village no longer exists." };
+
+  /*
+    `ACTIVE` only, and the refusals are worded apart rather than sharing one
+    "cannot be suspended". A `PENDING` village is not in service to be taken out
+    of it, and an `ARCHIVED` one is where a **merge** left it — suspending that
+    would put a village whose residents and reports have been moved elsewhere
+    into a state the reactivate button offers to undo, which is the one way this
+    pair could resurrect something.
+  */
+  if (village.status !== "ACTIVE") {
+    return {
+      ok: false,
+      error:
+        village.status === "SUSPENDED"
+          ? `${village.name} is already suspended.`
+          : `${village.name} is ${VILLAGE_STATUS_LABELS[village.status].toLowerCase()} rather than in service, so there is nothing to suspend.`,
+    };
+  }
+
+  // Conditional on the status just read, so the second of two concurrent
+  // suspensions updates nothing and writes no second audit row.
+  const { count } = await prisma.village.updateMany({
+    where: { id: villageId, status: "ACTIVE" },
+    data: { status: "SUSPENDED" },
+  });
+
+  if (count === 0) {
+    return { ok: false, error: "Someone else changed that village first." };
+  }
+
+  await writeStatusAudit({
+    session,
+    villageId,
+    action: "village.suspended",
+    before: "ACTIVE",
+    after: "SUSPENDED",
+  });
+
+  return {
+    ok: true,
+    message: `${village.name} is suspended. Nothing was deleted — residents keep what they can already see, and no new report can be filed until it is put back.`,
+  };
+}
+
+/**
+ * Puts a suspended village back into service.
+ *
+ * `SUSPENDED` → `ACTIVE`, and **only** from `SUSPENDED`. A `PENDING` village
+ * belongs to `activateVillage`, which is the screen that explains what a
+ * coordinator is taking on; an `ARCHIVED` one is where a merge left it, and
+ * bringing that back would give a village its residents and reports have
+ * already been moved out of.
+ *
+ * ## It mints a join code where one is missing, and that is not tidiness
+ *
+ * `checkVillageJoin` reads "no code set" as "no code required" — the escape
+ * hatch for rows that predate activation. So an `ACTIVE` village with a null
+ * `joinCode` is one anybody in the picker can join. `activateVillage` writes the
+ * code *before* the status for exactly that reason and this does the same, in
+ * the same order: the half-completed state has to be a village holding an unused
+ * code rather than an open one.
+ *
+ * In practice the branch is unreachable from suspension — a village can only be
+ * suspended from `ACTIVE`, which `activateVillage` guarantees has a code — and
+ * it is here because "unreachable today" is not the same as "cannot happen", and
+ * the cost of being wrong is a village a stranger can walk into.
+ */
+export async function reactivateVillage(input: {
+  session: Session;
+  villageId: string;
+}): Promise<VillageOutcome & { joinCode?: string }> {
+  const { session, villageId } = input;
+
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "The database is not configured." };
+  }
+
+  if (!isPlatformAdmin(session) || !isSuperAdmin(session)) {
+    return {
+      ok: false,
+      error:
+        "Reactivating a village needs super-administrator access, which is granted by SUPER_ADMIN_EMAILS.",
+    };
+  }
+
+  const village = await prisma.village.findUnique({
+    where: { id: villageId },
+    select: { id: true, name: true, status: true, joinCode: true },
+  });
+
+  if (!village) return { ok: false, error: "That village no longer exists." };
+
+  if (village.status !== "SUSPENDED") {
+    return {
+      ok: false,
+      error:
+        village.status === "ACTIVE"
+          ? `${village.name} is already in service.`
+          : `Only a suspended village can be put back. ${village.name} is ${VILLAGE_STATUS_LABELS[village.status].toLowerCase()} — activate it from the directory instead.`,
+    };
+  }
+
+  // The code first, then the status. See the header.
+  const minted = village.joinCode ? null : await setUniqueJoinCode(villageId);
+
+  const { count } = await prisma.village.updateMany({
+    where: { id: villageId, status: "SUSPENDED" },
+    data: { status: "ACTIVE" },
+  });
+
+  if (count === 0) {
+    return { ok: false, error: "Someone else changed that village first." };
+  }
+
+  await writeStatusAudit({
+    session,
+    villageId,
+    action: "village.reactivated",
+    before: "SUSPENDED",
+    after: "ACTIVE",
+    // Never the code itself — the trail is append-only and every coordinator in
+    // the village can read it, so a code written here outlives every rotation.
+    extra: { joinCodeMinted: minted !== null },
+  });
+
+  return {
+    ok: true,
+    joinCode: minted ?? undefined,
+    message: minted
+      ? `${village.name} is back in service. It had no join code, so one was minted: ${minted}.`
+      : `${village.name} is back in service. Its join code is unchanged.`,
+  };
+}
+
+/**
+ * The `AuditLog` row both transitions owe.
+ *
+ * One helper rather than two copies, because the two rows differ in three
+ * fields and agree on everything that is easy to get wrong — `actorRole` is
+ * `"PLATFORM_ADMIN"` rather than the actor's `User.role`, for the reason
+ * `activateVillage` gives: the authority here is membership of two environment
+ * variables, and an administrator's profile may say `RESIDENT` or may not exist
+ * at all.
+ *
+ * It cannot throw. Both callers have already written the status by the time this
+ * runs, and telling an administrator their suspension failed when the village is
+ * suspended would send them to press the button again.
+ */
+async function writeStatusAudit(input: {
+  session: Session;
+  villageId: string;
+  action: "village.suspended" | "village.reactivated";
+  before: VillageStatus;
+  after: VillageStatus;
+  extra?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorId: input.session.user.id,
+        actorEmail: input.session.user.email,
+        actorRole: "PLATFORM_ADMIN",
+        villageId: input.villageId,
+        action: input.action,
+        entityType: "village",
+        entityId: input.villageId,
+        before: { status: input.before },
+        after: { status: input.after, ...(input.extra ?? {}) },
+        ...(await auditContext()),
+      },
+    });
+  } catch (cause) {
+    console.error(
+      "Could not audit %s for village %s",
+      input.action,
+      input.villageId,
+      cause,
+    );
+  }
+}
+
+/**
+ * Whether a village is open for business, and what to say when it is not.
+ *
+ * The read behind the resident's banner and the two report gates. Deliberately
+ * shaped like `getVillageCompliance` rather than returning a bare boolean: the
+ * three callers all need a *sentence*, and a boolean would mean three copies of
+ * one written in three places.
+ *
+ * **A failed read blocks and does not lie about why.** `status: null` is "we
+ * could not find out", which is a different thing from "suspended" and gets the
+ * generic message — telling a resident their village has been suspended because
+ * a `SELECT` timed out would send them to a coordinator who has nothing to fix.
+ * Blocking rather than allowing costs nothing real here: the routes that consult
+ * this need the database for their actual work a few lines later, so a read that
+ * failed is a report that was not going to be filed either way.
+ */
+export type VillageServiceState =
+  | { inService: true; status: "ACTIVE" }
+  | { inService: false; status: VillageStatus | null; message: string };
+
+export async function getVillageServiceState(
+  villageId: string,
+): Promise<VillageServiceState> {
+  if (!process.env.DATABASE_URL) {
+    return {
+      inService: false,
+      status: null,
+      message: VILLAGE_SERVICE_UNKNOWN_MESSAGE,
+    };
+  }
+
+  try {
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      select: { status: true },
+    });
+
+    if (!village) {
+      // A profile pointing at a village that is gone. Not a state any screen
+      // can explain, and not one to read as "in service".
+      return {
+        inService: false,
+        status: null,
+        message: VILLAGE_SERVICE_UNKNOWN_MESSAGE,
+      };
+    }
+
+    if (village.status === "ACTIVE") {
+      return { inService: true, status: "ACTIVE" };
+    }
+
+    return {
+      inService: false,
+      status: village.status,
+      message: VILLAGE_SERVICE_MESSAGES[village.status],
+    };
+  } catch (cause) {
+    console.error(
+      "Could not read the service status of village %s; refusing reports",
+      villageId,
+      cause,
+    );
+
+    return {
+      inService: false,
+      status: null,
+      message: VILLAGE_SERVICE_UNKNOWN_MESSAGE,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
