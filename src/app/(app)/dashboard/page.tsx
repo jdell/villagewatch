@@ -18,6 +18,7 @@ import {
   ConcernList,
   type ConcernRow,
 } from "@/components/dashboard/concern-list";
+import { CopyWeeklyPostButton } from "@/components/dashboard/copy-weekly-post-button";
 import { ExportCsvButton } from "@/components/dashboard/export-csv-button";
 import { PoliceAlertsPanel } from "@/components/dashboard/police-alerts-panel";
 import { PoliceCrimePanel } from "@/components/dashboard/police-crime-panel";
@@ -515,6 +516,13 @@ export default async function DashboardPage({
           </Link>
 
           <ExportCsvButton />
+
+          {/*
+            Fourth in the row and last, because it is the only one of the four
+            whose output leaves the village. The panel it opens is `basis-full`
+            so it lands under the buttons rather than squeezing them.
+          */}
+          <CopyWeeklyPostButton />
         </div>
       </div>
 
