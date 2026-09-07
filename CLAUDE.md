@@ -206,6 +206,9 @@ src/
     api/reports/[villageId]/pdf/  GET the community safety report as a file.
                               The id in the path decides nothing — see The PDF
     api/digest/               Weekly cron — Claude summary, PatternAlert, push
+    api/digest/social/        GET the village's week as a Facebook-ready post.
+                              A sibling of the cron above with the OPPOSITE gate
+                              — a coordinator session, not CRON_SECRET
     api/cron/retention/       Nightly cron — archives reports, deletes old media
     api/cron/ecops/           Daily cron — the police and Neighbourhood Watch
                               bulletins each configured Neighbourhood Alert site
@@ -318,6 +321,9 @@ src/
                               saying the column is not there yet
     dashboard/export-csv-button.tsx  Fetches, checks the status, toasts the
                               route's own error — never saves a 403 as a file
+    dashboard/copy-weekly-post-button.tsx  The village's week on the clipboard,
+                              for a village Facebook group. Fetches on press and
+                              shows the post before it is published
     dashboard/auto-approve-form.tsx  The switch that turns coordinator review
                               off for the whole village — warns on the way on
     dashboard/whatsapp-channel-form.tsx  The village's own channel — link, id,
@@ -390,6 +396,10 @@ src/
     report-pdf.tsx            The same period report as an A4 PDF. Server only —
                               the one module that renders one, and where the
                               hyphenation callback is registered
+    digest/format-social-post.ts  The village's week as a public social post.
+                              Client-safe, and the narrowest format in the
+                              codebase — no description, no title, no link to a
+                              report. See The social digest
     community-report.ts       The police/council documents — one incident and a
                               period. Client-safe, no rawDescription/lat/lng
     police-api.ts             The data.police.uk client — typed failures, never
@@ -529,6 +539,10 @@ docs/                         The documents rendered from disk, not restated
   SUPABASE_EMAIL_SETUP.md     The two dashboard settings behind the auth email
                               quota — raising the limit, and pointing Supabase
                               at Resend as its SMTP sender. Read by an operator
+  FACEBOOK_LAUNCH_GUIDE.md    Launching one village on Facebook — the Page, the
+                              groups, the intro post, the weekly digest button,
+                              and what to watch. Every claim in it about how the
+                              product behaves is held to /privacy's rule
   FUNDING.md                  The five tracked grant opportunities, and the date
                               each third-party figure in them was read
   GRANT_APPLICATION_NL_AI.md  The first application, drafted. Every claim in it
@@ -582,6 +596,10 @@ tests/                        Vitest, unit only — see The test suite
   markdown.test.ts            The parser, incl. leaving snake_case alone
   heatmap.test.ts             The intensity scale — no point exceeds the layer's
                               max, and the legend's CSS stops ascend
+  format-social-post.test.ts  The public weekly post — that no description or
+                              title can reach it even when one is smuggled into
+                              the input, that the 999 line survives a quiet week,
+                              and that an absent baseline states no trend
   invite.test.ts              The invite link — the code survives, a missing one
                               stays missing, and a bad base costs a relative path
   privacy-level.test.ts       The four levels, the free-text column's fallback
@@ -1788,7 +1806,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty-four files, 738 tests, covering the
+between the typecheck and the build. Forty-five files, 762 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -2996,6 +3014,105 @@ leaves the village. See The public share buttons below for the pair.
 - **`/privacy` §6 names this disclosure and the landing-page FAQ carves it out.**
   Both are statements about how the code behaves — change what a post contains
   and they change in the same commit.
+
+## The social digest
+
+`src/lib/digest/format-social-post.ts` formats it,
+`GET /api/digest/social` builds it from one village's own week, and
+`CopyWeeklyPostButton` on Overview puts it on a coordinator's clipboard. It is
+the routine companion to the reactive share above: that one puts a single report
+in front of the public, this one puts the week in front of them every week.
+`docs/FACEBOOK_LAUNCH_GUIDE.md` is the operational half.
+
+- **It is the widest surface in the app, and the format is narrower for it.** A
+  WhatsApp Channel is public to anyone holding the invite link; a Facebook post
+  is public to anyone at all, indexed and forwarded and not recallable by
+  deleting it. So this carries **less** than `formatIncidentAlert` does, not
+  more: a severity, a category and the landmark, and that is all.
+- **No description, in any form — and that is the whole privacy argument.**
+  Not the anonymised column, not truncated, not a first line. `description` is
+  only *usually* the AI rewrite; when the pass did not run it is the reporter's
+  own wording, names and registrations included. The WhatsApp panel manages that
+  by warning the coordinator in amber and trusting them to read one report. A
+  digest is a dozen at once, so the same trust would mean reading a dozen and
+  catching the one.
+- **No title either**, which is the less obvious half. `Incident.title` is
+  reporter-authored and the AI pass does not anonymise it the way it does the
+  description, so it has no guarantee behind it at all.
+- **No link to any individual report**, unlike the alert. A coordinator pasting
+  one alert has read that report; a digest line is one of twelve, and a link
+  would invite a reader to a page that says considerably more than the line.
+- **`SocialIncident` has no field that could carry `rawDescription`, `lat`,
+  `lng`, `title` or `description`** — the structural guard `AlertIncident`,
+  `ReportIncident`, `ExportIncident` and `IncidentEmailInput` all use, and here
+  in its sharpest form. `tests/format-social-post.test.ts` asserts it by
+  *smuggling* all five in behind a cast, so the assertion is that they are
+  ignored rather than merely unreachable — which is what a route that
+  over-selected would need.
+- **The severity emoji come from `SEVERITY_META`.** The brief asked for
+  🔴🟡🟢 and there are **four** severities: 🟢 🟠 🔴 🟣. A second map local to
+  the formatter would mean a MEDIUM report reading one way in a post and another
+  on a lock screen, and CRITICAL — "danger to life or property, call 999 first"
+  — having no glyph at all.
+- **`GET /api/digest/social` is a sibling of `/api/digest` with the opposite
+  gate**, and that is the trap in this feature worth naming. The cron spends
+  Anthropic credit and pushes to every coordinator in every village, so it is
+  `CRON_SECRET` and fails closed. This reads one village's own published reports,
+  writes nothing, and is gated on a **coordinator session** — which a cron does
+  not have and could not scope a village from. Nothing is inherited between
+  route handlers and `src/proxy.ts` passes `/api/` straight through, so the check
+  in the handler is the whole gate.
+- **The text is built server-side even though the formatter is client-safe.**
+  The audience is that village's published reports, which is a read scoped by
+  `villageId` off the session (domain rule 4). A shape a browser could assemble
+  is a shape a browser could ask for on behalf of another village.
+- **The button fetches on press rather than taking a prop**, which is the
+  opposite of `CopyAlert` and right for the opposite reason. An alert is about
+  the one report just approved; this is a week's worth on a page a coordinator
+  leaves open, so a prop would be rebuilt on every render of Overview, go stale
+  the moment anything was published, and put the week into the payload whether
+  or not anybody pressed the button. The cost is that the text is not in hand
+  when the gesture fires, which rules out `navigator.share()` — see the note in
+  `src/lib/clipboard.ts` about spending the gesture. The clipboard has no such
+  constraint, and Facebook's composer wants a paste anyway.
+- **It shows the post before it is published.** A button that copies silently is
+  a button somebody presses and then pastes a village's week into a public feed
+  unseen.
+- **An empty week still produces a post, and says so.** "Nothing reported this
+  week" is the most reassuring thing a village noticeboard can say, and a
+  coordinator who goes quiet in a good week makes the next post look like news.
+  The 999/101 disclaimer is on that post too, asserted separately, because the
+  quiet week is the one a shortcut would drop it from.
+- **An omitted `previousCount` states no trend.** A village activated this week
+  has no preceding window, and "up 2 reports on the week before (0)" would put a
+  rise that is an artefact of the village's age in front of the whole internet —
+  the refusal `severity-context.ts` makes about a young village, for the same
+  reason. Counts rather than percentages throughout: one report to two is "up
+  100%", which is true and useless, and at village scale every percentage is
+  that.
+- **The list is capped at `SOCIAL_POST_MAX_INCIDENTS` and says how many are
+  left.** The heading's count is always the real one. A list quietly shorter than
+  the total above it reads as a village with less happening in it — the police
+  sync's rule about a capped run.
+- **No `AuditLog` row.** It returns the anonymised category and landmark of
+  reports already on the village's public map, to the coordinator who moderated
+  them — strictly less than `GET /api/dashboard/export`, which *is* audited
+  because it is a bulk read of every column including the rejected reports.
+  Producing text is not the act; pasting it into Facebook is, and nothing in a
+  browser can witness that. The WhatsApp alert panel is unaudited on exactly the
+  same reasoning.
+- **The join link carries the village's join code**, because `checkVillageJoin`
+  demands it whenever the village has one — see The village invite. A coordinator
+  publishing an invite to Facebook makes the same disclosure a parish newsletter
+  makes when it prints the code, and `regenerateJoinCode()` is the answer if the
+  post ends up somewhere it should not.
+- **`/privacy` §6 gained an entry and `LEGAL_LAST_UPDATED` moved**, for the
+  reason the legal-pages section gives. The existing entry described one shape of
+  public post — an alert about a single report, carrying "a headline … and a
+  short extract" — and this is a different shape: every report published that
+  week, as three fields, with no description. Less about each report and more
+  reports. Extending that entry rather than adding a second destination is what
+  The public share buttons asks for.
 
 ## The public share buttons
 

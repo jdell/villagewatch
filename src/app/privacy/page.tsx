@@ -610,6 +610,19 @@ export default function PrivacyPage() {
             no setting, so on a published report it is always one of the options
             in front of them.
           </Definition>
+          <Definition term="Anyone, if your coordinator posts the village's week">
+            Your coordinator can also copy a weekly summary of the village and
+            post it wherever the village already talks to itself, which for most
+            villages is a Facebook page or group and is public. It lists each
+            report published that week as three things: how serious it was, what
+            kind of thing it was, and the approximate area &mdash; the landmark
+            you named, not an address. <strong>It carries no description at
+            all</strong> &mdash; not even the anonymised one your neighbours
+            read &mdash; and no link to any individual report. Alongside the list it carries the week&rsquo;s
+            count, how that compares with the week before, and a link for joining
+            the village. Nothing is posted automatically, and a report only
+            appears in it if it was already published on the village map.
+          </Definition>
           <Definition term="Anyone given a link to a published report">
             Every published report has a preview page that opens without an
             account, so that a link shared with your village actually shows
