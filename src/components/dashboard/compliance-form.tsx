@@ -8,6 +8,7 @@ import {
   acceptComplianceAction,
   type ComplianceState,
 } from "@/app/(app)/dashboard/compliance/actions";
+import { SUPPORT_EMAIL } from "@/lib/constants";
 
 /**
  * The council model's acceptance — three checkboxes and the button that opens
@@ -148,7 +149,7 @@ export function ComplianceForm({
           The Data Processing Agreement is a contract and takes two signatures.
           What is recorded above is the council&rsquo;s acceptance of the terms —
           it is not in force until Yakasista Ltd has signed the document as well.
-          Send the signed copy to info@yakasista.com and keep the countersigned
+          Send the signed copy to {SUPPORT_EMAIL} and keep the countersigned
           version with the council&rsquo;s records.
         </p>
       </section>
