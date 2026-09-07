@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MapPinOff, ShieldAlert } from "lucide-react";
+import { MapPinOff, PauseCircle, ShieldAlert } from "lucide-react";
 import { IncidentForm } from "@/components/incident-form";
 import { requireSession } from "@/lib/auth";
 import {
@@ -8,7 +8,10 @@ import {
   getVillageCompliance,
 } from "@/lib/compliance";
 import { prisma } from "@/lib/prisma";
-import { getVillagePrivacyLevel } from "@/lib/villages";
+import {
+  getVillagePrivacyLevel,
+  getVillageServiceState,
+} from "@/lib/villages";
 import { getVillageChannel } from "@/lib/whatsapp-channel";
 import { MAP_DEFAULTS, isCoordinatorRole } from "@/lib/constants";
 
@@ -70,6 +73,51 @@ export default async function NewIncidentPage() {
   }
 
   const canPostAlert = isCoordinatorRole(session.profile?.role);
+
+  /*
+    The service gate, rendered rather than enforced — `POST /api/incidents` is
+    what actually refuses. Before the compliance one below it because it is the
+    plainer fact: a suspended village is not taking reports at all, so telling
+    somebody their coordinator has paperwork outstanding would send them to ask
+    about the wrong thing.
+
+    Nobody gets a way through this one, coordinator included. Suspension is a
+    super-administrator's decision and there is no button on any coordinator
+    screen that undoes it — offering one would be a link to a page that refuses
+    them. The banner above every page says the same thing; this is what stops the
+    wizard opening underneath it.
+  */
+  const service = await getVillageServiceState(village.id);
+
+  if (!service.inService) {
+    return (
+      <div className="mx-auto w-full max-w-2xl px-4 py-14 sm:px-6">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-8">
+          <span className="mx-auto grid size-12 place-items-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-100">
+            <PauseCircle className="size-6" aria-hidden />
+          </span>
+          <h1 className="mt-4 text-xl font-semibold text-slate-900">
+            {village.name} is not taking reports
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            {service.message}
+          </p>
+
+          <Link
+            href="/map"
+            className="mt-5 inline-flex h-11 items-center rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white transition hover:bg-brand-700"
+          >
+            Back to the map
+          </Link>
+
+          <p className="mt-5 text-xs leading-relaxed text-slate-500">
+            If this is an emergency, call 999. For non-urgent police matters,
+            call 101.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   /*
     The compliance gate, rendered rather than enforced — `POST /api/incidents`

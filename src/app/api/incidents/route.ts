@@ -9,6 +9,7 @@ import {
   canVillageAcceptIncidents,
 } from "@/lib/compliance";
 import { getVillageAutoApprove } from "@/lib/moderation";
+import { getVillageServiceState } from "@/lib/villages";
 import {
   emailIncidentPublished,
   notifyCoordinatorsOfPendingReport,
@@ -274,6 +275,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "The database is not configured on this deployment." },
       { status: 503 },
+    );
+  }
+
+  /*
+    The service gate, in front of the legal one and for a plainer reason: a
+    suspended village is not accepting reports at all, so there is nothing for
+    the compliance question to be about. Checked before the body is read and
+    before a rate-limit slot is spent, exactly as the gate below is — a resident
+    whose village is closed must not pay one of their ten daily reports to find
+    out.
+
+    403 rather than 503. Nothing is broken and retrying will not help; the
+    message says what has happened and what still works.
+  */
+  const service = await getVillageServiceState(villageId);
+
+  if (!service.inService) {
+    return NextResponse.json(
+      { error: service.message, code: "village_not_in_service" },
+      { status: 403 },
     );
   }
 

@@ -402,6 +402,46 @@ export const VILLAGE_JOIN_MESSAGES = {
  * page would make an unsearched view look like a browsable index rather than
  * the prompt to type something that it is.
  */
+/**
+ * What an existing resident is told when their village is not in service.
+ *
+ * The counterpart to `VILLAGE_JOIN_MESSAGES` above, and a separate map because
+ * the audience is different in a way the wording has to follow. Those are for
+ * somebody choosing a village on a sign-up screen — a stranger, who can pick a
+ * different one. These are for somebody who is already in it, whose reports are
+ * already on its map, and whose question is "what has happened to my village
+ * and is my report still there".
+ *
+ * So each of these says what still works. Suspension takes new reports off the
+ * table and nothing else: the map, the list and a resident's own reports all
+ * still render, because "temporarily closed" is a decision about accepting
+ * reports rather than about who may read the ones already filed.
+ *
+ * `ACTIVE` is empty and unreachable — it is here so `satisfies` keeps the record
+ * exhaustive when a status is added to the enum.
+ */
+export const VILLAGE_SERVICE_MESSAGES = {
+  PENDING:
+    "Your village has not been activated yet, so new reports cannot be filed. Nothing already on the map has changed.",
+  SUSPENDED:
+    "Your village is suspended, so new reports cannot be filed at the moment. Nothing has been deleted — everything already on the map is still there, and your coordinator can tell you more.",
+  ARCHIVED:
+    "Your village is no longer running on VillageWatch, so new reports cannot be filed. Nothing has been deleted — everything already on the map is still there.",
+  ACTIVE: "",
+} satisfies Record<VillageStatus, string>;
+
+/**
+ * What is said when the status could not be read at all.
+ *
+ * Deliberately not one of the five above. "We could not find out" is a
+ * different fact from "your village is suspended", and printing the second when
+ * the first is true would send a resident to a coordinator who has nothing to
+ * fix — see `getVillageServiceState`, which blocks on a failed read and uses
+ * this rather than guessing.
+ */
+export const VILLAGE_SERVICE_UNKNOWN_MESSAGE =
+  "Your village's status could not be read just now, so new reports cannot be filed. Try again in a moment.";
+
 export const VILLAGE_ADMIN_PAGE_SIZE = 25;
 
 /**
@@ -1136,6 +1176,26 @@ export const AUDIT_ACTIONS = [
     // Sensitive: it is the moment a directory entry becomes a joinable tenant.
     // Before it, a seeded parish is a name and a map centre; after it, anyone
     // holding the code registers into it as a verified resident.
+    tone: "sensitive",
+  },
+  {
+    value: "village.suspended",
+    label: "Village suspended",
+    description:
+      "A super-administrator took a village out of service — no new reports, and nothing deleted",
+    /*
+      Sensitive, and it is the only entry in this list that describes somebody
+      stopping a whole village working. Every other village action opens
+      something or changes a setting inside one; this closes the door on new
+      reports for every resident at once, and the trail is where a coordinator
+      finds out why their village stopped taking them.
+    */
+    tone: "sensitive",
+  },
+  {
+    value: "village.reactivated",
+    label: "Village put back in service",
+    description: "A super-administrator reopened a suspended village",
     tone: "sensitive",
   },
   {

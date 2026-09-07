@@ -9,6 +9,7 @@ import {
   findNearbyIncidents,
 } from "@/lib/ai/detect-patterns";
 import { structureIncident } from "@/lib/ai/structure-incident";
+import { getVillageServiceState } from "@/lib/villages";
 import { getSeverityContext } from "@/lib/ai/severity-context";
 import {
   COMPLIANCE_BLOCKED_MESSAGE,
@@ -63,6 +64,22 @@ export async function POST(request: NextRequest) {
   if (!villageId) {
     return NextResponse.json(
       { error: "Join a village before filing a report" },
+      { status: 403 },
+    );
+  }
+
+  /*
+    A suspended village is not taking reports, so there is nothing to prepare
+    one for — and this route sends a resident's verbatim words to Anthropic,
+    which is a disclosure that should not happen on behalf of a village that
+    cannot accept the result. Before the body, the quota and the history lookup,
+    exactly as the compliance gate below is.
+  */
+  const service = await getVillageServiceState(villageId);
+
+  if (!service.inService) {
+    return NextResponse.json(
+      { error: service.message, code: "village_not_in_service" },
       { status: 403 },
     );
   }

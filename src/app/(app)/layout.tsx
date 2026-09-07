@@ -1,7 +1,11 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { VillageServiceBanner } from "@/components/village-service-banner";
 import { isPlatformAdmin, requireSession } from "@/lib/auth";
-import { isCoordinatorRole } from "@/lib/constants";
+import {
+  VILLAGE_SERVICE_MESSAGES,
+  isCoordinatorRole,
+} from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -66,7 +70,19 @@ export default async function AppLayout({
     profile?.villageId && process.env.DATABASE_URL
       ? prisma.village.findUnique({
           where: { id: profile.villageId },
-          select: { name: true },
+          /*
+            `status` rides along with the name rather than being a second query.
+            It is the read behind the banner below, and it is on the row this
+            layout already fetches on every authenticated render — asking for it
+            separately would double a query to learn one enum.
+
+            Deliberately **not** `getVillageServiceState`, which is the shape the
+            two report gates use: that one catches its own errors so a failed
+            read can block a filing without claiming a village is suspended, and
+            here a throw is the layout's own to handle. What this needs is the
+            column.
+          */
+          select: { name: true, status: true },
         })
       : Promise.resolve(null),
     coordinator && profile?.villageId && process.env.DATABASE_URL
@@ -95,6 +111,23 @@ export default async function AppLayout({
         pendingCount,
       }}
     >
+      {/*
+        Above every authenticated page, so a resident whose village has been
+        suspended finds out on whatever screen they opened rather than at the end
+        of the report wizard. Absent entirely for the ordinary case — a village
+        in service renders nothing here.
+
+        It sits inside `AppShell`'s `<main>` rather than above the shell, so it
+        scrolls with the page and does not push the sidebar down.
+      */}
+      {village && village.status !== "ACTIVE" && (
+        <VillageServiceBanner
+          status={village.status}
+          message={VILLAGE_SERVICE_MESSAGES[village.status]}
+          villageName={village.name}
+        />
+      )}
+
       {children}
     </AppShell>
   );
