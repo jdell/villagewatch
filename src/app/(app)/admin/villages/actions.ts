@@ -45,15 +45,22 @@ function revalidateVillageSurfaces() {
 }
 
 /**
- * The above, plus every screen a *resident* of that village reads the status
+ * The above, plus the screens a *resident* of that village reads the status
  * through.
  *
  * Suspension is the first thing on this page that changes what somebody other
- * than an administrator sees, so it is the first action that has to rebuild
- * their side of the app. `layout` rather than a page path, because the banner is
- * rendered by `(app)/layout.tsx` and sits above every authenticated screen —
- * revalidating the pages under it would leave the layout's own cached copy in
- * place and the banner absent on a village that had just been suspended.
+ * than an administrator sees. **What actually carries the banner to a resident
+ * is not this call** — `(app)/layout.tsx` is `force-dynamic`, so it re-runs on
+ * every request and their next page load reads the new status whatever happens
+ * here. Worth stating plainly, because the opposite is the obvious assumption
+ * and it would make `force-dynamic` look removable.
+ *
+ * What the two lines below do buy is the administrator's own browser: a server
+ * action's `revalidatePath` clears the client Router Cache, which otherwise
+ * holds a rendered segment for up to 30 seconds even on a dynamic route. Without
+ * it an administrator who suspends their *own* village and clicks straight
+ * through to `/incidents/new` can meet a wizard that is about to be refused by
+ * the route behind it.
  */
 function revalidateResidentSurfaces() {
   revalidateVillageSurfaces();
