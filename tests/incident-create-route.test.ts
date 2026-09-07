@@ -114,6 +114,15 @@ const counters = new Map<string, number>();
 /** Whatever the next `getVillageAutoApprove` SELECT should answer. */
 let autoApprove: boolean | "throws" = false;
 
+/**
+ * Whatever the next `getVillageServiceState` SELECT should answer.
+ *
+ * `ACTIVE` for every existing test, because the service gate was added in front
+ * of the compliance one and every assertion below it assumes a village that is
+ * open. The suspended case has its own block at the foot of this file.
+ */
+let serviceStatus: "ACTIVE" | "SUSPENDED" | "PENDING" | "ARCHIVED" = "ACTIVE";
+
 function session(overrides: Record<string, unknown> = {}) {
   return {
     user: { id: USER_ID, email: "sam@example.test" },
@@ -166,6 +175,7 @@ function auditRows(action: string) {
 beforeEach(() => {
   counters.clear();
   autoApprove = false;
+  serviceStatus = "ACTIVE";
   mocks.ai.configured = false;
   vi.stubEnv("DATABASE_URL", "postgres://test");
 
@@ -189,7 +199,7 @@ beforeEach(() => {
   mocks.emailPublished.mockReset().mockResolvedValue(undefined);
   mocks.notifySlack.mockReset().mockResolvedValue(undefined);
 
-  // Two reads of the same row for two different reasons. Told apart by what
+  // Three reads of the same row for three different reasons. Told apart by what
   // they select, because that is what actually distinguishes them.
   mocks.villageFindUnique.mockReset().mockImplementation((args: {
     select?: Record<string, boolean>;
@@ -199,6 +209,11 @@ beforeEach(() => {
         return Promise.reject(new Error("column village.auto_approve missing"));
       }
       return Promise.resolve({ autoApprove });
+    }
+
+    // `getVillageServiceState` — the gate in front of everything else.
+    if (args.select?.status) {
+      return Promise.resolve({ status: serviceStatus });
     }
 
     return Promise.resolve({
@@ -242,6 +257,62 @@ describe("who may file", () => {
 
     expect(response.status).toBe(403);
     expect(mocks.incidentCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("the service gate", () => {
+  it.each(["SUSPENDED", "PENDING", "ARCHIVED"] as const)(
+    "refuses a %s village before the body is parsed and before a slot is spent",
+    async (status) => {
+      serviceStatus = status;
+
+      const response = await post(report());
+      const body = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(body.code).toBe("village_not_in_service");
+      expect(mocks.incidentCreate).not.toHaveBeenCalled();
+
+      // The half that is easy to lose in a refactor, and the same one the
+      // compliance gate below pins: a resident whose village is closed must not
+      // pay one of their ten daily reports to be told so.
+      expect(mocks.queryRaw).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refuses before the compliance gate is even consulted", async () => {
+    /*
+      The ordering is the assertion. A suspended village is not taking reports at
+      all, so telling a resident their coordinator has paperwork outstanding
+      would send them to ask about the wrong thing — and would be a question
+      about a village that is closed regardless of the answer.
+    */
+    serviceStatus = "SUSPENDED";
+    mocks.canVillageAcceptIncidents.mockResolvedValue(false);
+
+    const body = await (await post(report())).json();
+
+    expect(body.code).toBe("village_not_in_service");
+    expect(mocks.canVillageAcceptIncidents).not.toHaveBeenCalled();
+  });
+
+  it("says what still works rather than only what does not", async () => {
+    // The message a resident actually reads. Every one of them has to say the
+    // data is still there — a village going quiet reads as reports being taken
+    // away unless something says otherwise.
+    serviceStatus = "SUSPENDED";
+
+    const body = await (await post(report())).json();
+
+    expect(body.error).toContain("Nothing has been deleted");
+  });
+
+  it("lets an active village through to the rest of the route", async () => {
+    // The control. Without it every assertion above would pass on a route that
+    // refused unconditionally.
+    const response = await post(report());
+
+    expect(response.status).toBe(201);
   });
 });
 
