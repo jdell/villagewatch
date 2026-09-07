@@ -3,6 +3,20 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.60](https://github.com/jdell/villagewatch/compare/v0.1.59...v0.1.60) (2026-09-07)
+
+
+### Features
+
+* **admin:** let a super-administrator take a village out of service ([f2b8f9e](https://github.com/jdell/villagewatch/commit/f2b8f9e1d6ace6c5b6ef70bade4362e8dca2a6c5))
+* **incidents:** refuse reports from a village that is not in service ([2a75d2a](https://github.com/jdell/villagewatch/commit/2a75d2a938be7b2541e70900eb9fb1a93b350994))
+
+
+### Documentation
+
+* **admin:** correct what the resident revalidation actually does ([c7d55cb](https://github.com/jdell/villagewatch/commit/c7d55cba3ec28ea0c53145166d3f2dcf55491303))
+* suspending a village, and a claim that stopped being true ([51069d2](https://github.com/jdell/villagewatch/commit/51069d20991cde76a506cc6c80f18dbae4d7a05e)), closes [#28](https://github.com/jdell/villagewatch/issues/28)
+
 ### [0.1.59](https://github.com/jdell/villagewatch/compare/v0.1.58...v0.1.59) (2026-09-07)
 
 
