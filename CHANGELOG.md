@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.59](https://github.com/jdell/villagewatch/compare/v0.1.58...v0.1.59) (2026-09-07)
+
+
+### Features
+
+* **digest:** copy the village's week as a public social post ([549faf2](https://github.com/jdell/villagewatch/commit/549faf23fcc96cf2a6f0a212450ac8ba56f790d4))
+
+
+### Documentation
+
+* **facebook:** how to launch one village on Facebook ([433971c](https://github.com/jdell/villagewatch/commit/433971c66f4ca0b0ebbd91fb3304bc25e249c152)), closes [#28](https://github.com/jdell/villagewatch/issues/28)
+
 ### [0.1.58](https://github.com/jdell/villagewatch/compare/v0.1.57...v0.1.58) (2026-09-05)
 
 

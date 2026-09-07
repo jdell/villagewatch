@@ -1633,6 +1633,20 @@ export const DIGEST_WINDOW_DAYS = 7;
  */
 export const DIGEST_MAX_INCIDENTS = 60;
 
+/**
+ * Lines in the social digest post before it says "and N more".
+ *
+ * A Facebook post is read in a feed, and everything past the fold is read by
+ * nobody — so a village with a bad week gets its worst dozen and a count,
+ * rather than forty lines that bury the first one. Well below
+ * `DIGEST_MAX_INCIDENTS`, which bounds a prompt rather than a reader's patience.
+ *
+ * The remainder is stated rather than dropped: a list quietly shorter than the
+ * total in the heading above it is a post that does not add up, and reads as a
+ * village with less happening in it than there is.
+ */
+export const SOCIAL_POST_MAX_INCIDENTS = 12;
+
 // ---------------------------------------------------------------------------
 // Product
 // ---------------------------------------------------------------------------
@@ -1904,8 +1918,17 @@ export const PRICING = [
  * rather than silence, since a reader checking whether the rule was followed
  * would otherwise find a §6 change with no movement behind it. Two substantive
  * edits landed on the same day; the constant records the day, not the count.
+ *
+ * It moved to **7 September 2026** for the weekly social digest, and that one is
+ * squarely what this date is for rather than a rewording. §6 described one
+ * shape of public post — an alert about a single report a coordinator had
+ * decided to share, carrying "a headline … and a short extract" — and the
+ * digest is a different shape: every report published that week, as a severity,
+ * a category and an area, with no description at all. Less about each report
+ * and more reports, which is a new disclosure either way, and the old sentence
+ * would have been a false description of it.
  */
-export const LEGAL_LAST_UPDATED = "2026-09-05";
+export const LEGAL_LAST_UPDATED = "2026-09-07";
 
 /**
  * The data controller under UK GDPR.
