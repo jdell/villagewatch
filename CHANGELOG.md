@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.61](https://github.com/jdell/villagewatch/compare/v0.1.60...v0.1.61) (2026-09-08)
+
+
+### Refactoring
+
+* **compliance:** read the support address from the constant ([649dc28](https://github.com/jdell/villagewatch/commit/649dc288a592d7b1b2c017e9d6370b080aea89b5))
+
 ### [0.1.60](https://github.com/jdell/villagewatch/compare/v0.1.59...v0.1.60) (2026-09-07)
 
 
