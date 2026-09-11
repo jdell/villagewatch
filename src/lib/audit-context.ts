@@ -51,6 +51,26 @@ export type AuditContext = {
 const UNKNOWN: AuditContext = { ipAddress: null, userAgent: null };
 
 /**
+ * The client's own address out of an `x-forwarded-for` header, or null.
+ *
+ * Exported because the audit trail is no longer the only thing that needs it:
+ * the two auth routes rate limit by address, and a second copy of this would be
+ * a second answer to "who is asking" — one used to decide whether to refuse a
+ * sign-in and one recorded in the trail afterwards.
+ *
+ * **The first entry is the client and the rest are hops.** Every request on
+ * Vercel arrives through the edge proxy, so the socket address is the proxy's;
+ * the header can carry a chain when more than one proxy is in front of us.
+ *
+ * Null is a real answer rather than a failure. There is no proxy in front of
+ * `npm run dev`, so there is no header — which is why the callers that limit on
+ * this have to decide what an unknown address means rather than assuming one.
+ */
+export function firstForwardedAddress(value: string | null): string | null {
+  return value?.split(",")[0]?.trim() || null;
+}
+
+/**
  * The caller's address and browser, for an `AuditLog` row.
  *
  * `x-forwarded-for` rather than a socket address, matching the four route
@@ -65,10 +85,9 @@ const UNKNOWN: AuditContext = { ipAddress: null, userAgent: null };
 export async function auditContext(): Promise<AuditContext> {
   try {
     const store = await headers();
-    const forwarded = store.get("x-forwarded-for");
 
     return {
-      ipAddress: forwarded?.split(",")[0]?.trim() || null,
+      ipAddress: firstForwardedAddress(store.get("x-forwarded-for")),
       userAgent: store.get("user-agent"),
     };
   } catch (cause) {

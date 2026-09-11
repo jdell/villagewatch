@@ -9,6 +9,13 @@ import { sendWelcomeEmail } from "@/lib/email/send";
 import { notifySlack } from "@/lib/slack";
 import { checkVillageJoin } from "@/lib/villages";
 import { describeAuthError } from "@/lib/auth-errors";
+import { firstForwardedAddress } from "@/lib/audit-context";
+import {
+  RATE_LIMITS,
+  authSubject,
+  rateLimit,
+  tooManyRequests,
+} from "@/lib/rate-limit";
 
 /**
  * POST /api/auth/register
@@ -64,6 +71,31 @@ export async function POST(request: NextRequest) {
       },
       { status: 422 },
     );
+  }
+
+  /*
+    Counted after the body validates, like every other rule here, and before the
+    join code is checked — so a run of attempts against one village cannot spend
+    a database round trip each on the way to being refused.
+
+    Three an hour is deliberately much tighter than the sign-in rule, and the
+    reason is what an attempt *costs* rather than what it risks: each one mints
+    a Supabase auth user and spends a confirmation email out of the hourly quota
+    the whole deployment shares. See `RATE_LIMITS.authRegister`, which also says
+    plainly that this is tight enough to catch a household on one broadband
+    line — the number is there so it is one line to move.
+  */
+  const subject = authSubject(firstForwardedAddress(request.headers.get("x-forwarded-for")));
+
+  if (subject) {
+    const quota = await rateLimit(RATE_LIMITS.authRegister, subject);
+
+    if (!quota.ok) {
+      return tooManyRequests(
+        quota,
+        "Too many accounts have been created from this connection recently. Please wait and try again, or ask your village coordinator for help.",
+      );
+    }
   }
 
   const {

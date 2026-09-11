@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { firstForwardedAddress } from "@/lib/audit-context";
 
 /**
  * The limiter is the brake on the three call sites that cost real money or real
@@ -25,6 +26,7 @@ vi.mock("@/lib/prisma", () => ({
 
 const {
   RATE_LIMITS,
+  authSubject,
   formatRetryAfter,
   rateLimit,
   rateLimitHeaders,
@@ -218,5 +220,84 @@ describe("formatRetryAfter", () => {
     expect(formatRetryAfter(3_599)).toBe("in 60 minutes");
     expect(formatRetryAfter(3_700)).toBe("in about an hour");
     expect(formatRetryAfter(4 * 3_600)).toBe("in about 4 hours");
+  });
+});
+
+describe("the auth rules", () => {
+  /*
+    The two rules on `/api/auth/login` and `/api/auth/register` are the only
+    ones keyed by address rather than by Supabase auth user id, because nobody
+    is signed in yet. That makes the subject a thing this module builds rather
+    than something a caller hands it, and the way it can be wrong is not subtle:
+    it turns a per-caller limit into a deployment-wide one.
+  */
+
+  it("does not limit a caller whose address is unknown", () => {
+    /*
+      The assertion that matters. There is no proxy in front of `npm run dev`,
+      so the header is simply absent — and the tempting fix, bucketing every
+      unknown address under one key, would mean five sign-ins a minute for
+      *everybody at once*. That is an outage wearing a rate limit's clothes, and
+      it would arrive the first time this ran behind something that strips the
+      header.
+    */
+    expect(authSubject(null)).toBeNull();
+    expect(authSubject("")).toBeNull();
+    expect(authSubject("   ")).toBeNull();
+  });
+
+  it("cannot collide with a Supabase auth user id", () => {
+    // `user_id` holds one of those for every other rule in the table. Two kinds
+    // of value in one column with nothing to tell them apart is how somebody
+    // later reads the wrong one.
+    const subject = authSubject("203.0.113.7");
+
+    expect(subject).toBe("ip:203.0.113.7");
+    expect(subject).not.toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+  });
+
+  it("gives signing in and registering separate windows", async () => {
+    /*
+      They are counted against the same subject — one address — so if they
+      shared a rule name, three sign-in attempts would use up somebody's
+      registrations. `rateLimit` keys on the rule name, and this exercises that
+      through the mocked counter rather than by comparing the constants.
+    */
+    expect(RATE_LIMITS.authLogin.name).not.toBe(RATE_LIMITS.authRegister.name);
+
+    const subject = authSubject("203.0.113.7") as string;
+
+    for (let i = 0; i < RATE_LIMITS.authRegister.limit; i += 1) {
+      expect((await rateLimit(RATE_LIMITS.authRegister, subject)).ok).toBe(true);
+    }
+
+    // Registration is spent; signing in is untouched.
+    expect((await rateLimit(RATE_LIMITS.authRegister, subject)).ok).toBe(false);
+    expect((await rateLimit(RATE_LIMITS.authLogin, subject)).ok).toBe(true);
+  });
+
+  it("counts two addresses separately", async () => {
+    const one = authSubject("203.0.113.7") as string;
+    const two = authSubject("198.51.100.4") as string;
+
+    for (let i = 0; i < RATE_LIMITS.authLogin.limit; i += 1) {
+      await rateLimit(RATE_LIMITS.authLogin, one);
+    }
+
+    expect((await rateLimit(RATE_LIMITS.authLogin, one)).ok).toBe(false);
+    // A village sharing a broadband line is already a concern for a rule keyed
+    // this way; two *different* connections sharing a window would make it one
+    // for the whole internet.
+    expect((await rateLimit(RATE_LIMITS.authLogin, two)).ok).toBe(true);
+  });
+
+  it("takes the client rather than a proxy hop out of a forwarded chain", () => {
+    // Shared with the audit trail, so the address a sign-in is limited against
+    // is the one the trail records. The first entry is the client.
+    expect(authSubject(firstForwardedAddress("203.0.113.7, 10.0.0.1, 10.0.0.2"))).toBe(
+      "ip:203.0.113.7",
+    );
   });
 });

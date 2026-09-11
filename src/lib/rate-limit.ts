@@ -68,7 +68,8 @@ export type RateLimitRule = {
   windowMs: number;
 };
 
-const HOUR_MS = 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
 /**
@@ -156,7 +157,75 @@ export const RATE_LIMITS = {
    * caller pacing themselves against the clock.
    */
   incidentVote: { name: "incident-vote", limit: 1, windowMs: 10_000 },
+
+  /**
+   * Signing in. **Keyed by address rather than by account**, and it is the only
+   * rule in this table that is — see `authSubject` below for why it has to be
+   * and what that costs.
+   *
+   * Five a minute is above anybody typing a password they half-remember and far
+   * below a guessing run, which wants thousands. What it defends against is the
+   * volume attack: Supabase has its own limits in front of the same endpoint,
+   * but those are the deployment's rather than this route's, and being refused
+   * by them is a 429 whose wording is about email quotas.
+   */
+  authLogin: { name: "auth-login", limit: 5, windowMs: MINUTE_MS },
+
+  /**
+   * Creating an account. Three an hour, against the same address.
+   *
+   * The reason it is far tighter than the sign-in rule is not that registering
+   * is more dangerous but that it is **expensive on somebody else's budget**:
+   * every attempt mints a Supabase auth user and spends a confirmation email
+   * out of an hourly quota the whole deployment shares, which is the quota
+   * `auth-errors.ts` exists because residents were hitting. A run of sign-ups
+   * does not just fill a table, it stops every other resident on the deployment
+   * being able to confirm an address.
+   *
+   * **It is tight enough to catch a household**, and that is a real cost rather
+   * than a theoretical one: this table's own header says an IP limit would
+   * silence a village sharing a broadband line, and three an hour is two
+   * neighbours signing up on the same evening plus one retry. It is what was
+   * asked for, it is the safer direction for the thing being protected, and the
+   * number is here rather than in the route precisely so it is one line to move
+   * when a village hall runs into it.
+   */
+  authRegister: { name: "auth-register", limit: 3, windowMs: HOUR_MS },
 } as const satisfies Record<string, RateLimitRule>;
+
+/**
+ * What the two auth rules count against.
+ *
+ * **Every other rule in this table is keyed by Supabase auth user id, and these
+ * two cannot be.** Nobody is signed in yet — that is the whole point of the
+ * request — so the only thing on it that identifies a caller is the address the
+ * edge proxy saw.
+ *
+ * The header cannot be forged from outside on Vercel: `x-forwarded-for` is set
+ * by the proxy, and a value a client sends is replaced rather than appended to.
+ * On a deployment without a proxy in front of it, it is absent — and an absent
+ * address is **not limited at all** rather than being bucketed together under
+ * one key. Bucketing would make the limit global: five sign-ins a minute for
+ * the entire deployment, which is an outage rather than a rate limit, and it
+ * would arrive the first time somebody ran this behind something that strips
+ * the header. Failing open matches what the rest of this module does on a
+ * database error and for the same reason — see the header.
+ *
+ * The value is prefixed rather than stored bare. `user_id` holds a Supabase
+ * auth user id everywhere else in this table, and two kinds of value in one
+ * column with nothing to tell them apart is how somebody later reads the wrong
+ * one — the same reasoning `incidentVoteRule` gives for putting an incident id
+ * in the rule *name* rather than in the subject.
+ */
+export function authSubject(address: string | null): string | null {
+  // Trimmed rather than tested for truthiness: a whitespace-only value is
+  // truthy, and `ip:   ` is a perfectly good key that every caller with a blank
+  // address would share — which is the bucketing this function exists to avoid,
+  // arriving through the one input that looks like it is already handled.
+  const trimmed = address?.trim();
+
+  return trimmed ? `ip:${trimmed}` : null;
+}
 
 /**
  * The vote rule for one report.
