@@ -3,6 +3,24 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.1.0](https://github.com/jdell/villagewatch/compare/v1.0.0...v1.1.0) (2026-09-11)
+
+
+### Features
+
+* **charts:** put the charts on the report and in front of residents ([0ea34ca](https://github.com/jdell/villagewatch/commit/0ea34cab70a726089f8251c2c6fa96e8664c24a9))
+
+
+### Documentation
+
+* **privacy:** say that an anonymous report is anonymous to everybody ([16c604d](https://github.com/jdell/villagewatch/commit/16c604d69eb0c4c3f2bcc074d342e7bebeffb72e))
+
+
+### Fixes
+
+* **incidents:** file anonymously unless the reporter says otherwise ([876611b](https://github.com/jdell/villagewatch/commit/876611b3c1d7322cf79e0d02024ca7d9275db6fb))
+* **queue:** show a coordinator who filed an anonymous report ([f6b761c](https://github.com/jdell/villagewatch/commit/f6b761c39108a5b337439cee5e689b4c7b776966))
+
 ## [1.0.0](https://github.com/jdell/villagewatch/compare/v0.1.64...v1.0.0) (2026-09-11)
 
 The first release with a version number that claims to be finished. Nothing
