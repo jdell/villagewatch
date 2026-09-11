@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.62](https://github.com/jdell/villagewatch/compare/v0.1.61...v0.1.62) (2026-09-11)
+
+
+### Features
+
+* **dashboard:** chart the Overview tab's figures ([01e1ccc](https://github.com/jdell/villagewatch/commit/01e1ccc58f61f5a43ec134939cc8e52626a4b8ff))
+
+
+### Documentation
+
+* **charts:** record that date_trunc and bucketStart agree on Mondays ([5a1622d](https://github.com/jdell/villagewatch/commit/5a1622d4417232f30ce9e75eb7464385814021bf))
+
 ### [0.1.61](https://github.com/jdell/villagewatch/compare/v0.1.60...v0.1.61) (2026-09-08)
 
 
