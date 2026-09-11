@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.63](https://github.com/jdell/villagewatch/compare/v0.1.62...v0.1.63) (2026-09-11)
+
+
+### Fixes
+
+* **auth:** say what an unverified account actually needs ([67e141d](https://github.com/jdell/villagewatch/commit/67e141d3e0312c157cd3673b918ea1a95dc09146))
+
 ### [0.1.62](https://github.com/jdell/villagewatch/compare/v0.1.61...v0.1.62) (2026-09-11)
 
 
