@@ -22,6 +22,7 @@ flags clusters before anyone joins the dots by hand.
 | Validation | Zod 4                                                        |
 | Icons      | lucide-react                                                 |
 | Maps       | Leaflet + react-leaflet, OpenStreetMap tiles, `leaflet.heat` |
+| Charts     | Recharts 3 — deferred, one lazy chunk; see The charts      |
 | QR codes   | `qrcode.react` — SVG on screen, canvas for the download      |
 | PDF        | `@react-pdf/renderer` — server only, `serverExternalPackages` |
 | AI         | `@anthropic-ai/sdk`, `claude-sonnet-5` (`ANTHROPIC_MODEL`)   |
@@ -296,6 +297,25 @@ src/
     push-registration.tsx     OneSignal init, login(userId), consent banner
     onboarding-tour.tsx       Four-step first-run tour; useSyncExternalStore
     service-worker.tsx        Registers /sw.js in production only
+    charts/chart-data.ts      The chart row shapes and the one height a page
+                              has to compute. Imports nothing — see its header
+    charts/chart-frame.tsx    The shell: the empty state, and the numbers as an
+                              sr-only table beside every chart
+    charts/chart-theme.ts     The few colours and axis settings all four share
+    charts/lazy-charts.tsx    The four `next/dynamic` calls. What pages import
+    charts/charts.tsx         The barrel all four of those point at, so there
+                              is one lazy chunk rather than four copies of
+                              Recharts. Load-bearing — see its header
+    charts/incident-trend-chart.tsx  Published reports over the period, as an
+                              area. The one chart CSS bars could not draw
+    charts/horizontal-bar-chart.tsx  A ranked single series. Two callers: the
+                              category breakdown and the village comparison
+    charts/severity-donut.tsx The severity split, with the total in the hole
+                              and the counts as text beside it
+    charts/activity-sparkline.tsx  One column per day, above the activity feed
+    admin/village-comparison.tsx  Villages in service, ranked, with a metric
+                              toggle. The one chart that reads across villages,
+                              and the only screen it is allowed on
     dashboard/stat-card.tsx   One figure with its trend against last period —
                               or, where `previous` is omitted, a sentence
                               saying what it counts. Two of Overview's four
@@ -306,7 +326,9 @@ src/
                               coordinator may make to it — verified, or not.
                               Addresses arrive masked and are revealed one at a
                               time, on a press
-    dashboard/breakdown-bar.tsx  CSS bars — no charting dependency
+    dashboard/breakdown-bar.tsx  CSS bars, no charting dependency. Now the
+                              police panel's alone — the Overview tab's two
+                              breakdowns became charts. See The charts
     dashboard/concern-list.tsx   What the village made of its own reports —
                               voted reports only, and its own GET form for the
                               ordering
@@ -399,6 +421,11 @@ src/
     report-pdf.tsx            The same period report as an A4 PDF. Server only —
                               the one module that renders one, and where the
                               hyphenation callback is registered
+    charts/series.ts          Bucketing a period into a time axis — pure and
+                              client-safe, so the off-by-ones are tested rather
+                              than discovered on a coordinator's screen
+    charts/incident-series.ts The Prisma half — `date_trunc` per bucket, and
+                              every read degrading rather than throwing
     digest/format-social-post.ts  The village's week as a public social post.
                               Client-safe, and the narrowest format in the
                               codebase — no description, no title, no link to a
@@ -603,6 +630,11 @@ tests/                        Vitest, unit only — see The test suite
                               title can reach it even when one is smuggled into
                               the input, that the 999 line survives a quiet week,
                               and that an absent baseline states no trend
+  chart-series.test.ts        The trend axis — the Sunday that belongs to the
+                              week before it, the empty bucket that has to be a
+                              zero rather than absent, a count outside the
+                              period being ignored, and the month step that
+                              does not drift
   invite.test.ts              The invite link — the code survives, a missing one
                               stays missing, and a bad base costs a relative path
   privacy-level.test.ts       The four levels, the free-text column's fallback
@@ -1866,7 +1898,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty-six files, 795 tests, covering the
+between the typecheck and the build. Forty-seven files, 809 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -2321,6 +2353,14 @@ replacement for them.
   nothing. There is deliberately no default and none in `.env.example`; with it
   unset the merge screen explains itself and refuses, and the suspend button is
   simply absent. See Merging villages and Suspending a village.
+- **Every chart's `next/dynamic` must point at `charts.tsx`, the barrel.** A
+  `dynamic()` boundary makes a chunk per *import specifier*, so four calls
+  pointed at four chart files emitted **four copies of Recharts** — 4 × 340 KB
+  against 420 KB for a plain static import, which is deferring that costs more
+  than not deferring. One specifier, one chunk. And the options argument has to
+  be an object literal at each call: it is read by the compiler, so a shared
+  `const` typechecks and fails only in `npm run build`. Both failures are
+  quiet — the page works and the charts draw. See The charts.
 - **Fail-open and fail-closed are per module, and the disagreement is the
   design.** `rate-limit.ts` fails **open**, because a database blip must not
   become "you cannot file a report". `getVillageAutoApprove` fails **closed**,
@@ -4414,6 +4454,125 @@ toggle, and `/dashboard` as a thumbnail beside the hotspot list.
   coordinates, so the two cover each other's blind spots. `interactive={false}`
   drops dragging and both zooms, so scrolling the page past a 200px map does not
   zoom it.
+
+## The charts
+
+`src/components/charts/` draws them, `src/lib/charts/` counts them, and the
+Overview tab is where four of the five live. **This is the first charting
+dependency in the repository**, and the entry it reverses is written down below
+rather than quietly deleted.
+
+- **`BreakdownBar`'s header said "deliberately not a charting library", and it
+  was right when it was written.** Two of the Overview tab's panels are
+  single-series bar charts of a dozen rows, which CSS draws perfectly well, and
+  taking a dependency for them alone would have been a client bundle on a page
+  that is otherwise a pure Server Component. What changed is not that argument
+  but what sits beside them: **a trend over time is not something CSS bars can
+  draw**, and it is the question a coordinator is actually asked at a parish
+  meeting — is this getting better or worse. Once the library is in the bundle
+  for that, the reason to hand-draw the other two goes with it.
+- **`BreakdownBar` itself stays, and it is not dead code.**
+  `police-crime-panel.tsx` renders it, and the Home Office figures beside a
+  village's own are deliberately **two counts rather than one chart** — see
+  Official police data, which is the entry not to undo while tidying. A pass
+  that "finished the migration" by charting that panel too would turn a
+  deliberate refusal into a comparison the data does not support.
+- **The numbers are still text, which is the promise being kept.** `BreakdownBar`
+  put the count beside every bar and said why: the bar is decoration and the
+  table is the data. Recharts emits `<svg>` and `<path>`, so a screen reader is
+  handed a graphic with no content. `ChartFrame` renders the chart `aria-hidden`
+  and the same array as a real `<table>` in `sr-only` — one source, so the two
+  cannot drift, and a coordinator who cannot see the picture is not handed
+  nothing on the page whose job is telling them what has been reported.
+- **Gaps are filled before a chart ever sees them.** `GROUP BY date_trunc(…)`
+  returns no row for a bucket with nothing in it, so a quiet fortnight arrives
+  absent rather than as zero — and a line chart joins the points either side,
+  drawing steady activity across a period when nothing was reported. `buildSeries`
+  builds the axis from the *period* and looks the counts into it. Every failure
+  in that module draws a **plausible** picture rather than a broken one, which
+  is why it is pure, client-safe and unit tested: `tests/chart-series.test.ts`.
+- **Weeks start on Monday and Sundays are the case to check.** `getUTCDay()`
+  numbers Sunday 0, so the obvious `day - 1` sends a Sunday *forward* into the
+  week it has just finished. One day in seven, in the direction nobody looks.
+  Asserted.
+- **The bucket space is UTC and it can be.** `incidents.occurred_at` is
+  `TIMESTAMP(3)` — **without** time zone — so `date_trunc` involves no session
+  zone and returns the same bucket whatever machine asks. The seam is that
+  `TimeRange` bounds are host-zone midnights; on Vercel the two coincide, and on
+  a British laptop in summer the first bucket of a period can start a day early.
+  A development-only edge, never a wrong count, and written down in
+  `series.ts`'s header beside the round-trip bug `date-range.ts` already
+  documents.
+- **There is one `next/dynamic` boundary and it has to stay one.** Four
+  `dynamic()` calls pointed at four files gave four chunks with a **copy of
+  Recharts in each** — measured: 4 × 340 KB against 420 KB for a single static
+  import, so deferring made the download bigger than not deferring. Every call
+  imports `charts.tsx`, the barrel, so the bundler sees one specifier and emits
+  one chunk. **Add a chart to that barrel, and never point a `dynamic()` at an
+  individual chart file.** The failure is silent: the page works, the charts
+  draw, and the phone downloads the library again.
+- **`next/dynamic`'s options must be an object literal**, so the four calls
+  repeat `{ ssr: false, loading: ChartSkeleton }` rather than sharing a
+  constant. It is read by the compiler rather than at run time; `tsc` is happy
+  with the hoisted version and `npm run build` is not, which is the trap's whole
+  shape.
+- **Deferring costs nothing here**, which is what makes it safe rather than a
+  trade. `ResponsiveContainer` measures its parent, so a chart has no meaningful
+  server rendering to give up; `ChartFrame` has already reserved the height, so
+  nothing moves when the chunk lands; and the numbers are in the table, which is
+  real markup present on first paint.
+- **The axis thins by measured width, not by a divisor.** The first pass printed
+  every nth bucket from a count chosen against a number of points, which reads
+  well at one width and one only — the same card is ~700px on a laptop and
+  ~290px on an iPhone in portrait, where it drew "w/c 15 Ju", "w/c 29 Ju" and
+  "w/c 13 Ju" straight through each other. `interval="preserveStartEnd"` with a
+  `minTickGap` lets Recharts drop whatever will not fit. Same family of problem
+  as The map's corners, and worth checking at 375px before believing a chart.
+- **Severity colours come from `SEVERITY_META`**, the `pin` values the map and
+  the badges already use. A palette local to the charts would mean a HIGH report
+  reading red on the map and something else on the dashboard. The brand and
+  slate hexes *are* written out locally, which is the duplication
+  `report-pdf.tsx` and `opengraph-image.tsx` already carry and has the same
+  failure mode — they are SVG attributes handed to a library, not classes a
+  compiler can see.
+- **A doughnut is defensible for exactly one figure here.** Severity is a
+  *composition* of four ordered levels with colours a resident has already
+  learned, the hole is where the total goes, and the key beside it carries every
+  count and share as text — so nobody estimates an arc. That reasoning does not
+  extend to a second pie, and there is not one.
+- **The horizontal bar chart has no grouped variant**, deliberately. Two series
+  on a shared axis have to be in the same unit to mean anything, and the case
+  that wants one — residents against reports — is a hundred against a dozen,
+  which draws the second as a stub and invites a conclusion neither number
+  supports. `/admin/villages` offers a metric toggle instead.
+- **The village comparison is the one chart that reads across villages, and
+  `/admin/villages` is the only screen it may live on.** The village is the
+  tenant boundary (domain rule 4): every query behind `/dashboard` is narrowed
+  to the coordinator's own, and a "how do we compare" panel there would hand one
+  parish's resident numbers and report counts to the coordinators of every other
+  one. That admin screen is already unscoped and platform-admin only. A
+  per-village version — a coordinator's own figure against an anonymised
+  median — is a different feature with a different privacy argument and is not
+  this one.
+- **It says how many villages it left out.** A ranked chart showing ten of forty
+  with nothing to say so reads as a deployment with ten villages in it — the
+  police sync's rule about a capped run, on the screen where somebody is
+  deciding where to spend their attention.
+- **The strip above the activity feed is not the trend chart at a shorter
+  period.** The trend follows the period control and answers "is this getting
+  worse"; the strip is fixed to a trailing window and answers "what have I
+  missed", which is the feed's own question — and it is unbounded by the period
+  for the feed's own reason. Both headings name their window, the way the
+  "waiting for review" card names "all time".
+- **`/privacy` and `/terms` did not change**, and that is a decision rather than
+  an omission. Nothing new is collected, nothing is disclosed to anybody new,
+  nothing leaves the village, and no retention period moves: these are counts of
+  reports a coordinator can already read, in a different arrangement. Same
+  reasoning Suspending a village records.
+- **No `AuditLog` rows.** The Overview tab writes nothing and that is a property
+  worth keeping — see The coordinator's five tabs. The comparison on
+  `/admin/villages` is a count of villages an administrator is already looking
+  at, which is strictly less than the list beneath it.
 
 ## The village directory
 

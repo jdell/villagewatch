@@ -6,9 +6,20 @@ import {
   VillageCard,
   type AdminVillage,
 } from "@/components/admin/village-card";
+import {
+  VillageComparison,
+  isComparisonMetric,
+  type ComparisonMetric,
+} from "@/components/admin/village-comparison";
+import type { TypeDatum } from "@/components/charts/chart-data";
 import { isSuperAdmin, requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { COORDINATOR_ROLES, VILLAGE_ADMIN_PAGE_SIZE } from "@/lib/constants";
+import {
+  COORDINATOR_ROLES,
+  PUBLIC_INCIDENT_STATUSES,
+  VILLAGE_ADMIN_PAGE_SIZE,
+  VILLAGE_COMPARISON_SIZE,
+} from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Villages" };
 
@@ -72,7 +83,7 @@ export default async function AdminVillagesPage({
   searchParams,
 }: {
   // Next 16: `searchParams` is a Promise and has to be awaited.
-  searchParams: Promise<{ tab?: string; q?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; metric?: string }>;
 }) {
   const session = await requireAdmin("/admin/villages");
 
@@ -85,9 +96,18 @@ export default async function AdminVillagesPage({
   */
   const canSuspend = isSuperAdmin(session);
 
-  const { tab, q } = await searchParams;
+  const { tab, q, metric } = await searchParams;
   const active: TabKey = isTab(tab) ? tab : "active";
   const query = (q ?? "").trim();
+
+  /*
+    Narrowed rather than rejected, like the tab above it and every other filter
+    on these screens: a stale or hand-edited `?metric=` should draw the default
+    chart, not an error page.
+  */
+  const comparisonMetric: ComparisonMetric = isComparisonMetric(metric)
+    ? metric
+    : "residents";
 
   if (!process.env.DATABASE_URL) {
     return (
@@ -175,6 +195,78 @@ export default async function AdminVillagesPage({
   const coordinators = new Map(
     coordinatorRows.map((row) => [row.villageId, row._count._all]),
   );
+
+  /*
+    The comparison panel's own figures, and they are deliberately **not** the
+    list's.
+
+    The list above is whatever tab and search are selected; this answers "where
+    is the deployment actually being used", which is a question about every
+    village in service rather than about the current filter. So it reads
+    `ACTIVE` directly and is rendered only on the "In service" tab with no
+    search running — a chart that silently narrowed to a search would be a
+    ranking of the villages somebody had just typed the name of.
+
+    Two grouped queries over the active villages' ids, which is the shape
+    `listMergeableVillages` settled on: a `_count` per row is a subquery per
+    parish, and the directory is 10,670 of them. Active villages are a handful
+    by definition, so this is three small reads.
+  */
+  const showComparison = active === "active" && !query;
+
+  const comparisonVillages = showComparison
+    ? await prisma.village.findMany({
+        where: { status: "ACTIVE" },
+        select: { id: true, name: true },
+      })
+    : [];
+
+  const comparisonIds = comparisonVillages.map((village) => village.id);
+
+  const [comparisonResidentRows, comparisonIncidentRows] = await Promise.all([
+    comparisonIds.length
+      ? prisma.user.groupBy({
+          by: ["villageId"],
+          where: { villageId: { in: comparisonIds }, deletedAt: null },
+          _count: { _all: true },
+        })
+      : [],
+    comparisonIds.length
+      ? prisma.incident.groupBy({
+          by: ["villageId"],
+          where: {
+            villageId: { in: comparisonIds },
+            // Published only, so the figure agrees with the one each village's
+            // own dashboard shows it. Counting the queue here would rank a
+            // village by reports its coordinator has not cleared.
+            status: { in: [...PUBLIC_INCIDENT_STATUSES] },
+          },
+          _count: { _all: true },
+        })
+      : [],
+  ]);
+
+  const comparisonResidents = new Map(
+    comparisonResidentRows.map((row) => [row.villageId, row._count._all]),
+  );
+  const comparisonIncidents = new Map(
+    comparisonIncidentRows.map((row) => [row.villageId, row._count._all]),
+  );
+
+  const rankedVillages: TypeDatum[] = comparisonVillages
+    .map((village) => ({
+      label: village.name,
+      value:
+        comparisonMetric === "residents"
+          ? (comparisonResidents.get(village.id) ?? 0)
+          : (comparisonIncidents.get(village.id) ?? 0),
+    }))
+    // Descending, because a horizontal bar chart draws its first datum at the
+    // top and the ranking is the point. The name breaks a tie, so two villages
+    // on the same figure do not swap places between renders.
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+
+  const comparisonRows = rankedVillages.slice(0, VILLAGE_COMPARISON_SIZE);
 
   const rows: AdminVillage[] = villages.map((village) => ({
     id: village.id,
@@ -316,6 +408,22 @@ export default async function AdminVillagesPage({
             </p>
           )}
         </>
+      )}
+
+      {/*
+        Below the list rather than above it. The list is the working surface —
+        activating a parish, minting a code, appointing a coordinator — and this
+        is the overview somebody reads afterwards to decide where to spend the
+        next hour.
+      */}
+      {showComparison && comparisonRows.length > 0 && (
+        <VillageComparison
+          rows={comparisonRows}
+          metric={comparisonMetric}
+          tab={active}
+          query={query}
+          omitted={rankedVillages.length - comparisonRows.length}
+        />
       )}
     </div>
   );
