@@ -1995,7 +1995,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty-eight files, 820 tests, covering the
+between the typecheck and the build. Forty-eight files, 821 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -4190,6 +4190,46 @@ nothing shared it.
   Ctrl+P on whatever page it renders on — intended, since the sheet is the only
   thing on either page anybody wants on paper, and worth knowing before a second
   print region joins it.
+
+## Filing anonymously
+
+`Incident.isAnonymous`, a checkbox on step 5 of the wizard, and **ticked by
+default** since 1.0.0.
+
+- **It hides the reporter from the coordinator, and from nobody else.**
+  `ModerationCard` is the only component in the codebase that renders a
+  reporter's name — `incident.reporterName ?? "Anonymous"` on the review queue.
+  No resident-facing surface has ever shown one: not the map, not the incident
+  list, not the detail page, not the CSV export, not anything `/reports`
+  produces. So a resident's name is not something this flag protects from other
+  residents, because other residents were never shown it.
+- **The old label said the opposite of both halves**, and was replaced when the
+  default flipped rather than left to become the sentence every reporter reads.
+  It said "Hide my name from other residents" — who never see it — and "Your
+  coordinator can still see who filed it", when the coordinator is the only
+  person it hides it from: `/dashboard/queue` nulls `reporterName` for an
+  anonymous report on purpose, and says so in a comment.
+- **What the flag never hides is the row.** `Incident.reporterId` is untouched,
+  which is what a police request is answered from and what `removeIncident`
+  severs when somebody erases their own report. The label says so, because
+  "anonymous" meaning *deleted* is the reading a reporter would otherwise be
+  entitled to.
+- **The default lives in two places and they have to agree.**
+  `incidentReportSchema` defaults it `true` for a payload that omits the field,
+  and `incident-form.tsx` starts the checkbox ticked. Split, a request that
+  dropped the field would be filed under somebody's name by a form that had just
+  told them it would not be. Asserted in `tests/validations.test.ts`.
+- **`/privacy` §6 does not match the code and did not match it before this
+  changed.** It tells a resident that other residents see "your name, unless you
+  filed anonymously" — they see no name either way — and that coordinators see
+  "your name against the report **even when you filed anonymously** to other
+  residents", which is the reverse of what the queue does. Flipping the default
+  did not create either error; it made both of them describe the ordinary path
+  rather than an opt-in. **There are two opposite fixes** — show the name to
+  coordinators and match the notice, or correct the notice to match the queue —
+  and they are a decision about who is accountable for a report rather than a
+  wording choice, so neither is taken here. Whichever it is, `LEGAL_LAST_UPDATED`
+  moves with it.
 
 ## The incident vote
 
