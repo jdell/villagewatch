@@ -3,19 +3,31 @@ import Link from "next/link";
 import { LayoutDashboard, TriangleAlert } from "lucide-react";
 import { NoVillage } from "@/components/no-village";
 import { ReportPeriodPicker } from "@/components/reports/report-period-picker";
+import { ReportCharts } from "@/components/reports/report-charts";
 import { ReportView } from "@/components/reports/report-view";
 import { WeeklySummaryHistory } from "@/components/reports/weekly-summary-history";
 import { requireCoordinator } from "@/lib/auth";
 import { getVillageController, getVillageMode } from "@/lib/villages";
 import {
   DATA_CONTROLLER,
+  REPORT_RANGES,
   WEEKLY_SUMMARY_HISTORY_SIZE,
 } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { dateInputValue } from "@/lib/date-range";
+import { formatDate } from "@/lib/format";
 import { collectVillageReport, resolveReportRange } from "@/lib/reports";
+import { getIncidentTrend } from "@/lib/charts/incident-series";
+import { INCIDENT_TYPE_LABELS, SEVERITIES, SEVERITY_META } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Reports" };
+
+/** What the trend's caption calls its buckets, from the granularity chosen. */
+const TREND_LABELS = {
+  day: "by day",
+  week: "by week",
+  month: "by month",
+} as const;
 
 /**
  * The community safety report a coordinator takes to a police liaison meeting
@@ -125,6 +137,45 @@ export default async function ReportsPage({
     villageName: village.name,
     parishCouncil: village.parishCouncil,
     range,
+  });
+
+  /*
+    What the chart captions call the period.
+
+    The preset's own label where there is one, and the dates themselves for a
+    custom range — which is the same pair `ReportPeriodPicker` puts on screen,
+    so the caption under a chart says what the control above it says.
+  */
+  const periodLabel =
+    REPORT_RANGES.find((preset) => preset.value === range.preset)?.label ??
+    `${formatDate(range.from)} to ${formatDate(range.to)}`;
+
+  /*
+    The one figure the report does not already hold: reports bucketed over time.
+
+    `collectVillageReport` counts the period and the period before it — two
+    numbers, which is a trend and not a shape. This is the same query the
+    Overview tab's trend chart runs, over `/reports`' own range rather than the
+    dashboard's, and it degrades to an empty axis rather than throwing like
+    every other optional read on these screens.
+
+    `ReportRange` is not `TimeRange`, so the bounds are passed across by hand.
+    The two resolvers stay separate on purpose — the periods `/reports` offers
+    are not the periods a resident browsing a map wants — and `getIncidentTrend`
+    only reads `from`, `to` and `days`, which both shapes carry.
+  */
+  const trend = await getIncidentTrend({
+    villageId,
+    range: {
+      preset: "custom",
+      from: range.from,
+      to: range.to,
+      days: range.days,
+      fromValue: range.fromValue,
+      toValue: range.toValue,
+      label: periodLabel,
+      notice: null,
+    },
   });
 
   /*
@@ -241,6 +292,31 @@ export default async function ReportsPage({
           from: range.fromValue,
           to: range.toValue,
         }}
+        charts={
+          <ReportCharts
+            trend={trend.buckets}
+            trendLabel={TREND_LABELS[trend.granularity]}
+            /*
+              Built from the report's own `byType` and `bySeverity` rather than
+              counted again. The chart and the table beside it are then the same
+              query by construction, which is the only way they cannot come to
+              disagree in a document that goes to a police officer.
+            */
+            byType={report.byType.map((row) => ({
+              label: INCIDENT_TYPE_LABELS[row.key],
+              value: row.count,
+            }))}
+            bySeverity={report.bySeverity.map((row) => ({
+              key: row.key,
+              label:
+                SEVERITIES.find((meta) => meta.value === row.key)?.label ??
+                row.key,
+              value: row.count,
+              colour: SEVERITY_META[row.key].pin,
+            }))}
+            periodLabel={periodLabel}
+          />
+        }
       />
 
       {/*

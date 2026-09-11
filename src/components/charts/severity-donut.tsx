@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { SeverityDatum } from "@/components/charts/chart-data";
 import { TOOLTIP_STYLE } from "@/components/charts/chart-theme";
@@ -106,9 +107,23 @@ export function SeverityDonut({
       <ul className="w-full space-y-2">
         {rows.map((row) => (
           <li key={row.key} className="flex items-center gap-2.5 text-sm">
+            {/*
+              The colour is set twice on purpose: once as the background that
+              draws it, and once as a custom property so the print rules can put
+              it back. `[data-print-region] *` forces every background
+              transparent — see globals.css — and an inline style loses to that
+              `!important`, so without the variable the key prints as four
+              unlabelled rows beside a coloured ring.
+            */}
             <span
+              data-chart-swatch
               className="size-2.5 shrink-0 rounded-full"
-              style={{ backgroundColor: row.colour }}
+              style={
+                {
+                  backgroundColor: row.colour,
+                  "--chart-swatch": row.colour,
+                } as CSSProperties
+              }
               aria-hidden
             />
             <span className="min-w-0 flex-1 truncate text-slate-700">
