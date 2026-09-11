@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { Activity, ArrowRight } from "lucide-react";
+import { ActivitySparkline } from "@/components/charts/lazy-charts";
+import { ChartFrame } from "@/components/charts/chart-frame";
+import type { SeriesBucket } from "@/lib/charts/series";
 import {
   AUDIT_ACTION_META,
   auditActionLabel,
@@ -51,9 +54,23 @@ export type ActivityRow = {
 export function ActivityFeed({
   rows,
   mode,
+  activityStrip = [],
 }: {
   rows: readonly ActivityRow[];
   mode: VillageMode;
+  /**
+   * Reports per day over the trailing `ACTIVITY_STRIP_DAYS`, for the strip
+   * above the list.
+   *
+   * The list is a feed of *decisions* — published, rejected, settings changed —
+   * and the strip is the reporting those decisions were about. Together they
+   * answer "what have I missed" at two resolutions, which is the question this
+   * panel exists for and the reason neither half follows the period control.
+   *
+   * Empty on a database that could not be read, which renders the panel exactly
+   * as it was before the strip existed.
+   */
+  activityStrip?: readonly SeriesBucket[];
 }) {
   return (
     <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
@@ -70,6 +87,29 @@ export function ActivityFeed({
           <ArrowRight className="size-3.5" aria-hidden />
         </Link>
       </div>
+
+      {activityStrip.length > 0 && (
+        <div className="mt-3 border-b border-slate-100 pb-3">
+          <p className="text-xs text-slate-500">
+            Reports filed over the last {activityStrip.length} days, whatever
+            period is selected above.
+          </p>
+          <div className="mt-2">
+            <ChartFrame
+              rows={activityStrip.map((bucket) => ({
+                label: bucket.label,
+                value: bucket.count,
+              }))}
+              emptyMessage=""
+              caption={`Reports per day over the last ${activityStrip.length} days`}
+              labelHeading="Day"
+              height={64}
+            >
+              <ActivitySparkline buckets={activityStrip} />
+            </ChartFrame>
+          </div>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">
