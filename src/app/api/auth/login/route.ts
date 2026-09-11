@@ -3,6 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { fieldErrors, loginSchema } from "@/lib/validations";
 import { prisma } from "@/lib/prisma";
+import { firstForwardedAddress } from "@/lib/audit-context";
+import {
+  RATE_LIMITS,
+  authSubject,
+  rateLimit,
+  tooManyRequests,
+} from "@/lib/rate-limit";
 import {
   EMAIL_NOT_CONFIRMED_MESSAGE,
   describeAuthError,
@@ -42,6 +49,34 @@ export async function POST(request: NextRequest) {
   }
 
   const { email, password, next } = parsed.data;
+
+  /*
+    Counted after the body validates and before the credentials are checked,
+    which is this table's rule: a malformed request costs a Zod parse, and
+    burning a slot on one would let a client-side bug spend somebody's window
+    without a single attempt reaching Supabase.
+
+    Keyed by address because nobody is signed in yet — `authSubject` carries the
+    argument, including why an unknown address is not limited rather than being
+    bucketed with every other unknown one.
+
+    Supabase limits this endpoint too. That is the deployment's ceiling rather
+    than this route's, it is shared with every other auth flow, and being
+    refused by it arrives as wording about email quotas — so it is a backstop
+    for this rather than a replacement.
+  */
+  const subject = authSubject(firstForwardedAddress(request.headers.get("x-forwarded-for")));
+
+  if (subject) {
+    const quota = await rateLimit(RATE_LIMITS.authLogin, subject);
+
+    if (!quota.ok) {
+      return tooManyRequests(
+        quota,
+        "Too many sign-in attempts from this connection. Please wait a moment and try again.",
+      );
+    }
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword({

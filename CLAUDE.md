@@ -1253,6 +1253,8 @@ line often enough that an IP limit would silence a household.
 | `POST /api/incidents`              | `incidentCreate`  | 10 per day  |
 | `generateNarrativeAction` (`/reports`) | `reportNarrative` | 12 per hour |
 | `POST /api/incidents/[id]/vote`    | `incidentVote`    | 1 per 10s, **per incident** |
+| `POST /api/auth/login`             | `authLogin`       | 5 per minute, **per address** |
+| `POST /api/auth/register`          | `authRegister`    | 3 per hour, **per address** |
 
 The third is the most expensive single call in the app — a month of a village's
 reports goes into the prompt — and the only one a *coordinator* triggers by hand,
@@ -1289,6 +1291,46 @@ small write, and nothing about it spends Anthropic credit or a coordinator's
 attention. It is the toggle — up, down, up, down is four rows' worth of churn
 from one finger, and the vote button is the only control in the app whose
 *repeated* press is meaningful rather than accidental.
+
+**The two auth rules are the only ones keyed by address, and they have to be.**
+Nobody is signed in when either route is called — that is what the request is
+for — so there is no user id to count against and `x-forwarded-for` is the only
+thing on the request that identifies a caller. `authSubject` builds the key and
+prefixes it `ip:`, because `user_id` holds a Supabase auth user id for every
+other rule in the table and two kinds of value in one column with nothing to
+tell them apart is how somebody later reads the wrong one.
+
+- **An unknown address is not limited, rather than bucketed.** There is no proxy
+  in front of `npm run dev`, so the header is simply absent. Giving every
+  address-less caller one shared key would make the limit global — five sign-ins
+  a minute for the whole deployment, which is an outage wearing a rate limit's
+  clothes, and it would arrive the first time this ran behind something that
+  strips the header. It is trimmed rather than tested for truthiness for the
+  same reason: `ip:   ` is a perfectly good key that every blank address would
+  share. Asserted.
+- **Registering is rationed far harder than signing in, and not because it is
+  more dangerous.** It is expensive on somebody else's budget: each attempt
+  mints a Supabase auth user and spends a confirmation email out of the hourly
+  quota the whole deployment shares — the quota `auth-errors.ts` exists because
+  residents were hitting it. A run of sign-ups does not fill a table, it stops
+  every other resident being able to confirm an address.
+- **Three an hour is tight enough to catch a household**, which is a real cost
+  rather than a theoretical one — this section's own opening says an IP limit
+  would silence a village sharing a broadband line, and three is two neighbours
+  signing up on the same evening plus one retry. It is the safer direction for
+  what is being protected, and the figure is in `RATE_LIMITS` rather than in the
+  route so it is one line to move when a village hall runs into it.
+- **They go through the Postgres table like everything else, and a `Map` was
+  considered and refused.** This module's own history is the argument: it *was*
+  a `Map`, and on Vercel that meant the counters were per lambda instance and
+  reset on every cold start, so an idle deployment handed a fresh quota to
+  whoever woke it up. That is bad for an AI call and worse for brute-force
+  protection, where the caller worth stopping is exactly the one willing to wait
+  out a cold start. Both routes reach the database a few lines later anyway.
+- **Supabase limits the same two endpoints**, and that is a backstop rather than
+  a replacement: those are the deployment's ceilings, shared with every other
+  auth flow, and being refused by them arrives as wording about email quotas —
+  see Auth email and its rate limits.
 
 **There is a second limiter in the codebase and it is deliberately nothing like
 this one.** `src/lib/police-api.ts` paces *outbound* calls to data.police.uk at
@@ -1902,7 +1944,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty-eight files, 815 tests, covering the
+between the typecheck and the build. Forty-eight files, 820 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
