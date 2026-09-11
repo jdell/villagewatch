@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FileText, MapPin, ScrollText, ShieldAlert } from "lucide-react";
+import {
+  FileText,
+  MapPin,
+  ScrollText,
+  ShieldAlert,
+  TrendingUp,
+} from "lucide-react";
 import type {
   IncidentStatus,
   IncidentType,
@@ -10,10 +16,17 @@ import {
   ActivityFeed,
   type ActivityRow,
 } from "@/components/dashboard/activity-feed";
+import { ChartFrame } from "@/components/charts/chart-frame";
 import {
-  BreakdownBar,
-  type BreakdownRow,
-} from "@/components/dashboard/breakdown-bar";
+  HorizontalBarChart,
+  IncidentTrendChart,
+  SeverityDonut,
+} from "@/components/charts/lazy-charts";
+import {
+  typeChartHeight,
+  type SeverityDatum,
+  type TypeDatum,
+} from "@/components/charts/chart-data";
 import {
   ConcernList,
   type ConcernRow,
@@ -39,9 +52,14 @@ import {
   getVillagePoliceTeam,
 } from "@/lib/police-data";
 import { getVillageEcopsAlerts } from "@/lib/ecops/alerts";
+import {
+  getIncidentTrend,
+  getRecentDailyActivity,
+} from "@/lib/charts/incident-series";
 import { prisma } from "@/lib/prisma";
 import {
   ACTIVITY_FEED_SIZE,
+  ACTIVITY_STRIP_DAYS,
   CONCERN_LIST_SIZE,
   DASHBOARD_RANGE_VALUES,
   HOTSPOT_COUNT,
@@ -153,6 +171,8 @@ export default async function DashboardPage({
     ecopsAlerts,
     voteRows,
     activityRows,
+    trend,
+    activityStrip,
   ] = await Promise.all([
     prisma.incident.count({ where: inRange }),
     // `preceding` is null only for an unbounded range, which this page does not
@@ -354,6 +374,24 @@ export default async function DashboardPage({
       orderBy: { createdAt: "desc" },
       take: ACTIVITY_FEED_SIZE,
     }),
+    /*
+      The same published reports the cards above are counted from, bucketed by
+      day, week or month depending on how long the selected period is. The one
+      figure on this page that CSS bars could not draw, and the reason there is
+      a charting dependency at all.
+
+      `date_trunc` rather than a `groupBy`, because Prisma cannot group by a
+      derived value and a month is one — the reasoning is in
+      `src/lib/charts/incident-series.ts`. It degrades to an empty axis rather
+      than throwing, like every other optional panel here.
+    */
+    getIncidentTrend({ villageId, range }),
+    /*
+      The strip above the activity feed. Fixed to a trailing window and
+      deliberately not bounded by `range`, which is the feed's own rule — see
+      `ACTIVITY_STRIP_DAYS`.
+    */
+    getRecentDailyActivity({ villageId, days: ACTIVITY_STRIP_DAYS }),
   ]);
 
   /**
@@ -371,13 +409,14 @@ export default async function DashboardPage({
   /** Both breakdowns say the same thing when the period is empty. */
   const emptyPeriod = `Nothing has been published in this period (${range.label.toLowerCase()}).`;
 
-  const typeRows: BreakdownRow[] = byType
+  // Sorted descending because a horizontal bar chart draws its first datum at
+  // the top, so this is what puts the dominant category where the eye lands.
+  const typeRows: TypeDatum[] = byType
     .map((row) => ({
-      key: row.type,
       label: INCIDENT_TYPE_LABELS[row.type as IncidentType],
-      count: row._count._all,
+      value: row._count._all,
     }))
-    .sort((a, b) => b.count - a.count);
+    .sort((a, b) => b.value - a.value);
 
   // Built from `SEVERITIES` rather than from the query result, so the levels
   // always read low → critical. Levels with nothing in them are dropped: four
@@ -386,14 +425,42 @@ export default async function DashboardPage({
     bySeverity.map((row) => [row.severity as Severity, row._count._all]),
   );
 
-  const severityRows: BreakdownRow[] = SEVERITIES.filter(
+  const severityRows: SeverityDatum[] = SEVERITIES.filter(
     (meta) => (severityCounts.get(meta.value) ?? 0) > 0,
   ).map((meta) => ({
     key: meta.value,
     label: meta.label,
-    count: severityCounts.get(meta.value) ?? 0,
+    value: severityCounts.get(meta.value) ?? 0,
     colour: SEVERITY_META[meta.value].pin,
   }));
+
+  /*
+    The number in the doughnut's hole, summed from the levels rather than taken
+    from `total` above. They are the same figure today and would stop being the
+    same the moment a level were excluded from the breakdown — and a ring whose
+    slices do not add up to the number printed inside it is the one way this
+    chart could be wrong without looking wrong.
+  */
+  const severityTotal = severityRows.reduce((sum, row) => sum + row.value, 0);
+
+  /**
+   * What the trend's tooltip and its table column call one of its buckets.
+   *
+   * Read off the granularity the query actually chose rather than off the
+   * period, so the heading cannot say "by week" over an axis of days — the two
+   * are decided in one place (`chooseGranularity`) and this follows it.
+   */
+  const trendUnit = {
+    day: "Day",
+    week: "Week beginning",
+    month: "Month",
+  }[trend.granularity];
+
+  const trendBucketLabel = {
+    day: "by day",
+    week: "by week",
+    month: "by month",
+  }[trend.granularity];
 
   // Rows with no coordinates are already filtered out by the query; the mapper
   // returns null for them anyway, and narrowing here is what keeps the component
@@ -633,6 +700,38 @@ export default async function DashboardPage({
         />
       </section>
 
+      {/*
+        The shape of the period, above the two breakdowns of it. It is first
+        because it is the only one that answers "is this getting better or
+        worse" — the question a coordinator is actually asked — and the other
+        two answer "what" and "how serious" about the same set.
+      */}
+      <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <TrendingUp className="size-4 text-slate-400" aria-hidden />
+          When it was reported
+        </h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Published reports by the date they happened, {trendBucketLabel} ·{" "}
+          {range.label}
+        </p>
+
+        <div className="mt-4">
+          <ChartFrame
+            rows={trend.buckets.map((bucket) => ({
+              label: bucket.label,
+              value: bucket.count,
+            }))}
+            emptyMessage={emptyPeriod}
+            caption={`Published reports ${trendBucketLabel}, ${range.label.toLowerCase()}`}
+            labelHeading={trendUnit}
+            height={220}
+          >
+            <IncidentTrendChart buckets={trend.buckets} />
+          </ChartFrame>
+        </div>
+      </section>
+
       <section className="mt-4 grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <h2 className="text-sm font-semibold text-slate-900">
@@ -640,7 +739,19 @@ export default async function DashboardPage({
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">{range.label}</p>
           <div className="mt-4">
-            <BreakdownBar rows={typeRows} emptyMessage={emptyPeriod} />
+            <ChartFrame
+              rows={typeRows}
+              emptyMessage={emptyPeriod}
+              caption={`Published reports by category, ${range.label.toLowerCase()}`}
+              labelHeading="Category"
+              height={typeChartHeight(typeRows.length)}
+            >
+              <HorizontalBarChart
+                rows={typeRows}
+                unitNoun="report"
+                seriesLabel="Reported"
+              />
+            </ChartFrame>
           </div>
         </div>
 
@@ -648,7 +759,15 @@ export default async function DashboardPage({
           <h2 className="text-sm font-semibold text-slate-900">How serious</h2>
           <p className="mt-0.5 text-xs text-slate-500">{range.label}</p>
           <div className="mt-4">
-            <BreakdownBar rows={severityRows} emptyMessage={emptyPeriod} />
+            <ChartFrame
+              rows={severityRows}
+              emptyMessage={emptyPeriod}
+              caption={`Published reports by severity, ${range.label.toLowerCase()}`}
+              labelHeading="Severity"
+              height={208}
+            >
+              <SeverityDonut rows={severityRows} total={severityTotal} />
+            </ChartFrame>
           </div>
         </div>
       </section>
@@ -752,7 +871,11 @@ export default async function DashboardPage({
         coordinator coming back after a week reads it to find out what the
         others did.
       */}
-      <ActivityFeed rows={activity} mode={compliance.mode} />
+      <ActivityFeed
+        rows={activity}
+        mode={compliance.mode}
+        activityStrip={activityStrip}
+      />
     </div>
   );
 }

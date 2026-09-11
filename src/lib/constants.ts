@@ -1352,6 +1352,36 @@ export const HOTSPOT_COUNT = 3;
 export const ACTIVITY_FEED_SIZE = 8;
 
 /**
+ * How many days the strip above the activity feed covers.
+ *
+ * Thirty, and it is **fixed rather than following the period control** — the
+ * feed beneath it is unbounded for the same reason. Both answer "what have I
+ * missed", which is a question about the recent past rather than about whatever
+ * window somebody selected to read their queue, and a strip that emptied on
+ * "Last 7 days" would make a working village look dead.
+ *
+ * It is a count of columns before it is a period: thirty is about the most a
+ * strip this size can draw and still leave a day distinguishable from its
+ * neighbour on a phone.
+ */
+export const ACTIVITY_STRIP_DAYS = 30;
+
+/**
+ * How many villages the comparison on `/admin/villages` ranks.
+ *
+ * Ten, which is a number of *bars a chart can carry* rather than a claim about
+ * how many villages matter: past that the labels stop being readable at the
+ * width the card has, which is the same constraint the incident categories are
+ * sized against.
+ *
+ * It is a ranking, so the ones it leaves out are the quiet ones — and the panel
+ * says how many those are rather than trimming silently. A chart that showed
+ * ten of forty without saying so would read as a deployment with ten villages
+ * in it.
+ */
+export const VILLAGE_COMPARISON_SIZE = 10;
+
+/**
  * How many already-published reports the Queue tab lists under the queue.
  *
  * The collapsed list exists to answer "did I already publish that one?" without
