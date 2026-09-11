@@ -579,14 +579,23 @@ export default function PrivacyPage() {
         <DefinitionList>
           <Definition term="Other residents of your village">
             The anonymised report, its category, severity, approximate location
-            and any redacted photos. Your name, unless you filed anonymously.
+            and any redacted photos. <strong>Never your name</strong> &mdash;
+            there is no screen a resident can open that puts the person who
+            filed a report against it, whether or not you filed anonymously.
             Never your original wording, your address, your email or your home
             location.
           </Definition>
           <Definition term="Your village coordinators and moderators">
-            Everything above, plus your original wording — recorded each time —
-            and your name against the report even when you filed anonymously to
-            other residents. They also see the village&rsquo;s membership list:
+            Everything above, plus your original wording &mdash; recorded each
+            time &mdash; and your name against the report,{" "}
+            <strong>unless you filed anonymously</strong>. A report is filed
+            anonymously unless you untick the box, and when one is, the review
+            queue shows it as &ldquo;Anonymous&rdquo;: there is no screen in
+            this service, for a resident or a coordinator, that says who filed
+            it. The link between you and the report stays in our records and
+            nothing displays it &mdash; see &ldquo;The police, on
+            request&rdquo; below for the one route by which it could leave.
+            They also see the village&rsquo;s membership list:
             your name, when you joined, how many of your reports are on the map,
             and your email address &mdash; which is shown partly hidden, as
             &ldquo;j***@example.com&rdquo;, until they ask for it. That is how a
