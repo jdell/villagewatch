@@ -9,6 +9,7 @@ import { isCoordinatorRole, type VillageMode } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { RATE_LIMITS, rateLimit } from "@/lib/rate-limit";
 import { PDF_CONTENT_TYPE, pdfFilename, renderReportPdf } from "@/lib/report-pdf";
+import { getIncidentTrend } from "@/lib/charts/incident-series";
 import {
   collectVillageReport,
   countedNarrative,
@@ -62,6 +63,13 @@ import { getVillageController, getVillageMode } from "@/lib/villages";
  * handed to it by the browser would be a police document with a client-supplied
  * paragraph in it, whatever the screen showed at the time.
  */
+
+/** What the trend strip's axis calls its buckets. */
+const TREND_LABELS = {
+  day: "by day",
+  week: "by week",
+  month: "by month",
+} as const;
 
 /** PDFKit is a Node library. Nothing here would run on the edge. */
 export const runtime = "nodejs";
@@ -169,16 +177,47 @@ export async function GET(
       },
     });
 
-    const pdf = await renderReportPdf({
-      ...collected,
-      narrative: await narrativeFor(collected, {
-        wantsAi: request.nextUrl.searchParams.get("analysis") === "ai",
-        userId: session.user.id,
-        villageName: village.name,
-        mode,
+    /*
+      The buckets behind the trend strip, and the only figure the collected
+      report does not already hold — it counts this period and the one before
+      it, which is a direction rather than a shape.
+
+      The same query `/reports` runs for the on-screen chart, over the same
+      range, so the file and the page a coordinator pressed the button on cannot
+      disagree. It degrades to an empty axis rather than throwing, and
+      `CommunityReportDocument` draws no strip for one — a download must not
+      fail because a chart could not be counted.
+    */
+    const trend = await getIncidentTrend({
+      villageId,
+      range: {
+        preset: "custom",
+        from: range.from,
+        to: range.to,
         days: range.days,
-      }),
+        fromValue: range.fromValue,
+        toValue: range.toValue,
+        label: "",
+        notice: null,
+      },
     });
+
+    const pdf = await renderReportPdf(
+      {
+        ...collected,
+        narrative: await narrativeFor(collected, {
+          wantsAi: request.nextUrl.searchParams.get("analysis") === "ai",
+          userId: session.user.id,
+          villageName: village.name,
+          mode,
+          days: range.days,
+        }),
+      },
+      {
+        trend: trend.buckets,
+        trendLabel: TREND_LABELS[trend.granularity],
+      },
+    );
 
     return new NextResponse(new Uint8Array(pdf), {
       headers: {

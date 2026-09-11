@@ -2009,7 +2009,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty-eight files, 821 tests, covering the
+between the typecheck and the build. Forty-eight files, 825 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -3637,6 +3637,50 @@ same document the page already renders, as a file.
   and still able to fail the request, for the CSV export's reason: nothing has
   left the building yet, and a village's reports assembled into a document for
   the police with no trail behind it is worse than a download that did not work.
+- **The summary's three charts are `View`s, not Recharts and not `Svg`.**
+  Recharts needs a DOM and there is none here; `Svg` the library does provide,
+  and it was not used. Flexbox is the engine the rest of this document is built
+  on and the one whose quirks are already written down in this section, and a
+  bar is a box of a given width — so `Svg` would mean a second layout engine
+  inside a file that has already cost two documented layout bugs, to draw
+  rectangles. `BarBreakdown` is the category ranking, `SeverityBar` is one
+  stacked strip, `TrendBars` is a column per bucket on a shared baseline.
+- **They replaced the two `CountTable`s in the summary rather than joining
+  them.** On screen the chart sits under the table because there is room for
+  both; on one side of A4 going to a parish council, printing "Antisocial
+  behaviour 18" as a table row and again as a bar is the same number twice and
+  reads as padding. **Every figure is still printed** — the count is on the
+  right of each category row and in the severity key — so nothing a recipient
+  quotes has gone. `CountTable` itself stays and is not dead code:
+  `PoliceSection` renders it, and the Home Office figures beside a village's own
+  are deliberately two counts rather than one chart. Charting that block would
+  turn a documented refusal into a comparison the data does not support — see
+  Official police data, which is the entry not to undo while tidying.
+- **`styles.chartBlock` is `marginTop` and deliberately not `styles.column`.**
+  That one is `flex: 1`, which is right for a child of `styles.columns`
+  (`flexDirection: "row"`) where it means "share the row". Stacked in a column —
+  which is what a `Section` is — `flex: 1` makes every block claim the same
+  vertical space, and the first render of this drew the trend, both breakdowns
+  and the severity key on top of each other inside about ninety points. It
+  builds, it renders, the file opens, and the only way to find it is to look at
+  the page.
+- **A bar's width is divided by the largest row, and `max` is tested first.**
+  Scaling against the total is what makes a village with one dominant category
+  draw five bars too short to tell apart — `BreakdownBar`'s rule on screen. The
+  guard matters because `0 / 0` is `NaN`, and @react-pdf does not draw a
+  `"NaN%"` width, it throws `Invalid value NaN% for setWidth` — so an all-zero
+  breakdown fails the whole download rather than costing one bar. Loud, which is
+  the right direction, and `collectVillageReport` drops empty levels so the
+  route cannot produce one today; the type can, which is what the test covers.
+- **The trend is the one figure `CommunityReportData` does not carry**, so it is
+  a second argument rather than a field. That type is the document's *text*,
+  shared with the clipboard and the share sheet, and neither of those can draw a
+  chart — putting buckets on it would make every caller carry a series for a
+  format with nowhere to put one. The route runs the same `getIncidentTrend`
+  `/reports` runs for the on-screen chart, over the same range, so the file and
+  the page the coordinator pressed the button on cannot disagree. It is
+  **optional**: a caller with no series gets exactly the document this produced
+  before, which is also where the route lands when the trend query degrades.
 - **`LOG_COLUMNS` and the `print:w-` utilities in `report-view.tsx` are the same
   six percentages** and have to stay that way, or one report comes out in two
   shapes. They cannot be imported — Tailwind needs the class as a literal. Two
@@ -4692,6 +4736,13 @@ rather than quietly deleted.
   Official police data, which is the entry not to undo while tidying. A pass
   that "finished the migration" by charting that panel too would turn a
   deliberate refusal into a comparison the data does not support.
+- **The PDF draws its own and shares none of this code.** `@react-pdf/renderer`
+  is a different engine with no DOM, so Recharts cannot run in it; the three
+  blocks in `report-pdf.tsx` are flexbox `View`s and the two files have only
+  their colours in common. What they do share is the *data* — the route feeds
+  the file the same `getIncidentTrend` over the same range the page charts — so
+  a coordinator who presses Download is not sent a different period from the one
+  they were reading. See The PDF report.
 - **The numbers are still text, which is the promise being kept.** `BreakdownBar`
   put the count beside every bar and said why: the bar is decoration and the
   table is the data. Recharts emits `<svg>` and `<path>`, so a screen reader is
@@ -5755,7 +5806,13 @@ open:
   Anthropic from this route**, so the first download with an analysis on screen
   is the first time that call is made anywhere but the `/reports` button. Neither
   can fail the download — both fall back — which is exactly why they want
-  looking at rather than waiting for a bug report.
+  looking at rather than waiting for a bug report. **The three charts in the
+  summary are newer than that and have only ever drawn fixtures**: the bar
+  widths were settled by rendering a page and reading it, so the case to look at
+  on a real village is the one nobody can make up — a period whose buckets are
+  nearly all zero with one tall week in it, which is what a quiet parish
+  actually produces and where the 0.5pt floor either reads as a baseline or as
+  noise.
 - **Erasure has never run against real data.** `removeIncident` and
   `eraseAccount` both delete files from the bucket and neither has been tried
   against one. Watch the first deletion and check the object is gone, the same

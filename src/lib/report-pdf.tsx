@@ -15,6 +15,8 @@ import {
   rangeDays,
   reportFileName,
 } from "@/lib/community-report";
+import type { Severity } from "@/generated/prisma/enums";
+import type { SeriesBucket } from "@/lib/charts/series";
 import {
   APP_NAME,
   INCIDENT_TYPE_LABELS,
@@ -300,6 +302,84 @@ const styles = StyleSheet.create({
   countLabel: { flex: 1, color: COLOURS.body },
   countValue: { fontFamily: "Helvetica-Bold", color: COLOURS.ink },
 
+  // Charts ------------------------------------------------------------------
+  /**
+   * Drawn with `View`s rather than `Svg`, which the library does provide.
+   *
+   * Flexbox is the engine the whole of the rest of this document is built on
+   * and the one whose quirks are already written down here — the heading
+   * leading, the fixed-node interaction, the hyphenation callback. A bar is a
+   * box of a given width and a stacked bar is a row of them, so `Svg` would buy
+   * a second layout engine inside a document that has already cost this file
+   * two documented layout bugs, and buy nothing a rectangle cannot do.
+   */
+  /**
+   * The wrapper for a chart block, and it is **not** `styles.column`.
+   *
+   * That one is `flex: 1`, which is right for a child of `styles.columns`
+   * (`flexDirection: "row"`) where it means "share the row". Stacked in a
+   * column — which is what a `Section` is — `flex: 1` makes every block claim
+   * the same vertical space, and @react-pdf collapses them on top of each
+   * other: the first render of this drew the trend, both breakdowns and the
+   * severity key overlapping inside about ninety points. Height here comes from
+   * the content, which is what a block in a column wants.
+   */
+  chartBlock: { marginTop: 10 },
+  chartRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 1.5,
+  },
+  chartRowLabel: { width: "38%", fontSize: 7.5, color: COLOURS.body },
+  /** The unfilled remainder, so a short bar still reads against a track. */
+  chartTrack: { flex: 1, height: 6, backgroundColor: COLOURS.hairline },
+  chartBar: { height: 6, backgroundColor: COLOURS.brand },
+  chartRowValue: {
+    width: 20,
+    textAlign: "right",
+    fontFamily: "Helvetica-Bold",
+    fontSize: 7.5,
+    color: COLOURS.ink,
+  },
+
+  /** The severity strip: one row, segments proportional to their counts. */
+  stackedBar: {
+    flexDirection: "row",
+    height: 10,
+    marginTop: 2,
+    backgroundColor: COLOURS.hairline,
+  },
+  stackedKey: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 6,
+  },
+  stackedKeyItem: { flexDirection: "row", alignItems: "center", gap: 3 },
+  stackedKeySwatch: { width: 6, height: 6 },
+  stackedKeyLabel: { fontSize: 7.5, color: COLOURS.body },
+  stackedKeyValue: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: COLOURS.ink },
+
+  /** The trend: one column per bucket, sitting on a shared baseline. */
+  trendPlot: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    height: 34,
+    gap: 1.5,
+    marginTop: 3,
+  },
+  trendBar: { flex: 1, backgroundColor: COLOURS.brand },
+  trendAxis: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 2,
+    borderTopWidth: 0.5,
+    borderTopColor: COLOURS.rule,
+    paddingTop: 2,
+  },
+  trendAxisLabel: { fontSize: 6.5, color: COLOURS.faint },
+
   // Police recorded crime ---------------------------------------------------
   /**
    * The caveat under the two counts.
@@ -425,6 +505,211 @@ function CountTable({
           </View>
         ))
       )}
+    </View>
+  );
+}
+
+/**
+ * A counted breakdown with a bar behind each figure.
+ *
+ * **It replaces the category `CountTable` rather than joining it.** On screen
+ * the chart sits under the table because there is room for both; on one side of
+ * A4 going to a parish council, printing "Antisocial behaviour 18" as a table
+ * row and again as a bar is the same number twice and reads as padding. The
+ * count is still on the right of every row, so what a recipient quotes is
+ * exactly what the table gave them.
+ *
+ * Scaled against the **largest row rather than the total**, which is
+ * `BreakdownBar`'s rule on screen and is what keeps the small categories
+ * visible: against the total, a village with one dominant category draws five
+ * bars too short to tell apart.
+ */
+function BarBreakdown({
+  heading,
+  rows,
+}: {
+  heading: string;
+  rows: readonly { label: string; count: number }[];
+}) {
+  const max = rows.reduce((highest, row) => Math.max(highest, row.count), 0);
+
+  return (
+    <View style={styles.chartBlock}>
+      <Text style={styles.columnHeading}>{heading}</Text>
+      {rows.length === 0 ? (
+        <Text style={{ color: COLOURS.muted }}>None.</Text>
+      ) : (
+        rows.map((row) => (
+          <View key={row.label} style={styles.chartRow}>
+            <Text style={styles.chartRowLabel}>{row.label}</Text>
+            <View style={styles.chartTrack}>
+              {/*
+                A floor of 2%, so a category with one report in a busy month is
+                a visible mark rather than nothing at all — the reader would
+                otherwise see a label, a count, and an apparently empty track.
+
+                `max` is tested rather than divided by blind. `collectVillageReport`
+                drops empty levels, so every row it builds counts at least one —
+                but this takes a `CommunityReportData`, which is also assembled by
+                hand in tests and by whatever calls this next, and `0 / 0` is
+                `NaN`, which `Math.max` propagates. @react-pdf does not draw a
+                `"NaN%"` width, it **throws** — `Invalid value NaN% for setWidth`
+                — so an all-zero breakdown would fail the whole download rather
+                than cost one bar. Loud, which is the right direction, and no
+                reason to let it happen.
+              */}
+              <View
+                style={[
+                  styles.chartBar,
+                  { width: `${max > 0 ? Math.max(2, (row.count / max) * 100) : 2}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.chartRowValue}>{row.count}</Text>
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
+/**
+ * Severity as one stacked strip with a key under it.
+ *
+ * A doughnut is what the screen draws and is not worth reproducing here: it
+ * would be a `Path` per arc with the trigonometry done by hand, in a document
+ * where the same reading is available from a strip a reader already knows how
+ * to interpret. What the shape has to say is *proportion*, and a stacked bar
+ * says it in one line and a tenth of the space.
+ *
+ * The colours are `SEVERITY_PIN_COLORS` — the same hues the map pins, the
+ * badges and the severity dot in the log below already use, so a HIGH report
+ * is the same red on paper as on the screen the coordinator was looking at
+ * when they pressed the button.
+ */
+function SeverityBar({
+  rows,
+}: {
+  rows: readonly { key: Severity; count: number }[];
+}) {
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+
+  if (total === 0) {
+    return (
+      <View style={styles.chartBlock}>
+        <Text style={styles.columnHeading}>By severity</Text>
+        <Text style={{ color: COLOURS.muted }}>None.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.chartBlock}>
+      <Text style={styles.columnHeading}>By severity</Text>
+
+      <View style={styles.stackedBar}>
+        {rows.map((row) => (
+          <View
+            key={row.key}
+            style={{
+              width: `${(row.count / total) * 100}%`,
+              backgroundColor: SEVERITY_PIN_COLORS[row.key],
+            }}
+          />
+        ))}
+      </View>
+
+      {/*
+        The key carries the count as well as the share. A segment's width is the
+        proportion and a reader cannot measure it off the page; the number is
+        what they quote, and a percentage alone at village scale is the figure
+        the social digest refuses to print for the same reason — one report in
+        four is "25%" and is one report.
+      */}
+      <View style={styles.stackedKey}>
+        {rows.map((row) => (
+          <View key={row.key} style={styles.stackedKeyItem}>
+            <View
+              style={[
+                styles.stackedKeySwatch,
+                { backgroundColor: SEVERITY_PIN_COLORS[row.key] },
+              ]}
+            />
+            <Text style={styles.stackedKeyLabel}>
+              {SEVERITY_LABELS[row.key]}
+            </Text>
+            <Text style={styles.stackedKeyValue}>{row.count}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * When reports came in, as one column per bucket on a shared baseline.
+ *
+ * The screen draws this as an area chart and this does not, for the reason the
+ * doughnut is a strip above: an area is a filled polygon, which means a `Path`
+ * and the point-to-point arithmetic by hand. Columns are rectangles, and at
+ * this size — thirty-odd of them, 34pt tall — the two read the same.
+ *
+ * **Only the ends of the axis are labelled.** There is no room for thirty dates
+ * across the page and no reader who needs them: what this block says is the
+ * shape of the period, and the log below is where an individual day lives.
+ *
+ * Every bucket is drawn, including the empty ones — `buildSeries` fills the
+ * gaps before this sees them, and a strip that skipped a quiet week would draw
+ * a busier village than the one being reported on.
+ */
+function TrendBars({
+  buckets,
+  label,
+}: {
+  buckets: readonly SeriesBucket[];
+  label: string;
+}) {
+  const max = buckets.reduce(
+    (highest, bucket) => Math.max(highest, bucket.count),
+    0,
+  );
+
+  if (buckets.length === 0 || max === 0) return null;
+
+  const PLOT_HEIGHT = 34;
+
+  return (
+    <View style={styles.chartBlock}>
+      <Text style={styles.columnHeading}>When reports came in</Text>
+
+      <View style={styles.trendPlot}>
+        {buckets.map((bucket) => (
+          <View
+            key={bucket.key}
+            style={[
+              styles.trendBar,
+              {
+                /*
+                  A bucket with nothing in it still gets half a point, so the
+                  baseline reads as a period rather than as a set of bars with
+                  unexplained gaps in it.
+                */
+                height: Math.max(0.5, (bucket.count / max) * PLOT_HEIGHT),
+              },
+            ]}
+          />
+        ))}
+      </View>
+
+      <View style={styles.trendAxis}>
+        <Text style={styles.trendAxisLabel}>{buckets[0]?.label}</Text>
+        <Text style={styles.trendAxisLabel}>
+          {label} · peak {max}
+        </Text>
+        <Text style={styles.trendAxisLabel}>
+          {buckets[buckets.length - 1]?.label}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -599,10 +884,31 @@ function trendSentence(total: number, previous: number, days: number): string {
   return `The ${period} saw ${previous}.`;
 }
 
+/**
+ * The one thing the charts need that `CommunityReportData` does not carry.
+ *
+ * It is a separate argument rather than a field on the report because that type
+ * is the *document's text*, shared with the clipboard and the share sheet —
+ * neither of which has a chart in it. Putting buckets there would make every
+ * caller carry a series for a format that cannot draw one.
+ */
+export type ReportChartData = {
+  trend: readonly SeriesBucket[];
+  /** "by day" / "by week" / "by month", from the granularity the query chose. */
+  trendLabel: string;
+};
+
 export function CommunityReportDocument({
   report,
+  charts,
 }: {
   report: CommunityReportData;
+  /**
+   * Optional, so a caller with no series renders exactly the document this
+   * produced before — which is what keeps the existing tests meaningful and
+   * what the route falls back to if the trend query fails.
+   */
+  charts?: ReportChartData;
 }) {
   const days = rangeDays(report.from, report.to);
 
@@ -639,22 +945,35 @@ export function CommunityReportDocument({
             {trendSentence(report.total, report.previousTotal, days)}
           </Text>
 
-          <View style={styles.columns}>
-            <CountTable
-              heading="By category"
-              rows={report.byType.map((row) => ({
-                label: INCIDENT_TYPE_LABELS[row.key],
-                count: row.count,
-              }))}
-            />
-            <CountTable
-              heading="By severity"
-              rows={report.bySeverity.map((row) => ({
-                label: SEVERITY_LABELS[row.key],
-                count: row.count,
-              }))}
-            />
-          </View>
+          {/*
+            The shape of the period, then what was in it.
+
+            These replace the two `CountTable`s that were here. Every figure
+            they printed is still printed — the count is on the right of each
+            category row and in the severity key — so nothing a recipient quotes
+            has gone; what is added is the proportion, which a column of numbers
+            does not give and which is the question a parish council actually
+            asks.
+
+            `CountTable` itself stays: `PoliceSection` uses it, and the Home
+            Office figures beside a village's own are deliberately two counts
+            rather than one chart. Charting that block would turn a documented
+            refusal into a comparison the data does not support — see Official
+            police data.
+          */}
+          {charts && (
+            <TrendBars buckets={charts.trend} label={charts.trendLabel} />
+          )}
+
+          <BarBreakdown
+            heading="By category"
+            rows={report.byType.map((row) => ({
+              label: INCIDENT_TYPE_LABELS[row.key],
+              count: row.count,
+            }))}
+          />
+
+          <SeverityBar rows={report.bySeverity} />
         </Section>
 
         <Section title="Hotspots">
@@ -891,6 +1210,9 @@ export function pdfFilename(report: {
  */
 export async function renderReportPdf(
   report: CommunityReportData,
+  charts?: ReportChartData,
 ): Promise<Buffer> {
-  return renderToBuffer(<CommunityReportDocument report={report} />);
+  return renderToBuffer(
+    <CommunityReportDocument report={report} charts={charts} />,
+  );
 }
