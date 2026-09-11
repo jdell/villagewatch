@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { CommunityReportData } from "@/lib/community-report";
+import type { SeriesBucket } from "@/lib/charts/series";
 import {
   LOG_COLUMNS,
   PDF_CONTENT_TYPE,
   pdfFilename,
+  type ReportChartData,
   renderReportPdf,
 } from "@/lib/report-pdf";
 
@@ -90,6 +92,22 @@ function report(
     incidents: [incident()],
     omitted: 0,
     narrative: NARRATIVE,
+    ...overrides,
+  };
+}
+
+function buckets(counts: readonly number[]): SeriesBucket[] {
+  return counts.map((count, index) => ({
+    key: `2026-07-${String(index + 1).padStart(2, "0")}`,
+    label: `${index + 1} Jul`,
+    count,
+  }));
+}
+
+function charts(overrides: Partial<ReportChartData> = {}): ReportChartData {
+  return {
+    trend: buckets([3, 0, 5, 1, 0, 0, 2]),
+    trendLabel: "by day",
     ...overrides,
   };
 }
@@ -224,6 +242,86 @@ describe("renderReportPdf", () => {
             }),
           ],
         }),
+      ),
+    );
+  });
+
+  /*
+    The charts.
+
+    None of these can assert what the blocks *look like* — that was settled by
+    rendering one and reading it, the way the column widths were — and the first
+    version of them was badly wrong in a way a magic-bytes check would have
+    passed: every block carried `flex: 1`, which is right for a child of a row
+    and makes each block in a *column* claim the whole height, so the trend, the
+    categories and the severity key drew on top of each other. What these do
+    cover is the arithmetic behind the widths, which is where a shape nobody
+    anticipated stops the download: a division with no denominator, and a
+    period the chart query could not count.
+  */
+  it("renders a report with its charts", async () => {
+    expectPdf(
+      await renderReportPdf(
+        report({
+          total: 11,
+          byType: [
+            { key: "ANTISOCIAL_BEHAVIOUR", count: 6 },
+            { key: "VEHICLE_CRIME", count: 4 },
+            // The 2% floor. Against a maximum of six this is 16%, but a single
+            // report in a busy month is the row that would otherwise be a
+            // label, a count and an empty track.
+            { key: "THEFT", count: 1 },
+          ],
+          bySeverity: [
+            { key: "LOW", count: 7 },
+            { key: "MEDIUM", count: 3 },
+            { key: "CRITICAL", count: 1 },
+          ],
+        }),
+        charts(),
+      ),
+    );
+  });
+
+  it("renders the same document as before when no charts are passed", async () => {
+    // The second argument is optional so the clipboard's and the share sheet's
+    // caller — neither of which has a series — still get a document. A route
+    // whose trend query degraded to nothing lands here too.
+    expectPdf(await renderReportPdf(report()));
+  });
+
+  it("draws no trend strip for a period the query could not count", async () => {
+    // `getIncidentTrend` degrades to an empty axis rather than throwing, and a
+    // quiet period counts every bucket as zero. Both reach `TrendBars` and
+    // both have to leave the rest of the document standing — the second is the
+    // one that divides by the maximum.
+    expectPdf(await renderReportPdf(report(), charts({ trend: [] })));
+    expectPdf(
+      await renderReportPdf(report(), charts({ trend: buckets([0, 0, 0]) })),
+    );
+  });
+
+  it("renders a breakdown whose rows all count zero", async () => {
+    /*
+      `collectVillageReport` drops empty levels, so this is not a shape the
+      route can produce today. It is a shape the *type* allows, and it takes the
+      whole document with it rather than one bar: `0 / 0` is `NaN`, `Math.max`
+      propagates it, and @react-pdf throws `Invalid value NaN% for setWidth`
+      rather than drawing nothing. So this renders, which without the guard in
+      `BarBreakdown` it would not.
+    */
+    expectPdf(
+      await renderReportPdf(
+        report({
+          total: 0,
+          byType: [
+            { key: "VEHICLE_CRIME", count: 0 },
+            { key: "THEFT", count: 0 },
+          ],
+          bySeverity: [{ key: "LOW", count: 0 }],
+          incidents: [],
+        }),
+        charts(),
       ),
     );
   });
