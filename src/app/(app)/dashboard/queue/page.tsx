@@ -75,7 +75,6 @@ export default async function QueuePage() {
           // and the model is the signal that it might not be.
           reporterSeverity: true,
           severityRationale: true,
-          isAnonymous: true,
           reporter: { select: { fullName: true } },
           tags: { select: { label: true }, orderBy: { label: "asc" } },
           _count: { select: { media: true } },
@@ -126,15 +125,31 @@ export default async function QueuePage() {
     locationText: row.locationText,
     occurredAt: row.occurredAt.toISOString(),
     reportedAt: row.reportedAt.toISOString(),
-    // A report filed anonymously stays anonymous in the queue too. The link is
-    // still in the database for a police request; it is not on this screen.
-    reporterName: row.isAnonymous ? null : (row.reporter?.fullName ?? null),
+    /*
+      **A coordinator sees who filed a report, including an anonymous one**, and
+      `isAnonymous` is deliberately not consulted here.
+
+      It used to be: the queue nulled the name for an anonymous report and said
+      so. That was the opposite of what the checkbox's own label promised and of
+      what `/privacy` §6 told a resident, and between the three of them the
+      notice was the one describing the intended design — anonymity is from
+      *other residents*, and the person moderating the report is accountable for
+      it.
+
+      What this costs is worth stating rather than discovering: somebody who
+      ticks the box is hidden from their neighbours and not from their
+      coordinator, and the label beside the box says exactly that.
+
+      `reporterName` is still null where the account has been closed —
+      `eraseAccount` severs `reporterId`, which is a different thing from
+      filing anonymously and is the one case `ModerationCard` renders as
+      "Anonymous" for real.
+    */
+    reporterName: row.reporter?.fullName ?? null,
     // Computed on the server so the card does not have to hold the full name to
     // derive them, and shared with the resident list so one resident does not
     // get two different sets of initials on two screens.
-    reporterInitials: row.isAnonymous
-      ? null
-      : initialsOf(row.reporter?.fullName),
+    reporterInitials: initialsOf(row.reporter?.fullName),
     anonymized: row.anonymized,
     reporterSeverity: row.reporterSeverity,
     severityRationale: row.severityRationale,
