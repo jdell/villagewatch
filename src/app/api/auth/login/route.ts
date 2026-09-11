@@ -3,7 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { fieldErrors, loginSchema } from "@/lib/validations";
 import { prisma } from "@/lib/prisma";
-import { describeAuthError } from "@/lib/auth-errors";
+import {
+  EMAIL_NOT_CONFIRMED_MESSAGE,
+  describeAuthError,
+  isEmailNotConfirmedError,
+} from "@/lib/auth-errors";
 
 /**
  * POST /api/auth/login
@@ -65,6 +69,35 @@ export async function POST(request: NextRequest) {
           status: 429,
           headers: { "Retry-After": String(described.retryAfter) },
         },
+      );
+    }
+
+    /*
+      The one case that is not vague, and the paragraph above is the reason it
+      needs justifying rather than just adding.
+
+      Somebody who registered and never clicked the link used to be told their
+      password was wrong. It is not wrong — it is right, which is the only
+      reason GoTrue got as far as looking at the confirmation state — so the
+      advice was false and the action it suggested (reset the password) spends
+      an email to arrive at the same dead end. They then have two unread
+      messages in the same inbox and no idea that the first one is the one that
+      matters.
+
+      It is not an enumeration oracle, and `isEmailNotConfirmedError` carries
+      the whole argument for why: the password is authenticated *before* the
+      confirmation state is consulted, so this sentence is only ever shown to
+      somebody who already had the credentials. A caller guessing at addresses
+      still gets the sentence below and learns nothing.
+
+      403 rather than 401 because the credentials were accepted; what is missing
+      is a step, not a password. The form reads `code` rather than matching on
+      the sentence — see `LoginForm`.
+    */
+    if (isEmailNotConfirmedError(error)) {
+      return NextResponse.json(
+        { error: EMAIL_NOT_CONFIRMED_MESSAGE, code: "email_not_confirmed" },
+        { status: 403 },
       );
     }
 

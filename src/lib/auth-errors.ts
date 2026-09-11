@@ -98,6 +98,36 @@ const RATE_LIMIT_PATTERNS = [
  */
 const EMAIL_QUOTA_PATTERN = /email rate limit exceeded/i;
 
+/**
+ * An account that exists, with the right password, whose address has never been
+ * confirmed.
+ *
+ * `email_not_confirmed` is the SDK's own code for it and is what this should
+ * normally match on; the pattern is the fallback for the same two reasons
+ * `isRateLimitError` checks three things — the `code` field arrives only on
+ * recent SDKs, and a REST fallback returns the message alone.
+ *
+ * `email_address_not_authorized` is **not** in here. It is a different failure
+ * with a similar name: the project is on a restricted allow-list of recipients,
+ * which is a deployment fault rather than something the person signing in can
+ * do anything about, and telling them to check an inbox no mail was ever sent
+ * to would be the worst of both.
+ */
+const EMAIL_NOT_CONFIRMED_CODES = new Set(["email_not_confirmed"]);
+
+const EMAIL_NOT_CONFIRMED_PATTERN = /email not confirmed/i;
+
+/**
+ * What somebody who has registered and not clicked the link is told.
+ *
+ * It is a constant here rather than a string in the route for the reason the
+ * header gives: every sentence this module produces ends at one of these, so
+ * there is one place to change the wording and no path that can leak a
+ * provider's.
+ */
+export const EMAIL_NOT_CONFIRMED_MESSAGE =
+  "Please verify your email address first. Check your inbox for a confirmation link.";
+
 function readMessage(error: AuthErrorLike): string {
   if (typeof error === "string") return error;
   if (error && typeof error === "object" && "message" in error) {
@@ -151,6 +181,40 @@ export function isRateLimitError(error: AuthErrorLike): boolean {
  */
 export function isEmailQuotaError(error: AuthErrorLike): boolean {
   return EMAIL_QUOTA_PATTERN.test(readMessage(error));
+}
+
+/**
+ * Has this person registered but never confirmed their address?
+ *
+ * ## This is the one sentence the sign-in form says about a *particular*
+ * account, and that is only safe because of where GoTrue checks it
+ *
+ * `POST /api/auth/login` is deliberately vague — "Email or password is
+ * incorrect" for a wrong password and for an address with no account behind it
+ * alike — because the membership list is itself sensitive here: it says who
+ * reports on their neighbours. A message naming the state of one account looks
+ * like exactly the enumeration oracle that rule exists to prevent.
+ *
+ * What makes it not one is the **order GoTrue does its checks in**. The
+ * password grant authenticates the password *first* and only then looks at the
+ * confirmation state, so `email_not_confirmed` is reachable only by somebody
+ * who already supplied the right password for that address. Probing addresses
+ * with a guessed password gets the generic sentence and learns nothing; the
+ * disclosure is to somebody holding the credentials, who is overwhelmingly the
+ * person whose account it is.
+ *
+ * **That ordering is load-bearing.** If a future GoTrue ever reported the
+ * confirmation state before validating the password, this predicate would start
+ * answering true for anybody who typed a registered address — and the sign-in
+ * form would quietly become the oracle `/forgot-password` is so careful not to
+ * be. It is written down here because nothing in this repository can test it:
+ * the suite runs with no Supabase, so this is a property of somebody else's
+ * service that we depend on and cannot assert.
+ */
+export function isEmailNotConfirmedError(error: AuthErrorLike): boolean {
+  if (EMAIL_NOT_CONFIRMED_CODES.has(readCode(error))) return true;
+
+  return EMAIL_NOT_CONFIRMED_PATTERN.test(readMessage(error));
 }
 
 /**

@@ -701,8 +701,12 @@ tests/                        Vitest, unit only — see The test suite
   auth-errors.test.ts         The mapper in front of every Supabase auth
                               failure — no provider message escaping, a rate
                               limit recognised as a status, a code or a
-                              sentence, and the deployment-wide email quota
-                              told apart from the per-address one
+                              sentence, the deployment-wide email quota told
+                              apart from the per-address one, and the
+                              unconfirmed-account match being narrow enough not
+                              to catch a wrong password — which would turn the
+                              sign-in form's deliberate vagueness into an
+                              enumeration oracle
   pricing.test.ts             The landing page's two tiers — a planned tier
                               states no price and no cadence, a cadence never
                               appears without one, and the JSON-LD Offer never
@@ -935,6 +939,54 @@ configuration rather than code.
   seconds and the wait is measured in minutes; the label is what is still on
   screen when somebody comes back to try again. It is set only by a 429 — a
   cooldown on a mistyped password would be a form punishing a typo.
+- **An unconfirmed account is the one sign-in failure that is not vague, and
+  the reason it is allowed to be is the order GoTrue checks things in.**
+  `POST /api/auth/login` answers "Email or password is incorrect" to a wrong
+  password and to an address with no account alike, because the membership list
+  here says who reports on their neighbours. Somebody who registered and never
+  clicked the link used to get that sentence too — and it is false: the password
+  was right, which is the only reason GoTrue looked at the confirmation state at
+  all. The advice it gives is to reset a working password, which spends an email
+  to reach the same dead end and leaves two unread messages in the inbox where
+  the first one was the one that mattered.
+
+  What makes the specific sentence safe is that the password grant
+  **authenticates the password before it consults the confirmation state**, so
+  `email_not_confirmed` is only ever reachable by somebody who already had the
+  credentials. Probing addresses with a guessed password still gets the generic
+  refusal. **That ordering is load-bearing and nothing here can test it** — the
+  suite runs with no Supabase — so if a future GoTrue ever reported the
+  confirmation state first, this becomes the enumeration oracle
+  `/forgot-password` is built to avoid, on the form beside it.
+  `isEmailNotConfirmedError` carries the argument and
+  `tests/auth-errors.test.ts` pins the narrowness of the match: not a wrong
+  password, not `email_address_not_authorized` (a restricted-recipient project,
+  one word apart and the opposite advice), and **not overlapping a rate limit in
+  either direction** — the route tests for a rate limit first, so an overlap
+  would hold the button against somebody who had merely not read their email.
+- **It is a predicate beside the mapper rather than a branch inside it**, which
+  is exactly `isEmailQuotaError`'s shape and is there for its reason: the
+  judgement is only correct on one route. `describeAuthError` still returns the
+  generic sign-in sentence, so the register form and the OAuth callback are
+  unchanged by it. The wording is `EMAIL_NOT_CONFIRMED_MESSAGE`, a constant in
+  that file like every other sentence the module produces.
+- **Both "check your email" messages are panels, and neither is a toast any
+  more.** The register form used to fire `toast.success` and redirect to
+  `/login` in the same breath, so the one instruction that matters was read on
+  the way past a page change or not at all — and what was left on screen was an
+  ordinary sign-in form that answers "Email or password is incorrect". It
+  redirects to `/login?registered=1` now and the page renders the sentence; the
+  sign-in form renders the unconfirmed one the same way. Both have to survive
+  the errand they describe, which is somebody leaving the tab for their inbox
+  and coming back. **`registered` is a flag and never the wording** — the page
+  prints its own copy, because a panel whose text comes from the query string is
+  a sentence a stranger can put on VillageWatch's sign-in page with a link.
+- **There is still no way to ask for another confirmation email.** The `resend`
+  flow below has no caller, so somebody whose link expired or never arrived is
+  told to check an inbox that has nothing in it. The message is a strict
+  improvement on being told their password is wrong and it is not the whole fix;
+  a resend button wants its own rate-limit thinking, because it spends the same
+  quota this section is about.
 - **The `otp` and `resend` flows have no caller.** There is no passwordless
   sign-in and no "resend confirmation" button in this codebase; sign-in is
   password or Google. Both are in `AuthFlow` because the limit they would hit is
@@ -1814,7 +1866,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty-six files, 789 tests, covering the
+between the typecheck and the build. Forty-six files, 795 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and

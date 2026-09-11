@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MailCheck } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { LoginForm } from "@/components/auth/login-form";
 import { AuthDivider, GoogleButton } from "@/components/auth/google-button";
@@ -16,11 +16,16 @@ export const metadata: Metadata = {
 
 /** Next.js 16: `searchParams` is a Promise and must be awaited. */
 type LoginPageProps = {
-  searchParams: Promise<{ next?: string; error?: string }>;
+  searchParams: Promise<{
+    next?: string;
+    error?: string;
+    /** "1" when `/register` has just sent somebody here to confirm. */
+    registered?: string;
+  }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const { next, error } = await searchParams;
+  const { next, error, registered } = await searchParams;
 
   // Only accept relative paths — an absolute URL here would be an open redirect.
   const redirectTo =
@@ -60,6 +65,43 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               in <code className="font-mono text-xs">.env.local</code> before
               signing in.
             </p>
+          )}
+
+          {/*
+            Set by the register form after a sign-up that needs confirming.
+
+            **The flag decides whether to render; the sentence is written here.**
+            The `error` panel below echoes its parameter because the callback has
+            things to say that this page cannot enumerate; this one has exactly
+            one thing to say, so taking the wording from the query string would
+            hand a stranger a sentence on VillageWatch's sign-in page for the
+            price of a link — which is how a link in a forwarded message comes to
+            say "your account is locked, ring this number".
+
+            It is a panel rather than the toast this used to be because it has to
+            survive the errand it describes: somebody reads it, leaves for their
+            email, and comes back to this tab.
+          */}
+          {registered === "1" && (
+            <div
+              role="status"
+              className="mt-5 flex items-start gap-3 rounded-lg bg-brand-50 px-3.5 py-3 ring-1 ring-brand-100"
+            >
+              <MailCheck
+                className="mt-0.5 size-5 shrink-0 text-brand-600"
+                aria-hidden
+              />
+              <div className="text-sm text-slate-700">
+                <p className="font-medium text-slate-900">
+                  Your account has been created
+                </p>
+                <p className="mt-1 leading-relaxed">
+                  Check your email to verify your account before logging in. The
+                  link is in a message from VillageWatch — if it is not there,
+                  look in your spam folder.
+                </p>
+              </div>
+            </div>
           )}
 
           {/*
