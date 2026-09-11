@@ -3,6 +3,19 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.0.0](https://github.com/jdell/villagewatch/compare/v0.1.64...v1.0.0) (2026-09-11)
+
+The first release with a version number that claims to be finished. Nothing
+in it changes what a resident sees; all three are things that had to be true
+before the number could be.
+
+
+### Features
+
+* **auth:** rate limit signing in and registering ([36fde5a](https://github.com/jdell/villagewatch/commit/36fde5a350c39da3a2b47a7094af5ae1649709bc))
+* **app:** add the two error boundaries that were missing ([ac6ea46](https://github.com/jdell/villagewatch/commit/ac6ea4672660a6971dfc634b7ad76ca3d754eb4f))
+* **db:** one command for a complete database ([8e3c5b4](https://github.com/jdell/villagewatch/commit/8e3c5b46daa166af8969ba2db7390b412561c16c))
+
 ### [0.1.64](https://github.com/jdell/villagewatch/compare/v0.1.63...v0.1.64) (2026-09-11)
 
 
