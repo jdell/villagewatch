@@ -50,7 +50,35 @@ describe("incidentReportSchema", () => {
     expect(parsed.data.title).toBe("Shed broken into overnight");
     // Defaults fill in rather than the row arriving half-built.
     expect(parsed.data.media).toEqual([]);
+    // The fixture states it, so this is the value surviving rather than the
+    // default — a reporter who unticks the box is filed under their name.
     expect(parsed.data.isAnonymous).toBe(false);
+  });
+
+  it("files anonymously when the payload does not say", () => {
+    /*
+      The default is `true`, and it is the one default in this schema whose
+      direction is a decision rather than a convenience: a report filed under
+      somebody's name because a field went missing cannot be taken back, and a
+      report filed anonymously that should not have been costs the coordinator
+      a question.
+
+      It has to agree with the wizard's own `defaultValues`. If this said
+      `false` while the checkbox started ticked, a payload that dropped the
+      field — a client bug, an older build, anything hand-made — would file
+      under the reporter's name from a form that had told them it would not.
+    */
+    // Deleted rather than destructured away: the discard binding an unused
+    // rest-spread leaves behind is exactly what the lint rule objects to.
+    const withoutFlag: Record<string, unknown> = { ...report() };
+    delete withoutFlag.isAnonymous;
+
+    const parsed = incidentReportSchema.safeParse(withoutFlag);
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    expect(parsed.data.isAnonymous).toBe(true);
   });
 
   it("accepts a report filed without the AI pass", () => {

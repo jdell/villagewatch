@@ -261,7 +261,13 @@ export const incidentReportSchema = z
       .max(200, "Keep the landmark under 200 characters")
       .optional(),
 
-    isAnonymous: z.boolean().default(false),
+    /*
+      Anonymous unless the payload says otherwise, which matches the wizard's
+      own default. The two have to agree: a payload that simply omitted the
+      field would otherwise be filed under the reporter's name while the form
+      that produced it showed the box ticked.
+    */
+    isAnonymous: z.boolean().default(true),
     reportedToPolice: z.boolean().default(false),
     policeReference: z
       .string()

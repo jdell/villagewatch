@@ -297,7 +297,9 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
       lat: village.centerLat,
       lng: village.centerLng,
       locationText: "",
-      isAnonymous: false,
+      // Anonymous unless the reporter says otherwise — see the checkbox's own
+      // note further down for what it does and does not hide.
+      isAnonymous: true,
       reportedToPolice: false,
       policeReference: "",
       media: [],
@@ -864,9 +866,26 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
                   className="mt-0.5 size-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                   {...register("isAnonymous")}
                 />
+                {/*
+                  The wording changed with the default, because the old wording
+                  was wrong in both halves and making it the default would have
+                  made it the sentence every reporter reads.
+
+                  It said "hide my name from other residents", and residents
+                  never see a reporter's name — `ModerationCard` is the only
+                  component in the app that renders one. And it said "your
+                  coordinator can still see who filed it", when the coordinator
+                  is the only person this hides it from: the queue nulls the
+                  name for an anonymous report, on purpose.
+
+                  What stays true either way is that the link survives in the
+                  database, which is what a police request is answered from.
+                */}
                 <span className="text-sm text-slate-600">
-                  Hide my name from other residents. Your coordinator can still
-                  see who filed it.
+                  File this anonymously. Your name is not shown to the
+                  coordinator who reviews it — it stays linked to the report in
+                  our records, which is what a police request would be answered
+                  from.
                 </span>
               </label>
 
