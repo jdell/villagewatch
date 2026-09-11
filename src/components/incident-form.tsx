@@ -867,25 +867,22 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
                   {...register("isAnonymous")}
                 />
                 {/*
-                  The wording changed with the default, because the old wording
-                  was wrong in both halves and making it the default would have
-                  made it the sentence every reporter reads.
+                  This is the label the queue was made to match, rather than the
+                  other way round. It has always said that anonymity is from
+                  other residents and that the coordinator still sees who filed
+                  the report; `/dashboard/queue` used to contradict it by
+                  nulling the name, and now does not.
 
-                  It said "hide my name from other residents", and residents
-                  never see a reporter's name — `ModerationCard` is the only
-                  component in the app that renders one. And it said "your
-                  coordinator can still see who filed it", when the coordinator
-                  is the only person this hides it from: the queue nulls the
-                  name for an anonymous report, on purpose.
-
-                  What stays true either way is that the link survives in the
-                  database, which is what a police request is answered from.
+                  **It promises less than it looks like it does, and the second
+                  sentence is there to stop it promising more.** No
+                  resident-facing screen has ever rendered a reporter's name, so
+                  ticking this changes nothing a neighbour could have seen
+                  either way — what it records is the reporter's wish, against a
+                  report a coordinator can still account for.
                 */}
                 <span className="text-sm text-slate-600">
-                  File this anonymously. Your name is not shown to the
-                  coordinator who reviews it — it stays linked to the report in
-                  our records, which is what a police request would be answered
-                  from.
+                  Hide my name from other residents. Your coordinator can still
+                  see who filed it.
                 </span>
               </label>
 

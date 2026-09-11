@@ -1572,11 +1572,12 @@ linked from `SiteFooter` and the registration form.
   mechanical rather than remembered; that is still open. It moved again on
   31 August with §6's Resend paragraph, on **2 September** when the ICO
   confirmed the registration — §1 stated a pending one and now states a real
-  one — and on **11 September**, when §6 was corrected about who can see who
-  filed a report. That last one is the clearest case the constant's rule was
-  written for: the sentences had been wrong rather than merely stale, in the
-  direction of promising a disclosure that does not happen and denying one that
-  does.
+  one — and on **11 September**, when §6 stopped telling residents they
+  see a reporter's name. That last one is the clearest case the constant's rule
+  was written for: the sentence was wrong rather than merely stale, promising a
+  disclosure that does not happen. The other half of that paragraph — what a
+  coordinator sees — did not move, because the queue was brought back to what it
+  had always said instead.
 - **Naming Yakasista Ltd as the *controller* would still be the wrong fix**, and
   the distinction survives this change rather than being settled by it. It is the
   **processor** in both models, and `COMMUNITY_DPA.md` makes the coordinator
@@ -1614,9 +1615,10 @@ linked from `SiteFooter` and the registration form.
   (`src/lib/email/send.ts`, Resend), that the only thing an email loads is our
   own logo and nothing counts the request (`src/lib/email/layout.ts` — see The
   branded shell), that no screen puts a name against a
-  vote, and that no screen puts a name against an *anonymously filed report*
-  either — for a resident or a coordinator (see Filing anonymously). If any of
-  those changes, `/privacy` changes in the same commit. The seventh is the only one describing an outbound request with
+  vote, and that a coordinator sees who filed a report **including one filed
+  anonymously**, while no resident-facing screen shows a reporter at all (see
+  Filing anonymously). If any of those changes, `/privacy` changes in the same
+  commit. The seventh is the only one describing an outbound request with
   **nothing** of a resident's in it, and it is in §6 anyway — a resident reading
   "who else sees it" is entitled to know about every request made on their
   behalf. See Official police data.
@@ -4199,53 +4201,50 @@ nothing shared it.
 
 ## Filing anonymously
 
-`Incident.isAnonymous`, a checkbox on step 5 of the wizard, and **ticked by
-default** since 1.0.0.
+`Incident.isAnonymous`, a checkbox on step 5 of the wizard, **ticked by
+default** since 1.0.0. It means "do not show my name to other residents", and
+the coordinator reviewing the report sees it either way.
 
-- **It hides the reporter from the coordinator, and from nobody else.**
-  `ModerationCard` is the only component in the codebase that renders a
-  reporter's name — `incident.reporterName ?? "Anonymous"` on the review queue.
-  No resident-facing surface has ever shown one: not the map, not the incident
-  list, not the detail page, not the CSV export, not anything `/reports`
-  produces. So a resident's name is not something this flag protects from other
-  residents, because other residents were never shown it.
-- **The old label said the opposite of both halves**, and was replaced when the
-  default flipped rather than left to become the sentence every reporter reads.
-  It said "Hide my name from other residents" — who never see it — and "Your
-  coordinator can still see who filed it", when the coordinator is the only
-  person it hides it from: `/dashboard/queue` nulls `reporterName` for an
-  anonymous report on purpose, and says so in a comment.
+- **Anonymity here is from neighbours, not from the person moderating.**
+  Somebody has to be able to account for what the village is shown, and the
+  coordinator is that somebody — they already read the reporter's verbatim
+  wording through an audited path, and a report they cannot attribute is one
+  they cannot follow up, weigh against a pattern of false reports, or answer a
+  police request about. `/dashboard/queue` therefore does not consult the flag
+  at all, and `/privacy` §6 says so in as many words.
+- **The queue used to contradict both the label and the notice, and the code is
+  what moved.** It nulled `reporterName` for an anonymous report, so the one
+  screen in the codebase that renders a reporter was hiding them from the only
+  audience that ever sees one. The checkbox's label and the privacy notice had
+  both described the intended design all along, which is why the fix was to the
+  page rather than to them.
+- **The flag currently changes nothing anybody can see, and that is worth
+  knowing before trusting it.** `ModerationCard` is the only component in the
+  codebase that renders a reporter's name; no resident-facing surface has ever
+  shown one — not the map, the incident list, the detail page, the CSV export,
+  or anything `/reports` produces. So "hide my name from other residents" hides
+  it from people who were not being shown it. What the column records is the
+  reporter's **wish**, which is the thing to honour if a resident-facing byline
+  is ever added — and the moment one is, this flag is what decides it. Until
+  then it is a stored preference rather than a control.
 - **What the flag never hides is the row.** `Incident.reporterId` is untouched,
   which is what a police request is answered from and what `removeIncident`
-  severs when somebody erases their own report. The label says so, because
-  "anonymous" meaning *deleted* is the reading a reporter would otherwise be
-  entitled to.
+  severs when somebody erases their own report. "Anonymous" on a card is a
+  *closed account* — `eraseAccount` nulls the relation — and not a reporter who
+  ticked the box.
 - **The default lives in two places and they have to agree.**
   `incidentReportSchema` defaults it `true` for a payload that omits the field,
   and `incident-form.tsx` starts the checkbox ticked. Split, a request that
-  dropped the field would be filed under somebody's name by a form that had just
-  told them it would not be. Asserted in `tests/validations.test.ts`.
-- **`/privacy` §6 used to say the opposite, and the notice was corrected rather
-  than the code.** It told a resident that other residents see "your name, unless
-  you filed anonymously" — they see no name either way — and that coordinators
-  see "your name against the report **even when you filed anonymously**", which
-  is the reverse of what the queue does. Flipping the default did not create
-  either error; it made both describe the ordinary path rather than an opt-in.
-
-  There were two opposite fixes — show the name to coordinators and match the
-  notice, or correct the notice to match the queue — and the second was chosen
-  on 11 September 2026: **full anonymity, with nobody shown the name.** So §6
-  now says residents are never shown a reporter's name at all, and that a
-  coordinator sees one only where the reporter unticked the box.
-  `LEGAL_LAST_UPDATED` moved with it.
-
-  **The wording is borrowed from the vote entry two definitions below**, which
-  had already solved the same problem: "shown to nobody" has to be said without
-  claiming the link was destroyed. It was not — `Incident.reporterId` is
-  untouched — so the notice says the link stays in the records, that nothing
-  displays it, and points at "The police, on request", which is the one route by
-  which it could leave. Claiming more than that would be the easier sentence and
-  a false one.
+  dropped the field would be recorded against a wish the reporter had not
+  expressed. Asserted in `tests/validations.test.ts`.
+- **`/privacy` §6 was wrong about this in both directions and only half of it
+  was a notice problem.** It told a resident that other residents see "your
+  name, unless you filed anonymously" — they see no name either way, so that
+  sentence is corrected and now reads *never* your name. And it said
+  coordinators see the name "even when you filed anonymously", which was false
+  against the old queue and is **true against the new one** — so that half went
+  back to what it always said, and the page it describes changed instead.
+  `LEGAL_LAST_UPDATED` moved on 11 September 2026 for the first of those.
 
 ## The incident vote
 
