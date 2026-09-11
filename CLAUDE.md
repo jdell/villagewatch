@@ -118,6 +118,11 @@ src/
     sitemap.ts                /sitemap.xml — the five public pages, by hand
     not-found.tsx             Friendly 404 — also where a withdrawn report lands
     error.tsx                 Root error boundary; client, uses unstable_retry
+    global-error.tsx          The last resort — an error thrown by the root
+                              layout itself, which `error.tsx` cannot catch.
+                              Renders its own html/body and every style inline,
+                              because the thing that failed is what would have
+                              provided them. See The error boundaries
     login/, register/         Public auth pages. /register pre-fills the village
                               and code from an invite link — neither is trusted
     welcome/                  Village, join code and terms for a provider
@@ -133,6 +138,9 @@ src/
                               (app) and outside AUTH_ROUTES, or it would loop
     (app)/                    Authenticated shell (sidebar); force-dynamic
       layout.tsx              requireSession() — the real auth boundary
+      error.tsx               The boundary for the authenticated screens.
+                              Renders inside the shell, so the sidebar survives
+                              one panel failing
       admin/coordinators/     Platform-admin queue — one of two pages not scoped
                               to one village; approve promotes to COORDINATOR
       admin/villages/         The other. Activate a directory entry, mint and
@@ -4394,6 +4402,61 @@ why the rules live in the module rather than at the call site.
   gives: coordinators now see a membership list, and confirming somebody is a
   new privileged action in the trail. `/terms` §2 already said coordinators
   verify residents — that sentence became true rather than needing changing.
+
+## The error boundaries
+
+Three of them, and which one renders is which layout is still standing.
+
+- **`src/app/error.tsx`** catches everything below the root layout. It has been
+  there since Day 8 and is where nearly every failure lands.
+- **`src/app/(app)/error.tsx`** catches the authenticated screens, and what it
+  buys is the shell. Next renders the *nearest* boundary, so without it an error
+  on `/dashboard` bubbles to the root one — a full-page screen with its own
+  logo, built for the routes above `(app)/layout.tsx` where there is no sidebar
+  and possibly no session. Landing there from inside the app throws away the
+  navigation somebody was using over one panel failing. This renders inside the
+  shell instead, so every other tab is one click away. It deliberately does not
+  use `StatusScreen` for that reason: the shell already has a logo, and a second
+  one inside it reads as a page within a page.
+- **`src/app/global-error.tsx`** catches the root layout itself, which neither
+  of the others can — Next's own words are that `error.js` "does not wrap the
+  `layout.js` or `template.js` above it in the same segment". Without it, a
+  failure in `src/app/layout.tsx` has no boundary at all and produces the
+  browser's own error page.
+
+**`global-error.tsx` replaces the root layout, and that is why it looks nothing
+like the rest of the app.** Next's documentation is explicit that it must define
+its own `<html>`, `<body>`, styles and fonts. So every style in it is **inline
+and nothing is imported** — not for consistency, against it: `globals.css` is
+pulled in by the layout that just failed, so a Tailwind class there is a class
+whose stylesheet may never have been linked, and an unstyled fallback at browser
+defaults is the one page where that matters most. No `next/link`, no `Logo`, no
+icon component, no `StatusScreen`. The less it depends on, the more likely it is
+to be what somebody actually sees.
+
+- **The "start again" link is a plain `<a>` and the lint rule asking for `Link`
+  is switched off on that line.** The rule's premise is that a soft navigation
+  is faster and keeps the application's state; here both are the problem, since
+  the React tree already running is the broken thing and a client-side
+  navigation would carry it to the next screen.
+- **`<title>` is the React element, not `metadata`.** An error boundary is a
+  Client Component and `metadata` cannot be exported from one.
+- **`unstable_retry`, never `reset`.** It re-fetches and re-renders the segment
+  rather than only clearing the error state, and almost everything that fails on
+  these screens is a database or Supabase call that timed out.
+- **No `error.message` on any of the three, and the digest on all of them.** In
+  production Next replaces the message with a generic string; on a preview
+  deployment it would be the raw Postgres or Supabase error, and a connection
+  string in a stack trace on a resident's screen is a worse outcome than an
+  unhelpful sentence. The digest is the part a coordinator can quote.
+- **`global-error.tsx` carries the 999 line and the other two do not.** Somebody
+  who lands there may have been part way through reporting something, and it is
+  the one boundary that cannot promise any route into the app works. The other
+  two offer a way back to the map instead, because the app was working a moment
+  ago.
+- **A `redirect()` is not an error and does not reach any of them.**
+  `requireSession()` and `requireCoordinator()` throw a redirect Next handles
+  itself, so the auth gates keep working with a boundary in front of them.
 
 ## The map's corners
 
