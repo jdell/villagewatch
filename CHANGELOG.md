@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [0.1.64](https://github.com/jdell/villagewatch/compare/v0.1.63...v0.1.64) (2026-09-11)
+
+
+### Fixes
+
+* **charts:** keep the severity key inside its own card ([9e3a317](https://github.com/jdell/villagewatch/commit/9e3a31771076e48c8736e37f2ba8b8e5f828072a))
+
 ### [0.1.63](https://github.com/jdell/villagewatch/compare/v0.1.62...v0.1.63) (2026-09-11)
 
 
