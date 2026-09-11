@@ -37,7 +37,21 @@ import {
  * the same page already follow.
  */
 
-/** Narrowed to the three units `chooseGranularity` can return. */
+/**
+ * Narrowed to the three units `chooseGranularity` can return.
+ *
+ * **`date_trunc` and `bucketStart` have to agree**, or the counts are keyed to
+ * buckets the axis does not contain and every one of them silently reads as
+ * zero. The case that decides it is a Sunday: Postgres weeks begin on Monday,
+ * and so does `bucketStart` — checked against a throwaway Postgres 16 with
+ * these exact statements, where Sunday 13 September 2026 buckets to Monday the
+ * 7th on both sides.
+ *
+ * The unit is a bound parameter rather than interpolated. Postgres resolves the
+ * overload from the second argument — `occurred_at` is `TIMESTAMP(3)`, so only
+ * `date_trunc(text, timestamp)` matches — which was the other half of what that
+ * check was for.
+ */
 const TRUNC_UNIT: Record<Granularity, string> = {
   day: "day",
   week: "week",
