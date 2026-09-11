@@ -148,9 +148,26 @@ export function RegisterForm({
         return;
       }
 
+      /*
+        The account exists but cannot sign in until the link in Supabase's
+        confirmation email is clicked, so what happens next is entirely in
+        somebody's inbox — and this is the moment they are least likely to know
+        that.
+
+        The message travels in the URL rather than as a toast, and that is the
+        fix rather than a refactor. A toast is a few seconds long and this one
+        was fired immediately before a redirect, so it was read on the way past
+        a page change or not at all; what was left on screen afterwards was an
+        ordinary sign-in form, and filling it in produces "Email or password is
+        incorrect" — which is what sent people to reset a password that was
+        never wrong. `/login` renders the sentence as a panel that is still
+        there when they come back from their email.
+
+        `registered=1` is a flag and never the wording: the page prints its own
+        copy, so nothing a caller puts in the query string can reach the screen.
+      */
       if (result.needsEmailConfirmation) {
-        toast.success("Check your email to confirm your account");
-        router.replace("/login");
+        router.replace("/login?registered=1");
         return;
       }
 

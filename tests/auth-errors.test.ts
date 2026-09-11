@@ -3,6 +3,7 @@ import {
   AUTH_RETRY_FALLBACK_SECONDS,
   authErrorMessage,
   describeAuthError,
+  isEmailNotConfirmedError,
   isEmailQuotaError,
   isRateLimitError,
   rateLimitMessage,
@@ -192,6 +193,101 @@ describe("describeAuthError", () => {
     expect(rateLimitMessage("signup", 60)).toContain("1 minute");
     expect(rateLimitMessage("signup", 120)).toContain("2 minutes");
     expect(rateLimitMessage("signup", null)).toContain("a few minutes");
+  });
+});
+
+describe("isEmailNotConfirmedError", () => {
+  /*
+    The sign-in form is deliberately vague about every other failure — "Email or
+    password is incorrect" covers a wrong password and an address with no
+    account alike, because the membership list is itself sensitive here. This is
+    the one sentence it says about a particular account, so what these
+    assertions are really protecting is the *narrowness* of the match: anything
+    else that answered true would turn the generic refusal into a disclosure.
+  */
+
+  it("recognises the SDK's code and the bare message", () => {
+    // The code is what a current SDK carries; the message is the fallback for
+    // an older one or a REST response, which is why both are matched.
+    expect(isEmailNotConfirmedError({ code: "email_not_confirmed" })).toBe(true);
+    expect(isEmailNotConfirmedError({ message: "Email not confirmed" })).toBe(
+      true,
+    );
+    expect(isEmailNotConfirmedError({ message: "email not confirmed" })).toBe(
+      true,
+    );
+  });
+
+  it("does not answer true for a wrong password", () => {
+    /*
+      The assertion the whole feature rests on. `invalid_credentials` is what
+      every failed sign-in returns, so a matcher loose enough to catch it would
+      tell anybody who typed any address that an unverified account exists —
+      the enumeration oracle `/forgot-password` is built to avoid, on the form
+      next to it.
+    */
+    expect(
+      isEmailNotConfirmedError({
+        code: "invalid_credentials",
+        message: "Invalid login credentials",
+      }),
+    ).toBe(false);
+
+    expect(isEmailNotConfirmedError({ message: "Invalid login credentials" })).toBe(
+      false,
+    );
+  });
+
+  it("does not answer true for the allow-list refusal that reads like it", () => {
+    // `email_address_not_authorized` is a restricted-recipient project refusing
+    // to send at all. Telling somebody to check an inbox no mail was ever sent
+    // to would be worse than the generic sentence, and the names are one word
+    // apart.
+    expect(
+      isEmailNotConfirmedError({
+        code: "email_address_not_authorized",
+        message: "Email address not authorized",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not overlap with a rate limit in either direction", () => {
+    /*
+      `POST /api/auth/login` tests for a rate limit **first**, so an overlap
+      would not be a tie — the not-confirmed case would lose, and somebody who
+      had simply not clicked their link would be told to wait a few minutes and
+      have the button held against them while they did.
+    */
+    const notConfirmed = { code: "email_not_confirmed", status: 400 };
+    expect(isRateLimitError(notConfirmed)).toBe(false);
+
+    expect(isEmailNotConfirmedError({ message: EMAIL_QUOTA })).toBe(false);
+    expect(isEmailNotConfirmedError({ message: PER_ADDRESS })).toBe(false);
+    expect(isEmailNotConfirmedError({ status: 429 })).toBe(false);
+  });
+
+  it("ignores anything that is not an error-shaped object", () => {
+    expect(isEmailNotConfirmedError(null)).toBe(false);
+    expect(isEmailNotConfirmedError(undefined)).toBe(false);
+    expect(isEmailNotConfirmedError({})).toBe(false);
+  });
+
+  it("leaves describeAuthError's own answer alone", () => {
+    /*
+      The predicate is consulted by the route *beside* the mapper rather than
+      inside it — the shape `isEmailQuotaError` already has. So the mapper still
+      returns its generic sign-in sentence for this error, which is what keeps
+      every other caller (the register form, the OAuth callback) unchanged by a
+      branch that is only correct on the sign-in route.
+    */
+    const described = describeAuthError(
+      { code: "email_not_confirmed", message: "Email not confirmed" },
+      "signin",
+    );
+
+    expect(described.rateLimited).toBe(false);
+    expect(described.retryAfter).toBeNull();
+    expect(described.message).not.toMatch(/not confirmed/i);
   });
 });
 
