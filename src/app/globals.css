@@ -373,6 +373,42 @@ body[data-tour-active] [data-push-prompt] {
   }
 
   /*
+    Charts are the exception to the black-on-white rule above, and the only one.
+
+    That rule exists because "print backgrounds" is off by default in every
+    browser, so a tinted panel prints as nothing and the document is built to
+    lean on rules and weight instead. A chart cannot: the colour *is* the
+    reading — four severity arcs in identical grey say nothing, and a bar chart
+    with no bars is a list of labels. `print-color-adjust: exact` is the
+    property that says so to the browser, which is exactly what it is for.
+
+    It is scoped to `[data-chart-printable]`, set by `ChartFrame`'s `printable`
+    prop, so a chart has to ask. Nothing else in the region gets its colour
+    back.
+  */
+  [data-print-region] [data-chart-printable],
+  [data-print-region] [data-chart-printable] * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* A chart split across a page break is two halves of nothing. */
+  [data-print-region] [data-chart-printable] {
+    break-inside: avoid;
+  }
+
+  /*
+    The doughnut's key is HTML rather than SVG, so its swatches are a
+    `background` and the rule above strips them — leaving four rows of text
+    against a ring whose colours are the only thing that maps one to the other.
+    The colour is repeated as a custom property by `SeverityDonut` precisely so
+    it can be put back here, since an inline style loses to an `!important`.
+  */
+  [data-print-region] [data-chart-printable] [data-chart-swatch] {
+    background: var(--chart-swatch) !important;
+  }
+
+  /*
     `section` is deliberately *not* in that rule any more, and the incident log
     is why: it is the one section that can run to several pages, and
     `break-inside: avoid` on a box taller than a page is a request no engine can

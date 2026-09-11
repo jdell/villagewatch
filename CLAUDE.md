@@ -360,6 +360,12 @@ src/
     charts/severity-donut.tsx The severity split, with the total in the hole
                               and the counts as text beside it
     charts/activity-sparkline.tsx  One column per day, above the activity feed
+    village-summary.tsx       The resident's two charts — when reports came in
+                              and what they were, counted. Behind the session,
+                              and deliberately not a public page
+    reports/report-charts.tsx The period report's three, inside the print
+                              region. The dashboard's components over the
+                              report's own counts
     admin/village-comparison.tsx  Villages in service, ranked, with a metric
                               toggle. The one chart that reads across villages,
                               and the only screen it is allowed on
@@ -4796,11 +4802,47 @@ rather than quietly deleted.
   missed", which is the feed's own question — and it is unbounded by the period
   for the feed's own reason. Both headings name their window, the way the
   "waiting for review" card names "all time".
+- **Three surfaces now, and they share components rather than data.**
+  `/dashboard` counts its own period, `/reports` passes the **report's own**
+  `byType` and `bySeverity` straight in, and `/incidents` counts the period the
+  list beside it is filtered by. Sharing the components is what stops two
+  screens drawing the same village differently; sharing a *query* is what would
+  make a chart disagree with the table printed under it, in a document that goes
+  to a police officer.
+- **`printable` is the browser's print path and not the PDF.** `ChartFrame`
+  takes it, and what it does is opt the chart out of the black-on-white rule the
+  printed report otherwise follows — because for a chart the colour is the
+  reading, and four severity arcs in identical grey say nothing.
+  `print-color-adjust: exact` is the property that says so. **It does not put a
+  chart in the downloaded PDF**: `GET /api/reports/[villageId]/pdf` is rendered
+  by `@react-pdf/renderer`, which has no DOM and no Recharts in it, so charts
+  there mean drawing them again as react-pdf primitives — a separate piece of
+  work rather than a prop.
+- **The doughnut's key needs the colour twice, and that is not redundancy.**
+  `[data-print-region] *` forces every background transparent, and an inline
+  style loses to an `!important`; so the swatch carries its colour as a
+  `--chart-swatch` custom property as well, which a more specific rule puts
+  back. Without it the key prints as four unlabelled rows beside a coloured
+  ring. Checked by replaying both rules against the rendered swatch rather than
+  by counting selectors.
+- **The resident summary is behind the session, and a public stats page was
+  refused.** The village is the tenant boundary (domain rule 4), and a page
+  outside the session would publish one parish's activity to anyone who asked,
+  on a timer, with nobody deciding. There is already a way to put a village's
+  week in public — `GET /api/digest/social`, which a *coordinator* copies and
+  pastes having read it first. That is a person taking responsibility for the
+  disclosure each time, and an automatic feed would quietly replace it. See The
+  social digest.
+- **The resident summary follows the period and not the filters.** `/incidents`
+  has a type and a severity select as well as a period; the summary reads only
+  the period, because a "what was reported" chart narrowed to `THEFT` is one bar
+  saying "theft" — a picture of the filter rather than of the village.
 - **`/privacy` and `/terms` did not change**, and that is a decision rather than
   an omission. Nothing new is collected, nothing is disclosed to anybody new,
   nothing leaves the village, and no retention period moves: these are counts of
-  reports a coordinator can already read, in a different arrangement. Same
-  reasoning Suspending a village records.
+  reports a coordinator can already read, in a different arrangement — and the
+  resident summary is counts of reports every resident can already read one
+  screen further down. Same reasoning Suspending a village records.
 - **No `AuditLog` rows.** The Overview tab writes nothing and that is a property
   worth keeping — see The coordinator's five tabs. The comparison on
   `/admin/villages` is a count of villages an administrator is already looking

@@ -36,6 +36,7 @@ export function ChartFrame({
   labelHeading = "Period",
   height,
   stackedHeight,
+  printable = false,
   children,
 }: {
   rows: readonly ChartDatum[];
@@ -50,6 +51,23 @@ export function ChartFrame({
    * card reflowing under somebody as it hydrates.
    */
   height: number;
+  /**
+   * Marks the chart as something that should survive Ctrl+P.
+   *
+   * The print rules in `globals.css` force everything inside
+   * `[data-print-region]` to black on transparent, because "print backgrounds"
+   * is off by default in every browser and the report is built to read as black
+   * on white. **A chart is the one thing on the page where the colour is the
+   * data** — a severity doughnut in greyscale is four indistinguishable arcs —
+   * so this opts the chart out of that rule with `print-color-adjust: exact`
+   * and keeps it from being split across a page break.
+   *
+   * It does **not** put the chart in the downloadable PDF. That file is
+   * rendered server-side by `@react-pdf/renderer`, which is a different engine
+   * with no DOM and no Recharts in it — see The PDF report. This is the browser
+   * print path only.
+   */
+  printable?: boolean;
   /**
    * What to reserve below `sm`, for a chart whose parts stack there. Defaults
    * to `height`, which is every chart but the doughnut.
@@ -80,6 +98,7 @@ export function ChartFrame({
       */}
       <div
         aria-hidden
+        data-chart-printable={printable ? "" : undefined}
         className="h-[var(--chart-stacked-height)] sm:h-[var(--chart-height)]"
         style={
           {

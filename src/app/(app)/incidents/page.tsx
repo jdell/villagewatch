@@ -18,6 +18,7 @@ import {
   BROWSE_RANGE_VALUES,
   DEFAULT_TIME_RANGE,
   INCIDENT_TYPES,
+  INCIDENT_TYPE_LABELS,
   INCIDENT_TYPE_VALUES,
   PUBLIC_INCIDENT_STATUSES,
   SEVERITIES,
@@ -25,7 +26,16 @@ import {
 } from "@/lib/constants";
 import { readVoteStates } from "@/lib/incident-votes";
 import { INCIDENT_PAGE_SIZE, PUBLIC_INCIDENT_SELECT } from "@/lib/incidents";
+import { VillageSummary } from "@/components/village-summary";
+import { getIncidentTrend } from "@/lib/charts/incident-series";
 import { signedMediaUrls } from "@/lib/media/storage";
+
+/** What the summary's trend caption calls its buckets. */
+const SUMMARY_TREND_LABELS = {
+  day: "by day",
+  week: "by week",
+  month: "by month",
+} as const;
 
 export const metadata: Metadata = { title: "Incidents" };
 
@@ -112,6 +122,47 @@ export default async function IncidentsPage({
     take: INCIDENT_PAGE_SIZE,
   });
 
+  /*
+    The summary above the list: the same published reports, counted.
+
+    **Deliberately not narrowed by the type and severity selects**, only by the
+    period. Those two filters are how somebody looks for one thing; the summary
+    is what the village looks like, and a "what was reported" chart filtered to
+    `THEFT` would be one bar saying "theft" — a picture of the filter rather
+    than of the village.
+
+    Both degrade rather than throwing: `getIncidentTrend` returns an empty axis
+    on a failed read and the `groupBy` is caught, because this is furniture over
+    a list that has to render.
+  */
+  const [byTypeRows, trend] = await Promise.all([
+    prisma.incident
+      .groupBy({
+        by: ["type"],
+        where: {
+          villageId,
+          status: { in: [...PUBLIC_INCIDENT_STATUSES] },
+          ...timeRangeFilter(range),
+        },
+        _count: { _all: true },
+      })
+      .catch((cause: unknown) => {
+        console.warn(
+          "Could not count incidents by type for the village summary.",
+          cause,
+        );
+        return [];
+      }),
+    getIncidentTrend({ villageId, range }),
+  ]);
+
+  const summaryByType = byTypeRows
+    .map((row) => ({
+      label: INCIDENT_TYPE_LABELS[row.type as IncidentType],
+      value: row._count._all,
+    }))
+    .sort((a, b) => b.value - a.value);
+
   // One round trip for every thumbnail on the page rather than one per card.
   const urls = await signedMediaUrls(
     rows.flatMap((row) => row.media[0]?.redactedPath ?? []),
@@ -160,6 +211,13 @@ export default async function IncidentsPage({
           Report an incident
         </Link>
       </div>
+
+      <VillageSummary
+        trend={trend.buckets}
+        trendLabel={SUMMARY_TREND_LABELS[trend.granularity]}
+        byType={summaryByType}
+        periodLabel={range.label}
+      />
 
       <form
         method="get"

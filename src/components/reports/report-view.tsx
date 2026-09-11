@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
@@ -113,6 +114,7 @@ export function ReportView({
   report,
   villageId,
   rangeFields,
+  charts,
 }: {
   /** Everything but the narrative. Collected on the server. */
   report: Omit<CommunityReportData, "narrative">;
@@ -126,6 +128,19 @@ export function ReportView({
   villageId: string;
   /** The resolved range, posted back so the action re-derives the same period. */
   rangeFields: { range: string; from: string; to: string };
+  /**
+   * The period's three charts, rendered by the page and handed in.
+   *
+   * A prop rather than an import because this is a Client Component and the
+   * charts are built from a server query — and because they belong *inside*
+   * `[data-print-region]` below, which is the only thing Ctrl+P keeps. Rendered
+   * next to the summary rather than at the end: somebody reading this document
+   * wants the shape of the period before the log of it.
+   *
+   * Optional, so a caller that has no charts to give renders exactly the
+   * document it rendered before.
+   */
+  charts?: ReactNode;
 }) {
   const [state, generate] = useActionState(generateNarrativeAction, IDLE);
   const [copied, setCopied] = useState(false);
@@ -315,6 +330,14 @@ export function ReportView({
               }))}
             />
           </div>
+
+          {/*
+            Under the two count tables rather than instead of them. The tables
+            are the figures a police officer quotes and the charts are the shape
+            — and where a browser refuses to print colour, or the chunk never
+            loads, the tables are still the document.
+          */}
+          {charts}
         </Section>
 
         <Section title="Hotspots">
