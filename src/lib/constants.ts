@@ -1958,7 +1958,7 @@ export const PRICING = [
  * and more reports, which is a new disclosure either way, and the old sentence
  * would have been a false description of it.
  */
-export const LEGAL_LAST_UPDATED = "2026-09-07";
+export const LEGAL_LAST_UPDATED = "2026-09-11";
 
 /**
  * The data controller under UK GDPR.

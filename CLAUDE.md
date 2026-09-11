@@ -1570,9 +1570,13 @@ linked from `SiteFooter` and the registration form.
   is exactly what the constant's own rule is about. VW-20 counts five earlier
   rewrites that left it at 27 July, and asks for a test to make the rule
   mechanical rather than remembered; that is still open. It moved again on
-  31 August with §6's Resend paragraph, and on **2 September** when the ICO
+  31 August with §6's Resend paragraph, on **2 September** when the ICO
   confirmed the registration — §1 stated a pending one and now states a real
-  one.
+  one — and on **11 September**, when §6 was corrected about who can see who
+  filed a report. That last one is the clearest case the constant's rule was
+  written for: the sentences had been wrong rather than merely stale, in the
+  direction of promising a disclosure that does not happen and denying one that
+  does.
 - **Naming Yakasista Ltd as the *controller* would still be the wrong fix**, and
   the distinction survives this change rather than being settled by it. It is the
   **processor** in both models, and `COMMUNITY_DPA.md` makes the coordinator
@@ -1600,7 +1604,7 @@ linked from `SiteFooter` and the registration form.
   processing is the kind of thing a regulator asks about first. Legitimate
   interests is the stated basis; the public task is described beside it as what
   a council may rely on instead. **Change one and change the other.**
-- The privacy notice makes ten claims that are statements about how the code
+- The privacy notice makes eleven claims that are statements about how the code
   behaves: on-device blur with no server-side fallback (domain rule 3),
   coordinate jitter (domain rule 2), report text going to Anthropic, what the
   Slack staff channel is told, whether a human sees a report before it is
@@ -1609,8 +1613,10 @@ linked from `SiteFooter` and the registration form.
   is sent to data.police.uk, what an email carries and who delivers it
   (`src/lib/email/send.ts`, Resend), that the only thing an email loads is our
   own logo and nothing counts the request (`src/lib/email/layout.ts` — see The
-  branded shell), and that no screen puts a name against a
-  vote. If any of those changes, `/privacy` changes in the same commit. The seventh is the only one describing an outbound request with
+  branded shell), that no screen puts a name against a
+  vote, and that no screen puts a name against an *anonymously filed report*
+  either — for a resident or a coordinator (see Filing anonymously). If any of
+  those changes, `/privacy` changes in the same commit. The seventh is the only one describing an outbound request with
   **nothing** of a resident's in it, and it is in §6 anyway — a resident reading
   "who else sees it" is entitled to know about every request made on their
   behalf. See Official police data.
@@ -4219,17 +4225,27 @@ default** since 1.0.0.
   and `incident-form.tsx` starts the checkbox ticked. Split, a request that
   dropped the field would be filed under somebody's name by a form that had just
   told them it would not be. Asserted in `tests/validations.test.ts`.
-- **`/privacy` §6 does not match the code and did not match it before this
-  changed.** It tells a resident that other residents see "your name, unless you
-  filed anonymously" — they see no name either way — and that coordinators see
-  "your name against the report **even when you filed anonymously** to other
-  residents", which is the reverse of what the queue does. Flipping the default
-  did not create either error; it made both of them describe the ordinary path
-  rather than an opt-in. **There are two opposite fixes** — show the name to
-  coordinators and match the notice, or correct the notice to match the queue —
-  and they are a decision about who is accountable for a report rather than a
-  wording choice, so neither is taken here. Whichever it is, `LEGAL_LAST_UPDATED`
-  moves with it.
+- **`/privacy` §6 used to say the opposite, and the notice was corrected rather
+  than the code.** It told a resident that other residents see "your name, unless
+  you filed anonymously" — they see no name either way — and that coordinators
+  see "your name against the report **even when you filed anonymously**", which
+  is the reverse of what the queue does. Flipping the default did not create
+  either error; it made both describe the ordinary path rather than an opt-in.
+
+  There were two opposite fixes — show the name to coordinators and match the
+  notice, or correct the notice to match the queue — and the second was chosen
+  on 11 September 2026: **full anonymity, with nobody shown the name.** So §6
+  now says residents are never shown a reporter's name at all, and that a
+  coordinator sees one only where the reporter unticked the box.
+  `LEGAL_LAST_UPDATED` moved with it.
+
+  **The wording is borrowed from the vote entry two definitions below**, which
+  had already solved the same problem: "shown to nobody" has to be said without
+  claiming the link was destroyed. It was not — `Incident.reporterId` is
+  untouched — so the notice says the link stays in the records, that nothing
+  displays it, and points at "The police, on request", which is the one route by
+  which it could leave. Claiming more than that would be the easier sentence and
+  a false one.
 
 ## The incident vote
 
