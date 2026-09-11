@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.2.0](https://github.com/jdell/villagewatch/compare/v1.1.0...v1.2.0) (2026-09-11)
+
+
+### Features
+
+* **reports:** draw the summary's three charts in the PDF ([99bdc70](https://github.com/jdell/villagewatch/commit/99bdc70c609534dccf861bcc8e09c8451759f03c))
+
+
+### Documentation
+
+* **state:** record PR [#35](https://github.com/jdell/villagewatch/issues/35)'s merge and the branch this sits on ([f60c7eb](https://github.com/jdell/villagewatch/commit/f60c7ebbccf635261ed3230bfcfd8bfbc80263ee))
+
 ## [1.1.0](https://github.com/jdell/villagewatch/compare/v1.0.0...v1.1.0) (2026-09-11)
 
 
