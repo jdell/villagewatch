@@ -101,6 +101,45 @@ them.**
 - Never add a required `Unsupported` field — Prisma Client could not create
   rows at all.
 
+### Getting a complete database
+
+`npm run db:setup` runs the three steps in order — `prisma migrate deploy`, then
+`prisma/sql/postgis.sql`, then `prisma/sql/rls_policies.sql` — and stops at the
+first one that fails. It is a **dry run by default**: `migrate deploy` applies to
+whatever `DIRECT_URL` points at, there is no staging database, and two of the
+migrations close every village's reporting until a coordinator has been through
+`/dashboard/compliance`. `.github/workflows/database.yml` does the same three
+steps on a push to `main` touching `prisma/**`; **the two have to agree, and the
+workflow is the one that runs against production.**
+
+**The two SQL files are deliberately not migrations, and the request to fold
+them in keeps coming back.** Three reasons, and the first is the one that
+settles it:
+
+1. **`rls_policies.sql` is not a one-time step.** It has to run again after
+   *any* migration that adds a table or a column — a new table arrives with RLS
+   off, and the `villages` and `incidents` SELECT grants are enumerated per
+   column. A migration runs once, so as a migration it would be correct the day
+   it was written and quietly wrong from the next schema change onwards, which
+   is the exact failure that file exists to prevent.
+2. **The PostGIS objects have no Prisma representation.** The geography columns
+   are `Unsupported(...)`, and the triggers and GiST indexes that maintain them
+   are not in `schema.prisma` — so created by a migration they would be objects
+   the migrate engine cannot see in the schema and offers to drop on every
+   `migrate dev` diff. That is the same trap an `extensions` list already
+   causes, one section up.
+3. **Both files are re-runnable by construction and a migration is not.** Every
+   policy and trigger is dropped before it is created, indexes are
+   `IF NOT EXISTS`, functions are `CREATE OR REPLACE`. That property is what
+   makes running them after every migration safe, and applying them through a
+   mechanism that refuses to run twice would throw it away.
+
+On a database with no Supabase in front of it the third step **fails, and that
+is correct** — `rls_policies.sql` opens with helpers built on `auth.uid()` and
+the `anon` / `authenticated` roles, which stock Postgres does not have. The
+script says so rather than leaving somebody to read a role error: the migrations
+and PostGIS are applied at that point and re-running is safe.
+
 ---
 
 ## Project structure
@@ -603,6 +642,10 @@ scripts/
                               @react-pdf/renderer. Run by hand
   download-ons-places.ts      Finds + fetches the newest IPN release, unzips it
   convert-grid-refs.ts        OSGB36 → WGS84 via geodesy; library + CLI
+  setup-database.ts           Migrations, then PostGIS, then row-level security,
+                              in that order and stopping at the first failure.
+                              The same three steps `database.yml` runs — keep
+                              the two in step. Dry run first
   clean-seed-data.ts          Removes the sample village's invented incidents —
                               one hardcoded slug, matched by title, dry run first
   clean-village.ts            Empties one village by slug and re-opens its
@@ -2255,6 +2298,8 @@ npm run release:patch    # Bump version + changelog by hand (CI usually does it)
 node scripts/generate-icons.mjs   # Re-render the favicons + PWA icons from the mark
 npm run generate:supabase-templates   # Re-render the six Supabase auth email templates
 npx tsx scripts/generate-guide-pdf.tsx   # Rebuild the coordinator guide PDF from the Markdown
+npm run db:setup         # Migrations + PostGIS + RLS, in order — dry run by default
+npm run db:setup -- --apply       # ...and actually apply them
 psql "$DIRECT_URL" -f prisma/sql/postgis.sql        # PostGIS triggers + indexes
 psql "$DIRECT_URL" -f prisma/sql/rls_policies.sql  # Row-level security
 ```

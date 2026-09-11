@@ -130,7 +130,46 @@ alerts are written to the server console, which is what local development wants.
 
 ## 4. Apply the schema
 
-`prisma/migrations/` is committed and holds **ten** migrations. On a fresh
+**Steps 4, 5 and 6 are one job in three parts, and there is a command that does
+all three in the right order:**
+
+```bash
+npm run db:setup              # prints the plan and what is pending, changes nothing
+npm run db:setup -- --apply   # applies migrations, then PostGIS, then RLS
+```
+
+That is the short way, and it is what `.github/workflows/database.yml` does on a
+push to `main`. It is a **dry run by default** because `prisma migrate deploy`
+applies to whatever `DIRECT_URL` points at, this project has no staging
+database, and two of the migrations close every village's reporting until a
+coordinator has been through `/dashboard/compliance` — read the pending list
+before passing `--apply`.
+
+The rest of steps 4 to 6 is what that command runs and why. Read them once; use
+the command afterwards.
+
+### Why this is not a single Prisma migration
+
+The obvious tidy-up is to fold the two SQL files into the migration history so a
+plain `prisma migrate deploy` is enough. It cannot be done:
+
+* **`rls_policies.sql` is not a one-time step.** It has to run again after *any*
+  migration that adds a table or a column — a new table arrives with row-level
+  security off, and the `villages` and `incidents` SELECT grants are enumerated
+  per column. A migration runs once, so as a migration it would be right the day
+  it was written and quietly wrong from the next schema change on.
+* **The PostGIS objects have no Prisma representation.** The geography columns
+  are `Unsupported(...)` and the triggers and GiST indexes that maintain them are
+  not in `schema.prisma`, so a migration that created them would leave objects
+  the migrate engine reports as drift and offers to drop on every `migrate dev`.
+* **Both files are re-runnable and a migration is not.** Every policy and trigger
+  is dropped before it is created, indexes are `IF NOT EXISTS`, functions are
+  `CREATE OR REPLACE`. That property is what makes re-running them safe, and
+  applying them through something that refuses to run twice would throw it away.
+
+### Applying the migrations on their own
+
+`prisma/migrations/` is committed. On a fresh
 database you apply all of them; on an existing one you apply whatever is
 outstanding. Either way the command is the same and it is **not**
 `migrate dev` — that is for authoring a migration, and it will offer to reset a
