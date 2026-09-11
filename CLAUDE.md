@@ -630,6 +630,10 @@ tests/                        Vitest, unit only — see The test suite
                               title can reach it even when one is smuggled into
                               the input, that the 999 line survives a quiet week,
                               and that an absent baseline states no trend
+  chart-layout.test.ts        What a chart card reserves — the key's gaps
+                              counted between its rows rather than one per row,
+                              and the ring's height as the floor. The doughnut's
+                              key rendered over the panel below it once
   chart-series.test.ts        The trend axis — the Sunday that belongs to the
                               week before it, the empty bucket that has to be a
                               zero rather than absent, a count outside the
@@ -1898,7 +1902,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty-seven files, 809 tests, covering the
+between the typecheck and the build. Forty-eight files, 815 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -4535,6 +4539,29 @@ rather than quietly deleted.
   `report-pdf.tsx` and `opengraph-image.tsx` already carry and has the same
   failure mode — they are SVG attributes handed to a library, not classes a
   compiler can see.
+- **A chart card reserves its height, and the doughnut needs two of them.**
+  `ChartFrame` gives every chart a box of a definite height, because the charts
+  are lazy and a box that started at nothing would jump when the chunk landed.
+  The doughnut is the only one whose parts *stack*: the key sits beside the ring
+  at `sm` and under it below that, so one figure cannot describe both. It takes
+  a `stackedHeight` as well, and `severityChartHeight` computes it from the row
+  count the way `typeChartHeight` already does — a level with nothing in it is
+  dropped, so reserving for four would leave dead space under a quiet month.
+- **This shipped broken and the way it shipped is the lesson.** The ring was
+  `h-full`, which is right while the two sit side by side and wrong the moment
+  they stack: it took the whole reserved box and the key was laid out past the
+  end of it — 103px outside the card, drawn over the panel below. **It was
+  checked at desktop width, where it cannot happen.** The charts were checked at
+  375px for the *axis* problem the trend chart had, and the doughnut was not
+  re-checked there afterwards. Anything in `src/components/charts/` wants both
+  widths, and the thing to measure is `reserved === content` rather than whether
+  a screenshot looks right — see `tests/chart-layout.test.ts`, which can pin the
+  arithmetic and cannot pin the constants behind it.
+- **`min-height` would have been the smaller change and the wrong one.** Letting
+  the box grow to fit fixes the overlap and reintroduces the jump: the content
+  is not there until the chunk loads, so the card would be the reserved height
+  and then a hundred pixels taller. Both figures are known before anything
+  renders, so both are stated.
 - **A doughnut is defensible for exactly one figure here.** Severity is a
   *composition* of four ordered levels with colours a resident has already
   learned, the hole is where the total goes, and the key beside it carries every

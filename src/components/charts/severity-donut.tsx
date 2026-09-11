@@ -37,8 +37,24 @@ export function SeverityDonut({
   total: number;
 }) {
   return (
-    <div className="flex h-full flex-col items-center gap-4 sm:flex-row">
-      <div className="relative h-full w-full max-w-[13rem] shrink-0">
+    /*
+      Neither element is `h-full` below `sm`, and that is the fix rather than a
+      tidy-up.
+
+      `ChartFrame` gives this a box of a definite height, and `h-full` on the
+      ring made it claim the whole of that box — which is correct while the two
+      sit side by side and wrong the moment they stack, because the legend is
+      then laid out *after* something already occupying every pixel. It rendered
+      outside the card and over the panel below it.
+
+      Stacked, the ring gets its own definite height instead (`h-52` — 208px,
+      which is what `ResponsiveContainer`'s percentage resolves against) and the
+      legend flows beneath it. Side by side it goes back to filling the box,
+      which is what `sm:h-full` restores. The card is reserved tall enough to
+      hold both by `severityChartHeight` — see `chart-data.ts`.
+    */
+    <div className="flex flex-col items-center gap-4 sm:h-full sm:flex-row">
+      <div className="relative h-52 w-full max-w-[13rem] shrink-0 sm:h-full">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie

@@ -23,6 +23,8 @@ import {
   SeverityDonut,
 } from "@/components/charts/lazy-charts";
 import {
+  SEVERITY_RING_HEIGHT,
+  severityChartHeight,
   typeChartHeight,
   type SeverityDatum,
   type TypeDatum,
@@ -764,7 +766,11 @@ export default async function DashboardPage({
               emptyMessage={emptyPeriod}
               caption={`Published reports by severity, ${range.label.toLowerCase()}`}
               labelHeading="Severity"
-              height={208}
+              height={SEVERITY_RING_HEIGHT}
+              // Below `sm` the key sits under the ring rather than beside it,
+              // so the card has to hold both — and how tall that is depends on
+              // how many levels have anything in them.
+              stackedHeight={severityChartHeight(severityRows.length)}
             >
               <SeverityDonut rows={severityRows} total={severityTotal} />
             </ChartFrame>

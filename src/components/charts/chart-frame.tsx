@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { ChartDatum } from "@/components/charts/chart-data";
 
 /**
@@ -35,6 +35,7 @@ export function ChartFrame({
   valueHeading = "Reports",
   labelHeading = "Period",
   height,
+  stackedHeight,
   children,
 }: {
   rows: readonly ChartDatum[];
@@ -49,6 +50,20 @@ export function ChartFrame({
    * card reflowing under somebody as it hydrates.
    */
   height: number;
+  /**
+   * What to reserve below `sm`, for a chart whose parts stack there. Defaults
+   * to `height`, which is every chart but the doughnut.
+   *
+   * **It is reserved rather than allowed**, and the difference is the whole
+   * reason this is not simply `min-height`. The charts are loaded lazily, so
+   * the box is empty on first paint; a box that merely *permitted* the content
+   * to be taller would be the reserved height until the chunk landed and the
+   * stacked height afterwards, which is a hundred-pixel jump on the narrowest
+   * screen — the exact thing the fixed height exists to prevent, arriving by a
+   * different route. Both figures are known before anything renders, so both
+   * are stated.
+   */
+  stackedHeight?: number;
   children: ReactNode;
 }) {
   if (rows.length === 0) {
@@ -57,7 +72,22 @@ export function ChartFrame({
 
   return (
     <>
-      <div style={{ height }} aria-hidden>
+      {/*
+        Two custom properties and a breakpoint, rather than one inline `height`.
+        An inline style cannot carry a media query, and the height a stacking
+        chart needs is not the height it needs side by side — see
+        `severityChartHeight`.
+      */}
+      <div
+        aria-hidden
+        className="h-[var(--chart-stacked-height)] sm:h-[var(--chart-height)]"
+        style={
+          {
+            "--chart-height": `${height}px`,
+            "--chart-stacked-height": `${stackedHeight ?? height}px`,
+          } as CSSProperties
+        }
+      >
         {children}
       </div>
 
