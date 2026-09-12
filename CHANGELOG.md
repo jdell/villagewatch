@@ -3,6 +3,20 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.4.0](https://github.com/jdell/villagewatch/compare/v1.3.0...v1.4.0) (2026-09-12)
+
+
+### Features
+
+* **errors:** add Sentry, on the EU instance, beside the Slack alerting ([a466c13](https://github.com/jdell/villagewatch/commit/a466c1347f68f3572963f8ac8b073b7045eaf798))
+* **errors:** report error boundary failures to Sentry ([44ae2bc](https://github.com/jdell/villagewatch/commit/44ae2bc62d581dbc85c425bded489ac8dc64b092))
+
+
+### Documentation
+
+* **privacy:** name Sentry as a sub-processor in all four documents ([f01a325](https://github.com/jdell/villagewatch/commit/f01a3258469a5d7c252498bfc67326857765b078))
+* record Sentry, and four variables missing from Vercel ([598715e](https://github.com/jdell/villagewatch/commit/598715eed62bd50dd132eab0f70cd8c45705c3d0))
+
 ## [1.3.0](https://github.com/jdell/villagewatch/compare/v1.2.0...v1.3.0) (2026-09-12)
 
 
