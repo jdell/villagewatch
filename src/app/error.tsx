@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 import { Home, RefreshCw, TriangleAlert } from "lucide-react";
 import {
@@ -36,22 +37,28 @@ export default function GlobalErrorBoundary({
 }) {
   useEffect(() => {
     /*
-      **This reaches nobody but the person it happened to**, and the comment
-      here used to claim otherwise — that it "catches the client-side ones,
-      which otherwise leave no trace at all". It does not: this is a Client
-      Component, so the console it writes to is the resident's own devtools.
-      It moves a client-side failure from one place nobody reads to another.
+      **Both lines, and the order is the point.**
 
-      What *is* reported is the server half. `src/instrumentation.ts` sends
-      every server-side error to the staff Slack channel, and `error.digest`
-      below is the key that matches this screen to that alert — Next generates
-      it for errors forwarded from the server, which is why it is shown and why
-      a purely client-side failure has none to show.
+      For one release this was a bare `console.error` whose comment claimed it
+      "catches the client-side ones, which otherwise leave no trace at all".
+      That was false — this is a Client Component, so the console it writes to
+      is the resident's own devtools — and the sentence was corrected rather
+      than the code, because there was nowhere better to send it. There is now:
+      `Sentry.captureException` reports a *browser-side* failure, which is the
+      half `src/instrumentation.ts` structurally cannot see, since Next only
+      calls `onRequestError` for errors its server caught.
 
-      Left as a `console.error` deliberately rather than removed: it is what a
-      resident on the phone to a coordinator can be asked to read out, and it
-      is the only thing a browser-side failure leaves anywhere at all.
+      The `console.error` stays, and not as a leftover. It is what a resident on
+      the phone to a coordinator can be asked to read out, it is what a
+      developer sees without opening another tab, and it is what is left when
+      the DSN is unset — which is every deployment until one is pasted in, and
+      every `npm run dev`.
+
+      `error.digest` below is still the key that joins this screen to a
+      server-side report. Next generates it for errors forwarded from the
+      server, which is why a purely client-side failure has none to show.
     */
+    Sentry.captureException(error);
     console.error("VillageWatch render error", error);
   }, [error]);
 

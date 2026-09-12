@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 /**
  * The boundary of last resort: an error thrown by the **root layout itself**.
@@ -48,11 +49,30 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     /*
-      The resident's own browser console, and nowhere else — see the longer
-      note in `src/app/error.tsx`. A root-layout error thrown on the server is
-      reported by `src/instrumentation.ts` and is in the platform log; one
-      thrown in the browser leaves this line and nothing more.
+      **The one import in this file, and it is a deliberate exception to the
+      rule at the top of it.**
+
+      Everything else here is inline and imports nothing, because `globals.css`
+      is pulled in by the layout that has just failed and the less this depends
+      on, the more likely it is to be what somebody actually sees. A static
+      `import * as Sentry` is a dependency in exactly the file whose design says
+      it should have none.
+
+      It is taken on for two reasons. A root-layout failure is the **most**
+      important error in the application to capture — it is the one that takes
+      every screen down at once, and it is the one nobody will report, because
+      what a resident sees is a page that says something went wrong. And the SDK
+      is already in the client bundle and already initialised by
+      `src/instrumentation-client.ts`, so what this adds is a reference to a
+      module that is loaded either way rather than a new thing to fetch.
+
+      What it does not do is introduce a *render* dependency: the markup below
+      is untouched by it, so a Sentry failure cannot take the fallback down with
+      it. If that ever stops being true, this import is the first thing to
+      reconsider. See "The error boundaries" in CLAUDE.md, which records the
+      exception alongside the rule.
     */
+    Sentry.captureException(error);
     console.error("VillageWatch root layout error", error);
   }, [error]);
 

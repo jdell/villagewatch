@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 import { Home, RefreshCw, TriangleAlert } from "lucide-react";
 
@@ -43,11 +44,13 @@ export default function AppError({
 }) {
   useEffect(() => {
     /*
-      The resident's own browser console, and nowhere else — see the longer
-      note in `src/app/error.tsx`. The server half of this is reported by
-      `src/instrumentation.ts`; a failure that happened in the browser is not,
-      and the digest below is absent in exactly that case.
+      Sentry for the report, the console for the person in front of it — see
+      the longer note in `src/app/error.tsx`. Between this and
+      `src/instrumentation.ts` both halves are now covered: that one sees what
+      the server caught, this one sees what the browser did, and `error.digest`
+      below joins a screen to a server-side report when there is one.
     */
+    Sentry.captureException(error);
     console.error("VillageWatch screen error", error);
   }, [error]);
 
