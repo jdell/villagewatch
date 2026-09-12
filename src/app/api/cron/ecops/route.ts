@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cronUnauthorised, isCronAuthorised } from "@/lib/cron";
+import { notifyCronOutcome } from "@/lib/slack";
 import {
   listConfiguredEcopsSites,
   syncEcopsSite,
@@ -112,13 +113,62 @@ async function run(request: NextRequest) {
     results,
   };
 
+  /*
+    `failed` and `empty` are both in the line and they mean different things.
+    A failed site is a feed that did not answer; an empty one answered with a
+    well-formed channel containing nothing, which is a quiet week *or* a
+    mistyped `SiteId` and cannot be told apart from here. Folding the second
+    into a success count is exactly what `EcopsSiteSync` exists to prevent, so
+    it is not folded into this either.
+  */
+  await notifyCronOutcome({
+    job: "/api/cron/ecops",
+    ok: summary.failed === 0,
+    summary:
+      `${summary.sites} site(s), ${summary.stored} alerts stored, ` +
+      `${summary.failed} failed, ${summary.empty} empty`,
+  });
+
   return NextResponse.json(summary);
 }
 
+/**
+ * The outer net.
+ *
+ * `run` already handles the failure it expects — `syncEcopsSite` returns its
+ * failures rather than throwing, so one unreachable feed costs that site and
+ * not the sites after it. What it does not handle is the run failing before it
+ * gets there: the query that lists the configured sites, or a connection
+ * refused. That used to be a 500 in a log nobody reads.
+ *
+ * The 500 still goes back, so Vercel records a failed invocation too. What this
+ * adds is somebody being told. The cause goes to the log whole and a class name
+ * goes to Slack — see `notifyServerError` in `src/lib/slack.ts` for why the two
+ * halves are split that way.
+ */
+async function runReported(request: NextRequest) {
+  try {
+    return await run(request);
+  } catch (cause) {
+    console.error("The eCops alert sync failed", cause);
+
+    await notifyCronOutcome({
+      job: "/api/cron/ecops",
+      ok: false,
+      summary: `${cause instanceof Error ? cause.name : "Unknown failure"} — the run did not complete. See the server log.`,
+    });
+
+    return NextResponse.json(
+      { ok: false, error: "The eCops alert sync failed. See the server log." },
+      { status: 500 },
+    );
+  }
+}
+
 export async function GET(request: NextRequest) {
-  return run(request);
+  return runReported(request);
 }
 
 export async function POST(request: NextRequest) {
-  return run(request);
+  return runReported(request);
 }

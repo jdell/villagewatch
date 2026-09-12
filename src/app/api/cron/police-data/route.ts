@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cronUnauthorised, isCronAuthorised } from "@/lib/cron";
+import { notifyCronOutcome } from "@/lib/slack";
 import { fetchAvailableMonths } from "@/lib/police-api";
 import {
   refreshVillageNeighbourhood,
@@ -180,6 +181,24 @@ async function runPoliceSync(request: NextRequest) {
     budget -= outcomes[outcomes.length - 1].requests;
   }
 
+  /*
+    `requestsRemaining` is in the line because a run that spent its whole budget
+    left village-months unfetched, and this job's own rule is that a cap is
+    never silent — a sweep that quietly stopped covering recent months looks
+    exactly like a district with no recent crime. Reaching zero here is the
+    signal to raise `POLICE_SYNC_MAX_REQUESTS` or to shorten the window, and it
+    is the number that says so.
+  */
+  await notifyCronOutcome({
+    job: "/api/cron/police-data",
+    ok: true,
+    summary:
+      `${outcomes.length} village(s), ` +
+      `${outcomes.reduce((sum, outcome) => sum + outcome.stored, 0)} crimes stored, ` +
+      `${Math.max(0, budget)}/${POLICE_SYNC_MAX_REQUESTS} requests left, ` +
+      `availability ${availability.ok ? "published" : "assumed"}`,
+  });
+
   return NextResponse.json({
     ranAt: now.toISOString(),
     months,
@@ -322,7 +341,41 @@ function isUuid(value: string): boolean {
   );
 }
 
-export const POST = runPoliceSync;
+
+/**
+ * The outer net.
+ *
+ * `runPoliceSync` already handles the failure it expects — one village's month — and
+ * reports it per item, which is why a bad one costs one item rather than the
+ * run. What it does not handle is the run failing *before* it gets there: the
+ * village query, a connection refused, a migration mid-flight. That used to be
+ * a 500 in a log nobody reads.
+ *
+ * The 500 still goes back, so Vercel records a failed invocation too. What this
+ * adds is somebody being told. The cause goes to the log whole and a class name
+ * goes to Slack — see `notifyServerError` in `src/lib/slack.ts` for why the two
+ * halves are split that way.
+ */
+async function runPoliceSyncReported(request: NextRequest) {
+  try {
+    return await runPoliceSync(request);
+  } catch (cause) {
+    console.error("The police data sync failed", cause);
+
+    await notifyCronOutcome({
+      job: "/api/cron/police-data",
+      ok: false,
+      summary: `${cause instanceof Error ? cause.name : "Unknown failure"} — the run did not complete. See the server log.`,
+    });
+
+    return NextResponse.json(
+      { error: "The police data sync failed. See the server log." },
+      { status: 500 },
+    );
+  }
+}
+
+export const POST = runPoliceSyncReported;
 
 /** Vercel Cron issues a `GET`. Same handler, same secret — as with the other two. */
-export const GET = runPoliceSync;
+export const GET = runPoliceSyncReported;

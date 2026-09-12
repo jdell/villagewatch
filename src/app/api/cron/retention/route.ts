@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { cronUnauthorised, isCronAuthorised } from "@/lib/cron";
 import { deleteExpiredRateLimits } from "@/lib/rate-limit";
+import { notifyCronOutcome } from "@/lib/slack";
 import {
   STORAGE_BUCKET,
   createAdminClient,
@@ -127,58 +128,110 @@ async function runRetention(request: NextRequest) {
   const mediaCutoff = monthsBefore(now, RETENTION.mediaDeleteMonths);
   const archiveCutoff = monthsBefore(now, RETENTION.incidentArchiveMonths);
 
-  // Media first. It is the irreversible half, so it runs while the full 60
-  // seconds are still available rather than after a long archive pass.
-  const media = await deleteExpiredMedia(mediaCutoff);
-  const archive = await archiveExpiredIncidents(archiveCutoff);
-  const cleared = await clearArchivedRawWording(archiveCutoff);
+  /*
+    Everything below runs inside one `try`, and this job is the reason the
+    alerting exists at all.
 
-  const villages = mergeOutcomes(archive, cleared, media.byVillage);
+    It enforces the deletion schedule `/privacy` §7 promises residents. Until
+    now a throw anywhere in it — a Storage outage, a migration mid-flight, a
+    connection refused — produced a 500 in a Vercel log nobody reads, and the
+    sweep simply did not happen that night. Nothing anywhere said so, and the
+    next night looked identical. A retention promise that stops being kept is
+    the one failure here that a regulator would ask about and that nobody would
+    notice.
 
-  await recordSweep({ villages, now, mediaCutoff, archiveCutoff });
-
-  // Last, because it is the one part of this job that is not about privacy and
-  // the one whose failure costs nothing. A `rate_limit` row holds an auth user
-  // id, an action name and a count; nothing in `/privacy` states a period for
-  // it and `RATE_LIMIT_RETENTION_DAYS` is deliberately not in `RETENTION`
-  // alongside the four that are. It rides here because this is the only job
-  // that runs nightly, and the table is the only one in the schema with no
-  // natural ceiling. A failure is logged and swallowed — the sweep above has
-  // already deleted files, and throwing now would make a completed run look
-  // failed and invite a retry that deletes a second batch of media.
-  let rateLimitsDeleted: number | null = null;
-
+    The alert does not swallow it: the 500 still goes back, so Vercel records a
+    failed invocation too. What the `catch` adds is somebody being told.
+  */
   try {
-    rateLimitsDeleted = await deleteExpiredRateLimits(now);
-  } catch (cause) {
-    console.error("Retention: could not sweep the rate limit table", cause);
-  }
+    // Media first. It is the irreversible half, so it runs while the full 60
+    // seconds are still available rather than after a long archive pass.
+    const media = await deleteExpiredMedia(mediaCutoff);
+    const archive = await archiveExpiredIncidents(archiveCutoff);
+    const cleared = await clearArchivedRawWording(archiveCutoff);
 
-  return NextResponse.json({
-    ranAt: now.toISOString(),
-    archive: {
-      cutoff: archiveCutoff.toISOString(),
-      archived: villages.reduce((sum, v) => sum + v.archived, 0),
-      // Includes the reports a coordinator had already archived by hand, which
-      // is why it can exceed `archived` on a run and why it is reported.
-      rawWordingDeleted: villages.reduce((sum, v) => sum + v.rawWordingDeleted, 0),
-    },
-    media: {
-      cutoff: mediaCutoff.toISOString(),
-      considered: media.outcome.considered,
-      objectsDeleted: media.outcome.objectsDeleted,
-      rowsDeleted: media.outcome.rowsDeleted,
-      more: media.outcome.more,
-      skipped: media.outcome.skipped,
-    },
-    rateLimits: {
-      keepDays: RATE_LIMIT_RETENTION_DAYS,
-      // Null when the sweep threw. Distinct from 0, which is a clean run with
-      // nothing old enough to drop.
-      deleted: rateLimitsDeleted,
-    },
-    villages,
-  });
+    const villages = mergeOutcomes(archive, cleared, media.byVillage);
+
+    await recordSweep({ villages, now, mediaCutoff, archiveCutoff });
+
+    // Last, because it is the one part of this job that is not about privacy and
+    // the one whose failure costs nothing. A `rate_limit` row holds an auth user
+    // id, an action name and a count; nothing in `/privacy` states a period for
+    // it and `RATE_LIMIT_RETENTION_DAYS` is deliberately not in `RETENTION`
+    // alongside the four that are. It rides here because this is the only job
+    // that runs nightly, and the table is the only one in the schema with no
+    // natural ceiling. A failure is logged and swallowed — the sweep above has
+    // already deleted files, and throwing now would make a completed run look
+    // failed and invite a retry that deletes a second batch of media.
+    let rateLimitsDeleted: number | null = null;
+
+    try {
+      rateLimitsDeleted = await deleteExpiredRateLimits(now);
+    } catch (cause) {
+      console.error("Retention: could not sweep the rate limit table", cause);
+    }
+
+    const summary = {
+      ranAt: now.toISOString(),
+      archive: {
+        cutoff: archiveCutoff.toISOString(),
+        archived: villages.reduce((sum, v) => sum + v.archived, 0),
+        // Includes the reports a coordinator had already archived by hand, which
+        // is why it can exceed `archived` on a run and why it is reported.
+        rawWordingDeleted: villages.reduce(
+          (sum, v) => sum + v.rawWordingDeleted,
+          0,
+        ),
+      },
+      media: {
+        cutoff: mediaCutoff.toISOString(),
+        considered: media.outcome.considered,
+        objectsDeleted: media.outcome.objectsDeleted,
+        rowsDeleted: media.outcome.rowsDeleted,
+        more: media.outcome.more,
+        skipped: media.outcome.skipped,
+      },
+      rateLimits: {
+        keepDays: RATE_LIMIT_RETENTION_DAYS,
+        // Null when the sweep threw. Distinct from 0, which is a clean run with
+        // nothing old enough to drop.
+        deleted: rateLimitsDeleted,
+      },
+      villages,
+    };
+
+    /*
+      Counts only, built here rather than taken from anything. `archived` and
+      `rawWordingDeleted` are the two figures the audit row carries separately,
+      and the two a regulator asks about, so they are the two in the line.
+    */
+    await notifyCronOutcome({
+      job: "/api/cron/retention",
+      ok: true,
+      summary:
+        `${summary.archive.archived} archived, ` +
+        `${summary.archive.rawWordingDeleted} raw wordings deleted, ` +
+        `${summary.media.objectsDeleted} media objects deleted` +
+        (summary.media.skipped ? ` (media ${summary.media.skipped})` : "") +
+        (summary.media.more ? ", more waiting for tomorrow" : ""),
+    });
+
+    return NextResponse.json(summary);
+  } catch (cause) {
+    // The whole cause to the log, a class name to Slack. See `slack.ts`.
+    console.error("Retention sweep failed", cause);
+
+    await notifyCronOutcome({
+      job: "/api/cron/retention",
+      ok: false,
+      summary: `${cause instanceof Error ? cause.name : "Unknown failure"} — nothing was archived tonight. See the server log.`,
+    });
+
+    return NextResponse.json(
+      { error: "The retention sweep failed. See the server log." },
+      { status: 500 },
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +275,9 @@ async function runRetention(request: NextRequest) {
  * filed and is the report itself rather than a restricted copy of it. `/privacy`
  * §7 says that in as many words rather than leaving a resident to infer it.
  */
-async function archiveExpiredIncidents(cutoff: Date): Promise<VillageOutcome[]> {
+async function archiveExpiredIncidents(
+  cutoff: Date,
+): Promise<VillageOutcome[]> {
   // Not `as const`: Prisma's generated `in` filter takes a mutable array, and a
   // readonly tuple is not assignable to it.
   const where = {

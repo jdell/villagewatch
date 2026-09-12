@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { cronUnauthorised, isCronAuthorised } from "@/lib/cron";
+import { notifyCronOutcome } from "@/lib/slack";
 import {
   generateWeeklyDigest,
   peakSeverity,
@@ -113,6 +114,23 @@ async function runDigest(request: NextRequest) {
       });
     }
   }
+
+  /*
+    A village that failed is already recorded in its own outcome, so the count
+    here is the summary of that rather than a second source. `ok` follows it:
+    one village's Claude call failing is a run worth looking at, and the whole
+    sweep completing is not something to infer from silence.
+  */
+  const failed = outcomes.filter((outcome) => outcome.status === "failed").length;
+
+  await notifyCronOutcome({
+    job: "/api/digest",
+    ok: failed === 0,
+    summary:
+      `${outcomes.length} village(s), ` +
+      `${outcomes.reduce((sum, outcome) => sum + outcome.incidents, 0)} reports summarised, ` +
+      `${failed} failed`,
+  });
 
   return NextResponse.json({
     ranAt: now.toISOString(),
@@ -393,10 +411,44 @@ function averageCoordinates(
   };
 }
 
-export const POST = runDigest;
+
+/**
+ * The outer net.
+ *
+ * `runDigest` already handles the failure it expects — one village's Claude call — and
+ * reports it per item, which is why a bad one costs one item rather than the
+ * run. What it does not handle is the run failing *before* it gets there: the
+ * village query, a connection refused, a migration mid-flight. That used to be
+ * a 500 in a log nobody reads.
+ *
+ * The 500 still goes back, so Vercel records a failed invocation too. What this
+ * adds is somebody being told. The cause goes to the log whole and a class name
+ * goes to Slack — see `notifyServerError` in `src/lib/slack.ts` for why the two
+ * halves are split that way.
+ */
+async function runDigestReported(request: NextRequest) {
+  try {
+    return await runDigest(request);
+  } catch (cause) {
+    console.error("The weekly digest failed", cause);
+
+    await notifyCronOutcome({
+      job: "/api/digest",
+      ok: false,
+      summary: `${cause instanceof Error ? cause.name : "Unknown failure"} — the run did not complete. See the server log.`,
+    });
+
+    return NextResponse.json(
+      { error: "The weekly digest failed. See the server log." },
+      { status: 500 },
+    );
+  }
+}
+
+export const POST = runDigestReported;
 
 /**
  * Vercel Cron issues a `GET`. Same handler, same secret — there is nothing here
  * that a GET should be allowed to do and a POST should not.
  */
-export const GET = runDigest;
+export const GET = runDigestReported;
