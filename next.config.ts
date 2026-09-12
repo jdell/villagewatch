@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 import pkg from "./package.json";
 
 /**
@@ -224,4 +225,97 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * Sentry wraps the config rather than sitting inside it.
+ *
+ * `withSentryConfig` adds three things a plain option could not: the build-time
+ * source map upload, the rewrite behind `tunnelRoute`, and the bundler plugins
+ * that make a minified stack trace resolve back to this repository.
+ *
+ * **The build must still pass with none of these variables set**, and that is
+ * not a nicety — `.github/workflows/ci.yml` runs `npm run build` with no
+ * environment at all, which is the property the whole suite rests on. Without a
+ * `SENTRY_AUTH_TOKEN` the plugin skips the upload and carries on; nothing here
+ * throws on a missing value, and a fresh clone builds exactly as it did before.
+ */
+export default withSentryConfig(nextConfig, {
+  /**
+   * Both read from the environment, because neither is a secret and neither is
+   * knowable from this repository — see `.env.example`. A wrong pair fails the
+   * *upload* with a message in the build log and leaves the application
+   * working, which is the right way round.
+   */
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+
+  /**
+   * **The EU account is why this is here.** `sentryUrl` defaults to
+   * `https://sentry.io/`, which is the US instance — so on an EU account the
+   * source map upload authenticates against the wrong region and fails, while
+   * the application itself reports perfectly well (the DSN carries its own
+   * region). The result is a working deployment whose stack traces are all
+   * minified, with the explanation buried in a build log. `SENTRY_URL` is the
+   * variable, `https://de.sentry.io/` is the value for the EU.
+   */
+  sentryUrl: process.env.SENTRY_URL,
+
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  /**
+   * The tunnel, and it earns its place twice over.
+   *
+   * The advertised reason is ad blockers, which drop requests to
+   * `*.ingest.sentry.io` and take an unknown fraction of a village's error
+   * reports with them. The reason that matters more here is the
+   * Content-Security-Policy: `src/lib/csp.ts` is **enforced**, and its
+   * `connect-src` is an allow-list. Routed through our own origin the browser
+   * SDK is covered by the `'self'` already in that directive, so there is no
+   * CSP line to add and therefore no CSP line to forget — and forgetting one
+   * fails in the worst register available, with the vendor's "waiting for your
+   * first event" screen looking identical to an application that never threw.
+   *
+   * It is a Next **rewrite**, not a route handler: do not add
+   * `src/app/api/monitoring/route.ts` to match this, or it will shadow the
+   * rewrite. `/api/:path*` already carries `Cache-Control: no-store` from the
+   * headers above, which is right for it.
+   */
+  tunnelRoute: "/api/monitoring",
+
+  sourcemaps: {
+    /**
+     * Uploaded, then deleted from the build output. This is the SDK's default
+     * and it is written out because the alternative is the one that matters:
+     * source maps left in `.next` are served to anybody who asks, which hands a
+     * reader the unminified client source of a service whose security model
+     * this repository spends several thousand words on.
+     */
+    deleteSourcemapsAfterUpload: true,
+  },
+
+  /**
+   * Uploads the framework chunks as well as ours. Costs build time and upload
+   * quota; buys a readable frame when the throw happens inside Next or React
+   * rather than in `src/`, which is where the confusing ones happen.
+   */
+  widenClientFileUpload: true,
+
+  /*
+    `disableLogger` is deliberately **not** set, and it is the obvious thing to
+    add. It tree-shakes the SDK's own logger out of the client bundle, which
+    would be worth having on a PWA that rural broadband has to fetch — but the
+    SDK's own deprecation notice says it is "not supported with Turbopack", and
+    this project builds with Turbopack. Setting it would buy nothing, print a
+    warning on every build, and leave a comment here claiming a saving that was
+    not happening. Its replacement, `webpack.treeshake.removeDebugLogging`, is
+    a webpack option and is no more use here for the same reason.
+  */
+
+  /** No build telemetry to Sentry. Nothing here needs to be counted by them. */
+  telemetry: false,
+
+  /**
+   * Quiet in normal use, loud in CI where somebody is reading the log to find
+   * out why an upload did not happen.
+   */
+  silent: !process.env.CI,
+});
