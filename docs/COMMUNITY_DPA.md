@@ -260,13 +260,31 @@ a hosting preference.
 
 ## 8. What leaves the United Kingdom
 
-Two things, and both are named in the privacy notice residents read:
+Three things, and all of them are named in the privacy notice residents read:
 
 - **Anthropic**, in the United States, receives the text of a report in order to
   produce the anonymised rewrite. It receives no name, no email address and no
   coordinate.
 - **OneSignal**, in the United States, receives an internal account reference and
   the text of a push alert, which carries only published, anonymised content.
+- **Sentry**, in Frankfurt, receives a description of a technical fault when the
+  software goes wrong: the error the software produced, where in the code it
+  happened, and which page or request was involved. It does not receive sign-in
+  cookies, the contents of a form somebody submitted, or any account reference —
+  those are stripped out before the report is sent.
+
+  **Germany is a shorter conversation than the United States**, and that is why
+  the account is on Sentry's European service rather than its American one. The
+  United Kingdom recognises the European Economic Area as offering adequate
+  protection, so this transfer needs no special contract clauses in the way the
+  two above do.
+
+  One thing to know rather than discover: an error message is written at the
+  moment something goes wrong and can quote what the software was working on, so
+  if a report fails to save, part of what the resident typed may appear in it.
+  That is unavoidable if faults are to be recorded at all — a fault report with
+  the detail taken out does not say what went wrong. These reports are kept for
+  ninety days and then deleted.
 
 There is also a staff notification channel on **Slack**, which receives an
 anonymised summary of a published report, or the fact that somebody has
@@ -278,7 +296,9 @@ privacy notice says so in the same words. If you would rather it did not happen
 for your village, write to the address at §13 and it will be switched off.
 
 The transfer mechanisms for Anthropic and OneSignal are being confirmed and are
-marked as outstanding in the impact assessment. You are entitled to know that
+marked as outstanding in the impact assessment. Sentry's is not outstanding:
+adequacy is a matter of public law rather than of a contract somebody has to
+chase. You are entitled to know that
 before you accept rather than after.
 
 ---
@@ -319,6 +339,7 @@ without telling you.
 | **Vercel** | Runs the application itself | London region |
 | **Anthropic** | Rewrites report text to remove identifying details | United States |
 | **OneSignal** | Delivers push notifications to residents' devices | United States |
+| **Sentry** | Records technical faults so they can be fixed | Frankfurt, Germany |
 
 ---
 

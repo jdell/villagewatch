@@ -701,9 +701,9 @@ export default function PrivacyPage() {
             Supabase (database, authentication and file storage, in the UK or
             EU), Vercel (hosting), Anthropic (the AI pass described above),
             OneSignal (push notification delivery), Resend (email delivery — see
-            below), and Slack (the staff channel above). Each acts only on our
-            instructions, under a written data processing agreement in every
-            case but Slack — see below.
+            below), Sentry (fault reporting — see below), and Slack (the staff
+            channel above). Each acts only on our instructions, under a written
+            data processing agreement in every case but Slack — see below.
           </Definition>
           <Definition term="Resend, which delivers our email">
             Your email address, your first name and your village&rsquo;s name,
@@ -718,6 +718,33 @@ export default function PrivacyPage() {
             never coordinates and never a photograph. And, for coordinators
             only, a weekly summary of what their village published. We send no
             marketing.
+          </Definition>
+          <Definition term="Sentry, which records faults in the software">
+            When something in {APP_NAME} goes wrong — a page that fails to load,
+            a report that will not save — a description of the fault is sent to
+            Sentry so that it can be found and fixed. That description is the
+            error the software produced, the part of the code it happened in,
+            which page or request was involved, and your browser and operating
+            system. <strong>It does not include your sign-in cookie</strong>,
+            anything you typed into a form, anything in the address bar after a
+            question mark, or any reference to your account.
+            <br />
+            <br />
+            <strong>One thing we would rather tell you than have you find.</strong>{" "}
+            An error message is written by the software at the moment something
+            breaks, and it can quote whatever it was working on at the time — so
+            if a report fails to save, part of what you typed may appear in the
+            fault report. We cannot prevent that and still record faults
+            usefully. These reports are visible only to the people maintaining{" "}
+            {APP_NAME}, they are deleted after 90 days, and they are never used
+            to look at what anybody reported.
+            <br />
+            <br />
+            Sentry stores this in <strong>Frankfurt, Germany</strong>, not in the
+            United Kingdom. The UK recognises the European Economic Area as
+            giving personal data the same protection it has here, so no extra
+            safeguards are required for it — and we chose Sentry&rsquo;s European
+            service over its American one for that reason.
           </Definition>
           <Definition term="The one image in an email">
             Every email we send carries our logo, and your email program fetches

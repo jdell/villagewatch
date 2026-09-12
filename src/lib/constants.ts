@@ -1977,6 +1977,17 @@ export const PRICING = [
  * omission that costs the rest of the document its credibility, and "it was
  * only about us, not about them" is exactly the argument somebody would make
  * before adding the message that is not.
+ *
+ * It did **not** move again for Sentry later the same day, because it was
+ * already this date — the same situation the Neighbourhood Alert paragraph was
+ * in on 5 September, and worth a line rather than silence for the same reason:
+ * a reader checking whether the rule was followed would otherwise find a §6
+ * change with no movement behind it. That edit was substantive and would have
+ * moved the date on any other day. It added a sixth processor, and unlike the
+ * operational alerts above **this one can carry a resident's own words** — an
+ * exception message quotes what the software was handling — so §6 gained an
+ * entry that says so plainly rather than one implying a guarantee that is not
+ * there. The constant records the day, not the count.
  */
 export const LEGAL_LAST_UPDATED = "2026-09-12";
 
