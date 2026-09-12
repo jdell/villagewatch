@@ -147,6 +147,11 @@ and PostGIS are applied at that point and re-running is safe.
 ```
 src/
   proxy.ts                    Next 16 proxy — session refresh + auth routing
+  instrumentation.ts          Next's `onRequestError` — the server half of the
+                              error story the three error.tsx boundaries cannot
+                              tell, since those run in the resident's browser.
+                              Posts to the staff Slack channel; skips redirect
+                              and not-found, which are control flow
   app/
     layout.tsx                Root layout: fonts, metadata, Toaster. No canonical
                               here on purpose — metadata is inherited
@@ -253,6 +258,10 @@ src/
     api/dashboard/export/     GET village incidents as CSV (public columns only)
     api/reports/[villageId]/pdf/  GET the community safety report as a file.
                               The id in the path decides nothing — see The PDF
+    api/health/               Unauthenticated readiness probe for an uptime
+                              monitor. Answers 503 when Postgres does not — a
+                              200 with "degraded" in the body is the version
+                              that keeps a dashboard green through an outage
     api/digest/               Weekly cron — Claude summary, PatternAlert, push
     api/digest/social/        GET the village's week as a Facebook-ready post.
                               A sibling of the cron above with the OPPOSITE gate
@@ -437,7 +446,11 @@ src/
     auth-errors.ts            Every Supabase auth failure, in words a resident
                               can act on. Client-safe, and no provider message
                               ever leaves it — see Auth email and its limits
-    slack.ts                  Staff webhook, fire-and-forget, server only
+    slack.ts                  Staff webhook, fire-and-forget, server only. Two
+                              halves: the four things a person did, and the
+                              operational alerts — every cron's outcome and
+                              every server error, carrying counts and a route
+                              pattern and nothing of a resident's
     moderation.ts             applyModeration, audited readRawDescription, and
                               the village's auto-approve setting (fails closed)
     erasure.ts                removeIncident + eraseAccount — Article 17,
@@ -791,6 +804,15 @@ tests/                        Vitest, unit only — see The test suite
   period-control.test.tsx     The only component test — the three period
                               controls rendered to a string: no date input under
                               a preset, a chip under Custom. See The test suite
+  ops-alerts.test.ts          The two operational Slack alerts — that a server
+                              error carries no session cookie, no resolved URL
+                              and no error message however Next shapes its
+                              payload, that redirect and not-found are not
+                              errors, and that a broken route posts once and
+                              says how many repeats it swallowed
+  health-route.test.ts        The fourth route handler. The status code follows
+                              the database, an unconfigured clone is not an
+                              outage, and a failure quotes no connection string
   auth-errors.test.ts         The mapper in front of every Supabase auth
                               failure — no provider message escaping, a rate
                               limit recognised as a status, a code or a
@@ -2009,7 +2031,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Forty-eight files, 825 tests, covering the
+between the typecheck and the build. Fifty files, 840 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -2190,7 +2212,15 @@ and the service read that blocks without claiming a village is suspended.
   named above an address still reading `[Town]` is the state that would slip a
   placeholder past a check on the name alone. It asserts no wording, for the
   reason `compliance-documents.test.ts` gives.
-- **What is deliberately not covered**: three route handlers and no more, no
+- **`health-route.test.ts` is the fourth route handler**, and the property it
+  pins is one line long: the status code follows the database. A health check
+  that answers 200 with Postgres unreachable is worse than none, because a
+  monitor is built on it and somebody stops watching — and `{"status":
+  "degraded"}` inside a 200 body is that failure wearing a disclosure, since
+  most monitors are configured on the code alone. It also pins that a failure
+  quotes no connection string, this being the one unauthenticated endpoint that
+  touches the database.
+- **What is deliberately not covered**: four route handlers and no more, no
   server action, no RLS policy, and no component beyond the two above — nothing
   interactive, nothing behind a click. Those need a database, a request context or a
   browser, and a suite that needed any of them would stop being the thing CI can
@@ -3104,6 +3134,45 @@ the same supported state OneSignal has.
   nothing in the app depends on it. Four events: a registration (both the
   password and Google paths), a publish, a coordinator application, and a
   decision on one.
+- **Two more kinds of message since 12 September 2026, and they are about the
+  *service* rather than about a village.** `notifyCronOutcome` reports every
+  scheduled run and `notifyServerError` reports a server-side failure, both in
+  the second half of `slack.ts`. What made them necessary is that nothing in
+  this codebase reported anything that *failed*: a cron that stopped running
+  produced no message anywhere, and a 500 reached a Vercel log nobody watches.
+  The retention sweep is the one that made it urgent rather than tidy — it
+  enforces the deletion schedule `/privacy` §7 promises, and a promise that
+  stops being kept in silence is the worst shape a failure takes here.
+- **A successful cron posts too, and that is the point rather than noise.**
+  Nothing here can detect a job that never fired; Vercel does not tell us, and a
+  job that silently stops looks exactly like a job with nothing to do. A line on
+  every run is what makes the *absence* of one mean something — the cheapest
+  dead-man's-switch available without taking on a new processor. Four jobs at
+  their schedules is roughly two messages a day.
+- **Detail to the server log, signal to Slack, and that split is what keeps the
+  privacy notice short.** Every call site still logs the whole `cause`; what
+  crosses to a third party is a class name, a count and a route *pattern*. The
+  fields that would carry something — `request.path` (the resolved URL with its
+  query string and ids), `request.headers` (the Supabase session cookie) and
+  `error.message` (which can quote the row that broke a constraint, or the
+  connection string) — are structurally absent from `notifyServerError`'s
+  parameters rather than merely unused, the same guard `AlertIncident` and
+  `SocialIncident` use. `tests/ops-alerts.test.ts` smuggles all three in behind
+  Next's real payload shape and asserts they do not come out.
+- **The repeat window is a module variable, and `rate-limit.ts` says that shape
+  is wrong.** It is right here for `police-api.ts`'s reason: that file is a
+  security limit on an inbound request, this is noise suppression on our own
+  outbound alerting with no adversary to outwit. A Postgres round trip in front
+  of an error report would also mean the database being down is what stops us
+  being told the database is down. It reports how many repeats it swallowed on
+  the next message the pairing earns — "no silent caps" applies to our own
+  alerting most of all.
+- **`/privacy` §6 was rewritten in the same commit and `LEGAL_LAST_UPDATED`
+  moved**, which is the borderline case that constant's comment now argues
+  through: no new personal data is disclosed, and §6 nonetheless *enumerates*
+  what the channel is told, so a list saying three events while five kinds of
+  message go out is the omission that costs the rest of the notice its
+  credibility.
 - **Nothing throws**, same contract as `notifications.ts`. A resident's
   registration must not fail because a staff channel was unreachable.
 - **Callers `await` it, which is what fire-and-forget has to mean here.** On
@@ -4594,6 +4663,25 @@ to be what somebody actually sees.
 - **`unstable_retry`, never `reset`.** It re-fetches and re-renders the segment
   rather than only clearing the error state, and almost everything that fails on
   these screens is a database or Supabase call that timed out.
+- **None of the three reports anywhere, and the comments used to say otherwise.**
+  All three are Client Components, so the `console.error` in each runs in the
+  **resident's own browser**. The comments claimed this "catches the client-side
+  ones, which otherwise leave no trace at all"; it moves them from one place
+  nobody reads to another. Corrected on 12 September 2026 rather than papered
+  over, and the `console.error` deliberately stays — it is the only thing a
+  browser-side failure leaves anywhere, and it is what a resident on the phone
+  to a coordinator can be asked to read out.
+- **The server half *is* reported, by `src/instrumentation.ts`.** Next's
+  `onRequestError` fires for every error its server catches and posts a route
+  pattern, a method and an error class name to the staff Slack channel. Two
+  guards on it, and the first is not optional: `redirect()` and `notFound()` are
+  control flow implemented as thrown errors, so without the `NEXT_` digest check
+  the first signed-out visitor would alert and so would the next. The second is
+  the repeat window in `slack.ts`. **`error.digest` is what joins the two
+  halves** — Next generates it for errors forwarded from the server, so the
+  reference a coordinator reads off the screen is the one in the alert, and a
+  purely client-side failure has none to show precisely because there is no
+  server-side entry to match.
 - **No `error.message` on any of the three, and the digest on all of them.** In
   production Next replaces the message with a generic string; on a preview
   deployment it would be the raw Postgres or Supabase error, and a connection
@@ -5846,6 +5934,29 @@ open:
 - Password recovery exists but **no email has ever been sent through it**.
   Supabase's own recovery template is what arrives, and its redirect URL must be
   on the project's allow list or the link dead-ends — see The password reset.
+- **Observability is three things now and was none, and what is left is
+  deliberate rather than forgotten.** Since 12 September 2026: every cron
+  reports its outcome to Slack, `/api/health` is a readiness probe, and
+  `src/instrumentation.ts` reports server errors. All three ride on
+  `SLACK_WEBHOOK_URL`, which was already configured and already disclosed —
+  **no new processor, and so no `/privacy`, DPIA or processing-agreement
+  paperwork beyond the §6 sentence that describes them.** What is still missing,
+  in the order it is worth adding:
+
+  **Nothing polls `/api/health` yet.** The endpoint answers; no monitor is
+  pointed at it, which is a dashboard field rather than a code change (Better
+  Uptime and UptimeRobot both have a free tier that would do). Until one is, a
+  503 from it is a tree falling in a forest. **There is no error tracker**, and
+  `onRequestError` is the seam one would attach to — what Slack gives is a
+  signal without a stack trace, grouping or a history, which is the right first
+  step and not the end of one. **There is no analytics and no Core Web Vitals**;
+  `docs/MARKETING_GTM_PLAN.md` §8 has the analytics decision already reasoned
+  through, including the two traps — every one of these is a **new
+  sub-processor** (so `/privacy` §6, both processing agreements and
+  `docs/DPIA.md` §5 change in the same commit), and every browser-side one needs
+  its origin in **both** `script-src` and `connect-src` in `src/lib/csp.ts` or
+  it is blocked in production and reports nothing, silently, in a way that looks
+  exactly like a site nobody visited.
 - No staging environment. CI, unit tests and auto-versioning all exist; there is
   still nowhere to run a migration before production sees it.
 - Light theme only. Add a dark palette deliberately — `prefers-color-scheme`

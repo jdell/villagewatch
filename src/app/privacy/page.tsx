@@ -687,7 +687,15 @@ export default function PrivacyPage() {
             {APP_NAME} can see the service is working and spot abuse. For a
             published report it carries the same headline, severity and
             approximate area your neighbours see — never your original wording,
-            never your address, never coordinates, and never a photograph.
+            never your address, never coordinates, and never a photograph.{" "}
+            <strong>
+              The same channel also receives alerts about the service itself
+            </strong>{" "}
+            — whether a scheduled job ran, and a note when a page or a request
+            fails. Those carry nothing about you: a count, the name of the job
+            or the address of the page that failed, and a reference number for
+            the engineer. Never your data, and never anything that would
+            identify you.
           </Definition>
           <Definition term="Our processors">
             Supabase (database, authentication and file storage, in the UK or
