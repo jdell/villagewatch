@@ -422,6 +422,7 @@ both say so.
 | **Anthropic** | The AI rewrite (§5.1) | United States | **Yes** | Yes — commercial terms incl. UK IDTA *[verify]* |
 | **OneSignal** | Delivering notifications to phones | United States | **Yes** | *[Verify — DPA required before launch]* |
 | **Slack (Salesforce)** | Internal staff notifications | United States | **Yes** | **No separate agreement beyond Slack's standard terms — see below** |
+| **Sentry** | Error and fault reporting (§5.4a) | Frankfurt, Germany (EEA) | No — EEA adequacy | Yes — Sentry DPA, EU region *[verify]* |
 | **Yakasista Ltd** | Development, operation and support (processor to the council) | United Kingdom | No | **Drafted, not yet signed — see §9, action A2** |
 
 **Slack, and why it is listed differently.** A private staff channel is told when
@@ -440,6 +441,41 @@ It is not a position that survives growth: see §9, action A3.
 address — and the text of the alert. Alert text carries only published,
 anonymised content: a lock screen is the least private surface there is, and the
 message is written accordingly.
+
+#### 5.4a Sentry, and the one risk it carries
+
+Sentry records technical faults so they can be diagnosed: the exception message,
+the stack trace, the route involved, and the browser and platform. It is on
+Sentry's **European** instance, in Frankfurt, so the transfer is covered by the
+United Kingdom's adequacy recognition of the EEA and needs no Standard
+Contractual Clauses — which is why it is the one non-UK entry in the table above
+without a **Yes** in the restricted-transfer column.
+
+**What is stripped before an event is sent**, in `src/lib/sentry-scrub.ts` and
+asserted in `tests/sentry-scrub.test.ts`: sign-in cookies (a live Supabase
+session token), the `authorization` header, request bodies, query strings, and
+user context. Headers travel on an allow-list rather than a deny-list, so one
+added by a future proxy is withheld until somebody has thought about it.
+`sendDefaultPii` is `false` in all three runtimes, written out explicitly rather
+than left to the default.
+
+**The residual risk, stated rather than mitigated away.** An exception message is
+produced by the software at the moment of failure and can quote the data it was
+handling — so a failed write of an incident can put part of a reporter's
+`rawDescription` into a fault report. No `beforeSend` can prevent this without
+reading English, and an error tracker that discarded messages would not be one.
+The residual risk is assessed as **low**: the messages are visible only to the
+processor's own engineers, the reports expire after ninety days, the volume is
+small, and the alternative — no fault reporting on a service handling criminal
+offence data — carries its own higher risk of faults going unnoticed. It is
+disclosed in `/privacy` §6 in the same terms rather than being described as
+prevented.
+
+**Session Replay is not enabled and must not be.** It records the DOM, and on
+`/dashboard/queue` that would be a recording of a coordinator reading a
+resident's unedited account of their neighbours. This is recorded here, in
+`src/lib/sentry-scrub.ts` and in CLAUDE.md so that enabling it has to be an
+argued decision rather than a default accepted from a setup wizard.
 
 ### 5.5 What is not sent anywhere
 

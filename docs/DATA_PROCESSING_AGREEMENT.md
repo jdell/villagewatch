@@ -252,6 +252,7 @@ sub-processors listed below**, and §7 sets out how the list may change.
 | **Anthropic** | Provides the artificial intelligence model that rewrites and categorises reports | United States |
 | **OneSignal** | Delivers notifications to residents' phones | United States |
 | **Slack (Salesforce)** | Receives internal notices to the processor's own staff | United States |
+| **Sentry** | Records technical faults in the software so they can be fixed | Frankfurt, Germany |
 
 **What each one actually receives.**
 
@@ -274,9 +275,25 @@ sub-processors listed below**, and §7 sets out how the list may change.
   notice. It never carries a resident's original wording and never carries map
   positions.
 
+- *Sentry* receives a description of a technical fault: the error message the
+  software produced, the sequence of code that led to it, the address of the
+  page or request involved, and the browser and operating system in use. It does
+  **not** receive sign-in cookies, the contents of a submitted form, anything in
+  the query string of an address, or any account identifier — those are removed
+  before the report is sent, and the processor tests that they are.
+
+  **One honest qualification, because it is the kind that matters.** An error
+  message is written by the software at the moment something goes wrong, and it
+  can quote the data it was working on — so if a report fails to save, the
+  message may contain part of what the resident typed. That is inherent to
+  recording faults at all: a fault report with the detail removed does not say
+  what went wrong. The processor keeps such reports for ninety days and no
+  longer, and this is the only route by which a resident's own words can reach
+  Sentry.
+
 **Where the terms are not equivalent, this document says so.** The processor has
-written data processing terms with Supabase, Vercel, Anthropic and OneSignal
-imposing obligations equivalent to those in this agreement. It does **not** have
+written data processing terms with Supabase, Vercel, Anthropic, OneSignal and
+Sentry imposing obligations equivalent to those in this agreement. It does **not** have
 a separate agreement with Salesforce for the Slack channel beyond Slack's own
 standard terms. The processor considers that proportionate for an administrative
 notice with no resident-facing dependency on it, at the scale of a single
@@ -373,13 +390,14 @@ version available to the council on request.
 
 ## 8. Sending data outside the United Kingdom
 
-Two of the five sub-processors process personal data outside the United Kingdom.
+Four of the six sub-processors process personal data outside the United Kingdom, and they do not all sit in the same position.
 
 | Sub-processor | Where | How the transfer is covered |
 |---|---|---|
 | **Anthropic** | United States | Standard Contractual Clauses, with the UK International Data Transfer Addendum, under Anthropic's commercial terms *[processor to confirm the current mechanism and record the date checked — DPIA action A9]* |
 | **OneSignal** | United States | Standard Contractual Clauses with the UK Addendum *[processor to confirm — DPIA action A11]* |
 | **Slack (Salesforce)** | United States | Salesforce's standard terms and transfer clauses. See the qualification at §6(d) |
+| **Sentry** | Frankfurt, Germany | **UK adequacy regulations.** Germany is in the European Economic Area, which the United Kingdom has recognised as providing an adequate level of protection, so no Standard Contractual Clauses are required for this transfer. The account is deliberately on Sentry's European instance rather than its United States one for exactly this reason |
 
 Supabase and Vercel process this service's data in London. Vercel's support and
 network operations may be carried out from outside the United Kingdom, which is
