@@ -35,8 +35,23 @@ export default function GlobalErrorBoundary({
   unstable_retry: () => void;
 }) {
   useEffect(() => {
-    // Server-side failures are already in the platform logs; this catches the
-    // client-side ones, which otherwise leave no trace at all.
+    /*
+      **This reaches nobody but the person it happened to**, and the comment
+      here used to claim otherwise — that it "catches the client-side ones,
+      which otherwise leave no trace at all". It does not: this is a Client
+      Component, so the console it writes to is the resident's own devtools.
+      It moves a client-side failure from one place nobody reads to another.
+
+      What *is* reported is the server half. `src/instrumentation.ts` sends
+      every server-side error to the staff Slack channel, and `error.digest`
+      below is the key that matches this screen to that alert — Next generates
+      it for errors forwarded from the server, which is why it is shown and why
+      a purely client-side failure has none to show.
+
+      Left as a `console.error` deliberately rather than removed: it is what a
+      resident on the phone to a coordinator can be asked to read out, and it
+      is the only thing a browser-side failure leaves anywhere at all.
+    */
     console.error("VillageWatch render error", error);
   }, [error]);
 

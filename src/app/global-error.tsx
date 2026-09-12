@@ -47,8 +47,12 @@ export default function GlobalError({
   unstable_retry: () => void;
 }) {
   useEffect(() => {
-    // The only trace this failure leaves. A root-layout error server-side is in
-    // the platform log; one that happens in the browser is not anywhere else.
+    /*
+      The resident's own browser console, and nowhere else — see the longer
+      note in `src/app/error.tsx`. A root-layout error thrown on the server is
+      reported by `src/instrumentation.ts` and is in the platform log; one
+      thrown in the browser leaves this line and nothing more.
+    */
     console.error("VillageWatch root layout error", error);
   }, [error]);
 

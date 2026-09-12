@@ -42,8 +42,12 @@ export default function AppError({
   unstable_retry: () => void;
 }) {
   useEffect(() => {
-    // Server-side failures are already in the platform log. This is the only
-    // record of a client-side one.
+    /*
+      The resident's own browser console, and nowhere else — see the longer
+      note in `src/app/error.tsx`. The server half of this is reported by
+      `src/instrumentation.ts`; a failure that happened in the browser is not,
+      and the digest below is absent in exactly that case.
+    */
     console.error("VillageWatch screen error", error);
   }, [error]);
 
