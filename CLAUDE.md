@@ -28,6 +28,7 @@ flags clusters before anyone joins the dots by hand.
 | AI         | `@anthropic-ai/sdk`, `claude-sonnet-5` (`ANTHROPIC_MODEL`)   |
 | Push       | OneSignal — `@onesignal/node-onesignal` server, v16 web SDK   |
 | Email      | Resend — `src/lib/email/send.ts`; auth email is Supabase's     |
+| Errors     | Sentry (`@sentry/nextjs`), **EU region** — see Sentry         |
 | Toasts     | sonner                                                       |
 | Hosting    | Vercel, `lhr1` (four crons in `vercel.json`)                  |
 | Domain     | `villagewatch.app` — see The canonical origin                 |
@@ -147,6 +148,8 @@ and PostGIS are applied at that point and re-running is safe.
 ```
 src/
   proxy.ts                    Next 16 proxy — session refresh + auth routing
+  instrumentation-client.ts   Sentry in the browser. **Not** `sentry.client.config.ts`,
+                              which Turbopack does not read at all — see Sentry
   instrumentation.ts          Next's `onRequestError` — the server half of the
                               error story the three error.tsx boundaries cannot
                               tell, since those run in the resident's browser.
@@ -446,6 +449,9 @@ src/
     auth-errors.ts            Every Supabase auth failure, in words a resident
                               can act on. Client-safe, and no provider message
                               ever leaves it — see Auth email and its limits
+    sentry-scrub.ts           The one `beforeSend` all three runtimes share, and
+                              where every argument about what may reach Sentry
+                              lives. Read it before changing a `Sentry.init`
     slack.ts                  Staff webhook, fire-and-forget, server only. Two
                               halves: the four things a person did, and the
                               operational alerts — every cron's outcome and
@@ -804,6 +810,10 @@ tests/                        Vitest, unit only — see The test suite
   period-control.test.tsx     The only component test — the three period
                               controls rendered to a string: no date input under
                               a preset, a chip under Custom. See The test suite
+  sentry-scrub.test.ts        What may leave for Sentry — the session cookie in
+                              both places it appears, the request body, the join
+                              code in a query string, an allow-list of headers,
+                              and a scrubber that fails towards sending less
   ops-alerts.test.ts          The two operational Slack alerts — that a server
                               error carries no session cookie, no resolved URL
                               and no error message however Next shapes its
@@ -2031,7 +2041,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty files, 840 tests, covering the
+between the typecheck and the build. Fifty-one files, 851 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -2437,7 +2447,11 @@ replacement for them.
   is a constraint rather than a hosting preference. Anything that moves personal
   data to another region — a new processor, a different bucket, an API in
   another jurisdiction — needs the transfer mechanism settled and both documents
-  changed before it ships.
+  changed before it ships. **Sentry is the worked example**: an EU account in
+  Frankfurt, chosen over the US one precisely so the mechanism is EEA adequacy
+  rather than an IDTA to chase, with `/privacy` §6, both processing agreements
+  and `docs/DPIA.md` §5 changed in the same commit. That is what this rule costs
+  when it is followed, and it is not much.
 - **OneSignal's service worker is scoped to `/onesignal/`, not the root.** A
   scope can have exactly one controlling registration, and `public/sw.js`
   already owns `/`. Left at their defaults, whichever registered second
@@ -4622,6 +4636,94 @@ why the rules live in the module rather than at the call site.
   new privileged action in the trail. `/terms` §2 already said coordinators
   verify residents — that sentence became true rather than needing changing.
 
+## Sentry
+
+`src/lib/sentry-scrub.ts` decides what may leave, three `Sentry.init` calls use
+it, `src/instrumentation.ts` loads two of them, and `withSentryConfig` in
+`next.config.ts` does the build-time half. **This is the first sub-processor
+added since the service was written**, and the paperwork that came with it is
+the point of this section as much as the code is.
+
+- **It is the sixth processor, and adding one is four documents in the same
+  commit.** `/privacy` §6, the sub-processor list in
+  `docs/DATA_PROCESSING_AGREEMENT.md`, the one in `docs/COMMUNITY_DPA.md`, and
+  the table in `docs/DPIA.md` §5 — plus a new §5.4a there assessing the residual
+  risk. That is not overhead to route around: a village finding an untracked
+  error tracker in a tool that sells privacy is the worst possible way to be
+  found out. The same rule applies to the next one, and to any change in what
+  this one receives.
+- **The account is on Sentry's EU instance, in Frankfurt, and that is a
+  deliberate choice rather than a default.** Germany is in the EEA, which the UK
+  recognises as adequate, so the transfer needs no Standard Contractual Clauses
+  — the only non-UK processor in the table without a restricted transfer against
+  its name. The US instance would have meant an IDTA to chase, alongside the two
+  already outstanding (DPIA A9 and A11).
+- **`SENTRY_URL` is the EU trap and it fails in the worst register.** The source
+  map upload authenticates against `https://sentry.io/` by default, which is the
+  *US* instance, so on an EU account the upload fails while the application
+  reports perfectly well — the DSN carries its own region. The result is a
+  working deployment whose every stack trace is minified, with the explanation
+  in a build log. `https://de.sentry.io/` is the value.
+- **`src/instrumentation-client.ts`, never `sentry.client.config.ts`.** The SDK
+  still reads the old name under webpack and warns; **under Turbopack it does
+  not read it at all**, and this project builds and develops with Turbopack. A
+  `sentry.client.config.ts` here would sit in the repository looking correct,
+  pass every check, and report nothing from a single browser. Checked against
+  the warning in `node_modules/@sentry/nextjs/build/cjs/config/webpack.js`.
+- **Nothing auto-discovers `sentry.server.config.ts` or `sentry.edge.config.ts`
+  either.** Older SDK versions looked for them by name; v10 does not, and they
+  are loaded only because `register()` in `src/instrumentation.ts` imports them.
+  Rename one without touching that import and the runtime silently reports
+  nothing. They are dynamic imports so the edge bundle does not pull in the Node
+  config.
+- **`tunnelRoute: "/api/monitoring"` earns its place twice.** The advertised
+  reason is ad blockers, which drop requests to `*.ingest.sentry.io`. The one
+  that matters more here is that `src/lib/csp.ts` is **enforced** and its
+  `connect-src` is an allow-list: routed through our own origin the browser SDK
+  is covered by the `'self'` already there, so there is no CSP line to add and
+  none to forget. It is a Next **rewrite**, not a route handler — do not add
+  `src/app/api/monitoring/route.ts`, which would shadow it.
+- **What is scrubbed, and the one thing that is not.** `sentry-scrub.ts` removes
+  cookies (a live Supabase session), the `authorization` header, request bodies,
+  query strings (a `?code=` is a village's join code) and user context; headers
+  travel on an **allow-list**, the rule `rls_policies.sql` follows for column
+  grants. What cannot be removed is the exception **message**, which is the
+  point of an error tracker and which can quote whatever the code was handling —
+  so a failed incident write can put part of a `rawDescription` in a fault
+  report. `/privacy` §6 says that in as many words rather than implying a
+  guarantee that is not there, and `docs/DPIA.md` §5.4a assesses it as a low
+  residual risk with the reasoning written out.
+- **Session Replay is not enabled and the wizard adds it by default.** It
+  records the DOM, so on `/dashboard/queue` it would record a coordinator
+  reading a resident's unedited account of their neighbours and ship it to
+  Frankfurt. Masking is opt-out and one unmasked selector away from being wrong.
+  This is written down in three places on purpose so that enabling it has to be
+  an argued decision.
+- **Performance tracing is off unless `SENTRY_TRACES_SAMPLE_RATE` is set**, and
+  the value is parsed rather than passed through: `NaN` is read by the SDK as
+  "sample nothing" on one release and "sample everything" on the next, and one
+  of those is a bill.
+- **`disableLogger` is deliberately not set.** It is the obvious option to add
+  and the SDK's own deprecation notice says it is not supported with Turbopack,
+  so it would print a warning on every build and save nothing. Its replacement
+  is a webpack option and is no more use here.
+- **Sentry and the Slack alert are not each other's fallback**, and dropping
+  either would be a regression. Sentry gets the error — message, stack, release,
+  grouping, history — which is what makes a bug diagnosable. Slack gets a class
+  name and a route pattern and is the surface somebody actually watches, the
+  same channel the four crons report to, and it still works when the Sentry
+  project is over quota or has not been created yet. See The error boundaries.
+- **The build passes with none of it set**, which is the property CI depends on:
+  `ci.yml` runs `npm run build` with no environment at all. An unset DSN makes
+  the SDK inert and a missing `SENTRY_AUTH_TOKEN` skips the source map upload
+  with a message rather than a failure — the supported state Slack, OneSignal
+  and Resend all have.
+- **Source maps are uploaded and then deleted from the build output**
+  (`deleteSourcemapsAfterUpload`, the SDK's default, written out). The
+  alternative is the one that matters: maps left in `.next` are served to anyone
+  who asks, handing a reader the unminified client source of a service whose
+  security model this file spends several thousand words on.
+
 ## The error boundaries
 
 Three of them, and which one renders is which layout is still standing.
@@ -4663,14 +4765,29 @@ to be what somebody actually sees.
 - **`unstable_retry`, never `reset`.** It re-fetches and re-renders the segment
   rather than only clearing the error state, and almost everything that fails on
   these screens is a database or Supabase call that timed out.
-- **None of the three reports anywhere, and the comments used to say otherwise.**
-  All three are Client Components, so the `console.error` in each runs in the
-  **resident's own browser**. The comments claimed this "catches the client-side
-  ones, which otherwise leave no trace at all"; it moves them from one place
-  nobody reads to another. Corrected on 12 September 2026 rather than papered
-  over, and the `console.error` deliberately stays — it is the only thing a
-  browser-side failure leaves anywhere, and it is what a resident on the phone
-  to a coordinator can be asked to read out.
+- **All three now report to Sentry, and that closed a gap the comments had just
+  been corrected to admit.** They are Client Components, so the `console.error`
+  in each runs in the **resident's own browser** — the comments used to claim it
+  "catches the client-side ones, which otherwise leave no trace at all", which
+  was false and was corrected rather than papered over. `Sentry.captureException`
+  is what makes it true: a browser-side failure is the half
+  `src/instrumentation.ts` structurally cannot see, since Next only calls
+  `onRequestError` for errors its *server* caught.
+  **The `console.error` stays and is not a leftover.** It is what a resident on
+  the phone to a coordinator can be asked to read out, what a developer sees
+  without opening another tab, and what is left when the DSN is unset — which is
+  every deployment until one is pasted in, and every `npm run dev`.
+- **`global-error.tsx` importing Sentry is a deliberate exception to its own
+  rule**, which is that it imports nothing, because `globals.css` is pulled in
+  by the layout that has just failed. Two things justify it: a root-layout
+  failure is the single most important error to capture, being the one that
+  takes every screen down at once and the one nobody reports because what a
+  resident sees is a page saying something went wrong; and the SDK is already in
+  the client bundle and already initialised by `instrumentation-client.ts`, so
+  this is a reference to a loaded module rather than a new thing to fetch. It
+  adds no *render* dependency — the markup is untouched by it — so a Sentry
+  failure cannot take the fallback down with it. If that stops being true, this
+  import is the first thing to reconsider.
 - **The server half *is* reported, by `src/instrumentation.ts`.** Next's
   `onRequestError` fires for every error its server catches and posts a route
   pattern, a method and an error class name to the staff Slack channel. Two
@@ -5946,10 +6063,14 @@ open:
   **Nothing polls `/api/health` yet.** The endpoint answers; no monitor is
   pointed at it, which is a dashboard field rather than a code change (Better
   Uptime and UptimeRobot both have a free tier that would do). Until one is, a
-  503 from it is a tree falling in a forest. **There is no error tracker**, and
-  `onRequestError` is the seam one would attach to — what Slack gives is a
-  signal without a stack trace, grouping or a history, which is the right first
-  step and not the end of one. **There is no analytics and no Core Web Vitals**;
+  503 from it is a tree falling in a forest. **There is an error tracker now** —
+  Sentry, on the EU instance, wired to `onRequestError` and to all three error
+  boundaries; see Sentry above. **What has not happened is that no event has
+  ever reached it**, because no project exists yet and every variable in the
+  block is empty: the SDK is inert until somebody pastes a DSN in, which is
+  indistinguishable from an application that never threw. The first thing to
+  check after setting one is that source maps actually uploaded — that is the
+  `SENTRY_URL` trap and it fails quietly. **There is no analytics and no Core Web Vitals**;
   `docs/MARKETING_GTM_PLAN.md` §8 has the analytics decision already reasoned
   through, including the two traps — every one of these is a **new
   sub-processor** (so `/privacy` §6, both processing agreements and
