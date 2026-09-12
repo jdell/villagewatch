@@ -3,6 +3,20 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.3.0](https://github.com/jdell/villagewatch/compare/v1.2.0...v1.3.0) (2026-09-12)
+
+
+### Features
+
+* **cron:** tell somebody when a scheduled job runs or fails ([576a5d6](https://github.com/jdell/villagewatch/commit/576a5d63fb1768cdea69bf277cbcd1756217c30a))
+* **errors:** report server errors, and stop claiming the boundaries do ([e7536e1](https://github.com/jdell/villagewatch/commit/e7536e1af726dd77ff1e7cd1445c73f19eb9898a))
+* **health:** add a readiness probe for an uptime monitor ([6e78d7a](https://github.com/jdell/villagewatch/commit/6e78d7a5d4753431b2d2a679c7d409374d5f2795))
+
+
+### Documentation
+
+* **privacy:** say that the staff channel is told about the service too ([d158824](https://github.com/jdell/villagewatch/commit/d1588242b2818e62460d9621903b992515e49ba3)), closes [#36](https://github.com/jdell/villagewatch/issues/36)
+
 ## [1.2.0](https://github.com/jdell/villagewatch/compare/v1.1.0...v1.2.0) (2026-09-11)
 
 
