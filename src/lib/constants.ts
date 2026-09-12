@@ -1957,8 +1957,28 @@ export const PRICING = [
  * a category and an area, with no description at all. Less about each report
  * and more reports, which is a new disclosure either way, and the old sentence
  * would have been a false description of it.
+ *
+ * It moved to **12 September 2026** for the operational alerts — the staff
+ * channel is now told whether each scheduled job ran and when a request fails.
+ * This is the borderline case the rule is easiest to get wrong in either
+ * direction, so the reasoning is worth keeping. Those messages carry **nothing
+ * about a resident**: a count, a job name, a route pattern and an error
+ * reference, and `src/lib/slack.ts` is written so that the fields that could
+ * carry something — the resolved URL, the request headers, the error message —
+ * are structurally absent rather than merely unused. So no new personal data is
+ * disclosed to anybody, and one reading of the rule says the date should not
+ * move at all.
+ *
+ * It moved because §6 does not only promise what is disclosed; it enumerates
+ * **what the channel is told**, in a list a resident can read and check. That
+ * list said three events, and there are now five kinds of message going to a
+ * third party outside the UK. A notice that describes the channel accurately
+ * except for the two categories nobody thought to mention is the kind of
+ * omission that costs the rest of the document its credibility, and "it was
+ * only about us, not about them" is exactly the argument somebody would make
+ * before adding the message that is not.
  */
-export const LEGAL_LAST_UPDATED = "2026-09-11";
+export const LEGAL_LAST_UPDATED = "2026-09-12";
 
 /**
  * The data controller under UK GDPR.
