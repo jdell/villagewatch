@@ -1988,8 +1988,24 @@ export const PRICING = [
  * exception message quotes what the software was handling — so §6 gained an
  * entry that says so plainly rather than one implying a guarantee that is not
  * there. The constant records the day, not the count.
+ *
+ * It moved to **13 September 2026** for the interest registration form, which
+ * is the clearest case this date exists for since it was written: a **new
+ * category of personal data about a new category of person**. Everybody else in
+ * this notice is a resident of a village who accepted the terms and can sign in
+ * to see and delete what is held about them. Somebody who registers interest in
+ * a village that does not exist yet can do none of those things — so §2 gained
+ * a subsection, §4 gained a lawful basis, and §7 gained a retention entry, and
+ * all three had to say that the removal route is an email address rather than a
+ * screen.
+ *
+ * §4's entry is the one worth re-reading before changing anything here. For
+ * every other purpose in this notice the controller is the **village's** —
+ * a parish council or the coordinator, depending on `Village.mode`. For this
+ * one there is no village, so it is the operator, and a subject access request
+ * about an interest row goes somewhere different from one about a report.
  */
-export const LEGAL_LAST_UPDATED = "2026-09-12";
+export const LEGAL_LAST_UPDATED = "2026-09-13";
 
 /**
  * The data controller under UK GDPR.
