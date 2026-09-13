@@ -13,6 +13,8 @@ import {
 } from "@/components/admin/village-comparison";
 import type { TypeDatum } from "@/components/charts/chart-data";
 import { isSuperAdmin, requireAdmin } from "@/lib/auth";
+import { listVillageInterest } from "@/lib/village-interest";
+import { VillageInterestList } from "@/components/admin/village-interest-list";
 import { prisma } from "@/lib/prisma";
 import {
   COORDINATOR_ROLES,
@@ -97,6 +99,14 @@ export default async function AdminVillagesPage({
   const canSuspend = isSuperAdmin(session);
 
   const { tab, q, metric } = await searchParams;
+
+  /*
+    Read here rather than inside the component so the page stays one round of
+    data fetching. It degrades to an empty list rather than throwing — the
+    migration may not be applied, and this page is how a village gets activated
+    at all, so an optional pipeline section must not be able to take it down.
+  */
+  const interest = await listVillageInterest();
   const active: TabKey = isTab(tab) ? tab : "active";
   const query = (q ?? "").trim();
 
@@ -425,6 +435,14 @@ export default async function AdminVillagesPage({
           omitted={rankedVillages.length - comparisonRows.length}
         />
       )}
+
+      {/*
+        Last, and not behind a tab. It is about villages that are *not* in the
+        directory above, so it belongs to neither the Active nor the Pending
+        list — and it is read after the working surface rather than instead of
+        it, the reasoning the comparison chart above already carries.
+      */}
+      <VillageInterestList groups={interest} />
     </div>
   );
 }
