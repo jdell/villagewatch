@@ -244,6 +244,7 @@ ALTER TABLE public.police_data_syncs        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.police_neighbourhoods    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ecops_alerts             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ecops_site_syncs         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.village_interest         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."_PatternAlertIncidents" ENABLE ROW LEVEL SECURITY;
 
 -- Nothing in this schema is public. `anon` is the role a signed-out browser
@@ -1372,6 +1373,78 @@ CREATE POLICY ecops_site_syncs_select_site
   ON public.ecops_site_syncs FOR SELECT
   TO authenticated
   USING (site_id = public.vw_current_ecops_site_id());
+
+-- ---------------------------------------------------------------------------
+-- village_interest
+-- ---------------------------------------------------------------------------
+--
+-- Names and email addresses of people who are **not members of anything**, from
+-- villages that are not in service. It is the only table in this schema whose
+-- subjects have no account, cannot sign in, and therefore cannot be shown their
+-- own row by any screen — which makes the grants here a question about people
+-- who have no way to check what was done with them.
+--
+-- ## The brief asked for an anon INSERT and this file does not grant one
+--
+-- Worth reading before adding it back, because it looks like an omission.
+--
+-- The design this table was specified against is the ordinary Supabase one: a
+-- browser holding the anon key inserts its own row, and a policy is what keeps
+-- that honest. **That is not how anything in this codebase writes.** Every
+-- writer is Prisma connecting as the table owner, which bypasses RLS entirely;
+-- `POST /api/village-interest` is a Route Handler, and the only thing reached
+-- through the Supabase JS client anywhere in the application is Storage. So an
+-- anon INSERT here would be a grant with no caller — and that is precisely the
+-- shape of VW-14 and VW-15, two findings in
+-- `docs/SECURITY_AUDIT_2026-08-29.md` whose whole content was "a grant that
+-- bought the application nothing".
+--
+-- What it would cost is not nothing. The anon key is public by construction —
+-- it is compiled into the browser bundle — so an anon INSERT is an open
+-- `POST /rest/v1/village_interest` for anybody who views source. That path goes
+-- around the Zod schema, around `RATE_LIMITS.villageInterest`, around the
+-- confirmation email and around the Slack alert, into a table an administrator
+-- reads as a pipeline of real people. The failure is not a breach; it is a
+-- growth dashboard quietly filled with rows nobody submitted, which is worse
+-- than an empty one because somebody will plan against it.
+--
+-- If a future version of this form ever posts straight from the browser, the
+-- policy to add is INSERT `WITH CHECK (true)` for `anon` — and the rate limit
+-- has to move to the database with it, or it moves nowhere.
+--
+-- ## SELECT is for administrators, and it is the narrowest one in this file
+--
+-- `vw_is_admin()` and not `vw_is_coordinator()`. A coordinator is accountable
+-- for one village; this table is every village, including ones no coordinator
+-- has any standing in, and the people in it are not their residents. There is
+-- no village id to scope by and nothing sensible to scope to.
+--
+-- Note the same split the rest of this file has: `vw_is_admin()` is defined
+-- against `users.role = 'ADMIN'`, while the *application's* `/admin` gate is
+-- `ADMIN_EMAILS` on the revalidated JWT. Nothing in the app sets that role, so
+-- in practice this policy grants nobody anything through PostgREST — which is
+-- the correct outcome, since the admin page reads through Prisma. It is written
+-- as the brief asked rather than omitted, so the intent survives if the two
+-- definitions are ever reconciled.
+--
+-- ## No UPDATE and no DELETE, to anybody
+--
+-- Erasure here is a person emailing the address in `/privacy` §13 and somebody
+-- running a `DELETE` as the owner. That is a deliberate trade: the alternative
+-- is an own-rows DELETE, and there is no session to scope "own" to — the only
+-- available key would be the email address, which would let anybody who can
+-- guess an address remove somebody else's row, and let anybody enumerate the
+-- table by watching which deletes succeed.
+
+ALTER TABLE public.village_interest ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT ON public.village_interest TO authenticated;
+
+DROP POLICY IF EXISTS village_interest_select_admin ON public.village_interest;
+CREATE POLICY village_interest_select_admin
+  ON public.village_interest FOR SELECT
+  TO authenticated
+  USING (public.vw_is_admin());
 
 -- ---------------------------------------------------------------------------
 -- Verify
