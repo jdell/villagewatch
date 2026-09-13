@@ -88,6 +88,13 @@ export const metadata: Metadata = {
  *     a message carries is a disclosure rather than an implementation detail:
  *     never `rawDescription`, never coordinates, and a resident's name and email
  *     on registration because that is what those two alerts are for.
+ *   - §2's interest registrations (`src/lib/village-interest.ts`,
+ *     `village_interest`). The only personal data here about somebody who is
+ *     **not** a resident of anything: no account, no session, and therefore no
+ *     screen they can delete themselves from — which is why §2, §4 and §7 all
+ *     name an email address as the removal route. §4 also records that the
+ *     controller for it is the operator rather than a village's, there being no
+ *     village. Change what that form collects and all three change with it.
  *   - Whether a human sees a report before it is published, which is
  *     **conditional** and says so. `Village.autoApprove` lets a village publish
  *     on submit, so the human the Article 22 paragraph rests on is the reporter,
@@ -369,6 +376,44 @@ export default function PrivacyPage() {
           </LI>
         </UL>
 
+        <H3>
+          When you ask for {APP_NAME} in a village we do not cover yet
+        </H3>
+        <P>
+          The sign-up screen lets you say your village is not listed.{" "}
+          <strong>This does not create an account</strong> — nothing is
+          reported, nothing is shown to anybody, and you cannot sign in. What we
+          keep is only what you typed on that form:
+        </P>
+        <UL>
+          <LI>Your name and email address.</LI>
+          <LI>The village or town and the county you gave us.</LI>
+          <LI>
+            Whether you would be willing to coordinate the village, and — only
+            if you said yes, and only if you chose to write one — a sentence
+            about why you are interested.
+          </LI>
+        </UL>
+        <P>
+          We use it to tell you when your village goes live, and to work out
+          where to set one up next. We do not use it for anything else and we do
+          not pass it to anybody. Because there is no account, there is no
+          screen where you can delete this yourself — so{" "}
+          <strong>
+            write to{" "}
+            <a
+              href={`mailto:${DATA_CONTROLLER.email}`}
+              className="font-medium text-brand-700 underline underline-offset-2"
+            >
+              {DATA_CONTROLLER.email}
+            </a>{" "}
+            and we will remove it
+          </strong>
+          , or reply to the confirmation email, which goes to the same place. We
+          keep it until your village launches or you ask us to remove it. See
+          section 7.
+        </P>
+
         <H3>When you file a report</H3>
         <UL>
           <LI>
@@ -502,6 +547,17 @@ export default function PrivacyPage() {
             Alerts only go to residents who have switched them on and granted
             their browser permission. You can withdraw that at any time in
             Settings, or in your browser, without affecting anything else.
+          </Definition>
+          <Definition term="Telling you when your village launches — legitimate interests, Article 6(1)(f)">
+            If you registered interest in a village we do not cover, we keep
+            your details to tell you when it goes live and to decide where to
+            set one up next. You asked us to get in touch, it is the only thing
+            we use it for, and one email address is the least we could keep and
+            still do it. <strong>Who is responsible for this is not your
+            village&rsquo;s data controller</strong> — there is no village yet,
+            so it is {OPERATOR.name}, the company that runs {APP_NAME}, and
+            section 13 is where to write. Asking to be removed takes one email
+            and we will not ask you why.
           </Definition>
           <Definition term="Moderation and the audit trail — legal obligation and legitimate interests, Article 6(1)(c) and (f)">
             Reviewing reports before publication is what stops personal details
@@ -853,6 +909,20 @@ export default function PrivacyPage() {
 
       <LegalSection id="retention" title="7. How long we keep it">
         <DefinitionList>
+          <Definition term="Interest in a village we do not cover — until it launches">
+            If you asked us to bring {APP_NAME} to your village, we keep your
+            name, email address and the village you named until that village
+            launches, or until you ask us to remove them — whichever comes
+            first. There is no account behind this and so no screen to delete it
+            from: write to{" "}
+            <a
+              href={`mailto:${DATA_CONTROLLER.email}`}
+              className="font-medium text-brand-700 underline underline-offset-2"
+            >
+              {DATA_CONTROLLER.email}
+            </a>
+            , or reply to the confirmation email we sent you.
+          </Definition>
           <Definition term={`Photos and video — ${RETENTION.mediaDeleteMonths} months`}>
             Deleted from storage entirely, redacted copies included. A photo is
             the most identifying thing in a report and the least useful once the

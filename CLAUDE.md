@@ -261,6 +261,9 @@ src/
     api/dashboard/export/     GET village incidents as CSV (public columns only)
     api/reports/[villageId]/pdf/  GET the community safety report as a file.
                               The id in the path decides nothing — see The PDF
+    api/village-interest/     POST somebody's interest in a village that is not
+                              in service. Creates **no account** — see
+                              Registering interest
     api/health/               Unauthenticated readiness probe for an uptime
                               monitor. Answers 503 when Postgres does not — a
                               200 with "degraded" in the body is the version
@@ -286,7 +289,12 @@ src/
     auth/welcome-form.tsx     The provider sign-up's second half
     auth/home-location-field.tsx  The optional pin, shared by both halves of
                               registration so one promise covers both screens
-    auth/village-picker.tsx   Type-to-search village combobox + OGL attribution
+    auth/village-picker.tsx   Type-to-search village combobox + OGL attribution.
+                              Last option is always "My village isn't listed"
+    auth/village-interest-fields.tsx  The panel that replaces the account half
+                              of /register when the village is not listed
+    auth/village-interest-confirmation.tsx  What replaces the form once a row
+                              is written. No redirect, no account
     auth/forgot-password-form.tsx  Reset request — never reveals if an account exists
     auth/reset-password-form.tsx   New password; the session says whose
     auth/use-auth-submit.ts   The submit lock every auth form shares — a
@@ -307,6 +315,9 @@ src/
     admin/coordinator-request-card.tsx  One application, approve or reject
     admin/village-card.tsx    One directory entry: activate, rotate the code,
                               appoint a coordinator
+    admin/village-interest-list.tsx  The expansion pipeline on /admin/villages
+                              — registrations grouped by village, coordinator
+                              candidates first and highlighted
     admin/village-merge-form.tsx  Two selectors, a preview of what moves, and a
                               confirmation that asks for the village's name
     incident-form.tsx         5-step wizard, react-hook-form + Zod
@@ -464,6 +475,9 @@ src/
     audit-context.ts          The caller's IP and browser for an AuditLog row.
                               Server only, never throws — the server actions
                               have no `request` to read them off
+    village-interest.ts       Interest in a village that is not in service —
+                              the write, and the grouped read the admin page
+                              makes. Server only, degrades on a missing table
     villages.ts               The one village module: activate, mint and rotate
                               a join code, appoint the first coordinator, check
                               a resident's join, and the columns the dashboard
@@ -722,6 +736,11 @@ tests/                        Vitest, unit only — see The test suite
   date-range.test.ts          The period resolver — presets, the allowed-list
                               narrowing, custom inclusivity, and `all` adding no
                               `occurredAt` key at all
+  village-interest.test.ts    The interest form — the motivation dropped on the
+                              resident path, spellings of one village folded
+                              into one group, a coordinator candidate sorting
+                              above a more popular village, and the Slack alert
+                              that never carries the motivation
   report-pdf.test.ts          The PDF — the column widths totalling 100, and a
                               real render of the empty, the wrapping and the
                               200-row cases
@@ -1344,6 +1363,7 @@ line often enough that an IP limit would silence a household.
 | `POST /api/incidents/[id]/vote`    | `incidentVote`    | 1 per 10s, **per incident** |
 | `POST /api/auth/login`             | `authLogin`       | 5 per minute, **per address** |
 | `POST /api/auth/register`          | `authRegister`    | 3 per hour, **per address** |
+| `POST /api/village-interest`       | `villageInterest` | 5 per hour, **per address** |
 
 The third is the most expensive single call in the app — a month of a village's
 reports goes into the prompt — and the only one a *coordinator* triggers by hand,
@@ -2041,7 +2061,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty-one files, 851 tests, covering the
+between the typecheck and the build. Fifty-two files, 867 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -4278,6 +4298,109 @@ reasoning in full.
   holding a value with no matching `<option>` silently displays the first one,
   so the form would name a different village from the one it holds — on the
   screen where naming the wrong village archives it.
+
+## Registering interest
+
+`src/lib/village-interest.ts` is the module, `POST /api/village-interest` the
+route, `village-interest-fields.tsx` the panel on `/register`, and
+`VillageInterestList` the section it feeds on `/admin/villages`. The wireframe
+it was built from is `INTEREST_REGISTRATION_WIREFRAME.pdf` in the business repo.
+
+Choosing **"My village isn't listed"** — always the last option in the picker —
+swaps the account half of the sign-up form for a panel, changes the button to
+"Register interest", and writes one `village_interest` row.
+
+- **No account is created, and everything else follows from that.** No Supabase
+  auth user, no `User` row, no session, no confirmation link, no join code, no
+  terms acceptance. The route imports no Supabase client at all, so there is
+  nothing it *could* mint. The account fields are **unmounted** rather than
+  hidden when the panel is on, so a stale password or a home-location pin cannot
+  ride along in a submission that has stopped asking for them.
+- **The button's label is the promise.** "Create account" over a form that
+  creates no account is something somebody finds out about from their inbox, so
+  it says "Register interest" the moment the branch is taken. The wireframe
+  makes that the visible signal and it is worth keeping literally.
+- **`UNLISTED_VILLAGE_ID` is not a uuid and that is what makes it safe.** Every
+  real village id is one, `registerSchema` requires `z.uuid()` and
+  `checkVillageJoin` looks the id up before anything is written — so the
+  sentinel fails all three gates rather than reaching the database. The form
+  decides to show the panel; the registration path never has to know the value
+  exists.
+- **The unlisted option survives a search that matches nothing, and is the only
+  option on an empty directory.** That is the case it matters most in: somebody
+  types a village that is not set up, sees "No village matches", and on the old
+  list that was the end of the road — which is exactly the person this form has
+  something to offer. The picker used to *disable* itself outright with an empty
+  directory; it no longer can.
+- **Neither path is preselected.** A default of "notify me" collects a quieter
+  answer than somebody meant, and a default of "I'll coordinate" collects a
+  louder one — and this is the field an administrator rings somebody up about.
+- **`village_interest_role` is deliberately not `UserRole`.** That enum decides
+  what somebody can do inside a village, is written only by server code from a
+  verified join code or an admin action (domain rule 5), and has `COORDINATOR`
+  in it. This one is a self-declaration from a stranger and grants nothing: a
+  candidate who later registers is a `RESIDENT` like anybody else until an
+  administrator appoints them. Sharing the enum would put a self-service route
+  to the word "coordinator" one careless join away.
+- **Grouping happens in JavaScript and not in SQL, and that is the load-bearing
+  part of the admin view.** `village_name` is free text, so "Cottenham",
+  "cottenham" and " COTTENHAM " are one village written three ways — a
+  `GROUP BY village_name` reports three villages with one person each, which is
+  the same data saying the opposite thing to whoever is deciding where to launch
+  next. `groupKey` folds case, accents and whitespace the way
+  `village-picker.tsx` folds a search query. The label is the spelling **most
+  people used**, tie-broken by recency; nothing title-cases or corrects
+  anything, because guessing at a "correct" spelling of a place name is how
+  `A' Chrìon Làraich` becomes unfindable by the people who live there.
+- **A village with a coordinator candidate sorts above one without, whatever
+  the counts.** Forty residents waiting and nobody to run it is a village that
+  *cannot* be activated — `activateVillage` appoints a named person — so
+  ordering by popularity would put the un-actionable thing at the top of the
+  list somebody works from.
+- **The Slack alert fires for candidates only and never carries the
+  motivation.** A resident registering interest is a row on a dashboard; a
+  candidate is the thing that unblocks a village. The motivation is free text a
+  stranger typed, and the two sentences it usually holds are what has been
+  happening in their village and who they think is doing it — which is what
+  `/privacy` §6 promises that channel never carries. The alert says a reason
+  exists; the reason is on `/admin/villages`, behind a session, read once and
+  acted on. `tests/village-interest.test.ts` smuggles one in and asserts it does
+  not come out.
+- **The motivation is dropped on the resident path by the schema, not by the
+  component.** The panel unmounts the field, so a resident who typed a sentence
+  and changed their mind cannot see it — and `villageInterestSchema` drops it
+  anyway, because a component is the wrong place for that to be the only
+  guarantee.
+- **The write is the only thing allowed to fail the request.** The email and the
+  Slack line are awaited afterwards and cannot throw; telling somebody their
+  interest was registered when no row exists is the one failure this form must
+  not have.
+- **`/privacy` gained a §2 subsection, a §4 lawful basis and a §7 retention
+  entry, and `LEGAL_LAST_UPDATED` moved.** This is a new category of personal
+  data about a new category of person: everybody else in that notice is a
+  resident who accepted the terms and can sign in to delete themselves, and
+  **nobody here can do any of that**. All three sections therefore name an email
+  address as the removal route rather than a screen, and the confirmation email
+  carries it too — with `replyTo` set, because the sending address is a
+  no-reply and "reply to this message" has to be true.
+- **The controller for these rows is the operator, not a village's.** Every
+  other purpose in `/privacy` belongs to a parish council or a coordinator
+  depending on `Village.mode`; there is no village here, so it is Yakasista Ltd
+  and a subject access request about an interest row goes somewhere different
+  from one about a report. §4 says so.
+- **It is not in the DPIA or either processing agreement, and that is
+  deliberate.** Those documents are a *village's* — what a council or a
+  coordinator is answerable for, about reports describing criminal offences.
+  An interest row is the operator's own waitlist, collected before any village
+  exists, holding no Article 10 data and no resident's report. Adding it would
+  put the operator's marketing list into a council's impact assessment.
+- **RLS grants `anon` nothing, and the brief asked for an insert.** See the long
+  note in `prisma/sql/rls_policies.sql`: every writer in this codebase is Prisma
+  connecting as the owner, so an anon INSERT would be a grant with no caller —
+  VW-14 and VW-15's shape exactly — while opening an unauthenticated
+  `POST /rest/v1/village_interest` that bypasses the Zod schema, the rate limit,
+  the confirmation email and the Slack alert. Verified against a throwaway
+  Postgres: `anon` is refused both INSERT and SELECT, and the owner is not.
 
 ## The village invite
 
