@@ -3,6 +3,21 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.5.0](https://github.com/jdell/villagewatch/compare/v1.4.0...v1.5.0) (2026-09-13)
+
+
+### Features
+
+* **admin:** show the expansion pipeline on /admin/villages ([2a248f6](https://github.com/jdell/villagewatch/commit/2a248f65bf0066588a8fcefb3914ad4570f98101))
+* **db:** add village_interest, for people with no account ([1335f71](https://github.com/jdell/villagewatch/commit/1335f71308c99c97d9591ed488ec418e0bffa78a))
+* **interest:** record interest in a village that is not in service ([cd07990](https://github.com/jdell/villagewatch/commit/cd0799040fec957f499107f49f255cfd5c19591a))
+* **register:** offer "My village isn't listed" and capture interest inline ([90b2686](https://github.com/jdell/villagewatch/commit/90b2686401feb8e3443004214e44c7b9fb9cfeda))
+
+
+### Documentation
+
+* **privacy:** say what the interest form collects, and who holds it ([56225dd](https://github.com/jdell/villagewatch/commit/56225dd75d01e7fe596d7c962261aac29035c34a))
+
 ## [1.4.0](https://github.com/jdell/villagewatch/compare/v1.3.0...v1.4.0) (2026-09-12)
 
 
