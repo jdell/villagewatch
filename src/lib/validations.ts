@@ -1383,3 +1383,77 @@ export function fieldErrors(error: z.ZodError): Record<string, string> {
   }
   return result;
 }
+
+/**
+ * The two paths on the interest form, as the browser posts them.
+ *
+ * Lower-case and hyphenated rather than the enum's `COORDINATOR_CANDIDATE`,
+ * because these are radio `value`s in markup and the enum is a database type.
+ * `villageInterestSchema` maps one to the other, which is the only place the
+ * two vocabularies meet.
+ */
+export const VILLAGE_INTEREST_ROLE_VALUES = [
+  "resident",
+  "coordinator-candidate",
+] as const;
+
+export type VillageInterestRoleValue =
+  (typeof VILLAGE_INTEREST_ROLE_VALUES)[number];
+
+/**
+ * Registering interest in a village that is not in service.
+ *
+ * **Nothing here creates an account**, which is what makes it a different
+ * schema from `registerSchema` rather than a variant of it: no password, no
+ * join code, no terms acceptance, and no `villageId` — the whole point is a
+ * village the directory does not have.
+ *
+ * `motivation` is the one free-text field and it is **only kept on the
+ * coordinator path**. A resident who fills it in, switches path and submits
+ * would otherwise post a sentence the form had stopped showing them, and
+ * storing something somebody cannot see is the kind of thing this codebase
+ * refuses elsewhere — so the transform drops it rather than the component
+ * being trusted to clear it.
+ */
+export const villageInterestSchema = z
+  .object({
+    fullName: z
+      .string()
+      .trim()
+      .min(2, "Enter your name")
+      .max(80, "Keep your name under 80 characters"),
+    email: z.email("Enter a valid email address"),
+    villageName: z
+      .string()
+      .trim()
+      .min(2, "Enter the name of your village or town")
+      .max(120, "Keep the name under 120 characters"),
+    county: z
+      .string()
+      .trim()
+      .min(2, "Enter your county")
+      .max(120, "Keep the county under 120 characters"),
+    role: z.enum(VILLAGE_INTEREST_ROLE_VALUES, {
+      error: "Choose how you would like to help",
+    }),
+    motivation: z
+      .string()
+      .trim()
+      .max(2000, "Keep your answer under 2000 characters")
+      .optional(),
+  })
+  .transform((value) => ({
+    ...value,
+    /*
+      Empty becomes absent rather than "". `reportController`'s rule: a column
+      that falls back on a truthiness check must not be able to hold a blank
+      that counts as a value. Here it is what stops the admin view drawing an
+      empty quote box under somebody's name.
+    */
+    motivation:
+      value.role === "coordinator-candidate" && value.motivation
+        ? value.motivation
+        : undefined,
+  }));
+
+export type VillageInterestInput = z.infer<typeof villageInterestSchema>;
