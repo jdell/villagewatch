@@ -191,6 +191,28 @@ export const RATE_LIMITS = {
    * when a village hall runs into it.
    */
   authRegister: { name: "auth-register", limit: 3, windowMs: HOUR_MS },
+
+  /**
+   * Registering interest in a village that is not in service.
+   *
+   * The third rule keyed by address rather than by user, and for the same
+   * reason: there is no account, and there is deliberately never going to be
+   * one — `POST /api/village-interest` creates no user at all.
+   *
+   * Five an hour rather than `authRegister`'s three, because the two are
+   * protecting different things. A registration mints a Supabase auth user and
+   * spends a confirmation email out of a quota the whole deployment shares; an
+   * interest row is one INSERT and one email to an address nobody has to
+   * confirm. What this defends is the **admin view**: it is read as a pipeline
+   * of real people, and a script that fills it does not breach anything, it
+   * makes a growth dashboard that somebody plans against quietly worthless.
+   *
+   * Five is also a household. A couple registering interest from one broadband
+   * line, one of them mistyping their email and trying again, is four — which
+   * is the arithmetic `authRegister` records for its own figure, and the reason
+   * neither of them is lower.
+   */
+  villageInterest: { name: "village-interest", limit: 5, windowMs: HOUR_MS },
 } as const satisfies Record<string, RateLimitRule>;
 
 /**

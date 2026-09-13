@@ -100,6 +100,52 @@ export async function notifySlack(text: string): Promise<{ posted: boolean }> {
   }
 }
 
+
+/**
+ * Somebody has offered to coordinate a village that is not in service.
+ *
+ * The fifth thing a person does that this channel is told about, and the one
+ * with the shortest path to a decision: residents registering interest are
+ * demand, and a candidate is the thing that unblocks a launch, because
+ * `appointCoordinator` needs an actual person. It fires for the coordinator
+ * path only — a resident registering interest writes a row and sends a
+ * confirmation and does not interrupt anybody.
+ *
+ * **The motivation is deliberately not in the message, and it is the field
+ * somebody will want to add.** It is free text a stranger typed, on a form
+ * with no account behind it, and the two sentences it usually contains are the
+ * two this channel should not hold: what has been happening in their village
+ * and who they think is doing it. `/privacy` §6 promises this channel never
+ * carries a report's contents, and a paragraph explaining why somebody wants to
+ * coordinate is that in all but name. It is on `/admin/villages`, behind a
+ * session, one click from the notification — which is the right place for
+ * something a person should read once and act on rather than something that
+ * sits in a channel indefinitely.
+ *
+ * The name and email are here for the reason the registration alert carries
+ * them: identifying who is the entire purpose of the alert, and `/privacy` §6
+ * says so.
+ */
+export async function notifyCoordinatorCandidate(input: {
+  name: string;
+  email: string;
+  villageName: string;
+  county: string;
+  /** Whether one was written, never what it said. */
+  hasMotivation: boolean;
+}): Promise<{ posted: boolean }> {
+  const parts = [
+    `[coordinator candidate] ${input.name} <${input.email}>`,
+    `wants to coordinate ${input.villageName}, ${input.county}.`,
+  ];
+
+  if (input.hasMotivation) {
+    parts.push("They wrote a reason — read it on /admin/villages.");
+  }
+
+  return notifySlack(parts.join(" "));
+}
+
 // ---------------------------------------------------------------------------
 // Operational alerts
 // ---------------------------------------------------------------------------
