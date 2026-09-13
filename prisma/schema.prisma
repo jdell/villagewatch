@@ -142,6 +142,30 @@ enum VoteDirection {
 
 /// A village / neighbourhood watch area. The tenant boundary — every user,
 /// incident and pattern alert belongs to exactly one village.
+/// Which of the two things somebody registering interest in an unlisted village
+/// is asking for.
+///
+/// The distinction is the whole point of the fork on the sign-up form: a
+/// resident is demand, and a coordinator candidate is the thing that actually
+/// unblocks a launch. A village with forty residents waiting and nobody willing
+/// to coordinate cannot be activated — `appointCoordinator` needs a person —
+/// so these two are counted separately everywhere they are counted at all.
+///
+/// Deliberately **not** `UserRole`. That enum decides what somebody can do
+/// inside a village they have joined, is written only by server code from a
+/// verified join code or an admin action (domain rule 5), and has
+/// `COORDINATOR` in it. This one is a self-declared interest from somebody with
+/// no account, and it grants nothing: a coordinator candidate who later
+/// registers is a `RESIDENT` like anybody else until an administrator appoints
+/// them. Sharing the enum would put a self-service route to the word
+/// "coordinator" one careless join away.
+enum VillageInterestRole {
+  RESIDENT
+  COORDINATOR_CANDIDATE
+
+  @@map("village_interest_role")
+}
+
 model Village {
   id          String        @id @default(uuid()) @db.Uuid
   name        String
@@ -1326,4 +1350,69 @@ model EcopsSiteSync {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("ecops_site_syncs")
+}
+
+/// Somebody who wanted VillageWatch in a village that is not in service yet.
+///
+/// Filed from the sign-up form when "My village isn't listed" is chosen. **No
+/// account is created and nothing here is a `User`** — that is the whole shape
+/// of this table and the reason for every decision below.
+///
+/// ## It is the only table holding a person who is not a resident
+///
+/// Every other row of personal data in this schema belongs to somebody who
+/// joined a village, accepted the terms, and can sign in to see and delete what
+/// is held about them. Nobody here can do any of that: there is no session to
+/// authenticate, so no screen can show them their row and no button can erase
+/// it. That asymmetry is why the columns are the four the form asks for and
+/// nothing else, why `/privacy` §2 and §6 name it specifically, and why the
+/// removal route is an email address rather than a page.
+///
+/// ## No foreign key to `Village`, on purpose
+///
+/// The whole point is a village the directory does not have. `villageName` and
+/// `county` are free text a stranger typed, and they are the *answer* rather
+/// than a lookup — "Cottenham" typed by six people is six rows, and grouping
+/// them is `src/lib/village-interest.ts`'s job rather than the schema's.
+/// Resolving them against `villages` on the way in would drop exactly the rows
+/// this table exists to collect.
+///
+/// ## No unique constraint on email
+///
+/// Somebody who registers interest in two villages is two rows, and somebody
+/// who submits the same form twice is two rows as well. A unique key would turn
+/// the second into a 409 on a form with no account behind it to explain the
+/// conflict, and deduplication is a question for whoever reads the list rather
+/// than something to enforce at the moment of collection. The rate limit in
+/// front of the route is what stops a script filling the table.
+model VillageInterest {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// As typed. Not normalised and not verified — nothing confirms this address,
+  /// unlike a registration, where Supabase will not let an account sign in
+  /// until a link is clicked.
+  name  String
+  email String
+
+  /// The village and county as typed. Free text: see the note above about why
+  /// there is no foreign key.
+  villageName String @map("village_name")
+  county      String
+
+  role VillageInterestRole
+
+  /// Only ever filled in on the coordinator path, and optional there. It is the
+  /// one free-text field a stranger can put anything in, which is why the
+  /// Slack alert that fires for a candidate does **not** carry it — see
+  /// `notifyCoordinatorCandidate`.
+  motivation String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  /// The admin view groups by village and orders by recency; the index matches
+  /// the read rather than the write.
+  @@index([villageName, createdAt])
+  /// So "how many coordinator candidates are waiting" is not a full scan.
+  @@index([role])
+  @@map("village_interest")
 }
