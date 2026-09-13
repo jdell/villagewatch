@@ -29,6 +29,31 @@ import { ONS_ATTRIBUTION, ONS_LICENCE_URL } from "@/lib/constants";
 const MAX_VISIBLE = 50;
 
 /**
+ * The value the picker carries when somebody's village is not in the directory.
+ *
+ * **It is not a uuid, and that is what makes it safe.** Every real village id
+ * is one, `registerSchema` requires `z.uuid()` for `villageId`, and
+ * `checkVillageJoin` looks the id up before anything is written — so this
+ * string cannot be mistaken for a village by any of the three gates a
+ * registration passes through. It fails the schema rather than reaching the
+ * database, which is the right way round: the form is what decides to show the
+ * interest panel instead, and the server never has to know this value exists.
+ */
+export const UNLISTED_VILLAGE_ID = "unlisted";
+
+/** One wording, used by the closed input and by the option in the list. */
+const UNLISTED_LABEL = "My village isn't listed";
+
+/**
+ * What the list renders. The sentinel is an option in its own right rather than
+ * a village with a fake id, so that nothing downstream can iterate the villages
+ * and find it among them.
+ */
+type PickerOption =
+  | { kind: "village"; village: VillageOption }
+  | { kind: "unlisted" };
+
+/**
  * Folds case and strips diacritics so `Chrion` finds `A' Chrìon Làraich`.
  *
  * The IPN carries accented names and the seeder is careful to preserve them
@@ -78,8 +103,15 @@ export function VillagePicker({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
+  /*
+    A directory with nothing in it used to disable the input outright. It no
+    longer can: "my village isn't listed" is a true and useful answer on a
+    deployment with no villages, and it is the only one available there. What
+    `empty` still decides is the wording of the hint under the search box.
+  */
   const empty = villages.length === 0;
   const selected = villages.find((village) => village.id === value) ?? null;
+  const unlistedChosen = value === UNLISTED_VILLAGE_ID;
 
   // Precomputed once per list rather than per keystroke — `fold` allocates two
   // strings per entry and the directory is long enough for that to show.
@@ -102,6 +134,24 @@ export function VillagePicker({
 
   const visible = matches.slice(0, MAX_VISIBLE);
   const overflow = matches.length - visible.length;
+
+  /*
+    The unlisted option is **always last and always present** — it survives a
+    query that matches nothing, and it is the only option at all on a
+    deployment with an empty directory.
+
+    That is the case it matters most in. Somebody whose village is not set up
+    types its name, sees "No village matches", and on the old list that was the
+    end of the road; it is exactly the person this form now has something to
+    offer. It is not filtered by the query for the same reason: the search is
+    over villages that exist, and this is the answer for a village that does
+    not.
+  */
+  const options: PickerOption[] = [
+    ...visible.map((village) => ({ kind: "village" as const, village })),
+    { kind: "unlisted" as const },
+  ];
+
 
   // Pointer down rather than click: a click that starts inside the popup and
   // ends outside it should not count as dismissing the popup.
@@ -126,8 +176,10 @@ export function VillagePicker({
     node?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, open]);
 
-  function commit(village: VillageOption) {
-    onChange(village.id);
+  function commit(option: PickerOption) {
+    onChange(
+      option.kind === "village" ? option.village.id : UNLISTED_VILLAGE_ID,
+    );
     setQuery("");
     setOpen(false);
     inputRef.current?.focus();
@@ -140,10 +192,10 @@ export function VillagePicker({
         setOpen(true);
         return;
       }
-      if (visible.length === 0) return;
+      if (options.length === 0) return;
       const step = event.key === "ArrowDown" ? 1 : -1;
       setActiveIndex(
-        (index) => (index + step + visible.length) % visible.length,
+        (index) => (index + step + options.length) % options.length,
       );
       return;
     }
@@ -151,9 +203,9 @@ export function VillagePicker({
     if (event.key === "Enter") {
       // Only swallow Enter while the popup is choosing something. Otherwise it
       // must keep submitting the form like any other field.
-      if (open && visible[activeIndex]) {
+      if (open && options[activeIndex]) {
         event.preventDefault();
-        commit(visible[activeIndex]);
+        commit(options[activeIndex]);
       }
       return;
     }
@@ -196,24 +248,33 @@ export function VillagePicker({
           type="text"
           autoComplete="off"
           spellCheck={false}
-          disabled={empty}
           role="combobox"
           aria-expanded={open}
           aria-controls={listboxId}
           aria-autocomplete="list"
           aria-activedescendant={
-            open && visible[activeIndex]
+            open && options[activeIndex]
               ? `${optionIdPrefix}-${activeIndex}`
               : undefined
           }
           aria-invalid={invalid}
           className={inputClass}
           placeholder={
-            empty ? "No villages available" : "Search for your village"
+            empty
+              ? "No villages set up yet — tell us where you are"
+              : "Search for your village"
           }
           // Typing shows the query; not typing shows the choice. Without this
           // the box would look empty again the moment focus left it.
-          value={open ? query : selected ? labelFor(selected) : ""}
+          value={
+            open
+              ? query
+              : unlistedChosen
+                ? UNLISTED_LABEL
+                : selected
+                  ? labelFor(selected)
+                  : ""
+          }
           onChange={(event) => {
             setQuery(event.target.value);
             // Reset here rather than in an effect on `query`: a shorter list
@@ -223,7 +284,6 @@ export function VillagePicker({
             if (!open) setOpen(true);
           }}
           onFocus={() => {
-            if (empty) return;
             setActiveIndex(0);
             setOpen(true);
           }}
@@ -235,7 +295,7 @@ export function VillagePicker({
         />
       </div>
 
-      {open && !empty && (
+      {open && (
         <div className="absolute z-20 mt-1.5 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
           <ul
             ref={listRef}
@@ -244,9 +304,66 @@ export function VillagePicker({
             aria-label="Villages"
             className="max-h-64 overflow-y-auto py-1"
           >
-            {visible.map((village, index) => {
-              const isSelected = village.id === value;
+            {visible.length === 0 && (
+              <li className="px-3.5 pb-2 pt-6 text-center text-sm text-slate-500">
+                {empty ? (
+                  "No villages are set up yet."
+                ) : (
+                  <>No village matches “{query.trim()}”.</>
+                )}
+                <span className="mt-1 block text-xs">
+                  Only villages already set up on VillageWatch appear here — if
+                  yours is missing, say so below.
+                </span>
+              </li>
+            )}
+
+            {options.map((option, index) => {
               const isActive = index === activeIndex;
+
+              /*
+                The unlisted row, always last. It carries a top border rather
+                than sitting flush with the villages above it: it is a different
+                kind of answer — "none of these" — and a row that looked like a
+                fourteenth village would be chosen by accident.
+              */
+              if (option.kind === "unlisted") {
+                return (
+                  <li
+                    key="unlisted"
+                    id={`${optionIdPrefix}-${index}`}
+                    role="option"
+                    aria-selected={unlistedChosen}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      commit(option);
+                    }}
+                    onPointerEnter={() => setActiveIndex(index)}
+                    className={`flex cursor-pointer items-center justify-between gap-3 border-t border-slate-100 px-3.5 py-2.5 text-sm ${
+                      isActive ? "bg-brand-50 text-brand-900" : "text-slate-700"
+                    }`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">
+                        {UNLISTED_LABEL}
+                      </span>
+                      <span className="block truncate text-xs text-slate-500">
+                        Tell us where you are and we will let you know
+                      </span>
+                    </span>
+                    {unlistedChosen && (
+                      <Check
+                        className="size-4 shrink-0 text-brand-600"
+                        aria-hidden
+                      />
+                    )}
+                  </li>
+                );
+              }
+
+              const village = option.village;
+              const isSelected = village.id === value;
+
               return (
                 <li
                   key={village.id}
@@ -257,7 +374,7 @@ export function VillagePicker({
                   // close the popup before the click ever landed.
                   onPointerDown={(event) => {
                     event.preventDefault();
-                    commit(village);
+                    commit(option);
                   }}
                   onPointerEnter={() => setActiveIndex(index)}
                   className={`flex cursor-pointer items-center justify-between gap-3 px-3.5 py-2 text-sm ${
@@ -283,15 +400,6 @@ export function VillagePicker({
                 </li>
               );
             })}
-
-            {visible.length === 0 && (
-              <li className="px-3.5 py-6 text-center text-sm text-slate-500">
-                No village matches “{query.trim()}”.
-                <span className="mt-1 block text-xs">
-                  Only villages already set up on VillageWatch appear here.
-                </span>
-              </li>
-            )}
           </ul>
 
           {overflow > 0 && (
