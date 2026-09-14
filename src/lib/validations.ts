@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  ARCHIVE_REASON_VALUES,
   COORDINATOR_APPLICANT_ROLE_VALUES,
   COORDINATOR_REASON_MIN_CHARS,
   DEFAULT_REPORT_RANGE,
@@ -1457,3 +1458,53 @@ export const villageInterestSchema = z
   }));
 
 export type VillageInterestInput = z.infer<typeof villageInterestSchema>;
+
+/**
+ * Archiving one interest registration.
+ *
+ * **The reason is required and there is no way to skip it**, which is the whole
+ * point of the field: an archived row with no account of why is a row somebody
+ * later has to guess about, and the guess is usually "we must have contacted
+ * them" — which is exactly the fact the list is supposed to hold.
+ *
+ * `detail` is required on `other` and dropped on everything else, the shape
+ * `villageInterestSchema`'s own `motivation` already has and for its reason:
+ * the form only shows the box on that branch, and storing something a person
+ * cannot see is worse than not collecting it.
+ *
+ * The transform resolves both cases to the **one value the column holds** — a
+ * code for the four fixed reasons, the typed sentence for the fifth — so the
+ * route writes `parsed.data.reason` and never has to decide.
+ */
+export const archiveVillageInterestSchema = z
+  .object({
+    reason: z.enum(ARCHIVE_REASON_VALUES, {
+      error: "Choose why you are archiving this",
+    }),
+    detail: z
+      .string()
+      .trim()
+      .max(500, "Keep it under 500 characters")
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.reason === "other" && !value.detail) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["detail"],
+        message: "Say what happened in a sentence",
+      });
+    }
+  })
+  .transform((value) => ({
+    /*
+      One value out, whichever branch it came from. `other` is the sentence
+      because the word "other" records nothing; the rest are the code because a
+      stored label would be rewritten every time somebody improved the wording.
+    */
+    reason: value.reason === "other" ? (value.detail as string) : value.reason,
+  }));
+
+export type ArchiveVillageInterestInput = z.infer<
+  typeof archiveVillageInterestSchema
+>;
