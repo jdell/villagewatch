@@ -325,6 +325,74 @@ export function isCoordinatorRole(role: UserRole | null | undefined): boolean {
     : false;
 }
 
+/**
+ * Why an interest registration was taken off the working list.
+ *
+ * Four fixed reasons and an "other" that takes a sentence. Fixed ones because
+ * the point of recording a reason is being able to read the list back later and
+ * see what happened to a village's pipeline — forty rows of free text answer
+ * that badly, and "Village launched" counted across a county is the figure that
+ * says the expansion is working.
+ *
+ * **The code is what is stored, not the label.** `archived_reason` holds
+ * `village-launched`, so rewording the sentence below does not rewrite history
+ * — and the one free-text case stores the sentence itself. They are told apart
+ * by `archiveReasonLabel` in `src/lib/village-interest.ts`: a value that is one
+ * of these codes renders its label, and anything else is what somebody typed.
+ *
+ * `not-interested` is first because it is the common one, and it is worded from
+ * the administrator's side — "Contacted — not interested" says a person was
+ * actually written to, which is a different fact from "we gave up on them" and
+ * is the one worth being able to count.
+ */
+export const ARCHIVE_REASONS = [
+  {
+    value: "not-interested",
+    label: "Contacted — not interested",
+    detail: "They replied and would rather not go ahead",
+  },
+  {
+    value: "village-launched",
+    label: "Village launched",
+    detail: "The village is in service — they have been told",
+  },
+  {
+    value: "duplicate",
+    label: "Duplicate",
+    detail: "The same person, already on the list",
+  },
+  {
+    value: "invalid",
+    label: "Invalid submission",
+    detail: "Not a real address, or not a real place",
+  },
+  {
+    value: "other",
+    label: "Other",
+    detail: "Say what happened in a sentence",
+  },
+] as const;
+
+export type ArchiveReasonValue = (typeof ARCHIVE_REASONS)[number]["value"];
+
+export const ARCHIVE_REASON_VALUES = ARCHIVE_REASONS.map(
+  (reason) => reason.value,
+) as [ArchiveReasonValue, ...ArchiveReasonValue[]];
+
+/**
+ * The codes that stand on their own, which is every one but `other`.
+ *
+ * `other` never reaches the column — what is stored for it is the sentence
+ * somebody typed, because "other" on its own records nothing and is the reason
+ * the form requires the detail.
+ */
+export const ARCHIVE_REASON_LABELS = Object.fromEntries(
+  ARCHIVE_REASONS.filter((reason) => reason.value !== "other").map((reason) => [
+    reason.value,
+    reason.label,
+  ]),
+) as Record<Exclude<ArchiveReasonValue, "other">, string>;
+
 export const VILLAGE_STATUS_LABELS = {
   PENDING: "Pending approval",
   ACTIVE: "Active",
