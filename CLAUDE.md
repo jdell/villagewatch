@@ -264,6 +264,9 @@ src/
     api/village-interest/     POST somebody's interest in a village that is not
                               in service. Creates **no account** — see
                               Registering interest
+    api/admin/village-interest/[id]/archive/  PATCH one registration off the
+                              working list, or `{restore:true}` back onto it.
+                              Platform admin only, and there is no DELETE
     api/health/               Unauthenticated readiness probe for an uptime
                               monitor. Answers 503 when Postgres does not — a
                               200 with "degraded" in the body is the version
@@ -315,6 +318,8 @@ src/
     admin/coordinator-request-card.tsx  One application, approve or reject
     admin/village-card.tsx    One directory entry: activate, rotate the code,
                               appoint a coordinator
+    admin/archive-interest.tsx  The per-row Archive button and its inline reason
+                              panel — and Restore on the archived list
     admin/village-interest-list.tsx  The expansion pipeline on /admin/villages
                               — registrations grouped by village, coordinator
                               candidates first and highlighted
@@ -476,8 +481,9 @@ src/
                               Server only, never throws — the server actions
                               have no `request` to read them off
     village-interest.ts       Interest in a village that is not in service —
-                              the write, and the grouped read the admin page
-                              makes. Server only, degrades on a missing table
+                              the write, the grouped read the admin page makes,
+                              and archive/restore. Server only, degrades on a
+                              missing table, and never deletes
     villages.ts               The one village module: activate, mint and rotate
                               a join code, appoint the first coordinator, check
                               a resident's join, and the columns the dashboard
@@ -736,6 +742,10 @@ tests/                        Vitest, unit only — see The test suite
   date-range.test.ts          The period resolver — presets, the allowed-list
                               narrowing, custom inclusivity, and `all` adding no
                               `occurredAt` key at all
+  village-interest-archive-route.test.ts  The fifth route handler, there for its
+                              gate: /api/ bypasses the proxy, so an
+                              unauthenticated PATCH that archived rows would be
+                              invisible from every screen
   village-interest.test.ts    The interest form — the motivation dropped on the
                               resident path, spellings of one village folded
                               into one group, a coordinator candidate sorting
@@ -2061,7 +2071,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty-two files, 867 tests, covering the
+between the typecheck and the build. Fifty-three files, 900 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -2250,7 +2260,7 @@ and the service read that blocks without claiming a village is suspended.
   most monitors are configured on the code alone. It also pins that a failure
   quotes no connection string, this being the one unauthenticated endpoint that
   touches the database.
-- **What is deliberately not covered**: four route handlers and no more, no
+- **What is deliberately not covered**: five route handlers and no more, no
   server action, no RLS policy, and no component beyond the two above — nothing
   interactive, nothing behind a click. Those need a database, a request context or a
   browser, and a suite that needed any of them would stop being the thing CI can
@@ -4401,6 +4411,108 @@ swaps the account half of the sign-up form for a panel, changes the button to
   `POST /rest/v1/village_interest` that bypasses the Zod schema, the rate limit,
   the confirmation email and the Slack alert. Verified against a throwaway
   Postgres: `anon` is refused both INSERT and SELECT, and the owner is not.
+
+### Archiving one
+
+`PATCH /api/admin/village-interest/[id]/archive`, `archiveVillageInterest` and
+`restoreVillageInterest` beside the read, `ArchiveInterest` on each row, and a
+Pending/Archived filter above the list. Migration
+`20260914090000_village_interest_archive` adds `status`, `archived_at` and
+`archived_reason`.
+
+- **`VillageInterestStatus` has two values and the absent third is the point.**
+  There is no `DELETED` and `DELETE` is not implemented on the route. An
+  interest row is the only record that somebody asked for a village, and the
+  counts behind "eleven people in your village are waiting" are what a parish
+  council gets quoted — a deleted row takes a figure somebody planned against
+  with it, and the evidence of a promise made to a person who has no account and
+  cannot check. Archiving takes a row off the working list and does nothing else
+  to it.
+- **Erasure is the exception and is untouched by this.** Somebody who writes to
+  the address `/privacy` §2 gives them still has their row **deleted**, by hand,
+  as the owner. That is a person exercising Article 17 rather than an
+  administrator tidying a list, and the difference is exactly why one is a
+  button and the other is not.
+- **The status, the date and the reason are written in one statement**, so a row
+  cannot exist that is archived with no account of why — the retention sweep's
+  argument about archiving a report and deleting its wording together: a second
+  pass is one a failure can leave un-run, and the state it leaves behind is the
+  one nobody notices.
+- **`archived_reason` is one column holding one of two things.** A kebab-case
+  code for the four fixed reasons, or the sentence somebody typed under "Other".
+  A code column beside a detail column would leave every row carrying one NULL
+  and would let a row be written with both. `archiveReasonLabel` tells them
+  apart — a known code renders its label, anything else is already a sentence —
+  and it uses `Object.hasOwn` rather than `in` for `resolvePrivacyLevel`'s
+  reason, this being a free-text column where `toString` can arrive.
+- **The code is stored and never the label**, so rewording "Village launched"
+  does not rewrite what was recorded about rows archived last month. The
+  free-text case stores the sentence because the word "other" records nothing —
+  which is also why the schema requires the detail on that branch and drops it
+  on every other, the shape `villageInterestSchema`'s own `motivation` already
+  has.
+- **The guard is in the `where`, not in a read before the write.**
+  `updateMany({ where: { id, status: "PENDING" } })` means two presses in the
+  same second cannot both find it pending, so a double click, a stale tab or a
+  back button cannot move the date onto today and overwrite the reason with the
+  second person's choice. That is `acceptCompliance`'s rule about re-accepting.
+  A `count` of zero is then *read* rather than guessed at, because "already
+  archived" and "no such row" want different sentences — saying "not found"
+  about a row sitting on screen sends an administrator hunting a bug.
+- **Restore was not in the brief and is here deliberately.** What was asked for
+  is an archive with a reason, a filter and no hard delete — which leaves an
+  administrator who archives the wrong row with an archived view they can read
+  and no way back except an `UPDATE` typed into psql. That is the exact state
+  `villages.ts` records as the whole gap `suspendVillage` existed to close:
+  nothing in the application could write it back. It **clears** the date and the
+  reason rather than keeping them, so a restored row looks like one that was
+  never archived — the alternative is a `PENDING` row carrying an archive
+  reason, a state every reader has to know to ignore.
+- **Restore shares the route rather than getting its own.** `{ restore: true }`
+  is the whole body. One row, one column, two directions; a second path segment
+  for the inverse of an action on the same row is a second thing to keep the
+  gate in step with. `z.literal(true)` and not a boolean, so `{ restore: false }`
+  is refused rather than quietly falling through to the archive branch.
+- **The panel is inline rather than a modal**, which is what `village-card.tsx`
+  already does for a village suspension. A dialog wants a focus trap, a scroll
+  lock, an escape handler and somewhere to portal to, all to reproduce something
+  that on a phone is a panel anyway. Nothing is preselected, for the interest
+  form's own reason: a default would be recorded as a decision nobody took.
+- **The filter is two links, not a control**, so it is a URL somebody can
+  bookmark and a back button that works — the property `/reports`' period
+  control is built around. It carries the village list's own `tab`, `q` and
+  `metric` through, because losing a search on the way to the archived pipeline
+  puts an administrator back at the top of 10,670 parishes.
+- **Both counts are on screen whichever list is showing.** A link reading
+  "Archived" with no number is one nobody presses, and the archived count is how
+  an administrator sees the pipeline is being worked at all. `listVillageInterest`
+  returns both from one `groupBy`, and reports a **zero** for the empty side
+  rather than the `undefined` that `groupBy`'s row-per-status shape would
+  otherwise put on a button.
+- **The route's gate is the whole gate.** `src/proxy.ts` passes `/api/` straight
+  through, so nothing above the handler has looked at who is calling — the merge
+  route's reasoning, and why `tests/village-interest-archive-route.test.ts`
+  exists at all. An unauthenticated PATCH that archived rows would be invisible
+  from every screen in the app, because a row leaving the working list is what
+  archiving looks like when it is working.
+- **`z.uuid()` checks the version and variant nibbles, not just the shape**, and
+  that caught a test fixture rather than a bug: `1111…-1111-…` is refused with a
+  400. Prisma's `@default(uuid())` and `gen_random_uuid()` both produce v4, so
+  real ids pass — but a hand-written uuid in a test will not, and every
+  assertion about the body would then pass for the wrong reason.
+- **RLS needed no change and `rls_policies.sql` says why.** This table grants
+  SELECT table-wide rather than per column — every column of it is
+  administrator-only, unlike `villages` and `incidents`, which each hold one a
+  browser must never read — so the three new columns arrive covered. No UPDATE
+  grant is added: the route writes as the table owner, so one would be a grant
+  with no caller, and what it would open is a direct PATCH through PostgREST
+  that goes around the schema and can write `archived_reason` null.
+- **`/privacy` did not change**, and that is a decision rather than an omission.
+  Nothing new is collected, nothing is disclosed to anybody new, nothing is
+  deleted and no retention period moves — §2 and §7 already say the row is kept
+  until the village launches or the person asks for it to go, and archiving is
+  neither of those. It is an administrator's note about their own list. Same
+  reasoning Suspending a village records.
 
 ## The village invite
 
