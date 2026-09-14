@@ -3,6 +3,20 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.6.0](https://github.com/jdell/villagewatch/compare/v1.5.0...v1.6.0) (2026-09-14)
+
+
+### Features
+
+* **admin:** archive from the pipeline, and filter what it shows ([4318707](https://github.com/jdell/villagewatch/commit/43187073cd2eefbe661baf3ec80e2838d3ebd671))
+* **db:** give an interest registration a status, and never a delete ([8f1e9b5](https://github.com/jdell/villagewatch/commit/8f1e9b5501cef80b5e4c219e51363baac512cae5))
+* **interest:** archive a registration with a reason, and restore one ([16bc6c3](https://github.com/jdell/villagewatch/commit/16bc6c36e408d1536251fcdf92e20230073fcfbd))
+
+
+### Documentation
+
+* record archiving, and why /privacy did not change ([964375b](https://github.com/jdell/villagewatch/commit/964375b8fdad3b0a22bd410b81932283f9e20e85)), closes [#39](https://github.com/jdell/villagewatch/issues/39)
+
 ## [1.5.0](https://github.com/jdell/villagewatch/compare/v1.4.0...v1.5.0) (2026-09-13)
 
 
