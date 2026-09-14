@@ -1436,6 +1436,26 @@ CREATE POLICY ecops_site_syncs_select_site
 -- guess an address remove somebody else's row, and let anybody enumerate the
 -- table by watching which deletes succeed.
 
+-- ## The archive columns needed nothing here, and that is worth stating
+--
+-- `20260914090000_village_interest_archive` adds `status`, `archived_at` and
+-- `archived_reason`. Neither the grant nor the policy below moved, and the
+-- reason is that this table grants SELECT **table-wide** rather than per
+-- column: `villages` and `incidents` enumerate their columns because each has
+-- one a browser must never read — a join code, a channel id, a reporter's
+-- verbatim words — and every column of this one is equally administrator-only.
+-- So a new column here arrives covered, where a new column there arrives
+-- invisible until somebody names it.
+--
+-- **No UPDATE grant, and archiving is an UPDATE.** `PATCH /api/admin/…/archive`
+-- writes through Prisma as the table owner, which bypasses every policy in this
+-- file; granting `authenticated` an UPDATE would be a grant with no caller,
+-- which is the same argument the missing anon INSERT above makes at more
+-- length. What it would open is a direct `PATCH /rest/v1/village_interest` that
+-- goes around the Zod schema — so a row could be archived with `archived_reason`
+-- null, which is the one state the column exists to prevent, or unarchived with
+-- the reason left behind.
+
 ALTER TABLE public.village_interest ENABLE ROW LEVEL SECURITY;
 
 GRANT SELECT ON public.village_interest TO authenticated;
