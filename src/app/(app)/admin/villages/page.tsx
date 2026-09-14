@@ -85,7 +85,13 @@ export default async function AdminVillagesPage({
   searchParams,
 }: {
   // Next 16: `searchParams` is a Promise and has to be awaited.
-  searchParams: Promise<{ tab?: string; q?: string; metric?: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    q?: string;
+    metric?: string;
+    /** `archived` shows the archived pipeline; anything else is pending. */
+    interest?: string;
+  }>;
 }) {
   const session = await requireAdmin("/admin/villages");
 
@@ -98,7 +104,7 @@ export default async function AdminVillagesPage({
   */
   const canSuspend = isSuperAdmin(session);
 
-  const { tab, q, metric } = await searchParams;
+  const { tab, q, metric, interest: interestFilter } = await searchParams;
 
   /*
     Read here rather than inside the component so the page stays one round of
@@ -106,7 +112,17 @@ export default async function AdminVillagesPage({
     migration may not be applied, and this page is how a village gets activated
     at all, so an optional pipeline section must not be able to take it down.
   */
-  const interest = await listVillageInterest();
+  /*
+    Pending unless the query string asks otherwise, and anything that is not
+    exactly "archived" reads as pending — the date-range resolver's rule that
+    junk in a query string produces a period rather than an error. This renders
+    on a page an administrator activates villages from; a 400 here over a
+    mistyped parameter would take that with it.
+  */
+  const showArchived = interestFilter === "archived";
+  const interest = await listVillageInterest(
+    showArchived ? "ARCHIVED" : "PENDING",
+  );
   const active: TabKey = isTab(tab) ? tab : "active";
   const query = (q ?? "").trim();
 
@@ -442,7 +458,13 @@ export default async function AdminVillagesPage({
         list — and it is read after the working surface rather than instead of
         it, the reasoning the comparison chart above already carries.
       */}
-      <VillageInterestList groups={interest} />
+      <VillageInterestList
+        groups={interest.groups}
+        showArchived={showArchived}
+        pending={interest.pending}
+        archived={interest.archived}
+        keep={{ tab, q, metric }}
+      />
     </div>
   );
 }
