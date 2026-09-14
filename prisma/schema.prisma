@@ -159,6 +159,21 @@ enum VoteDirection {
 /// registers is a `RESIDENT` like anybody else until an administrator appoints
 /// them. Sharing the enum would put a self-service route to the word
 /// "coordinator" one careless join away.
+/// Whether an interest registration is still waiting to be acted on.
+///
+/// **Two values and no third**, and the absent one is the point: there is no
+/// `DELETED`. An interest row is the only record that somebody asked for a
+/// village, and the counts behind "eleven people in your village are waiting"
+/// are what a parish council gets quoted — so a row that disappeared would take
+/// a figure somebody planned against with it. Archiving takes a row out of the
+/// working list and out of nothing else.
+enum VillageInterestStatus {
+  PENDING
+  ARCHIVED
+
+  @@map("village_interest_status")
+}
+
 enum VillageInterestRole {
   RESIDENT
   COORDINATOR_CANDIDATE
@@ -1407,6 +1422,22 @@ model VillageInterest {
   /// `notifyCoordinatorCandidate`.
   motivation String?
 
+  /// Whether this is still on the working list. Defaults to `PENDING`, so every
+  /// row written before this column existed reads as waiting — which is what it
+  /// was.
+  status VillageInterestStatus @default(PENDING)
+
+  /// When it was taken off the list, and why. Both null while `status` is
+  /// `PENDING`, and both written in the same statement as the status so a row
+  /// cannot be archived with no account of why.
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+
+  /// One of `ARCHIVE_REASONS`' codes, or — for "other" — the sentence somebody
+  /// typed. One column rather than a code and a detail beside it: the codes are
+  /// kebab-case and a typed reason is a sentence, so the reader can tell them
+  /// apart, and a row is never both. See `archiveReasonLabel`.
+  archivedReason String? @map("archived_reason")
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   /// The admin view groups by village and orders by recency; the index matches
@@ -1414,5 +1445,8 @@ model VillageInterest {
   @@index([villageName, createdAt])
   /// So "how many coordinator candidates are waiting" is not a full scan.
   @@index([role])
+  /// The admin view reads one status at a time and defaults to `PENDING`, which
+  /// is the smaller half of the table for as long as the pipeline is worked.
+  @@index([status, createdAt])
   @@map("village_interest")
 }
