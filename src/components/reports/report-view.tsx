@@ -10,6 +10,7 @@ import {
   type NarrativeState,
 } from "@/app/(app)/reports/actions";
 import { DownloadPdfButton } from "@/components/reports/download-pdf-button";
+import { MpLetterButton } from "@/components/reports/mp-letter-button";
 import type { CommunityReportData } from "@/lib/community-report";
 import {
   AI_ANALYSIS_NOTE,
@@ -258,6 +259,8 @@ export function ReportView({
           <Share2 className="size-4" aria-hidden />
           Share
         </button>
+
+        <MpLetterButton rangeFields={rangeFields} />
       </div>
 
       {/*

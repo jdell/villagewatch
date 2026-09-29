@@ -2,6 +2,8 @@
 
 import { requireCoordinator } from "@/lib/auth";
 import { generateReportNarrative } from "@/lib/ai/report-narrative";
+import { generateMpLetter } from "@/lib/ai/mp-letter";
+import { lookupMpByPostcode } from "@/lib/parliament";
 import type { ReportNarrative } from "@/lib/community-report";
 import { prisma } from "@/lib/prisma";
 import { getVillageController, getVillageMode } from "@/lib/villages";
@@ -217,6 +219,213 @@ async function auditReport(input: {
   } catch (cause) {
     console.error(
       "Could not audit the community report for village %s",
+      input.villageId,
+      cause,
+    );
+  }
+}
+
+// ── MP Letter ────────────────────────────────────────────────────────────────
+
+/**
+ * The server action behind "Write to your MP" on `/reports`.
+ *
+ * Coordinator-only. Looks up the MP from the village's postcode via the
+ * Parliament API, collects the period's report data, and feeds both to Claude
+ * to draft a formal letter. The letter is strategic, not operational — trends,
+ * scale, impact and resource asks. The detailed patterns go to the police
+ * report, not the MP.
+ *
+ * Rate-limited at the same level as the report narrative (12/hr), since the
+ * cost is equivalent — one Anthropic call per press.
+ */
+
+export type MpLetterState = {
+  letter: string | null;
+  mpName: string | null;
+  mpConstituency: string | null;
+  mpEmail: string | null;
+  mpAddress: string | null;
+  message: string;
+  ok: boolean;
+};
+
+export async function generateMpLetterAction(
+  _previous: MpLetterState,
+  formData: FormData,
+): Promise<MpLetterState> {
+  const session = await requireCoordinator("/reports");
+  const villageId = session.profile?.villageId;
+
+  if (!villageId || !process.env.DATABASE_URL) {
+    return {
+      letter: null,
+      mpName: null,
+      mpConstituency: null,
+      mpEmail: null,
+      mpAddress: null,
+      ok: false,
+      message: "You are not attached to a village.",
+    };
+  }
+
+  const empty: MpLetterState = {
+    letter: null,
+    mpName: null,
+    mpConstituency: null,
+    mpEmail: null,
+    mpAddress: null,
+    ok: false,
+    message: "",
+  };
+
+  // Resolve the report range from the form
+  const range = resolveReportRange({
+    range: String(formData.get("range") ?? ""),
+    from: String(formData.get("from") ?? ""),
+    to: String(formData.get("to") ?? ""),
+  });
+
+  // Get the village details including postcode
+  const [village, mode] = await Promise.all([
+    getVillageController(villageId),
+    getVillageMode(villageId),
+  ]);
+
+  if (!village) {
+    return { ...empty, message: "That village could not be found." };
+  }
+
+  // Look up the village's postcode to find the MP
+  const villageRecord = await prisma.village.findUnique({
+    where: { id: villageId },
+    select: { postcode: true },
+  });
+
+  const mpResult = await lookupMpByPostcode(villageRecord?.postcode);
+
+  if (!mpResult.ok) {
+    return { ...empty, message: mpResult.message };
+  }
+
+  // Rate limit after validation, before the expensive call
+  const limit = await rateLimit(RATE_LIMITS.mpLetter, session.user.id);
+
+  if (!limit.ok) {
+    return {
+      ...empty,
+      mpName: mpResult.mp.fullTitle,
+      mpConstituency: mpResult.mp.constituency,
+      mpEmail: mpResult.mp.email,
+      mpAddress: mpResult.mp.officeAddress,
+      message: `You have generated several letters recently. Try again ${formatRetryAfter(limit.retryAfterSeconds)}.`,
+    };
+  }
+
+  // Collect the report data
+  const report = await collectVillageReport({
+    villageId,
+    villageName: village.name,
+    parishCouncil: village.parishCouncil,
+    range,
+  });
+
+  // Audit this action
+  await auditMpLetter({
+    session,
+    villageId,
+    range: { from: range.from, to: range.to, days: range.days },
+    total: report.total,
+    mpName: mpResult.mp.fullTitle,
+  });
+
+  // Generate the letter
+  const coordinatorName =
+    session.profile?.name ?? session.user.email ?? "[YOUR NAME]";
+
+  const letterResult = await generateMpLetter({
+    villageName: village.name,
+    constituency: mpResult.mp.constituency,
+    from: range.from,
+    to: range.to,
+    total: report.total,
+    previousTotal: report.previousTotal,
+    incidents: report.incidents.map((inc) => ({
+      reference: inc.reference,
+      type: inc.type,
+      severity: inc.severity,
+      title: inc.title,
+      description: inc.description,
+      locationText: inc.locationText,
+      occurredAt: new Date(inc.occurredAt),
+      recurring: inc.recurring,
+      patternNote: inc.patternNote,
+    })),
+    mp: mpResult.mp,
+    mode,
+    coordinatorName,
+    byType: report.byType.map((t) => ({ type: t.key, count: t.count })),
+    bySeverity: report.bySeverity.map((s) => ({
+      severity: s.key,
+      count: s.count,
+    })),
+    hotspots: report.hotspots.map((h) => ({
+      location: h.location,
+      count: h.count,
+    })),
+  });
+
+  if (!letterResult.ok) {
+    return {
+      ...empty,
+      mpName: mpResult.mp.fullTitle,
+      mpConstituency: mpResult.mp.constituency,
+      mpEmail: mpResult.mp.email,
+      mpAddress: mpResult.mp.officeAddress,
+      message: letterResult.message,
+    };
+  }
+
+  return {
+    ok: true,
+    letter: letterResult.letter,
+    mpName: mpResult.mp.fullTitle,
+    mpConstituency: mpResult.mp.constituency,
+    mpEmail: mpResult.mp.email,
+    mpAddress: mpResult.mp.officeAddress,
+    message: "",
+  };
+}
+
+async function auditMpLetter(input: {
+  session: Awaited<ReturnType<typeof requireCoordinator>>;
+  villageId: string;
+  range: { from: Date; to: Date; days: number };
+  total: number;
+  mpName: string;
+}): Promise<void> {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorId: input.session.user.id,
+        actorEmail: input.session.user.email ?? null,
+        actorRole: input.session.profile?.role ?? null,
+        villageId: input.villageId,
+        action: "incident.mp_letter_generated",
+        entityType: "village",
+        entityId: input.villageId,
+        after: {
+          from: input.range.from.toISOString(),
+          to: input.range.to.toISOString(),
+          days: input.range.days,
+          incidents: input.total,
+          mpName: input.mpName,
+        },
+      },
+    });
+  } catch (cause) {
+    console.error(
+      "Could not audit the MP letter for village %s",
       input.villageId,
       cause,
     );

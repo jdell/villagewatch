@@ -213,6 +213,13 @@ export const RATE_LIMITS = {
    * neither of them is lower.
    */
   villageInterest: { name: "village-interest", limit: 5, windowMs: HOUR_MS },
+
+  /**
+   * The MP letter — same cost as the report narrative (one Anthropic call over
+   * the village's reports), used less often and by the same coordinators. Shares
+   * the report narrative's limit of 12 per hour.
+   */
+  mpLetter: { name: "mp-letter", limit: 12, windowMs: HOUR_MS },
 } as const satisfies Record<string, RateLimitRule>;
 
 /**

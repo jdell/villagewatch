@@ -96,7 +96,7 @@ const OUTPUT_SCHEMA = {
       type: "array",
       items: { type: "string" },
       description:
-        "Up to five observations that hold across MORE THAN ONE report — a repeated location, a repeated time of day, a repeated method, an escalation. One sentence each, each naming the reports it rests on by count. Empty if the period shows no connections; an invented pattern in a document sent to the police is worse than a short section.",
+        "Up to five observations that hold across MORE THAN ONE report — a repeated location, a repeated time of day, a repeated method, an escalation. One sentence each, each naming the reports it rests on by count. BE SPECIFIC: name the location (shop name, street), the day(s) of the week, and the time window. 'Three shoplifting reports at the Co-op on Mill Road, all Friday afternoons between 2–4pm' — not 'several shoplifting reports in the area'. Empty if the period shows no connections; an invented pattern in a document sent to the police is worse than a short section.",
     },
     recommendation: {
       type: ["string", "null"],
@@ -152,8 +152,10 @@ ${audience.reads} The counts, the breakdowns, the hotspot list and the full inci
 - Report only what the incidents say. Never invent a detail, a trend, a cause or a suspect. If the period shows nothing connected, return an empty \`patterns\` list and say plainly in the summary that the reports appear unrelated.
 - Every incident you are given has already been anonymised for publication. Keep it that way: no names, no house numbers, no vehicle registrations. Areas and landmarks only.
 - A pattern needs at least two reports behind it. Say how many. "Three of the four vehicle reports were overnight on the same stretch of road" is a pattern; "vehicle crime is a concern" is not.
+- **Be specific about locations and times.** Police have told us that concrete details are far more useful than general statements. Good: "three reports of shoplifting at the Co-op on Mill Road, all between 2pm and 4pm on weekday afternoons". Bad: "there have been several shoplifting reports in the area". Name the shop, the street, the day of the week and the time window wherever the reports provide them.
+- Where reports describe recurring behaviour, say so explicitly: "reports describe individuals visiting [named location] on consecutive [days] between [time range]" — the pattern with its schedule is what a patrol can act on.
 - These are residents' accounts of what they believe they saw. They are not verified crime records, and the officer reading this knows it. Do not write as though they are — "four residents reported", not "there were four burglaries".
-- \`recommendation\` is where the coordinator would point attention, not instructions to the police. If the reports do not support one, return null. A suggestion invented to fill the field is the section that costs the document its credibility.
+- \`recommendation\` is where the coordinator would point attention, not instructions to the police. If the reports do not support one, return null. A suggestion invented to fill the field is the section that costs the document its credibility. When the reports DO support one, name the specific location and time window — "the Co-op car park on Friday afternoons" rather than "the local area".
 - Never suggest who is responsible, and never repeat a description of a person even where one survived anonymisation.
 
 # Writing
