@@ -341,7 +341,7 @@ export async function generateMpLetterAction(
 
   // Generate the letter
   const coordinatorName =
-    session.profile?.name ?? session.user.email ?? "[YOUR NAME]";
+    session.profile?.fullName.trim() || session.user.email || "[YOUR NAME]";
 
   const letterResult = await generateMpLetter({
     villageName: village.name,

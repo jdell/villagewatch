@@ -106,6 +106,13 @@ export async function lookupMpByPostcode(
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
+/** Narrows an unknown JSON value to an object, or undefined for anything else. */
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
 async function fetchConstituency(
   postcode: string,
 ): Promise<MpLookupResult> {
@@ -158,8 +165,8 @@ async function fetchConstituency(
     return { ok: false, code: "not_found", message: "No constituency data returned." };
   }
 
-  const rep = (constituency as Record<string, unknown>)?.currentRepresentation;
-  const member = (rep as Record<string, unknown>)?.member?.value;
+  const rep = asRecord(asRecord(constituency)?.currentRepresentation);
+  const member = asRecord(asRecord(rep?.member)?.value);
 
   if (!member) {
     return {
@@ -169,7 +176,7 @@ async function fetchConstituency(
     };
   }
 
-  const m = member as Record<string, unknown>;
+  const m = member;
   const party = m.latestParty as Record<string, unknown> | undefined;
 
   return {
