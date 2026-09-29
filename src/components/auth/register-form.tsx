@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, MapPinPlus, UserPlus } from "lucide-react";
+import { Info, Loader2, MapPinPlus, UserPlus } from "lucide-react";
 import type { LocationValue } from "@/components/location-picker";
 import { HomeLocationField } from "@/components/auth/home-location-field";
 import {
@@ -43,6 +43,13 @@ type RegisterFormProps = {
    */
   initialVillageId?: string;
   initialJoinCode?: string;
+  /**
+   * The page pre-filled a village that requires a code, and no code came with
+   * it — somebody followed the register link on a public incident page, which
+   * deliberately carries no code. Says where one comes from instead of leaving
+   * an empty field as a dead end.
+   */
+  showJoinCodeHelp?: boolean;
 };
 
 const inputClass =
@@ -86,6 +93,7 @@ export function RegisterForm({
   villages,
   initialVillageId = "",
   initialJoinCode = "",
+  showJoinCodeHelp = false,
 }: RegisterFormProps) {
   const router = useRouter();
   const submit = useAuthSubmit();
@@ -119,6 +127,12 @@ export function RegisterForm({
 
   const noVillages = villages.length === 0;
   const village = villages.find((option) => option.id === villageId) ?? null;
+  // Only while the pre-filled village is still the one selected: whether a
+  // code is required was answered for that village and no other.
+  const joinCodeHelpFor =
+    showJoinCodeHelp && village && villageId === initialVillageId
+      ? village.name
+      : null;
 
   /**
    * The unlisted branch: one row, no account.
@@ -370,7 +384,9 @@ export function RegisterForm({
         label="Join code"
         error={errors.joinCode}
         hint={
-          initialJoinCode
+          joinCodeHelpFor
+            ? undefined
+            : initialJoinCode
             ? "Filled in from your invite link. Check it matches the code you were given."
             : // Not "optional" any more, and the change is the point: a village
               // that has a code requires it. Left un-starred rather than marked
@@ -392,7 +408,21 @@ export function RegisterForm({
           aria-invalid={Boolean(errors.joinCode)}
           className={`${inputClass} font-mono uppercase`}
           placeholder="ABCD-1234"
+          aria-describedby={joinCodeHelpFor ? "joinCode-help" : undefined}
         />
+        {joinCodeHelpFor && (
+          <p
+            id="joinCode-help"
+            className="mt-2 flex gap-2.5 rounded-lg bg-brand-50 px-3.5 py-3 text-sm leading-relaxed text-brand-900 ring-1 ring-brand-100"
+          >
+            <Info className="mt-0.5 size-4 shrink-0 text-brand-600" aria-hidden />
+            <span>
+              To join {joinCodeHelpFor}, you need an invite code. Ask your
+              village coordinator, or look for a VillageWatch invite on your
+              village&rsquo;s noticeboard or WhatsApp group.
+            </span>
+          </p>
+        )}
       </Field>
 
       <div className="grid gap-5 sm:grid-cols-2">
