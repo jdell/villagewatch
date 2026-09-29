@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [1.7.2](https://github.com/jdell/villagewatch/compare/v1.7.1...v1.7.2) (2026-09-29)
+
+
+### Fixes
+
+* **wizard:** hold Continue and Publish while the AI rewrite is running ([f8d783c](https://github.com/jdell/villagewatch/commit/f8d783c25824377844ecf88ab872519e35085c5f))
+
 ### [1.7.1](https://github.com/jdell/villagewatch/compare/v1.7.0...v1.7.1) (2026-09-29)
 
 
