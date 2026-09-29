@@ -3,6 +3,23 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.7.0](https://github.com/jdell/villagewatch/compare/v1.6.0...v1.7.0) (2026-09-29)
+
+
+### Features
+
+* **reports:** write-to-your-MP letter from village safety data ([3a6ed5e](https://github.com/jdell/villagewatch/commit/3a6ed5e55408773cb2a5620df150516ea0e607e4))
+
+
+### Documentation
+
+* **reports:** disclose the MP lookup, test the Parliament client ([11a4d59](https://github.com/jdell/villagewatch/commit/11a4d599e8c7dcaf30dbeea0d68cac7667946c0d))
+
+
+### Fixes
+
+* resolve typecheck errors in MP letter feature ([2ed8fe0](https://github.com/jdell/villagewatch/commit/2ed8fe01f7194795bd45da941dc37ff21ec9fc1a))
+
 ## [1.6.0](https://github.com/jdell/villagewatch/compare/v1.5.0...v1.6.0) (2026-09-14)
 
 
