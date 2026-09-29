@@ -72,6 +72,31 @@ function readPrefill(
   };
 }
 
+/**
+ * Whether the pre-filled village asks for a join code at all.
+ *
+ * Only asked when somebody arrived with a village and no code — the link on a
+ * public incident page, or an invite whose code was trimmed off. The form then
+ * explains where a code comes from rather than leaving an empty field nobody
+ * can fill in. It is a yes/no and never the code: `joinCode` is a credential
+ * and this page is public (see "The village invite" in CLAUDE.md). A village
+ * set up before codes existed has none, and telling its residents they need
+ * one would send them hunting for something that does not exist.
+ */
+async function villageRequiresCode(villageId: string): Promise<boolean> {
+  if (!villageId || !process.env.DATABASE_URL) return false;
+  try {
+    const count = await prisma.village.count({
+      where: { id: villageId, joinCode: { not: null } },
+    });
+    return count > 0;
+  } catch {
+    // A hint is not worth an error page. The field's own hint still says to
+    // ask the coordinator.
+    return false;
+  }
+}
+
 export default async function RegisterPage({
   searchParams,
 }: {
@@ -80,6 +105,8 @@ export default async function RegisterPage({
 }) {
   const [villages, query] = await Promise.all([getVillages(), searchParams]);
   const prefill = readPrefill(query, villages);
+  const showJoinCodeHelp =
+    !prefill.joinCode && (await villageRequiresCode(prefill.villageId));
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50">
@@ -131,6 +158,7 @@ export default async function RegisterPage({
               villages={villages}
               initialVillageId={prefill.villageId}
               initialJoinCode={prefill.joinCode}
+              showJoinCodeHelp={showJoinCodeHelp}
             />
           </div>
         </div>
