@@ -361,6 +361,8 @@ src/
                               calendar itself is date-range-chip.tsx
     reports/download-pdf-button.tsx  Fetch, check the status, then save. Sends
                               analysis=ai only once one is on screen
+    reports/mp-letter-button.tsx  "Write to your MP" — the MP lookup, the draft
+                              in an editable preview, copy and email
     reports/report-view.tsx   The period report on screen, on the clipboard and
                               on paper — one format, three destinations
     reports/weekly-summary-history.tsx  The digests the village has already had.
@@ -526,6 +528,10 @@ src/
                               period. Client-safe, no rawDescription/lat/lng
     police-api.ts             The data.police.uk client — typed failures, never
                               throws, and the 1/s outbound pacer. Server only
+    parliament.ts             The UK Parliament Members API client — postcode
+                              to MP, typed failures, never throws. Sends the
+                              village postcode and nothing else; the contact
+                              call is optional and degrades to nulls. Server only
     police-data.ts            The Prisma half: syncing a village-month, and the
                               two reads the dashboard and /reports make. Server
                               only, and every read degrades on a missing table
@@ -584,6 +590,10 @@ src/
     ai/weekly-digest.ts       Claude weekly summary, structured, typed failures
     ai/report-narrative.ts    Claude pattern analysis for a date range — same
                               contract, written for a PCSO rather than residents
+    ai/mp-letter.ts           Claude draft of a letter to the village's MP — the
+                              strategic picture from counts, landmarks and
+                              pattern notes. No report text, title or reporter
+                              reaches the prompt
     geo.ts                    fuzzCoordinates — server only, uses node:crypto
     rate-limit.ts             Fixed windows counted in `rate_limit` — server only
     format.ts                 Time-ago, dates, sizes — en-GB
@@ -816,6 +826,12 @@ tests/                        Vitest, unit only — see The test suite
                               every failure a value rather than a throw, a 404
                               read as "not published", one bad record costing
                               one record, `bio` never arriving, and the pacer
+  parliament.test.ts          The Parliament Members API client over a stubbed
+                              fetch — every failure a value rather than a throw
+                              (no postcode, a 500, a timeout, no results, a bad
+                              body, a vacant seat), the postcode being all that
+                              is sent, and a failed contact call costing the
+                              email and address rather than the lookup
   ecops-alerts.test.ts        The Neighbourhood Alert client over a stubbed
                               fetch — every failure a value rather than a throw,
                               an **empty channel read as a success** (which is
@@ -1370,6 +1386,7 @@ line often enough that an IP limit would silence a household.
 | `POST /api/incidents/process`      | `aiProcess`       | 30 per hour |
 | `POST /api/incidents`              | `incidentCreate`  | 10 per day  |
 | `generateNarrativeAction` (`/reports`) | `reportNarrative` | 12 per hour |
+| `generateMpLetterAction` (`/reports`) | `mpLetter`     | 12 per hour |
 | `POST /api/incidents/[id]/vote`    | `incidentVote`    | 1 per 10s, **per incident** |
 | `POST /api/auth/login`             | `authLogin`       | 5 per minute, **per address** |
 | `POST /api/auth/register`          | `authRegister`    | 3 per hour, **per address** |
@@ -2071,7 +2088,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty-three files, 900 tests, covering the
+between the typecheck and the build. Fifty-four files, 915 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
