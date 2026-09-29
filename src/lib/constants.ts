@@ -2072,8 +2072,15 @@ export const PRICING = [
  * a parish council or the coordinator, depending on `Village.mode`. For this
  * one there is no village, so it is the operator, and a subject access request
  * about an interest row goes somewhere different from one about a report.
+ *
+ * It moved to **29 September 2026** for the MP letter: §6 gained a paragraph
+ * describing a new outbound request (a village postcode to Parliament's
+ * Members API) and a new purpose for an existing processor (Anthropic drafting
+ * the letter). Nothing new is collected about a resident, but §6 enumerates
+ * every request made on their behalf, so a paragraph added there is a change
+ * of substance.
  */
-export const LEGAL_LAST_UPDATED = "2026-09-13";
+export const LEGAL_LAST_UPDATED = "2026-09-29";
 
 /**
  * The data controller under UK GDPR.

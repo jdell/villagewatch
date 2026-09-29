@@ -120,6 +120,11 @@ export const metadata: Metadata = {
  *     sent, and that is the whole request — no map centre this time, because
  *     the feed has no geography to give one to. Held to the same rule as the
  *     data.police.uk paragraph above it, and in §6 for the same reason.
+ *   - §6's paragraph on the MP letter, the third outbound request carrying
+ *     **nothing** about a resident (`src/lib/parliament.ts` sends a village
+ *     postcode), and a second purpose for Anthropic
+ *     (`src/lib/ai/mp-letter.ts` sends counts, landmarks and pattern notes —
+ *     no report text, no title, no reporter). Change either and this changes.
  *   - §6's paragraph on Resend, and it changed on 31 August 2026 because the
  *     code under it did. `src/lib/email/send.ts` is still the one transport,
  *     but the welcome is no longer the one message: an incident alert now goes
@@ -899,6 +904,38 @@ export default function PrivacyPage() {
           of it with a link to the original. These are published for a whole
           force or scheme area rather than for your village, and they are not
           reports made by anyone here.
+        </P>
+        {/*
+          The third outbound request with nothing of a resident's in it, in this
+          section for the reason the two above are. `src/lib/parliament.ts` sends
+          the village's postcode to Parliament's Members API and nothing else —
+          no report, no account, no IP address of a resident. What comes back is
+          the MP's published name, party, constituency, parliamentary email and
+          office address. A statement about how that module behaves, in the same
+          sense the others are: if it ever sends anything more, this changes in
+          the same commit.
+
+          The letter draft is a second purpose for Anthropic, which is already
+          named as a processor above. What `src/lib/ai/mp-letter.ts` puts in the
+          prompt is counts, the landmarks reports were filed against and the
+          one-line pattern notes — no report text, no title, no reporter and not
+          the coordinator's name.
+        */}
+        <P>
+          A coordinator can ask {APP_NAME} to draft a letter to your
+          village&rsquo;s MP about the reports your village has published. To
+          find out who that is, our servers send your village&rsquo;s postcode
+          to the UK Parliament&rsquo;s public Members API
+          (members-api.parliament.uk), and nothing else &mdash; no report, no
+          account, no location of yours and not your IP address. What comes back
+          is information Parliament already publishes: the MP&rsquo;s name,
+          party, constituency, parliamentary email address and office address.
+          The draft itself is written by Anthropic, the same processor described
+          in section 5, from counts of published reports, the places they were
+          reported at and short summaries of any pattern that was detected
+          &mdash; never the text of a report and never who filed one. The
+          coordinator reads and edits the draft, and nothing is sent to the MP
+          unless they choose to send it themselves.
         </P>
         <P>
           Some of our processors operate outside the UK. Where data is
