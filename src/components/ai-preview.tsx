@@ -579,7 +579,10 @@ export function AiPreview({
           <button
             type="button"
             onClick={onPublish}
-            disabled={publishing || !acknowledged}
+            // Not while the rewrite is still being written — the text above
+            // would be the reporter's raw words. A failed pass does not
+            // disable it: that falls back to their own wording on purpose.
+            disabled={publishing || processing || !acknowledged}
             className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 text-base font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {publishing ? (

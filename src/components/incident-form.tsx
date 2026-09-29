@@ -278,6 +278,12 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
   const [published, setPublished] = useState<PublishedReport | null>(null);
   const [ai, setAi] = useState<AiState>(IDLE_AI);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  /**
+   * Which AI pass is current. A pass whose inputs were edited while it was in
+   * flight is superseded rather than waited on, and a superseded pass must not
+   * write anything back — see `runAiPass`.
+   */
+  const aiRunRef = useRef(0);
 
   const form = useForm<IncidentFormValues>({
     resolver: zodResolver(incidentFormSchema),
@@ -402,10 +408,33 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
     const values = getValues();
     const signature = aiSignature(values);
 
-    if (ai.status === "processing") return;
+    // A pass already running over these same inputs is the one to wait for.
+    // One running over *different* inputs — the reporter went back mid-rewrite
+    // and edited — is stale, so a new pass supersedes it rather than the old
+    // one landing as a rewrite of text that is no longer the report.
+    if (ai.status === "processing" && ai.signature === signature) return;
     if (!force && ai.status !== "idle" && ai.signature === signature) return;
 
+    const run = ++aiRunRef.current;
     setAi({ ...IDLE_AI, status: "processing", signature });
+
+    /**
+     * Whether this pass may still write to the form. Not if a newer one has
+     * started, and not if the inputs changed underneath it — the reporter can
+     * go back and edit while it is in flight, and a writeback then would
+     * overwrite their category and title with the answer to an older question.
+     * In the second case the state returns to idle, so arriving back at the
+     * preview runs a fresh pass rather than leaving the wizard stuck mid-rewrite.
+     */
+    const superseded = () => {
+      if (run !== aiRunRef.current) return true;
+      if (aiSignature(getValues()) !== signature) {
+        aiRunRef.current += 1;
+        setAi(IDLE_AI);
+        return true;
+      }
+      return false;
+    };
 
     // Whatever is sent has to be a still. For a photo that is the blurred
     // upload itself, which has more for the model to read than its own
@@ -417,6 +446,7 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
       : first?.thumbnailPath;
 
     const failWith = (message: string, pattern?: PatternResponse) => {
+      if (superseded()) return;
       setAi({
         ...IDLE_AI,
         status: "failed",
@@ -457,6 +487,8 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
         );
         return;
       }
+
+      if (superseded()) return;
 
       const incident = result.incident;
 
@@ -501,6 +533,13 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
   }
 
   async function goNext() {
+    // The rewrite is what the publish step asks the reporter to check. Leaving
+    // the preview while it is still being written would put their raw words on
+    // that screen under a button that files them. A *failed* pass does not
+    // hold anybody here — it falls back to their own wording, and being rate
+    // limited must never block filing.
+    if (step === PREVIEW_STEP && ai.status === "processing") return;
+
     const fields = STEP_FIELDS[step];
     if (fields.length > 0) {
       const valid = await trigger(fields, { shouldFocus: true });
@@ -526,6 +565,9 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
   }
 
   async function publish() {
+    // The button is disabled for this already; this is the backstop.
+    if (ai.status === "processing") return;
+
     const valid = await trigger();
     if (!valid) {
       toast.error("Something is missing — check the earlier steps.");
@@ -1022,7 +1064,8 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
             <button
               type="button"
               onClick={goNext}
-              className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
+              disabled={step === PREVIEW_STEP && ai.status === "processing"}
+              className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {step === 0 && media.length === 0 && !textOnly
                 ? "Skip for now"
