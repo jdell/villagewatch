@@ -45,14 +45,21 @@ export function MpLetterButton({
   const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Track when the action completes to open the panel
-  const prevOkRef = useRef(state.ok);
-  if (state.ok && !prevOkRef.current && state.letter) {
-    setShowPanel(true);
-    setEditedLetter(null);
-    setIsEditing(false);
+  // Open the panel on a fresh letter, discarding any edits to the last one.
+  // Adjusted during render against the previous state rather than in an
+  // effect or through a ref — React 19's lint rules forbid both, and this is
+  // the pattern its docs give for it. `useActionState` hands back a new object
+  // each time the action completes, so identity is what "a new result" means;
+  // it catches a regenerated letter even when the text is identical.
+  const [seenState, setSeenState] = useState(state);
+  if (state !== seenState) {
+    setSeenState(state);
+    if (state.ok && state.letter) {
+      setShowPanel(true);
+      setEditedLetter(null);
+      setIsEditing(false);
+    }
   }
-  prevOkRef.current = state.ok;
 
   const letterText = editedLetter ?? state.letter ?? "";
 
