@@ -801,6 +801,11 @@ export default async function DashboardPage({
             incidents={heatIncidents}
             center={{ lat: village.centerLat, lng: village.centerLng }}
             zoom={village.defaultZoom || MAP_DEFAULTS.zoom}
+            period={
+              range.from && range.to
+                ? { from: range.from.toISOString(), to: range.to.toISOString() }
+                : null
+            }
           />
         )}
 
