@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ThumbsDown, ThumbsUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { applyVote, type VoteInput, type VoteState } from "@/lib/votes";
 
@@ -132,7 +132,7 @@ export function VoteButtons({
         size={size}
         tone="up"
       >
-        <ThumbsUp className={icon} aria-hidden />
+        <ChevronUp className={icon} aria-hidden />
       </Button>
 
       <Button
@@ -144,7 +144,7 @@ export function VoteButtons({
         size={size}
         tone="down"
       >
-        <ThumbsDown className={icon} aria-hidden />
+        <ChevronDown className={icon} aria-hidden />
       </Button>
     </div>
   );

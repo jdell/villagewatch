@@ -348,7 +348,7 @@ src/
                               download, `[data-print-region]` for the sheet
     incident-location-map.tsx Client wrapper for the detail page's single pin
     incident-card.tsx         One incident, used by preview, list and detail
-    vote-buttons.tsx          Thumbs up / thumbs down and two counts, on every
+    vote-buttons.tsx          Up / down chevrons and two counts, on every
                               published report. Optimistic, and it puts the
                               count back when the request fails
     incident-actions.tsx      Detail-page actions — reporter and coordinator

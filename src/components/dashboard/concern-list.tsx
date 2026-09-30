@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ThumbsDown, ThumbsUp, Users } from "lucide-react";
+import { ChevronDown, ChevronUp, Users } from "lucide-react";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -124,9 +124,9 @@ export function ConcernList({
 
       {rows.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">
-          Nobody has voted on a report in this period yet. Residents see a thumbs
-          up and a thumbs down on every published report — this is where the
-          totals land.
+          Nobody has voted on a report in this period yet. Residents see a
+          &ldquo;more serious&rdquo; and a &ldquo;less serious&rdquo; button on
+          every published report — this is where the totals land.
         </p>
       ) : (
         <ol className="mt-4 space-y-2.5">
@@ -167,12 +167,12 @@ export function ConcernList({
                 */}
                 <span className="flex shrink-0 items-center gap-2.5 text-xs tabular-nums text-slate-600">
                   <span className="inline-flex items-center gap-1">
-                    <ThumbsUp className="size-3.5 text-brand-600" aria-hidden />
+                    <ChevronUp className="size-3.5 text-brand-600" aria-hidden />
                     <span className="sr-only">rated more serious by</span>
                     {row.votes.up}
                   </span>
                   <span className="inline-flex items-center gap-1">
-                    <ThumbsDown
+                    <ChevronDown
                       className="size-3.5 text-amber-600"
                       aria-hidden
                     />

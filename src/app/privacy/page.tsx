@@ -472,7 +472,7 @@ export default function PrivacyPage() {
           </LI>
           <LI>
             <strong>Your votes on published reports.</strong> Every published
-            report carries a thumbs up and a thumbs down, meaning &ldquo;more
+            report carries an up arrow and a down arrow, meaning &ldquo;more
             serious than it looks&rdquo; and &ldquo;less&rdquo;. We record which
             way you voted so that pressing the button again can take it back —
             so the record is linked to your account, not anonymous to us. Your

@@ -541,8 +541,8 @@ anybody typed.
 
 ### What the village makes of a report
 
-Every published report carries two small buttons and a number — a thumbs up and
-a thumbs down — on the incident list and on the report's own page. Any resident
+Every published report carries two small buttons and a number — an up arrow and
+a down arrow — on the incident list and on the report's own page. Any resident
 of your village can press them.
 
 **Up means "this matters more than it looks". Down means "less".** The severity
