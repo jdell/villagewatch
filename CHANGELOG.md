@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [1.8.1](https://github.com/jdell/villagewatch/compare/v1.8.0...v1.8.1) (2026-09-30)
+
+
+### Fixes
+
+* **votes:** use chevron icons instead of thumbs for severity voting ([3b18f01](https://github.com/jdell/villagewatch/commit/3b18f0186254a95d5ff187001057e632ba4b7624))
+
 ## [1.8.0](https://github.com/jdell/villagewatch/compare/v1.7.2...v1.8.0) (2026-09-29)
 
 
