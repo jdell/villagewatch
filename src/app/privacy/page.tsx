@@ -169,6 +169,13 @@ export const metadata: Metadata = {
  *     `fuzzCoordinates`), an event goes to nobody outside the village and to
  *     no processor (nothing in the module calls the AI, push or email), and
  *     closing an account deletes every event it posted (`eraseAccount`).
+ *   - §6 on the **scheduled** police report (`src/lib/police-report-schedule.ts`).
+ *     Three claims: it is the same summary as the manual one (it calls
+ *     `collectVillageReport` and `formatCommunityReport` unchanged), its overview
+ *     is counted (`countedNarrative`, never the AI), and every send is audited
+ *     with its recipient (`incident.report_generated`, `format: "email"`). And
+ *     the Resend paragraph's sentence that the message carries nothing about a
+ *     resident but the report.
  *   - §§2, 6 and 7 on votes (`src/lib/votes.ts`, `IncidentVote`). Three claims,
  *     and the second is the one worth guarding: the totals are public within the
  *     village and **no screen anywhere puts a name against a vote**. That is
@@ -749,6 +756,15 @@ export default function PrivacyPage() {
             is recorded in your village&rsquo;s audit trail. A single
             report&rsquo;s summary is the same text already on the village map,
             so it is not recorded separately.
+            <br />
+            <br />
+            Your coordinator can also have the summary covering a period
+            <strong>emailed automatically</strong> to the police contact they
+            name, every week, fortnight or month. It is the same summary, with the
+            same limits, built from reports already published in your village;
+            its overview is counted from the figures rather than written by AI.
+            Every one sent is recorded in your village&rsquo;s audit trail, with
+            the address it went to.
           </Definition>
           <Definition term="Nobody, in the case of how you voted on a report">
             The totals are shown to everyone in your village and to your
@@ -811,7 +827,11 @@ export default function PrivacyPage() {
             and never the reporter&rsquo;s original wording, never an address,
             never coordinates and never a photograph. And, for coordinators
             only, a weekly summary of what their village published. We send no
-            marketing.
+            marketing. Resend also delivers the community safety report when
+            your coordinator has set it to go to your police contact by email
+            &mdash; see below. That message carries the report and nothing else
+            about you: not your address, and the same anonymised text described
+            there.
           </Definition>
           <Definition term="Sentry, which records faults in the software">
             When something in {APP_NAME} goes wrong — a page that fails to load,

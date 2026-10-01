@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MessageCircle, ShieldCheck, Users } from "lucide-react";
 import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
+import { PoliceReportForm } from "@/components/dashboard/police-report-form";
 import { EventsForm } from "@/components/dashboard/events-form";
 import { InviteShare } from "@/components/dashboard/invite-share";
 import { EcopsSiteForm } from "@/components/dashboard/ecops-site-form";
@@ -30,6 +31,7 @@ import {
   VILLAGE_STATUS_LABELS,
 } from "@/lib/constants";
 import { getVillageAutoApprove } from "@/lib/moderation";
+import { readVillagePoliceReport } from "@/lib/police-report-schedule";
 import { readVillageEventsSetting } from "@/lib/events";
 
 export const metadata: Metadata = { title: "Village settings" };
@@ -69,6 +71,7 @@ export default async function VillageSettingsPage() {
     ecopsSiteId,
     compliance,
     residents,
+    policeReport,
     events,
   ] = await Promise.all([
     // The join code is read here and only here in the authenticated app — this
@@ -102,6 +105,9 @@ export default async function VillageSettingsPage() {
     // whether the upgrade form has anything to offer.
     getVillageCompliance(villageId),
     listVillageResidents(villageId, RESIDENT_LIST_SIZE),
+    // Whether the columns exist, as well as their values — the form says
+    // "not ready yet" rather than refusing a save.
+    readVillagePoliceReport(villageId),
     // Whether the column exists as well as its value, so the switch can say
     // "not ready yet" rather than refusing a save.
     readVillageEventsSetting(villageId),
@@ -205,6 +211,13 @@ export default async function VillageSettingsPage() {
           glance, and here the invite and resident sections sit between them.
         */}
         <AutoApproveForm value={autoApprove} />
+
+        <PoliceReportForm
+          available={policeReport.available}
+          schedule={policeReport.schedule}
+          email={policeReport.email}
+          lastSentAt={policeReport.lastSentAt?.toISOString() ?? null}
+        />
 
         <EventsForm value={events.enabled} available={events.available} />
 

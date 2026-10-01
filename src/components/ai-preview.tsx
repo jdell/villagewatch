@@ -153,7 +153,7 @@ function StatusNotice({
           className="size-5 shrink-0 animate-spin text-brand-600"
           aria-hidden
         />
-        <p className="text-sm leading-relaxed text-brand-900" role="status">
+        <p className="text-sm leading-relaxed text-brand-900">
           Rewriting your report without the personal details…
         </p>
       </div>
@@ -259,12 +259,22 @@ export function AiPreview({
 
   return (
     <div className="space-y-4">
-      <StatusNotice
-        processing={processing}
-        aiProcessed={aiProcessed}
-        aiError={aiError}
-        autoApprove={autoApprove}
-      />
+      {/*
+        A live region that is always mounted, around a notice that is swapped
+        out. `role="status"` used to sit inside the "Rewriting…" branch only, so
+        the region was destroyed the moment the rewrite came back and neither
+        result — "this is the anonymised version" or "not anonymised, your own
+        words" — was ever announced. The second is the one a screen-reader user
+        most needs to hear before pressing Continue.
+      */}
+      <div aria-live="polite" aria-atomic="true">
+        <StatusNotice
+          processing={processing}
+          aiProcessed={aiProcessed}
+          aiError={aiError}
+          autoApprove={autoApprove}
+        />
+      </div>
 
       {/*
         The proposal, said out loud.

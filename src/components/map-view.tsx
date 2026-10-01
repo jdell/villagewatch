@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { CalendarDays, Flame, MapPinned } from "lucide-react";
 import type {
   MapEvent,
@@ -16,9 +17,14 @@ import {
   TIME_RANGES,
   type TimeRangePreset,
 } from "@/lib/constants";
-import { resolveTimeRange, withinTimeRange } from "@/lib/date-range";
+import {
+  dateInputValue,
+  resolveTimeRange,
+  timeRangeParams,
+  withinTimeRange,
+} from "@/lib/date-range";
 import { HEATMAP_LEGEND_CSS } from "@/lib/heatmap";
-import { timelineBounds, withinSelection } from "@/lib/timeline";
+import { dayAt, timelineBounds, withinSelection } from "@/lib/timeline";
 import {
   TimelineSlider,
   TimelineToggle,
@@ -260,6 +266,15 @@ export function MapView({
   );
 
   const { selection, setSelection, narrowed } = useTimelineSelection(bounds);
+
+  /** The `/incidents` query that lists exactly what the map is drawing. */
+  const listParams: Record<string, string> = narrowed
+    ? {
+        range: "custom",
+        from: dateInputValue(dayAt(bounds.start, selection.from)),
+        to: dateInputValue(dayAt(bounds.start, selection.to)),
+      }
+    : timeRangeParams(range);
   const [timelineOpen, setTimelineOpen] = useTimelineOpen(TIMELINE_STORAGE_KEY);
 
   /**
@@ -291,22 +306,6 @@ export function MapView({
     // than the space beneath the header, which is the scroll this line exists
     // to prevent.
     <div className="map-surface relative h-[calc(100dvh-3.5rem-env(safe-area-inset-top))] w-full lg:h-dvh">
-      <IncidentMap
-        incidents={visible}
-        center={center}
-        zoom={zoom}
-        now={now}
-        mode={mode}
-        // Framing the pins beats the village's stored viewport once there is
-        // anything to frame, and re-frames when the period changes. It applies
-        // to the heat layer too — the blobs are drawn from the same set. The
-        // *period*, not the slider: see the header of this file.
-        fitToIncidents={inPeriod.length > 0}
-        fitTo={inPeriod}
-        events={visibleEvents}
-        className="size-full"
-      />
-
       {/*
         z-index sits above Leaflet's own panes, which top out at 700 — and below
         its controls, which are at 1000. That ordering is why the zoom buttons
@@ -326,7 +325,8 @@ export function MapView({
         */}
         <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
           <p className="text-sm font-semibold text-slate-900">{villageName}</p>
-          <p className="mt-0.5 text-xs text-slate-500">
+          {/* Announced when the period, the timeline or the layer changes it. */}
+          <p className="mt-0.5 text-xs text-slate-500" aria-live="polite">
             {visible.length === 0
               ? narrowed
                 ? "Nothing reported on these dates"
@@ -335,6 +335,20 @@ export function MapView({
                 ? `${visible.length} of ${inPeriod.length} ${inPeriod.length === 1 ? "incident" : "incidents"}`
                 : `${visible.length} ${visible.length === 1 ? "incident" : "incidents"}`}
           </p>
+          {/*
+            The map's text alternative, for now: the same reports as a list.
+            When the timeline narrows the map, the link carries the slider's
+            own days as a custom range, so the list matches what is drawn
+            rather than the wider period behind it.
+          */}
+          {visible.length > 0 && (
+            <Link
+              href={`/incidents?${new URLSearchParams(listParams).toString()}`}
+              className="mt-1 inline-block text-xs font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+            >
+              See these as a list
+            </Link>
+          )}
         </div>
 
         <div className="pointer-events-none flex flex-wrap items-start justify-end gap-2">
@@ -521,6 +535,31 @@ export function MapView({
           </div>
         </div>
       </div>
+
+      {/*
+        The map comes **after** the controls in the source, though it is drawn
+        beneath them. The overlays are absolutely positioned, so the order
+        changes nothing on screen — and everything for a keyboard user: Leaflet
+        makes the map and every pin a tab stop, up to `MAX_MAP_INCIDENTS` of
+        them, and with the map first the period, layer, timeline and events
+        controls were only reachable after tabbing past all of those.
+      */}
+      <IncidentMap
+        incidents={visible}
+        center={center}
+        zoom={zoom}
+        now={now}
+        mode={mode}
+        label={`Map of reported incidents in ${villageName}`}
+        // Framing the pins beats the village's stored viewport once there is
+        // anything to frame, and re-frames when the period changes. It applies
+        // to the heat layer too — the blobs are drawn from the same set. The
+        // *period*, not the slider: see the header of this file.
+        fitToIncidents={inPeriod.length > 0}
+        fitTo={inPeriod}
+        events={visibleEvents}
+        className="size-full"
+      />
 
       {/*
         The legend follows the layers rather than sitting there regardless: a

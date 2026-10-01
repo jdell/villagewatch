@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
@@ -134,10 +134,23 @@ export function ModerationCard({
   });
   const [showNote, setShowNote] = useState(false);
 
+  // Focus the revealed wording once, when it arrives — see where it renders.
+  const rawRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (raw.text !== null) rawRef.current?.focus();
+  }, [raw.text]);
+
   useEffect(() => {
     if (!state.message) return;
     if (state.ok) toast.success(state.message);
     else toast.error(state.message);
+
+    // This card is about to leave the list with focus inside it. Hand focus to
+    // the list's heading rather than letting it fall to <body>; the next card
+    // is one Tab away from there. Focusing the next card itself is the better
+    // version and is in the accessibility audit, because it has to wait for
+    // the revalidated list to arrive.
+    if (state.ok) document.getElementById("queue-heading")?.focus();
   }, [state]);
 
   useEffect(() => {
@@ -307,7 +320,18 @@ export function ModerationCard({
           </span>
         </form>
       ) : (
-        <div className="mt-3 rounded-xl bg-slate-50 p-3.5 ring-1 ring-slate-200">
+        /*
+          Focused as it appears: the button that asked for it is gone, so focus
+          would otherwise fall to <body> and a screen-reader user would never
+          hear the words they asked to read.
+        */
+        <div
+          ref={rawRef}
+          tabIndex={-1}
+          role="region"
+          aria-label={`Original wording of ${incident.reference}`}
+          className="mt-3 rounded-xl bg-slate-50 p-3.5 outline-none ring-1 ring-slate-200 focus-visible:ring-2 focus-visible:ring-brand-500"
+        >
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Original wording — not published
           </p>
@@ -334,6 +358,8 @@ export function ModerationCard({
               rows={2}
               maxLength={500}
               placeholder="Why was this not published?"
+              // The "Add a note" button that opened this has just unmounted.
+              autoFocus
               className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
@@ -345,6 +371,8 @@ export function ModerationCard({
             className="bg-safe-600 text-white hover:bg-safe-700"
           >
             Approve &amp; alert
+            {/* One of these per card: the reference says which report. */}
+            <span className="sr-only"> {incident.reference}</span>
           </SubmitButton>
 
           {/*
@@ -363,6 +391,7 @@ export function ModerationCard({
           >
             <Pencil className="size-4" aria-hidden />
             Edit
+            <span className="sr-only"> {incident.reference}</span>
           </Link>
 
           <SubmitButton
@@ -370,6 +399,7 @@ export function ModerationCard({
             className="border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
           >
             Reject
+            <span className="sr-only"> {incident.reference}</span>
           </SubmitButton>
 
           {!showNote && (

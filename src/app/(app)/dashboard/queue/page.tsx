@@ -231,6 +231,16 @@ export default async function QueuePage() {
         `queued`, so the alert cannot live in the card that produced it — see
         `ModerationQueue`.
       */}
+      {/*
+        The list's heading, for two reasons. The cards are `<h3>`s, and with no
+        `<h2>` above them the outline skipped a level. And it is where focus goes
+        after a card is approved or rejected: that card unmounts with the
+        focused button inside it, which used to drop a keyboard user on <body>
+        to tab back down from the top of the page for every report.
+      */}
+      <h2 id="queue-heading" tabIndex={-1} className="sr-only">
+        Waiting for review
+      </h2>
       <ModerationQueue
         incidents={queued}
         channelUrl={followLink?.url ?? null}

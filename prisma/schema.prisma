@@ -355,6 +355,20 @@ model Village {
   /// which statuses residents can see.
   autoApprove Boolean @default(false) @map("auto_approve")
 
+  /// How often the community safety report is emailed to `policeReportEmail`:
+  /// "weekly", "fortnightly" or "monthly", null for off. A string rather than
+  /// an enum, narrowed by `villagePoliceReportFormSchema` on the way in and by
+  /// `resolvePoliceReportSchedule` on the way out — the privacy level's shape.
+  /// See `src/lib/police-report-schedule.ts`.
+  policeReportSchedule String? @map("police_report_schedule")
+  /// The police contact's address — usually the village's PCSO. A third
+  /// party's address, so it is withheld from the `villages` column grant in
+  /// `rls_policies.sql` like `join_code`.
+  policeReportEmail String? @map("police_report_email")
+  /// When the last report went to that address, scheduled or "Send now". What
+  /// the daily cron compares against the schedule's interval.
+  policeReportLastSentAt DateTime? @map("police_report_last_sent_at")
+
   /// Whether residents can post community events — a litter pick, a meeting, a
   /// police drop-in — and whether they appear on the map and in the sidebar.
   /// **Off by default**: a village opts in from its settings. See

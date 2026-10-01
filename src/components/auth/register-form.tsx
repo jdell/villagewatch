@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { cloneElement, isValidElement, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -56,6 +56,31 @@ const inputClass =
   "mt-1.5 block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 aria-invalid:border-red-400";
 
 /**
+ * Points a native field at its hint and error. The ids were rendered and
+ * nothing referenced them, so a screen reader announced "Password, invalid"
+ * without the reason. Only plain `input`, `textarea` and `select` children are
+ * touched — a custom component may not forward the attribute — and an
+ * `aria-describedby` the field already sets is kept and extended.
+ */
+function describe(
+  children: React.ReactNode,
+  ids: (string | null)[],
+): React.ReactNode {
+  const wanted = ids.filter(Boolean).join(" ");
+  if (!wanted || !isValidElement(children)) return children;
+  if (!["input", "textarea", "select"].includes(children.type as string)) {
+    return children;
+  }
+
+  const existing = (children.props as { "aria-describedby"?: string })[
+    "aria-describedby"
+  ];
+  return cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+    "aria-describedby": [existing, wanted].filter(Boolean).join(" "),
+  });
+}
+
+/**
  * Defined at module scope, not inside the form. A component declared inside
  * another component is a new type on every render, so React unmounts and
  * remounts it — which loses focus on the input as you type.
@@ -78,10 +103,17 @@ function Field({
       <label htmlFor={name} className="block text-sm font-medium text-slate-700">
         {label}
       </label>
-      {children}
-      {hint && !error && <p className="mt-1.5 text-xs text-slate-500">{hint}</p>}
+      {describe(children, [
+        hint && !error ? `${name}-hint` : null,
+        error ? `${name}-error` : null,
+      ])}
+      {hint && !error && (
+        <p id={`${name}-hint`} className="mt-1.5 text-xs text-slate-500">
+          {hint}
+        </p>
+      )}
       {error && (
-        <p id={`${name}-error`} className="mt-1.5 text-sm text-red-600">
+        <p id={`${name}-error`} role="alert" className="mt-1.5 text-sm text-red-600">
           {error}
         </p>
       )}

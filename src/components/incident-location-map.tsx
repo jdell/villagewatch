@@ -41,6 +41,7 @@ export function IncidentLocationMap({ incident }: { incident: MapIncident }) {
         // they were stored, so zooming to street level would imply a precision
         // that is not there.
         zoom={15}
+        label="Map showing the approximate location of this incident"
         className="h-64 w-full sm:h-80"
       />
     </div>

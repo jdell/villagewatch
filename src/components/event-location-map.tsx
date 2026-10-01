@@ -34,6 +34,7 @@ export function EventLocationMap({ event }: { event: MapEvent }) {
         // The point was fuzzed on the way in, so street level would claim a
         // precision it does not have — the same zoom the report page uses.
         zoom={15}
+        label="Map showing roughly where this event is"
         className="h-64 w-full sm:h-80"
       />
     </div>

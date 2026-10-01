@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -176,9 +176,27 @@ type ProcessResponse = {
 const inputClass =
   "mt-1.5 block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 aria-invalid:border-red-400";
 
-function FieldError({ message }: { message?: string }) {
+/**
+ * A field's error. `id` is what the input's `aria-describedby` points at, so a
+ * screen reader reads the error with the field; `role="alert"` announces it the
+ * moment it appears, which is when the resident pressed Continue and is
+ * listening for what went wrong.
+ */
+function FieldError({ id, message }: { id?: string; message?: string }) {
   if (!message) return null;
-  return <p className="mt-1.5 text-sm text-red-600">{message}</p>;
+  return (
+    <p id={id} role="alert" className="mt-1.5 text-sm text-red-600">
+      {message}
+    </p>
+  );
+}
+
+/** `aria-describedby` for a field: its hint, and its error when it has one. */
+function describedBy(
+  ...ids: (string | false | null | undefined)[]
+): string | undefined {
+  const joined = ids.filter(Boolean).join(" ");
+  return joined || undefined;
 }
 
 function StepIndicator({ current }: { current: number }) {
@@ -189,15 +207,21 @@ function StepIndicator({ current }: { current: number }) {
           index < current ? "done" : index === current ? "current" : "todo";
 
         return (
-          <li key={step.title} className="flex-1">
+          <li
+            key={step.title}
+            className="flex-1"
+            aria-current={state === "current" ? "step" : undefined}
+          >
             <span
               className={`block h-1.5 rounded-full transition-colors ${
                 state === "todo" ? "bg-slate-200" : "bg-brand-500"
               }`}
-              aria-current={state === "current" ? "step" : undefined}
+              aria-hidden
             />
             <span className="sr-only">
-              {`Step ${index + 1} of ${STEPS.length}: ${step.title}`}
+              {`Step ${index + 1} of ${STEPS.length}: ${step.title}${
+                state === "done" ? ", completed" : state === "current" ? ", current" : ""
+              }`}
             </span>
           </li>
         );
@@ -278,6 +302,12 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
   const [published, setPublished] = useState<PublishedReport | null>(null);
   const [ai, setAi] = useState<AiState>(IDLE_AI);
   const headingRef = useRef<HTMLHeadingElement>(null);
+
+  // The success screen's heading, focused once when it replaces the wizard.
+  const successRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (published) successRef.current?.focus();
+  }, [published]);
   /**
    * Which AI pass is current. A pass whose inputs were edited while it was in
    * flight is superseded rather than waited on, and a superseded pass must not
@@ -662,7 +692,17 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
           <span className="mx-auto grid size-12 place-items-center rounded-xl bg-safe-50 text-safe-600 ring-1 ring-safe-100">
             <Check className="size-6" aria-hidden />
           </span>
-          <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">
+          {/*
+            Focused as it mounts. This screen replaces the whole wizard, so the
+            button that published the report no longer exists and focus would
+            otherwise fall to <body> — a screen-reader user would hear nothing
+            to say the report went live.
+          */}
+          <h1
+            ref={successRef}
+            tabIndex={-1}
+            className="mt-4 text-xl font-semibold tracking-tight text-slate-900 outline-none"
+          >
             {published.reference} is live
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
@@ -854,11 +894,12 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
                 type="text"
                 maxLength={120}
                 aria-invalid={Boolean(errors.title)}
+                aria-describedby={describedBy(errors.title && "title-error")}
                 className={inputClass}
                 placeholder="Shed broken into overnight"
                 {...register("title")}
               />
-              <FieldError message={errors.title?.message} />
+              <FieldError id="title-error" message={errors.title?.message} />
             </div>
 
             <div>
@@ -873,15 +914,22 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
                 rows={5}
                 maxLength={4000}
                 aria-invalid={Boolean(errors.description)}
+                aria-describedby={describedBy(
+                  "description-hint",
+                  errors.description && "description-error",
+                )}
                 className={`${inputClass} resize-y`}
                 placeholder="Write it however it comes out — three or four sentences is plenty."
                 {...register("description")}
               />
-              <p className="mt-1.5 text-xs text-slate-500">
+              <p id="description-hint" className="mt-1.5 text-xs text-slate-500">
                 Your own wording is kept for your coordinator and is never shown
                 to other residents. Even so, leave out names and registrations.
               </p>
-              <FieldError message={errors.description?.message} />
+              <FieldError
+                id="description-error"
+                message={errors.description?.message}
+              />
             </div>
 
             <div>
@@ -895,10 +943,16 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
                 id="occurredAt"
                 type="datetime-local"
                 aria-invalid={Boolean(errors.occurredAt)}
+                aria-describedby={describedBy(
+                  errors.occurredAt && "occurredAt-error",
+                )}
                 className={inputClass}
                 {...register("occurredAt")}
               />
-              <FieldError message={errors.occurredAt?.message} />
+              <FieldError
+                id="occurredAt-error"
+                message={errors.occurredAt?.message}
+              />
             </div>
 
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
@@ -952,11 +1006,17 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
                     type="text"
                     maxLength={60}
                     aria-invalid={Boolean(errors.policeReference)}
+                    aria-describedby={describedBy(
+                      errors.policeReference && "policeReference-error",
+                    )}
                     className={`${inputClass} font-mono`}
                     placeholder="CR/12345/26"
                     {...register("policeReference")}
                   />
-                  <FieldError message={errors.policeReference?.message} />
+                  <FieldError
+                    id="policeReference-error"
+                    message={errors.policeReference?.message}
+                  />
                 </div>
               )}
             </div>
@@ -1002,14 +1062,21 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
                 type="text"
                 maxLength={200}
                 aria-invalid={Boolean(errors.locationText)}
+                aria-describedby={describedBy(
+                  "locationText-hint",
+                  errors.locationText && "locationText-error",
+                )}
                 className={inputClass}
                 placeholder="The lane behind the village hall"
                 {...register("locationText")}
               />
-              <p className="mt-1.5 text-xs text-slate-500">
+              <p id="locationText-hint" className="mt-1.5 text-xs text-slate-500">
                 Describe the area, not an address. No house numbers.
               </p>
-              <FieldError message={errors.locationText?.message} />
+              <FieldError
+                id="locationText-error"
+                message={errors.locationText?.message}
+              />
             </div>
           </div>
         )}

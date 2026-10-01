@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -203,6 +203,37 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  /*
+    The drawer behaves as a modal dialog, because on a phone it is one: it
+    covers the page, and the page behind is `inert` while it is open. On open,
+    focus moves to its close button; Escape closes it; on close, focus returns
+    to the menu button that opened it. Without the last step a keyboard or
+    screen-reader user who closed the menu was left on <body>, at the top of a
+    page they had not chosen to be at the top of.
+  */
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
+  const wasOpen = useRef(false);
+
+  useEffect(() => {
+    if (!mobileOpen) {
+      if (wasOpen.current) menuButtonRef.current?.focus();
+      wasOpen.current = false;
+      return;
+    }
+
+    wasOpen.current = true;
+    drawerRef.current
+      ?.querySelector<HTMLButtonElement>('button[aria-label="Close navigation"]')
+      ?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
 
   const isCoordinator =
     user.role !== null &&
@@ -431,6 +462,19 @@ export function AppShell({
   return (
     <div className="flex min-h-full flex-1 bg-slate-50">
       {/*
+        The first thing a keyboard user reaches on every authenticated page,
+        and invisible until it is focused. Without it, every page starts with
+        the logo, the report button and up to eight navigation links to tab
+        through (WCAG 2.4.1).
+      */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[1200] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-brand-700 focus:shadow-lg focus:ring-2 focus:ring-brand-500"
+      >
+        Skip to main content
+      </a>
+
+      {/*
         Desktop sidebar.
 
         `data-print-hide` because the print rules hide everything outside
@@ -476,9 +520,15 @@ export function AppShell({
       */}
       {mobileOpen && (
         <div className="fixed inset-0 z-[1100] h-dvh lg:hidden" data-print-hide>
+          {/*
+            A click target for the mouse and nothing else: hidden from
+            assistive technology and out of the tab order, because the panel's
+            own close button is the one control that should be announced.
+          */}
           <button
             type="button"
-            aria-label="Close navigation"
+            tabIndex={-1}
+            aria-hidden
             onClick={() => setMobileOpen(false)}
             className="absolute inset-0 animate-[vw-backdrop-in_180ms_ease-out] bg-slate-900/60 backdrop-blur-sm motion-reduce:animate-none"
           />
@@ -487,13 +537,25 @@ export function AppShell({
             than a new page — see the keyframes in globals.css, which also say
             why the panel and the backdrop animate separately.
           */}
-          <aside className="absolute inset-y-0 left-0 w-72 max-w-[85vw] animate-[vw-drawer-in_180ms_ease-out] bg-brand-950 shadow-xl motion-reduce:animate-none">
+          <aside
+            ref={drawerRef}
+            id="mobile-navigation"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            className="absolute inset-y-0 left-0 w-72 max-w-[85vw] animate-[vw-drawer-in_180ms_ease-out] bg-brand-950 shadow-xl motion-reduce:animate-none"
+          >
             {sidebar}
           </aside>
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/*
+        `inert` while the drawer is open: the page behind can be neither
+        focused nor read, which is what makes the drawer a modal rather than a
+        panel somebody can Tab straight out of.
+      */}
+      <div className="flex min-w-0 flex-1 flex-col" inert={mobileOpen}>
         {/*
           Mobile top bar — the only way to open the drawer, so it has the same
           problem and sits one layer below it. `/map` renders full-bleed
@@ -517,8 +579,11 @@ export function AppShell({
           data-print-hide
         >
           <button
+            ref={menuButtonRef}
             type="button"
             onClick={() => setMobileOpen(true)}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-navigation"
             /*
               `size-11` is 44px, the minimum Apple and WCAG 2.5.5 both ask for
               and the same figure the sidebar rows are kept at above. `p-2`
@@ -536,7 +601,13 @@ export function AppShell({
           </Link>
         </header>
 
-        <main className="flex-1">{children}</main>
+        {/*
+          `tabIndex={-1}` so the skip link's target can take focus; it is not
+          a control, so it carries no focus ring of its own.
+        */}
+        <main id="main" tabIndex={-1} className="flex-1 outline-none">
+          {children}
+        </main>
       </div>
 
       {/*

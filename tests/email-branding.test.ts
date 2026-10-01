@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EmailMessage } from "@/lib/email/layout";
 import { coordinatorDecisionEmail } from "@/lib/email/coordinator-decision";
+import { policeReportEmail } from "@/lib/email/police-report";
 import { resolutionEmail } from "@/lib/email/resolution";
 import { incidentNotificationEmail } from "@/lib/email/incident-notification";
 import { weeklyDigestEmail } from "@/lib/email/weekly-digest";
@@ -153,5 +154,49 @@ describe("the branded email shell", () => {
 
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
+  });
+});
+
+/*
+  The one email the app sends to somebody who is not a resident and has no
+  account: the scheduled report to a village's police contact. It renders
+  through the same shell, and it is kept out of `MESSAGES` above because that
+  list's footer assertion is about signed-in readers — a "Notification
+  settings" link here would be a sign-in wall offered to the one reader who
+  cannot get past it, the auth templates' reasoning.
+*/
+describe("the scheduled police report email", () => {
+  const message = policeReportEmail({
+    villageName: "Little Barford",
+    reportText:
+      "Community safety report — VillageWatch\nLittle Barford\n\n<3> reports & counting",
+    from: new Date("2026-09-24T07:00:00Z"),
+    to: new Date("2026-10-01T07:00:00Z"),
+    days: 7,
+    schedule: "weekly",
+  });
+  const html = message.html ?? "";
+
+  it("renders both parts through the branded shell", () => {
+    expect(message.text.length).toBeGreaterThan(0);
+    expect(html.startsWith("<!doctype html>")).toBe(true);
+    expect(html).toMatch(/<img src="https?:\/\//);
+  });
+
+  it("names the village and the period in the subject", () => {
+    expect(message.subject).toContain("Little Barford");
+    expect(message.subject).toContain("Community Safety Report");
+  });
+
+  it("links Privacy and Terms, and not the settings a non-resident cannot open", () => {
+    expect(html).toContain("/privacy");
+    expect(html).toContain("/terms");
+    expect(html).not.toContain("/settings");
+  });
+
+  it("carries the report text escaped rather than as markup", () => {
+    expect(html).toContain("&lt;3&gt; reports &amp; counting");
+    expect(html).not.toContain("<3>");
+    expect(message.text).toContain("<3> reports & counting");
   });
 });

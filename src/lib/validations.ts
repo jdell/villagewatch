@@ -11,6 +11,7 @@ import {
   EVENT_TITLE_MAX_CHARS,
   INCIDENT_TYPE_VALUES,
   NOTIFICATION_RADIUS_VALUES,
+  POLICE_REPORT_SCHEDULE_VALUES,
   PRIVACY_LEVEL_VALUES,
   REPORT_RANGE_VALUES,
   SEVERITY_VALUES,
@@ -1554,6 +1555,40 @@ export const archiveVillageInterestSchema = z
 export type ArchiveVillageInterestInput = z.infer<
   typeof archiveVillageInterestSchema
 >;
+
+// ---------------------------------------------------------------------------
+// Scheduled police reports
+// ---------------------------------------------------------------------------
+
+/**
+ * The village's scheduled report to its police contact.
+ *
+ * "off" is a value rather than an absent field, so the select can say it. An
+ * address is required whenever a schedule is set — a schedule with nowhere to
+ * send is a setting that silently does nothing — and allowed while it is off,
+ * so turning the schedule off does not lose the address. Blank stores null.
+ *
+ * No `villageId`: it comes from the coordinator's session (domain rule 4), or
+ * this form would be a way to point another village's reports at an inbox.
+ */
+export const villagePoliceReportFormSchema = z
+  .object({
+    schedule: z.enum(["off", ...POLICE_REPORT_SCHEDULE_VALUES], {
+      error: "Choose how often to send it",
+    }),
+    email: z
+      .string()
+      .trim()
+      .max(254, "That address is too long")
+      .transform((value) => (value ? value.toLowerCase() : null))
+      .pipe(z.email("Enter a valid email address").nullable()),
+  })
+  .refine((form) => form.schedule === "off" || form.email !== null, {
+    error: "Add the address to send it to, or turn the schedule off",
+    path: ["email"],
+  });
+
+export type VillagePoliceReportForm = z.infer<typeof villagePoliceReportFormSchema>;
 
 // ---------------------------------------------------------------------------
 // Community events

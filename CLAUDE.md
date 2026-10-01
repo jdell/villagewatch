@@ -287,6 +287,10 @@ src/
                               A sibling of the cron above with the OPPOSITE gate
                               — a coordinator session, not CRON_SECRET
     api/cron/retention/       Nightly cron — archives reports, deletes old media
+    api/cron/police-report/   Daily cron — emails the community safety report to
+                              each village's police contact when its schedule
+                              is due. The fifth cron. See Scheduled police
+                              reports
     api/cron/ecops/           Daily cron — the police and Neighbourhood Watch
                               bulletins each configured Neighbourhood Alert site
                               is publishing. One fetch per site, not per village
@@ -456,6 +460,8 @@ src/
     dashboard/copy-weekly-post-button.tsx  The village's week on the clipboard,
                               for a village Facebook group. Fetches on press and
                               shows the post before it is published
+    dashboard/police-report-form.tsx  The police contact's address, the schedule
+                              and "Send now" — two forms, two audited acts
     dashboard/auto-approve-form.tsx  The switch that turns coordinator review
                               off for the whole village — warns on the way on
     dashboard/whatsapp-channel-form.tsx  The village's own channel — link, id,
@@ -593,6 +599,10 @@ src/
                               missing table
     heatmap.ts                Severity × recency → heat intensity, plus the
                               layer's config. Client-safe
+    police-report-schedule.ts The scheduled report to the police contact — the
+                              due arithmetic, the settings, and the send:
+                              counted, audited before it goes, rate limited per
+                              village. Server only, never throws
     reports.ts                Resolves the date range, counts the period, and
                               writes the narrative when Claude is unavailable
     clipboard.ts              copyText + shareText, browser only, shared by the
@@ -606,8 +616,12 @@ src/
                               incident-notification, coordinator-decision,
                               resolution — pure functions to
                               `{ subject, text, html }`. `layout.ts` is the one
-                              branded shell all eleven emails render through,
+                              branded shell all twelve emails render through,
                               the six auth templates included
+    email/police-report.ts    The period report as an email to the police
+                              contact — the report text in the branded shell, a
+                              PDF link labelled for the coordinator, and footer
+                              links for a reader with no account
     email/send.ts             The transport, over Resend. Never throws, logs the
                               message with no key set. `sendBulkEmail` beside it
                               fans one message out per recipient — never one
@@ -694,6 +708,11 @@ docs/                         The documents rendered from disk, not restated
                               what each costs to clear, and in what order
   E2E_VERIFICATION.md         What was checked by hand against the deployment,
                               and what its addenda got wrong afterwards
+  ACCESSIBILITY_AUDIT_2026-10-01.md  The WCAG 2.1 AA pass over the wizard, the
+                              map, the badges, the votes, the queue, the forms
+                              and navigation — computed contrast, what was
+                              fixed with it, and what is left. A record of one
+                              pass, like the security audit below
   SECURITY_AUDIT_2026-08-29.md  The source-level security review — 34 findings
                               across the six domains, each with the file it
                               lives in and the change that closes it. A record
@@ -859,6 +878,12 @@ tests/                        Vitest, unit only — see The test suite
                               single-incident summary, on both documents
   retention.test.ts           The nightly archive pass — the wording deleted in
                               the same statement, and the hand-archived catch-up
+  police-report-schedule.test.ts  The scheduled report — the daily cron that
+                              must not make a weekly report slip a day, the
+                              audit row before the send, the schedule that does
+                              not move on a send that did not happen, no quota
+                              spent without an address, and the counted
+                              narrative the document actually carries
   police-api.test.ts          The data.police.uk client over a stubbed fetch —
                               every failure a value rather than a throw, a 404
                               read as "not published", one bad record costing
@@ -1441,6 +1466,8 @@ line often enough that an IP limit would silence a household.
 | `POST /api/incidents/process`      | `aiProcess`       | 30 per hour |
 | `POST /api/incidents`              | `incidentCreate`  | 10 per day  |
 | `generateNarrativeAction` (`/reports`) | `reportNarrative` | 12 per hour |
+| `/api/cron/police-report`          | `policeReportScheduled` | 1 per day, **per village** |
+| "Send now" on Village settings     | `policeReportSendNow` | 3 per day, **per village** |
 | `generateMpLetterAction` (`/reports`) | `mpLetter`     | 12 per hour |
 | `POST /api/incidents/[id]/vote`    | `incidentVote`    | 1 per 10s, **per incident** |
 | `POST /api/auth/login`             | `authLogin`       | 5 per minute, **per address** |
@@ -2144,7 +2171,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty-eight files, 998 tests, covering the
+between the typecheck and the build. Fifty-nine files, 1,019 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -3577,6 +3604,49 @@ the format they carry.
   published report it is simply one of the options in front of a coordinator.
   `/privacy` §6 says that in as many words rather than implying a setting that
   does not exist.
+
+## Scheduled police reports
+
+`src/lib/police-report-schedule.ts`, `GET|POST /api/cron/police-report` (daily,
+07:00 UTC), `PoliceReportForm` on Village settings, and three nullable `Village`
+columns (migration `20261001150000_village_police_report_schedule`). A
+coordinator names their police contact and a schedule — weekly, fortnightly,
+monthly — and the period report goes by email without anybody pressing a button.
+
+- **It is the manual report, sent on a timer, and adds no data.**
+  `collectVillageReport` and `formatCommunityReport`, unchanged, over the
+  schedule's own interval, so consecutive reports neither overlap nor leave a
+  gap. Published reports only, nothing a resident has not already seen.
+- **Counted, never AI.** `countedNarrative`, so an automated send spends no
+  Anthropic credit, and the footer's AI claim — conditional on
+  `narrative.source` — is absent, as it should be.
+- **Audited before it is sent**, as `incident.report_generated` with
+  `format: "email"`, the trigger and the recipient — the PDF route's rule that a
+  village's reports going to the police with no trail is worse than a send that
+  did not happen. The cron's row is `actorRole: "system"`.
+- **The schedule moves only on an accepted send.** A missing `RESEND_API_KEY` or
+  a refused message leaves `policeReportLastSentAt` alone, so tomorrow retries.
+- **A daily cron needs `POLICE_REPORT_DUE_GRACE_HOURS`**, or a send that
+  finished four seconds late makes next week's "not yet seven days" and every
+  report slips a day. Six hours, far short of a day, so it cannot double-send.
+- **Two rate-limit rules, per village** (`policeReportSubject`, prefixed
+  `village:` as the auth rules prefix `ip:`): one scheduled send a day, which is
+  only ever a guard against a stuck or re-run cron, and three "Send now", so a
+  coordinator correcting a typo is not refused and does not use up the day's
+  scheduled send. "Send now" counts as a send — the schedule carries on from it.
+- **No attachment.** The report text is the email body; the PDF route needs a
+  coordinator's session, so its link is labelled for the coordinator rather
+  than offered to the officer as if it would open. The footer links Privacy and
+  Terms, not Settings — the reader has no account.
+- **`police_report_email` is a third party's address** and is withheld from the
+  `villages` column grant, like `join_code`; the comment there says so. The
+  Slack line for the cron carries counts and failure codes, never the address.
+- **It is the fifth cron**, and the note on Vercel Hobby's two-cron limit under
+  Official police data applies again. Daily rather than weekly so a fortnightly
+  or monthly report goes on the day it falls due.
+- **`/privacy` §6 changed** — the police paragraph says the period summary can
+  be emailed automatically and that each send is in the audit trail, and the
+  Resend paragraph that it carries that message.
 
 ## Sharing with police and the parish council
 

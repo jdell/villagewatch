@@ -320,6 +320,11 @@ GRANT SELECT (
   community_dpa_accepted_at,
   whatsapp_channel_url, whatsapp_enabled, whatsapp_min_severity,
   created_at, updated_at
+  -- Deliberately absent: `police_report_email` is a third party's address —
+  -- the village's PCSO — and has no business reaching a browser through
+  -- PostgREST. `police_report_schedule` and `police_report_last_sent_at` are
+  -- read only by the application, so they are left out with it rather than
+  -- granted on their own.
 ) ON public.villages TO authenticated;
 
 /**

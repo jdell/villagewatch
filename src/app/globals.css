@@ -65,6 +65,24 @@
   }
 }
 
+/*
+ * A visible focus outline for everything that has not drawn its own.
+ *
+ * About forty inputs style focus themselves (`outline-none` plus a ring), and
+ * this must not double up on them — which is why it is inside `@layer base`,
+ * below Tailwind's utilities, rather than beside the unlayered rules in this
+ * file, which beat utilities outright (see the print rules). What it reaches is
+ * everything else: sidebar links on the dark panel, where the browser's own
+ * ring is faint in Safari, footer links, and plain buttons. Brand blue at full
+ * strength — a 20%-alpha ring is the one this replaces and fails 3:1.
+ */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+}
+
 body {
   background: #ffffff;
   color: #0f172a;

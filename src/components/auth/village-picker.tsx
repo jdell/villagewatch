@@ -305,7 +305,11 @@ export function VillagePicker({
             className="max-h-64 overflow-y-auto py-1"
           >
             {visible.length === 0 && (
-              <li className="px-3.5 pb-2 pt-6 text-center text-sm text-slate-500">
+              // Not an option, so not announced as one inside the listbox.
+              <li
+                role="presentation"
+                className="px-3.5 pb-2 pt-6 text-center text-sm text-slate-500"
+              >
                 {empty ? (
                   "No villages are set up yet."
                 ) : (

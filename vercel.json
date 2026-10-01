@@ -18,6 +18,10 @@
     {
       "path": "/api/cron/ecops",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/police-report",
+      "schedule": "0 7 * * *"
     }
   ]
 }
