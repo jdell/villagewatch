@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.10.0](https://github.com/jdell/villagewatch/compare/v1.9.2...v1.10.0) (2026-10-01)
+
+
+### Features
+
+* **reports:** email the community safety report to the police contact on a schedule ([96ac0e7](https://github.com/jdell/villagewatch/commit/96ac0e745d0bd28b6732cf5b93c6950edd48ce80))
+
+
+### Fixes
+
+* **a11y:** accessibility audit, and the fixes it found that were straightforward ([0603c77](https://github.com/jdell/villagewatch/commit/0603c779278896ddf55326fef33de4049a797ace))
+
 ### [1.9.2](https://github.com/jdell/villagewatch/compare/v1.9.1...v1.9.2) (2026-10-01)
 
 
