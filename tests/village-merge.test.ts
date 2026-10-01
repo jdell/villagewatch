@@ -44,6 +44,8 @@ const mocks = vi.hoisted(() => ({
   patternUpdateMany: vi.fn(),
   requestFindMany: vi.fn(),
   requestUpdateMany: vi.fn(),
+  eventFindMany: vi.fn(),
+  eventUpdateMany: vi.fn(),
   policeCrimeDeleteMany: vi.fn(),
   policeSyncDeleteMany: vi.fn(),
   policeNeighbourhoodDeleteMany: vi.fn(),
@@ -76,6 +78,10 @@ const client = {
   coordinatorRequest: {
     findMany: mocks.requestFindMany,
     updateMany: mocks.requestUpdateMany,
+  },
+  communityEvent: {
+    findMany: mocks.eventFindMany,
+    updateMany: mocks.eventUpdateMany,
   },
   policeCrime: { deleteMany: mocks.policeCrimeDeleteMany },
   policeDataSync: { deleteMany: mocks.policeSyncDeleteMany },
@@ -145,6 +151,8 @@ beforeEach(() => {
   mocks.patternUpdateMany.mockResolvedValue({ count: 0 });
   mocks.requestFindMany.mockResolvedValue([]);
   mocks.requestUpdateMany.mockResolvedValue({ count: 0 });
+  mocks.eventFindMany.mockResolvedValue([{ id: "event-1" }]);
+  mocks.eventUpdateMany.mockResolvedValue({ count: 1 });
   mocks.policeCrimeDeleteMany.mockResolvedValue({ count: 0 });
   mocks.policeSyncDeleteMany.mockResolvedValue({ count: 0 });
   mocks.policeNeighbourhoodDeleteMany.mockResolvedValue({ count: 0 });
@@ -399,6 +407,13 @@ describe("mergeVillages — the merge", () => {
     expect(data.before.movedUserIds).toEqual(["user-1", "user-2"]);
     expect(data.before.movedUnnumberedIncidentIds).toEqual(["inc-legacy"]);
     expect(data.before.referenceMapping).toHaveLength(2);
+    // Community events move with the village, and the trail says which —
+    // after the rewrite nothing else records where they came from.
+    expect(data.before.movedCommunityEventIds).toEqual(["event-1"]);
+    expect(mocks.eventUpdateMany).toHaveBeenCalledWith({
+      where: { villageId: ORIGIN },
+      data: { villageId: TARGET },
+    });
 
     // Never the join code: the trail is append-only, so a credential written
     // here could not be rotated out of it.

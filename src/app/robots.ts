@@ -39,6 +39,7 @@ export default function robots(): MetadataRoute.Robots {
           "/dashboard",
           "/admin",
           "/incidents",
+          "/events",
           "/map",
           "/settings",
           "/reports",

@@ -163,6 +163,12 @@ export const metadata: Metadata = {
  *     filters on the column and returns a count. And §6's Resend paragraph
  *     counts five kinds of email, the fifth being `resolutionEmail`, which
  *     carries the reference, the title and the note and nothing else.
+ *   - §§2 and 7 on community events (`src/lib/events.ts`,
+ *     `POST /api/events`). Four claims: the poster's name is shown, the pin
+ *     is moved by `LOCATION_FUZZ_METERS` before it is saved (the route calls
+ *     `fuzzCoordinates`), an event goes to nobody outside the village and to
+ *     no processor (nothing in the module calls the AI, push or email), and
+ *     closing an account deletes every event it posted (`eraseAccount`).
  *   - §§2, 6 and 7 on votes (`src/lib/votes.ts`, `IncidentVote`). Three claims,
  *     and the second is the one worth guarding: the totals are public within the
  *     village and **no screen anywhere puts a name against a vote**. That is
@@ -477,6 +483,17 @@ export default function PrivacyPage() {
             If you turn on push notifications, an anonymous device identifier
             held by our notification provider so that a message can reach your
             phone.
+          </LI>
+          <LI>
+            <strong>Community events you post</strong>, if your village has
+            them turned on — a litter pick, a meeting, a drop-in. We keep what
+            you write about it, when it is and, if you drop a pin, roughly where.
+            Unlike a report, <strong>an event is not anonymous</strong>: your
+            name is shown on it to everyone in your village. If you pin it on
+            the map, the pin is moved up to {LOCATION_FUZZ_METERS} metres before
+            it is saved, so an event at your home does not point at your house.
+            Events are seen only by residents of your village, never published
+            outside it, and are not sent to the AI or to anyone else.
           </LI>
           <LI>
             <strong>Your votes on published reports.</strong> Every published
@@ -1001,6 +1018,13 @@ export default function PrivacyPage() {
             4 did not run on your report, the published description is your own
             wording, and that is the report itself rather than a restricted copy
             of it, so it stays with the archived record.
+          </Definition>
+          <Definition term="Community events — until they are deleted">
+            Kept until you delete the event, a coordinator takes it down, or you
+            close your account — which deletes every event you have posted.
+            There is no automatic expiry: a past event stays on your
+            village&rsquo;s list, under &ldquo;Past events&rdquo;, until one of
+            those happens.
           </Definition>
           <Definition term="Votes on reports — until the report goes">
             How you voted is kept while the report is. It goes when you take the
