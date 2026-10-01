@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [1.9.2](https://github.com/jdell/villagewatch/compare/v1.9.1...v1.9.2) (2026-10-01)
+
+
+### Fixes
+
+* guard incident routes against non-UUID params and filter Sentry noise ([e582006](https://github.com/jdell/villagewatch/commit/e58200640aac1e9b903403794b1c31c5f1761db1))
+
 ### [1.9.1](https://github.com/jdell/villagewatch/compare/v1.8.1...v1.9.1) (2026-10-01)
 
 
