@@ -12,6 +12,7 @@ import {
   fieldErrors,
   incidentEditSchema,
   incidentModerationSchema,
+  incidentResolutionSchema,
 } from "@/lib/validations";
 
 /**
@@ -31,6 +32,8 @@ import {
  * - **A coordinator** may publish, reject or archive anything in their village,
  *   through the same `applyModeration` path the dashboard uses — so the audit
  *   row and the village alert cannot be skipped by coming in from here.
+ * - **A coordinator** may resolve a published report with a note, through that
+ *   same path — `resolveIncidentAction` below.
  */
 
 export type IncidentActionState = {
@@ -93,6 +96,65 @@ export async function moderateFromDetailAction(
         ? `${result.reference} published — ${result.notified} neighbour${result.notified === 1 ? "" : "s"} alerted.`
         : `${result.reference} is now ${result.status.toLowerCase()}.`,
   };
+}
+
+/**
+ * Resolve a published report, saying what happened.
+ *
+ * Its own action rather than another value for `moderateFromDetailAction`,
+ * because its one field is required and has its own error to show: a resolution
+ * with no note would tell the village, the reporter and everybody who voted
+ * that something happened and not what. `applyModeration` refuses an empty note
+ * as well, since that action accepts RESOLVE too.
+ *
+ * Everything else is the shared path, so nothing here is written twice: the
+ * village scope (domain rule 4) and the PUBLISHED-only guard, the
+ * `incident.resolve` audit row, and the three notifications — the reporter's
+ * push and email, and the push to residents who voted on it.
+ */
+export async function resolveIncidentAction(
+  _previous: IncidentActionState,
+  formData: FormData,
+): Promise<IncidentActionState> {
+  const session = await requireSession("/incidents");
+  const villageId = session.profile?.villageId;
+
+  // Off the revalidated session profile, never the payload (domain rule 5).
+  if (!villageId || !isCoordinatorRole(session.profile?.role)) {
+    return { ok: false, message: "Only village coordinators can do that." };
+  }
+
+  const parsed = incidentResolutionSchema.safeParse({
+    incidentId: formData.get("incidentId"),
+    note: formData.get("note") ?? "",
+  });
+
+  if (!parsed.success) {
+    const errors = fieldErrors(parsed.error);
+    return {
+      ok: false,
+      message: errors.note ?? "That action is not valid.",
+      fieldErrors: errors,
+    };
+  }
+
+  const result = await applyModeration({
+    session,
+    villageId,
+    incidentId: parsed.data.incidentId,
+    action: "RESOLVE",
+    note: parsed.data.note,
+  });
+
+  if (!result.ok) return { ok: false, message: result.error };
+
+  revalidatePath(`/incidents/${parsed.data.incidentId}`);
+  revalidatePath("/incidents");
+  revalidatePath("/dashboard");
+  revalidatePath("/map");
+  revalidatePath("/reports");
+
+  return { ok: true, message: "Report resolved" };
 }
 
 /**

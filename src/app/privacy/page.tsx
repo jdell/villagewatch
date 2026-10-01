@@ -155,6 +155,14 @@ export const metadata: Metadata = {
  *     severity floor and the same distance test the push uses, and a control on
  *     `/settings` that turns it off. That control arrived in the same commit as
  *     the dispatch, because a preference nothing can change is not a preference.
+ *   - §2 on what a vote is **used for**, which became two things on
+ *     1 October 2026: being taken back, and being told when the report is
+ *     resolved (`notifyVotersOfResolution` in `src/lib/notifications.ts`). The
+ *     claim the second clause makes is that the message goes only to a voter
+ *     with `notifyPush` on and names nobody — true because that function
+ *     filters on the column and returns a count. And §6's Resend paragraph
+ *     counts five kinds of email, the fifth being `resolutionEmail`, which
+ *     carries the reference, the title and the note and nothing else.
  *   - §§2, 6 and 7 on votes (`src/lib/votes.ts`, `IncidentVote`). Three claims,
  *     and the second is the one worth guarding: the totals are public within the
  *     village and **no screen anywhere puts a name against a vote**. That is
@@ -474,9 +482,13 @@ export default function PrivacyPage() {
             <strong>Your votes on published reports.</strong> Every published
             report carries an up arrow and a down arrow, meaning &ldquo;more
             serious than it looks&rdquo; and &ldquo;less&rdquo;. We record which
-            way you voted so that pressing the button again can take it back —
-            so the record is linked to your account, not anonymous to us. Your
-            neighbours only ever see the totals. See section 6.
+            way you voted so that pressing the button again can take it back,
+            and so that if a coordinator later marks the report resolved we can
+            send you a notification saying what happened — so the record is
+            linked to your account, not anonymous to us. That notification goes
+            only if you have push notifications switched on, and it says nothing
+            about who else voted or how. Your neighbours only ever see the
+            totals. See section 6.
           </LI>
         </UL>
       </LegalSection>
@@ -768,10 +780,14 @@ export default function PrivacyPage() {
           </Definition>
           <Definition term="Resend, which delivers our email">
             Your email address, your first name and your village&rsquo;s name,
-            so that the message can be addressed and sent. Four kinds of email
+            so that the message can be addressed and sent. Five kinds of email
             go out. The sign-up confirmation and password reset links, which are
             sent when you ask for them. A welcome message when you join a
             village, which explains what happens to a report once you file one.
+            A message when a coordinator resolves a report you filed, carrying
+            its reference, its published title and the note the coordinator
+            wrote about what happened — the same note your neighbours can read
+            on the report.
             An alert when a report is published in your village, if you have
             asked for those — it carries the published description, which is the
             same anonymised text your neighbours can already read on the map,
@@ -826,8 +842,8 @@ export default function PrivacyPage() {
             either off at any time in your settings. Two kinds of message are
             not covered by that switch and will still reach you: the
             confirmation and password links you ask for, and messages about
-            something you did yourself — joining a village, or a decision on an
-            application you made.
+            something you did yourself — joining a village, a decision on an
+            application you made, or the outcome of a report you filed.
           </Definition>
           <Definition term="Slack (Salesforce), and why it is listed separately">
             Administrative notifications only, to a private channel that only

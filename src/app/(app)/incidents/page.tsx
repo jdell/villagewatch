@@ -354,6 +354,7 @@ export default async function IncidentsPage({
                     occurredAt: row.occurredAt,
                     locationText: row.locationText,
                     tags: row.tags.map((tag) => tag.label),
+                    resolutionNote: row.resolutionNote,
                     media: thumbnailUrl
                       ? {
                           thumbnailUrl,

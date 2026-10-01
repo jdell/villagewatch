@@ -8,6 +8,8 @@ import {
   registerSchema,
   structuredIncidentSchema,
   villageParishCouncilFormSchema,
+  incidentResolutionSchema,
+  RESOLUTION_NOTE_MAX_CHARS,
 } from "@/lib/validations";
 
 /**
@@ -414,5 +416,37 @@ describe("villageParishCouncilFormSchema", () => {
   it("rejects a name too long for the report footer", () => {
     expect(stored("A".repeat(121))).toBeUndefined();
     expect(stored("A".repeat(120))).toBe("A".repeat(120));
+  });
+});
+
+describe("incidentResolutionSchema", () => {
+  const incidentId = "22222222-2222-4222-8222-222222222222";
+
+  it("requires a note — a resolution is explained or it does not happen", () => {
+    expect(incidentResolutionSchema.safeParse({ incidentId, note: "" }).success).toBe(false);
+    expect(incidentResolutionSchema.safeParse({ incidentId, note: "   " }).success).toBe(false);
+    expect(incidentResolutionSchema.safeParse({ incidentId }).success).toBe(false);
+  });
+
+  it("trims the note it keeps", () => {
+    const parsed = incidentResolutionSchema.parse({
+      incidentId,
+      note: "  Police attended.  ",
+    });
+    expect(parsed.note).toBe("Police attended.");
+  });
+
+  it("caps the note at the shared ceiling", () => {
+    const at = "x".repeat(RESOLUTION_NOTE_MAX_CHARS);
+    expect(incidentResolutionSchema.safeParse({ incidentId, note: at }).success).toBe(true);
+    expect(
+      incidentResolutionSchema.safeParse({ incidentId, note: `${at}x` }).success,
+    ).toBe(false);
+  });
+
+  it("refuses an id that is not a uuid", () => {
+    expect(
+      incidentResolutionSchema.safeParse({ incidentId: "1", note: "Done" }).success,
+    ).toBe(false);
   });
 });
