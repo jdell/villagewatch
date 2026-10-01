@@ -129,6 +129,23 @@ export const RATE_LIMITS = {
   reportNarrative: { name: "report-narrative", limit: 12, windowMs: HOUR_MS },
 
   /**
+   * The scheduled police report, per **village** rather than per resident —
+   * `policeReportSubject` builds the key. One a day: the schedule itself never
+   * asks for more than one a week, so this exists only to stop a misconfigured
+   * schedule, a stuck cron or a re-run sending the same officer the same
+   * document twice in a morning.
+   */
+  policeReportScheduled: { name: "police-report-scheduled", limit: 1, windowMs: DAY_MS },
+
+  /**
+   * "Send now" on Village settings, per village. Separate from the scheduled
+   * rule so a coordinator testing the address does not use up the day's
+   * scheduled send, and three rather than one so a typo corrected and re-sent
+   * is not refused — while a held button still cannot fill an officer's inbox.
+   */
+  policeReportSendNow: { name: "police-report-send-now", limit: 3, windowMs: DAY_MS },
+
+  /**
    * Changing your vote on one report.
    *
    * The odd one out in this table twice over, and both are worth reading before
@@ -254,6 +271,17 @@ export function authSubject(address: string | null): string | null {
   const trimmed = address?.trim();
 
   return trimmed ? `ip:${trimmed}` : null;
+}
+
+/**
+ * What the two police-report rules count against: a village, not a person.
+ *
+ * Prefixed `village:` for `authSubject`'s reason — `user_id` holds a Supabase
+ * auth user id for every other rule, and a value of another kind in that
+ * column has to say what it is.
+ */
+export function policeReportSubject(villageId: string): string {
+  return `village:${villageId}`;
 }
 
 /**

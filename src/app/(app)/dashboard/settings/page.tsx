@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MessageCircle, ShieldCheck, Users } from "lucide-react";
 import { AutoApproveForm } from "@/components/dashboard/auto-approve-form";
+import { PoliceReportForm } from "@/components/dashboard/police-report-form";
 import { InviteShare } from "@/components/dashboard/invite-share";
 import { EcopsSiteForm } from "@/components/dashboard/ecops-site-form";
 import { ParishCouncilForm } from "@/components/dashboard/parish-council-form";
@@ -29,6 +30,7 @@ import {
   VILLAGE_STATUS_LABELS,
 } from "@/lib/constants";
 import { getVillageAutoApprove } from "@/lib/moderation";
+import { readVillagePoliceReport } from "@/lib/police-report-schedule";
 
 export const metadata: Metadata = { title: "Village settings" };
 
@@ -67,6 +69,7 @@ export default async function VillageSettingsPage() {
     ecopsSiteId,
     compliance,
     residents,
+    policeReport,
   ] = await Promise.all([
     // The join code is read here and only here in the authenticated app — this
     // is the screen that hands it out, to the coordinator whose village it is.
@@ -99,6 +102,9 @@ export default async function VillageSettingsPage() {
     // whether the upgrade form has anything to offer.
     getVillageCompliance(villageId),
     listVillageResidents(villageId, RESIDENT_LIST_SIZE),
+    // Whether the columns exist, as well as their values — the form says
+    // "not ready yet" rather than refusing a save.
+    readVillagePoliceReport(villageId),
   ]);
 
   if (!village) return <NoVillage />;
@@ -199,6 +205,13 @@ export default async function VillageSettingsPage() {
           glance, and here the invite and resident sections sit between them.
         */}
         <AutoApproveForm value={autoApprove} />
+
+        <PoliceReportForm
+          available={policeReport.available}
+          schedule={policeReport.schedule}
+          email={policeReport.email}
+          lastSentAt={policeReport.lastSentAt?.toISOString() ?? null}
+        />
 
         {/*
           Handing the village to a parish council. One direction, and the copy

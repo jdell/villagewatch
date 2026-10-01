@@ -1195,6 +1195,19 @@ export const AUDIT_ACTIONS = [
     tone: "sensitive",
   },
   {
+    /**
+     * A coordinator setting, changing or turning off the scheduled report to
+     * the village's police contact. Sensitive: it decides who outside the
+     * village is sent a document about it, on a timer, with nobody pressing a
+     * button each time. The row carries both the schedule and the address.
+     */
+    value: "village.police_report_schedule_changed",
+    label: "Police report schedule changed",
+    description:
+      "A coordinator set, changed or turned off the scheduled report to the police contact",
+    tone: "sensitive",
+  },
+  {
     value: "village.auto_approve_changed",
     label: "Auto-approve changed",
     description:
@@ -2079,8 +2092,15 @@ export const PRICING = [
  * the letter). Nothing new is collected about a resident, but §6 enumerates
  * every request made on their behalf, so a paragraph added there is a change
  * of substance.
+ *
+ * It moved to **1 October 2026** for the scheduled police report: §6 gained a
+ * paragraph saying the period summary can be emailed to the police contact
+ * automatically, and the Resend paragraph that the same message passes through
+ * it. No new data and no new processor — but a new way the same summary leaves
+ * the village, without a coordinator pressing a button each time, which is a
+ * change of substance in the section that lists who sees what.
  */
-export const LEGAL_LAST_UPDATED = "2026-09-29";
+export const LEGAL_LAST_UPDATED = "2026-10-01";
 
 /**
  * The data controller under UK GDPR.
@@ -2977,3 +2997,38 @@ export const ECOPS_SENDER_LABELS: Record<string, string> = {
 export function isPoliceSender(sentBy: string | null | undefined): boolean {
   return (sentBy ?? "").trim().toLowerCase() === "the police";
 }
+
+// ---------------------------------------------------------------------------
+// Scheduled police reports
+// ---------------------------------------------------------------------------
+
+/**
+ * How often the community safety report can be emailed to the village's police
+ * contact, and the period each send covers. `days` is both: a weekly report
+ * covers the last seven days, so consecutive reports neither overlap nor leave
+ * a gap. "Monthly" is thirty days rather than a calendar month for the same
+ * reason — a report keyed to the calendar would cover a different length every
+ * time and would not line up with the send.
+ */
+export const POLICE_REPORT_SCHEDULES = [
+  { value: "weekly", label: "Weekly", days: 7 },
+  { value: "fortnightly", label: "Fortnightly", days: 14 },
+  { value: "monthly", label: "Monthly", days: 30 },
+] as const;
+
+export type PoliceReportSchedule = (typeof POLICE_REPORT_SCHEDULES)[number]["value"];
+
+export const POLICE_REPORT_SCHEDULE_VALUES = POLICE_REPORT_SCHEDULES.map(
+  (schedule) => schedule.value,
+) as unknown as readonly [PoliceReportSchedule, ...PoliceReportSchedule[]];
+
+/**
+ * How early a scheduled send may run and still count as on time.
+ *
+ * The cron runs once a day at a fixed time, and a send takes a few seconds —
+ * so a weekly report sent at 07:00:04 is "not yet seven days old" at 07:00:00
+ * the next week, and without this every report would slip a day each time.
+ * Six hours absorbs that and any delay in the cron's own start, and is far
+ * short of a day, so it can never send twice in one interval.
+ */
+export const POLICE_REPORT_DUE_GRACE_HOURS = 6;

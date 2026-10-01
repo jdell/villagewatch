@@ -24,12 +24,18 @@ import {
 } from "@/lib/villages";
 import { PRIVACY_LEVEL_META } from "@/lib/constants";
 import {
+  readVillagePoliceReport,
+  saveVillagePoliceReport,
+  sendVillagePoliceReport,
+} from "@/lib/police-report-schedule";
+import {
   fieldErrors,
   incidentModerationSchema,
   villageAutoApproveFormSchema,
   villageChannelFormSchema,
   villageEcopsSiteFormSchema,
   villageParishCouncilFormSchema,
+  villagePoliceReportFormSchema,
   villagePrivacyLevelFormSchema,
   villageResidentRoleFormSchema,
 } from "@/lib/validations";
@@ -244,6 +250,133 @@ export async function saveAutoApproveAction(
       ? "Auto-approve is on. New reports go live the moment they are filed."
       : "Auto-approve is off. New reports wait for a coordinator.",
   };
+}
+
+export type PoliceReportState = {
+  ok: boolean;
+  message: string;
+  fieldErrors?: Record<string, string>;
+};
+
+/**
+ * Sets, changes or turns off the scheduled report to the police contact.
+ *
+ * Coordinator only, the village off the session (domain rule 4) — a village id
+ * in this form would be a way to point another village's reports at an inbox.
+ * Audited as `village.police_report_schedule_changed`, toned sensitive, with
+ * both the schedule and the address before and after: it decides who outside
+ * the village is sent a document about it on a timer.
+ *
+ * Changing the address does not reset `policeReportLastSentAt`, so a new
+ * officer does not receive an extra report the next morning; the schedule
+ * carries on from the last send.
+ */
+export async function savePoliceReportAction(
+  _previous: PoliceReportState,
+  formData: FormData,
+): Promise<PoliceReportState> {
+  const session = await requireCoordinator("/dashboard/settings");
+  const villageId = session.profile?.villageId;
+
+  if (!villageId || !process.env.DATABASE_URL) {
+    return { ok: false, message: "You are not attached to a village." };
+  }
+
+  const parsed = villagePoliceReportFormSchema.safeParse({
+    schedule: formData.get("schedule") ?? "",
+    email: formData.get("email") ?? "",
+  });
+
+  if (!parsed.success) {
+    const errors = fieldErrors(parsed.error);
+    return {
+      ok: false,
+      message: errors.email ?? errors.schedule ?? "Check the highlighted fields.",
+      fieldErrors: errors,
+    };
+  }
+
+  const before = await readVillagePoliceReport(villageId);
+
+  if (!before.available) {
+    return {
+      ok: false,
+      message:
+        "Scheduled reports are not ready on this deployment yet — the database needs updating first.",
+    };
+  }
+
+  const schedule = parsed.data.schedule === "off" ? null : parsed.data.schedule;
+  const email = parsed.data.email;
+
+  try {
+    await saveVillagePoliceReport(villageId, { schedule, email });
+  } catch (cause) {
+    console.error("Could not save the police report settings for %s", villageId, cause);
+    return { ok: false, message: "Could not save that setting. Try again." };
+  }
+
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorId: session.user.id,
+        actorEmail: session.user.email ?? null,
+        actorRole: session.profile?.role ?? null,
+        villageId,
+        action: "village.police_report_schedule_changed",
+        entityType: "village",
+        entityId: villageId,
+        before: { schedule: before.schedule, email: before.email },
+        after: { schedule, email },
+      },
+    });
+  } catch (cause) {
+    console.error("Could not audit the police report change for %s", villageId, cause);
+  }
+
+  revalidatePath("/dashboard/settings");
+
+  return {
+    ok: true,
+    message: schedule
+      ? `Saved. The report will go to ${email} ${schedule}.`
+      : "Saved. Scheduled reports are off.",
+  };
+}
+
+/**
+ * "Send now" — the report to the saved address, straight away.
+ *
+ * The same send the cron makes, so it is audited and rate limited the same way
+ * (its own three-a-day rule, so testing the address does not use up the
+ * scheduled send). It counts as a send: `policeReportLastSentAt` moves, and the
+ * schedule carries on from it rather than sending the officer a second copy
+ * tomorrow morning.
+ */
+export async function sendPoliceReportNowAction(): Promise<PoliceReportState> {
+  const session = await requireCoordinator("/dashboard/settings");
+  const villageId = session.profile?.villageId;
+
+  if (!villageId || !process.env.DATABASE_URL) {
+    return { ok: false, message: "You are not attached to a village." };
+  }
+
+  const result = await sendVillagePoliceReport({
+    villageId,
+    trigger: "manual",
+    actor: session,
+  });
+
+  revalidatePath("/dashboard/settings");
+
+  return result.ok
+    ? {
+        ok: true,
+        message: `Sent to ${result.to} — ${result.incidents} report${
+          result.incidents === 1 ? "" : "s"
+        } from the last ${result.days} days.`,
+      }
+    : { ok: false, message: result.message };
 }
 
 export type ParishCouncilState = {
