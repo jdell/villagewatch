@@ -6,6 +6,7 @@ import {
   VILLAGE_SERVICE_MESSAGES,
   isCoordinatorRole,
 } from "@/lib/constants";
+import { getVillageEventsEnabled } from "@/lib/events";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -66,7 +67,7 @@ export default async function AppLayout({
     authenticated render for the handful of people who can act on it, which is
     the price of the queue being visible without opening it.
   */
-  const [village, pendingCount] = await Promise.all([
+  const [village, pendingCount, eventsEnabled] = await Promise.all([
     profile?.villageId && process.env.DATABASE_URL
       ? prisma.village.findUnique({
           where: { id: profile.villageId },
@@ -90,6 +91,16 @@ export default async function AppLayout({
           where: { villageId: profile.villageId, status: "PENDING_REVIEW" },
         })
       : Promise.resolve(null),
+    /*
+      Its own read rather than a column on the village select above, and that is
+      load-bearing: this layout renders on every authenticated page, and a
+      column the database does not have yet would throw there — taking every
+      page down over an optional feature. `getVillageEventsEnabled` catches its
+      own errors and answers false.
+    */
+    profile?.villageId
+      ? getVillageEventsEnabled(profile.villageId)
+      : Promise.resolve(false),
   ]);
 
   return (
@@ -109,6 +120,7 @@ export default async function AppLayout({
         isAdmin: isPlatformAdmin(session),
         // Same reason, different variable: a Client Component cannot query.
         pendingCount,
+        eventsEnabled,
       }}
     >
       {/*

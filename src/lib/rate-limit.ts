@@ -117,6 +117,14 @@ export const RATE_LIMITS = {
   incidentCreate: { name: "incident-create", limit: 10, windowMs: DAY_MS },
 
   /**
+   * Posting a community event. Ten a day, the same ceiling as filing a report:
+   * events have no moderation queue in front of them, so this and a
+   * coordinator's delete button are the whole defence against a resident
+   * filling the village's calendar.
+   */
+  eventCreate: { name: "event-create", limit: 10, windowMs: DAY_MS },
+
+  /**
    * The community safety report's narrative.
    *
    * The most expensive single call in the app — a month of a village's reports

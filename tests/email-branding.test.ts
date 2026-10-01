@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EmailMessage } from "@/lib/email/layout";
 import { coordinatorDecisionEmail } from "@/lib/email/coordinator-decision";
+import { resolutionEmail } from "@/lib/email/resolution";
 import { incidentNotificationEmail } from "@/lib/email/incident-notification";
 import { weeklyDigestEmail } from "@/lib/email/weekly-digest";
 import { welcomeEmail } from "@/lib/email/welcome";
@@ -81,6 +82,17 @@ const MESSAGES: readonly { name: string; message: EmailMessage }[] = [
       villageName: "Little Barford",
       approved: false,
       note: "Please ask your parish clerk to confirm the role first.",
+    }),
+  },
+  {
+    name: "resolution",
+    message: resolutionEmail({
+      fullName: "Sam Okonkwo",
+      villageName: "Little Barford",
+      incidentId: "8f0a5e8c-3b1d-4b6e-9a51-2f4c7d9e1a20",
+      reference: "VW-LIT-2026-0003",
+      title: "Shed door forced on Mill Lane",
+      note: "Police attended & the owner's <padlock> was replaced.",
     }),
   },
 ];

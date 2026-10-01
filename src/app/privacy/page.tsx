@@ -155,6 +155,20 @@ export const metadata: Metadata = {
  *     severity floor and the same distance test the push uses, and a control on
  *     `/settings` that turns it off. That control arrived in the same commit as
  *     the dispatch, because a preference nothing can change is not a preference.
+ *   - §2 on what a vote is **used for**, which became two things on
+ *     1 October 2026: being taken back, and being told when the report is
+ *     resolved (`notifyVotersOfResolution` in `src/lib/notifications.ts`). The
+ *     claim the second clause makes is that the message goes only to a voter
+ *     with `notifyPush` on and names nobody — true because that function
+ *     filters on the column and returns a count. And §6's Resend paragraph
+ *     counts five kinds of email, the fifth being `resolutionEmail`, which
+ *     carries the reference, the title and the note and nothing else.
+ *   - §§2 and 7 on community events (`src/lib/events.ts`,
+ *     `POST /api/events`). Four claims: the poster's name is shown, the pin
+ *     is moved by `LOCATION_FUZZ_METERS` before it is saved (the route calls
+ *     `fuzzCoordinates`), an event goes to nobody outside the village and to
+ *     no processor (nothing in the module calls the AI, push or email), and
+ *     closing an account deletes every event it posted (`eraseAccount`).
  *   - §§2, 6 and 7 on votes (`src/lib/votes.ts`, `IncidentVote`). Three claims,
  *     and the second is the one worth guarding: the totals are public within the
  *     village and **no screen anywhere puts a name against a vote**. That is
@@ -471,12 +485,27 @@ export default function PrivacyPage() {
             phone.
           </LI>
           <LI>
+            <strong>Community events you post</strong>, if your village has
+            them turned on — a litter pick, a meeting, a drop-in. We keep what
+            you write about it, when it is and, if you drop a pin, roughly where.
+            Unlike a report, <strong>an event is not anonymous</strong>: your
+            name is shown on it to everyone in your village. If you pin it on
+            the map, the pin is moved up to {LOCATION_FUZZ_METERS} metres before
+            it is saved, so an event at your home does not point at your house.
+            Events are seen only by residents of your village, never published
+            outside it, and are not sent to the AI or to anyone else.
+          </LI>
+          <LI>
             <strong>Your votes on published reports.</strong> Every published
             report carries an up arrow and a down arrow, meaning &ldquo;more
             serious than it looks&rdquo; and &ldquo;less&rdquo;. We record which
-            way you voted so that pressing the button again can take it back —
-            so the record is linked to your account, not anonymous to us. Your
-            neighbours only ever see the totals. See section 6.
+            way you voted so that pressing the button again can take it back,
+            and so that if a coordinator later marks the report resolved we can
+            send you a notification saying what happened — so the record is
+            linked to your account, not anonymous to us. That notification goes
+            only if you have push notifications switched on, and it says nothing
+            about who else voted or how. Your neighbours only ever see the
+            totals. See section 6.
           </LI>
         </UL>
       </LegalSection>
@@ -768,10 +797,14 @@ export default function PrivacyPage() {
           </Definition>
           <Definition term="Resend, which delivers our email">
             Your email address, your first name and your village&rsquo;s name,
-            so that the message can be addressed and sent. Four kinds of email
+            so that the message can be addressed and sent. Five kinds of email
             go out. The sign-up confirmation and password reset links, which are
             sent when you ask for them. A welcome message when you join a
             village, which explains what happens to a report once you file one.
+            A message when a coordinator resolves a report you filed, carrying
+            its reference, its published title and the note the coordinator
+            wrote about what happened — the same note your neighbours can read
+            on the report.
             An alert when a report is published in your village, if you have
             asked for those — it carries the published description, which is the
             same anonymised text your neighbours can already read on the map,
@@ -826,8 +859,8 @@ export default function PrivacyPage() {
             either off at any time in your settings. Two kinds of message are
             not covered by that switch and will still reach you: the
             confirmation and password links you ask for, and messages about
-            something you did yourself — joining a village, or a decision on an
-            application you made.
+            something you did yourself — joining a village, a decision on an
+            application you made, or the outcome of a report you filed.
           </Definition>
           <Definition term="Slack (Salesforce), and why it is listed separately">
             Administrative notifications only, to a private channel that only
@@ -985,6 +1018,13 @@ export default function PrivacyPage() {
             4 did not run on your report, the published description is your own
             wording, and that is the report itself rather than a restricted copy
             of it, so it stays with the archived record.
+          </Definition>
+          <Definition term="Community events — until they are deleted">
+            Kept until you delete the event, a coordinator takes it down, or you
+            close your account — which deletes every event you have posted.
+            There is no automatic expiry: a past event stays on your
+            village&rsquo;s list, under &ldquo;Past events&rdquo;, until one of
+            those happens.
           </Definition>
           <Definition term="Votes on reports — until the report goes">
             How you voted is kept while the report is. It goes when you take the

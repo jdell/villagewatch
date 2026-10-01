@@ -16,11 +16,11 @@
  *   an audience as one message *per recipient* — never one message addressed to
  *   the village, which would disclose the membership list to everybody on it.
  *
- * All four templates have a caller now. The welcome goes on both registration
- * paths; the incident alert and the weekly digest are dispatched from
- * `src/lib/notifications.ts`, which owns the audience rules for both channels;
- * the coordinator decision goes from `src/lib/coordinator-requests.ts` beside
- * the push.
+ * Every template has a caller. The welcome goes on both registration paths;
+ * the incident alert, the weekly digest and the resolution notice are
+ * dispatched from `src/lib/notifications.ts`, which owns the audience rules for
+ * both channels; the coordinator decision goes from
+ * `src/lib/coordinator-requests.ts` beside the push.
  *
  * `supabase-templates/` is neither: those four are sent by Supabase Auth, which
  * is the only thing that can mint their tokens, so what lives there is HTML to
@@ -63,3 +63,8 @@ export {
   coordinatorDecisionEmail,
   type CoordinatorDecisionEmailInput,
 } from "@/lib/email/coordinator-decision";
+
+export {
+  resolutionEmail,
+  type ResolutionEmailInput,
+} from "@/lib/email/resolution";

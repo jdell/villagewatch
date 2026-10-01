@@ -8,7 +8,9 @@ import {
   registerSchema,
   structuredIncidentSchema,
   villageParishCouncilFormSchema,
+  incidentResolutionSchema,
   isUuid,
+  RESOLUTION_NOTE_MAX_CHARS,
 } from "@/lib/validations";
 
 /**
@@ -434,5 +436,37 @@ describe("isUuid", () => {
     expect(isUuid(" 2f4c7d9e-1a20-4b6e-9a51-8f0a5e8c3b1d")).toBe(false);
     expect(isUuid(null)).toBe(false);
     expect(isUuid(undefined)).toBe(false);
+  });
+});
+
+describe("incidentResolutionSchema", () => {
+  const incidentId = "22222222-2222-4222-8222-222222222222";
+
+  it("requires a note — a resolution is explained or it does not happen", () => {
+    expect(incidentResolutionSchema.safeParse({ incidentId, note: "" }).success).toBe(false);
+    expect(incidentResolutionSchema.safeParse({ incidentId, note: "   " }).success).toBe(false);
+    expect(incidentResolutionSchema.safeParse({ incidentId }).success).toBe(false);
+  });
+
+  it("trims the note it keeps", () => {
+    const parsed = incidentResolutionSchema.parse({
+      incidentId,
+      note: "  Police attended.  ",
+    });
+    expect(parsed.note).toBe("Police attended.");
+  });
+
+  it("caps the note at the shared ceiling", () => {
+    const at = "x".repeat(RESOLUTION_NOTE_MAX_CHARS);
+    expect(incidentResolutionSchema.safeParse({ incidentId, note: at }).success).toBe(true);
+    expect(
+      incidentResolutionSchema.safeParse({ incidentId, note: `${at}x` }).success,
+    ).toBe(false);
+  });
+
+  it("refuses an id that is not a uuid", () => {
+    expect(
+      incidentResolutionSchema.safeParse({ incidentId: "1", note: "Done" }).success,
+    ).toBe(false);
   });
 });

@@ -202,8 +202,16 @@ src/
       incidents/              List with type + severity filters (GET form)
       incidents/[id]/         Detail — media, tags, map pin; params is a Promise
       incidents/[id]/edit/    Reporter's own edit, queue statuses only
-      incidents/[id]/actions.ts  Moderate / edit / withdraw server actions
+      incidents/[id]/actions.ts  Moderate / edit / withdraw server actions, and
+                              resolveIncidentAction — see Resolving a report
       incidents/new/          Report wizard host (village lookup, server-side)
+      events/                 Community events — upcoming, past under a fold.
+                              Every page answers "not on here" when the village
+                              has `eventsEnabled` off. See Community events
+      events/new/             The event form's host
+      events/[id]/            One event, its pin, and delete for the poster or
+                              a coordinator
+      events/actions.ts       deleteEventAction
       dashboard/              Overview — the coordinator's first tab. Stats,
                               breakdowns, hotspots, the concern panel, the
                               police figures and the activity feed. Read-only:
@@ -250,6 +258,9 @@ src/
     api/admin/villages/merge/ GET previews a merge, POST performs it. The only
                               route gated on SUPER_ADMIN_EMAILS
     api/incidents/            POST create report (writes AI fields + tags)
+    api/events/               POST a community event — any resident of a village
+                              with events on. Village off the session, the pin
+                              fuzzed, rate limited. No AI, no queue, no push
     api/incidents/[id]/       DELETE the reporter's own report — 204/403/404
     api/incidents/[id]/vote/  POST a resident's view of how serious a published
                               report is — up, down, or the same button again to
@@ -343,15 +354,28 @@ src/
     map/heatmap-layer.tsx     leaflet.heat as a react-leaflet child. The plugin
                               is imported dynamically inside the effect
     map/hotspot-heatmap.tsx   The dashboard's density thumbnail — heat only,
-                              not interactive
+                              not interactive. A one-handle timeline below it
+    map/timeline-slider.tsx   The timeline: a second filter inside the period,
+                              over incidents already in the browser. Two handles
+                              on /map, one on the thumbnail; collapsed behind a
+                              clock toggle, remembered per device
     qr-invite.tsx             The invite QR — SVG on screen, canvas behind the
                               download, `[data-print-region]` for the sheet
     incident-location-map.tsx Client wrapper for the detail page's single pin
     incident-card.tsx         One incident, used by preview, list and detail
+    event-card.tsx            One community event. Not IncidentCard with a flag:
+                              it names the poster, which a report card never does
+    event-form.tsx            Post an event — one screen, the pin optional and
+                              said to be moved
+    event-location-map.tsx    The one pin on an event's page
+    events-off.tsx            What every events page says when they are off
+    delete-event-button.tsx   Delete, behind an inline "are you sure?"
+    dashboard/events-form.tsx The village switch for community events
     vote-buttons.tsx          Up / down chevrons and two counts, on every
                               published report. Optimistic, and it puts the
                               count back when the request fails
-    incident-actions.tsx      Detail-page actions — reporter and coordinator
+    incident-actions.tsx      Detail-page actions — reporter and coordinator.
+                              The Resolve panel is here, inline, note required
     share-summary.tsx         One report for a PCSO — navigator.share, then
                               the clipboard. Coordinator, published only
     copy-alert.tsx            The three share buttons — copy, WhatsApp, Facebook
@@ -477,6 +501,9 @@ src/
                               pattern and nothing of a resident's
     moderation.ts             applyModeration, audited readRawDescription, and
                               the village's auto-approve setting (fails closed)
+    events.ts                 Community events — the village switch (degrades
+                              to off), the reads, and delete with its rule.
+                              Server only
     erasure.ts                removeIncident + eraseAccount — Article 17,
                               tombstones the row and deletes the media
     audit-context.ts          The caller's IP and browser for an AuditLog row.
@@ -553,6 +580,9 @@ src/
                               — one resolver, client-safe, nothing rejects
     calendar.ts               The month grid and the range chip behind /reports'
                               date picker. Client-safe, pure, host zone
+    timeline.ts               The timeline slider's day arithmetic — the track,
+                              the selection, the midnight boundaries. Client-
+                              safe, pure, host zone, like calendar.ts
     structured-data.ts        The landing page's JSON-LD graph. Server or client;
                               every field in it is a claim that has to be true
     votes.ts                  The toggle rule, the tally arithmetic and the
@@ -573,10 +603,11 @@ src/
                               CSP_REPORT_ONLY says otherwise — see The
                               Content-Security-Policy
     email/                    layout, welcome, weekly-digest,
-                              incident-notification, coordinator-decision — pure
-                              functions to `{ subject, text, html }`. `layout.ts`
-                              is the one branded shell all ten emails render
-                              through, the six auth templates included
+                              incident-notification, coordinator-decision,
+                              resolution — pure functions to
+                              `{ subject, text, html }`. `layout.ts` is the one
+                              branded shell all eleven emails render through,
+                              the six auth templates included
     email/send.ts             The transport, over Resend. Never throws, logs the
                               message with no key set. `sendBulkEmail` beside it
                               fans one message out per recipient — never one
@@ -776,6 +807,12 @@ tests/                        Vitest, unit only — see The test suite
                               month, the 31st that skips February, the date that
                               is shaped right and does not exist, and the year
                               the chip prints only where it says something
+  timeline.test.ts            The slider's arithmetic — `all` starting on the
+                              earliest report, a future end pulled back to
+                              today, the last day inclusive to its midnight and
+                              the next one out, calendar-day steps across the
+                              clocks going back, and a handle stopped at the
+                              other rather than swapped
   mask-email.test.ts          The mask on the resident list — the fixed width
                               that hides a local part's length, the last-@ split,
                               and every unparseable input failing closed to
@@ -889,6 +926,24 @@ tests/                        Vitest, unit only — see The test suite
                               domain rules it enforces, the 404 that is not a
                               403, the quota that is not spent on a report the
                               caller cannot see, and a response naming nobody
+  community-events.test.ts    The sixth route handler, there for its gates — the
+                              village and poster off the session whatever the
+                              body says, both village checks before the body and
+                              the quota, a pin stored fuzzed and within radius,
+                              and none stored when none was given. Also the
+                              date window, who may delete, and the "when" line
+  incident-resolution.test.ts Resolving through `applyModeration` — no note, no
+                              resolution, whichever action sent it; published
+                              only and village-scoped; the note in its own
+                              column and the publication note left alone; the
+                              audit row before any message; and the reporter
+                              and the voters told, never the village. Also the
+                              note in both documents that leave the village
+  resolution-notifications.test.ts  The three dispatches, run for real over a
+                              mocked Prisma — the voter query's filters, a
+                              result that is a count and a message that names
+                              nobody, a closed account told nothing, and every
+                              failure a value rather than a throw
   email-branding.test.ts      The one shell, across every email the app sends
                               itself — both parts rendered, a complete document,
                               the brand bar and the mark, the footer's three
@@ -1391,6 +1446,7 @@ line often enough that an IP limit would silence a household.
 | `POST /api/auth/login`             | `authLogin`       | 5 per minute, **per address** |
 | `POST /api/auth/register`          | `authRegister`    | 3 per hour, **per address** |
 | `POST /api/village-interest`       | `villageInterest` | 5 per hour, **per address** |
+| `POST /api/events`                 | `eventCreate`     | 10 per day  |
 
 The third is the most expensive single call in the app — a month of a village's
 reports goes into the prompt — and the only one a *coordinator* triggers by hand,
@@ -2088,7 +2144,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty-four files, 923 tests, covering the
+between the typecheck and the build. Fifty-eight files, 998 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -4679,9 +4735,13 @@ section of everything `/reports` produces.
   village, which is the one thing this feature promises not to expose.
 - **Nobody's name is rendered anywhere.** Not on a card, not on the detail page,
   not in the dashboard panel, not in the report. The promise is structural
-  rather than remembered: **no query in the app selects a voter**, and
-  `incident-votes.ts` exposes no function that could answer "who voted on this".
-  A single well-meaning "who voted?" panel is what would end that.
+  rather than remembered: `incident-votes.ts` exposes no function that could
+  answer "who voted on this", and **exactly one query in the app selects a
+  voter** — `notifyVotersOfResolution`, which hands the ids to `dispatch` and
+  returns a count, so the answer never reaches a caller, a screen or a log.
+  This sentence said "no query" until 1 October 2026; see Resolving a report
+  for why it stopped being true and what keeps the promise. A single
+  well-meaning "who voted?" panel is still what would end it.
 - **RLS gives a resident their own rows and a coordinator their village's.** The
   counts residents see are computed by the application, which runs as the table
   owner, so withholding the rows through PostgREST costs the product nothing.
@@ -4729,6 +4789,122 @@ section of everything `/reports` produces.
   linked to an account — and the notice says what is recorded, that the totals
   are public within the village while the voter is not, and that it goes with
   the report and with the account.
+
+## Community events
+
+`CommunityEvent`, `Village.eventsEnabled`, `src/lib/events.ts`,
+`POST /api/events`, the three pages under `/events`, and a toggle on `/map`.
+Migration `20261001120000_community_events`. Things on in the village that are
+not problems — a litter pick, a meeting, a police drop-in.
+
+- **Off by default, per village.** A coordinator turns it on from Village
+  settings (`village.events_changed`, toned neutral). Off hides the pages, the
+  sidebar link and the map toggle and refuses new posts at the route; it
+  **deletes nothing**, so turning it back on brings the old events back.
+- **None of the incident machinery, deliberately.** No AI pass, no queue, no
+  severity, no `rawDescription`, no votes, no pattern detection, no police
+  report, no push. An event is not an alert, and a push for a litter pick is how
+  residents learn to ignore the pushes that matter.
+- **Not anonymous, and that is the one thing it does differently from every
+  other resident-written surface.** The poster's name is on the event —
+  `EventCard` exists separately from `IncidentCard` so that difference is a
+  component rather than a prop somebody could pass the wrong way. `/privacy` §2
+  says so.
+- **Two domain rules apply.** The pin is fuzzed by `LOCATION_FUZZ_METERS` in
+  the route before it is written (rule 2) — an event at somebody's house should
+  not pinpoint it — and every read and write is scoped by the session's
+  village (rule 4). No geography column and no trigger: nothing queries events
+  by radius, so `postgis.sql` is untouched.
+- **The route's gates come before the body and the quota**, the order the
+  report route keeps: session, village, `eventsEnabled` and the village being in
+  service, then the schema, the date window (`eventWindowError` — a day of grace
+  behind, a year ahead), then `RATE_LIMITS.eventCreate`, which with a
+  coordinator's delete is the whole defence against spam, since nothing reviews
+  an event first.
+- **Deleting is audited and posting is not.** A coordinator taking down a
+  neighbour's post is a decision somebody answers for; `event.deleted` records
+  which hat was worn. The delete is a hard delete — nothing in the trail
+  references an event except that row.
+- **Two cross-cutting places had to learn about the table.** `eraseAccount`
+  deletes every event the account posted (it carries their name, which is what
+  erasure exists to stop showing), treating a missing table as nothing to
+  delete; and `mergeVillages` moves events with the village and lists their ids
+  in the `village.merged` row, because that row is the rollback record.
+- **The flag is read by a call that degrades, never by adding a column to an
+  existing select.** `(app)/layout.tsx` renders on every authenticated page; a
+  column the database does not have yet there would take every page down over
+  an optional feature. `getVillageEventsEnabled` catches and answers false.
+- **The map shows events that have not finished**, independent of the period
+  control and the timeline — those describe what was reported, looking back. A
+  separate toggle beside the clock, not a fourth layer button, remembered per
+  device and **shown by default**. Events are never in the heat layer and never
+  framed by `fitToIncidents`.
+- **RLS: a village-scoped SELECT and no writes.** Every writer is the owner; a
+  write grant would open a PostgREST insert that skips the fuzzing. **Re-run
+  `rls_policies.sql` after the migration** — the table arrives with RLS off, and
+  `events_enabled` needs its line in the `villages` column grant.
+- **No retention sweep.** An event is kept until its poster or a coordinator
+  deletes it, or the poster closes their account, and `/privacy` §7 says
+  exactly that rather than promising an expiry the code does not enforce.
+
+## Resolving a report
+
+`resolveIncidentAction` in `src/app/(app)/incidents/[id]/actions.ts`, the
+Resolve panel in `incident-actions.tsx`, `Incident.resolutionNote`, and the
+three dispatches in `src/lib/notifications.ts`. Migration
+`20261001090000_incident_resolution_note`.
+
+- **It goes through `applyModeration`, which already had a RESOLVE.** The
+  transition existed from the first schema — `ALLOWED_FROM.RESOLVE` is
+  `PUBLISHED` and `resolvedAt` was set — and nothing called it. The new action
+  is a thin wrapper with its own required-note schema rather than a second
+  write path, so the village scope, the status guard, the audit row and the
+  dispatches are each written once.
+- **No note, no resolution — refused twice.** `incidentResolutionSchema`
+  requires it, and `applyModeration` refuses an empty note on its own, because
+  `moderateFromDetailAction` accepts RESOLVE too and a server action is
+  reachable without its form. A note is what the village, the reporter and
+  every voter are shown; "resolved" with nothing after it tells all of them
+  that something happened and not what.
+- **The note has its own column and leaves `moderationNote` alone.** That one
+  is what the reporter was told when the report was published or rejected —
+  a different message to a different reader — and resolving used to overwrite
+  it with whatever the RESOLVE note was.
+- **The note is public.** It is in `PUBLIC_INCIDENT_SELECT`, in the
+  `incidents` column grant in `rls_policies.sql` beside `resolved_at`, on the
+  card (a badge with the note as its tooltip, and as a line on compact list
+  rows, since a tooltip does not exist on a phone), in a green panel on the
+  detail page, and in both documents `community-report.ts` produces and the
+  PDF. It is written by a coordinator for the village, and the panel says so
+  and asks for no names. **It is not in the social post** — that format carries
+  no free text at all — **and not on the public `/incident/[id]` preview**,
+  which does not read `PUBLIC_INCIDENT_SELECT`.
+- **Three audiences, and the village broadcast is not one of them.** The
+  reporter by push and by email, regardless of their preferences — the outcome
+  of something they submitted, `notifyReporterOfDecision`'s reasoning. And the
+  residents who **voted** on it, by push, filtered by `notifyPush`: they said
+  it mattered to them, and a vote is an interest rather than a request for a
+  message, so a resident who turned pushes off is not messaged.
+- **The voter push is the one query in the app that selects a voter.** The
+  vote section's promise was "no query selects a voter"; the promise that
+  matters, and that still holds, is that nobody can find out who voted on
+  what. The ids go to `dispatch` and nowhere else, the function returns a
+  count, and the message carries the reference and the note — not the
+  reporter-authored title, not a name, not which way anybody voted. `/privacy`
+  §2 says a vote is now used for this as well as for being taken back, and
+  `LEGAL_LAST_UPDATED` moved for it.
+- **`incident.resolve`, not `incident.resolved`.** The registry entry existed
+  and is what `applyModeration` writes for the action, matching
+  `incident.publish`, `.reject` and `.archive`. It is toned `sensitive` now,
+  since it records free text published to the village and a message to every
+  voter; the row carries the note in `after`.
+- **Nothing in the fan-out can throw**, the contract every dispatch has. The
+  resolution is written and audited before any message goes, so a mail server
+  being down is never what a coordinator is told.
+- **Re-run `rls_policies.sql` after the migration.** The `incidents` grant is
+  enumerated per column; until it is re-run, `resolution_note` is invisible
+  through PostgREST, which costs the app nothing (Prisma is the owner) and is
+  the documented failure direction.
 
 ## The coordinator's five tabs
 
@@ -5161,6 +5337,20 @@ toggle, and `/dashboard` as a thumbnail beside the hotspot list.
 - **The heat reads the date-filtered set the pins read.** A density map of "all
   time" beside a pin set of "last 7 days" would be two different claims about the
   same village.
+- **The timeline slider narrows both layers and moves neither viewport.**
+  `src/components/map/timeline-slider.tsx` is a second filter inside the period,
+  and both layers read what it leaves — the rule above, one level down. What it
+  does not touch is the framing: `IncidentMap` takes `fitTo`, and both surfaces
+  pass the whole *period* there while the slider-filtered set goes to
+  `incidents`. Framing the slider's set instead re-zooms the map on every step
+  of a drag, which is the obvious way to wire it and makes a pattern moving from
+  one street to the next impossible to see. Its track is the period's own days
+  in the host zone (`src/lib/timeline.ts`), and a change of period resets it
+  during render against a stored key, not in an effect — an effect draws one
+  frame of the old offsets over the new period. The panel sits in the top-right
+  column, never along the bottom, which is the legend's, the zoom control's and
+  the attribution's — see The map's corners. Its label is `formatRangeChip`, so
+  it reads "15 Sept" under current ICU exactly as the three period chips do.
 - **Pins are the default and the choice is remembered per device**, in
   localStorage through `useSyncExternalStore` — the same store shape as the
   onboarding tour and for the same reasons: localStorage cannot be read during
