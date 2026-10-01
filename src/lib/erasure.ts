@@ -471,11 +471,30 @@ export async function eraseAccount(input: {
   // once there is nobody to deliver to; a pending `CoordinatorRequest` is worse
   // than meaningless — it holds the applicant's reason in their own words and
   // would otherwise sit in the admin queue waiting to promote a closed account.
+  //
+  // A third does too: every community event the account posted. An event
+  // carries its poster's name for the whole village to read — that is the
+  // point of it, and `/privacy` §2 says so — and the name is exactly what this
+  // function exists to stop being shown. Deleted outright rather than
+  // anonymised, because "posted by a closed account" over somebody's litter
+  // pick still says somebody posted it from that house, and nothing in the
+  // trail points at an event. A missing table (`P2021`, the migration not yet
+  // applied) means there are no events to delete; any other error propagates,
+  // because an erasure that quietly skipped them would be worse than one that
+  // failed.
   await Promise.all([
     prisma.notification.deleteMany({ where: { userId: session.user.id } }),
     prisma.coordinatorRequest.deleteMany({
       where: { userId: session.user.id, status: "PENDING" },
     }),
+    prisma.communityEvent
+      .deleteMany({ where: { createdById: session.user.id } })
+      .catch((cause: unknown) => {
+        if ((cause as { code?: unknown } | null)?.code === "P2021") {
+          return { count: 0 };
+        }
+        throw cause;
+      }),
   ]);
 
   try {

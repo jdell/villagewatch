@@ -1021,10 +1021,19 @@ export const AUDIT_ACTIONS = [
     tone: "negative",
   },
   {
+    /**
+     * Toned `sensitive` rather than `positive` since the resolution gained a
+     * note. It is no longer only a status change: a coordinator writes free
+     * text that the whole village reads on the report, and it is pushed to the
+     * reporter and to every resident who voted on it — the one dispatch in the
+     * app whose audience is drawn from the vote table. The row carries the note
+     * in `after`, so the trail records exactly what was said to whom.
+     */
     value: "incident.resolve",
     label: "Resolved",
-    description: "Marked as dealt with",
-    tone: "positive",
+    description:
+      "Marked as dealt with, with a note the village reads and the reporter and voters are sent",
+    tone: "sensitive",
   },
   {
     value: "incident.archive",
@@ -1206,6 +1215,29 @@ export const AUDIT_ACTIONS = [
     description:
       "A coordinator set, changed or turned off the scheduled report to the police contact",
     tone: "sensitive",
+  },
+  {
+    /**
+     * A village turning community events on or off. Neutral rather than
+     * sensitive: it widens nothing about who reads a report and removes no
+     * reviewer — it decides whether residents can post a litter pick.
+     */
+    value: "village.events_changed",
+    label: "Community events changed",
+    description: "A coordinator turned community events on or off for the village",
+    tone: "neutral",
+  },
+  {
+    /**
+     * An event deleted — by the resident who posted it, or by a coordinator.
+     * Audited although creating one is not, for the reason the trail exists:
+     * a coordinator removing a neighbour's post is a decision somebody is
+     * accountable for, and the row says which of the two happened.
+     */
+    value: "event.deleted",
+    label: "Event deleted",
+    description: "A community event was taken down by its poster or a coordinator",
+    tone: "neutral",
   },
   {
     value: "village.auto_approve_changed",
@@ -1825,6 +1857,7 @@ export const APP_HOST = APP_ORIGIN.replace(/^https?:\/\//, "");
 export const PROTECTED_ROUTES = [
   "/map",
   "/incidents",
+  "/events",
   "/dashboard",
   "/settings",
   "/coordinator-apply",
@@ -2093,7 +2126,19 @@ export const PRICING = [
  * every request made on their behalf, so a paragraph added there is a change
  * of substance.
  *
- * It moved to **1 October 2026** for the scheduled police report: §6 gained a
+ * It moved to **1 October 2026** for resolving a report. Two sentences became
+ * false and were changed rather than left: §2 said a vote is linked to an
+ * account *so that it can be taken back*, and it is now also used to tell the
+ * voter when the report is resolved — a second purpose for data already held,
+ * which is the case this date exists for. And §6 counted four kinds of email
+ * when there are five.
+ *
+ * It changed again the same day, for community events: §2 gained a category
+ * of personal data — an event a resident posts, which unlike a report carries
+ * their name — and §7 says how long one is kept. The constant records the day,
+ * not the count, so it stays at 1 October.
+ *
+ * It changed a third time that day, for the scheduled police report: §6 gained a
  * paragraph saying the period summary can be emailed to the police contact
  * automatically, and the Resend paragraph that the same message passes through
  * it. No new data and no new processor — but a new way the same summary leaves
@@ -3032,3 +3077,39 @@ export const POLICE_REPORT_SCHEDULE_VALUES = POLICE_REPORT_SCHEDULES.map(
  * short of a day, so it can never send twice in one interval.
  */
 export const POLICE_REPORT_DUE_GRACE_HOURS = 6;
+
+// ---------------------------------------------------------------------------
+// Community events
+// ---------------------------------------------------------------------------
+
+/**
+ * What the event form suggests. **A suggestion, not an enum**: "Other" reveals
+ * a text field, and `CommunityEvent.category` stores whatever was chosen or
+ * typed. Nothing in the app switches on it.
+ */
+export const EVENT_CATEGORIES = [
+  "Community clean-up",
+  "Meeting",
+  "Social event",
+  "Police drop-in",
+  "Other",
+] as const;
+
+/** Longest a custom category may be. It is a label on a card, not a sentence. */
+export const EVENT_CATEGORY_MAX_CHARS = 40;
+
+/** Longest an event's title and description may be. */
+export const EVENT_TITLE_MAX_CHARS = 120;
+export const EVENT_DESCRIPTION_MAX_CHARS = 1000;
+
+/**
+ * How far ahead an event may be posted. A year covers the annual fete; further
+ * than that is a typo in the year field far more often than it is a plan.
+ */
+export const EVENT_MAX_DAYS_AHEAD = 366;
+
+/** How many past events the list keeps under its "Past events" fold. */
+export const EVENT_PAST_LIST_SIZE = 30;
+
+/** Pin colour for an event — blue, which no severity uses. */
+export const EVENT_PIN_COLOR = "#2563eb";

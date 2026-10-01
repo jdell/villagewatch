@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
+  CalendarDays,
   ClipboardList,
   FileText,
   Inbox,
@@ -43,6 +44,12 @@ import {
 const NAV_ITEMS = [
   { href: "/map", label: "Map", icon: Map, tour: "map" },
   { href: "/incidents", label: "Incidents", icon: ClipboardList },
+  /*
+    Every resident, but only in a village that has turned events on —
+    `requires: "events"`. A link to a page that would only say "not on here" is
+    a link nobody should have to find that out from.
+  */
+  { href: "/events", label: "Events", icon: CalendarDays, requires: "events" },
   /*
     The five coordinator tabs, in the order a coordinator uses them — see
     `docs/COORDINATOR_DASHBOARD_REDESIGN.md`. Overview is where they land,
@@ -179,6 +186,12 @@ export type AppShellUser = {
    * say the work is done when it is not.
    */
   pendingCount: number | null;
+  /**
+   * Whether the village has community events on — the Events link's gate.
+   * Read in the layout by a call that falls back to false, so a database
+   * without the column yet hides the link rather than failing the page.
+   */
+  eventsEnabled: boolean;
 };
 
 export function AppShell({
@@ -226,9 +239,10 @@ export function AppShell({
     user.role !== null &&
     (COORDINATOR_ROLES as readonly UserRole[]).includes(user.role);
 
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => !("requires" in item) || isCoordinator,
-  );
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (!("requires" in item)) return true;
+    return item.requires === "events" ? user.eventsEnabled : isCoordinator;
+  });
 
   // Absent rather than zero: a badge reading "0" beside a navigation item reads
   // as a thing to go and look at, which is the opposite of what it means.

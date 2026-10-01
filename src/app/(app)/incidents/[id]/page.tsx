@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
+  CircleCheck,
   EyeOff,
   MapPin,
   ShieldCheck,
@@ -271,6 +272,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
           anonymized: incident.anonymized,
           reportedToPolice: incident.reportedToPolice,
           policeReference: incident.policeReference,
+          resolutionNote: incident.resolutionNote,
         },
       })
     : null;
@@ -314,6 +316,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             occurredAt: incident.occurredAt,
             locationText: incident.locationText,
             tags: incident.tags.map((tag) => tag.label),
+            resolutionNote: incident.resolutionNote,
           }}
           footer={
             votes ? (
@@ -328,6 +331,33 @@ export default async function IncidentDetailPage({ params }: PageProps) {
           }
         />
       </div>
+
+      {/*
+        Directly under the report, above the pattern note: it is the answer to
+        the report, and the first thing somebody returning to it is looking
+        for. The date is `resolvedAt`, which a report resolved before the note
+        column existed still has — so it can say when without saying what.
+      */}
+      {incident.status === "RESOLVED" && (
+        <div className="mt-4 flex gap-3 rounded-xl bg-safe-50 p-3.5 ring-1 ring-safe-200">
+          <CircleCheck className="size-5 shrink-0 text-safe-600" aria-hidden />
+          <div className="text-sm leading-relaxed text-safe-900">
+            <p className="font-medium">
+              Resolved
+              {incident.resolvedAt && (
+                <span className="font-normal text-safe-700">
+                  {" "}
+                  · {formatDateTime(incident.resolvedAt)}
+                </span>
+              )}
+            </p>
+            <p className="mt-1 whitespace-pre-line text-safe-800">
+              {incident.resolutionNote ??
+                "Your coordinator marked this as dealt with."}
+            </p>
+          </div>
+        </div>
+      )}
 
       {incident.recurring && incident.patternNote && (
         <div className="mt-4 flex gap-3 rounded-xl bg-amber-50 p-3.5 ring-1 ring-amber-200">

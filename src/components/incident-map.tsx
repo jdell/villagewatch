@@ -18,12 +18,17 @@ import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { HeatmapLayer } from "@/components/map/heatmap-layer";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
+  EVENT_PIN_COLOR,
   INCIDENT_TYPE_LABELS,
   MAP_DEFAULTS,
   SEVERITY_LABELS,
   SEVERITY_PIN_COLORS,
 } from "@/lib/constants";
-import { formatDateTime, formatTimeAgo } from "@/lib/format";
+import {
+  formatDateTime,
+  formatEventWhen,
+  formatTimeAgo,
+} from "@/lib/format";
 
 /**
  * The village map: every incident as a pin, coloured by severity.
@@ -64,12 +69,42 @@ export type MapIncident = {
  */
 export type MapMode = "pins" | "heat" | "both";
 
+/**
+ * A community event on the map — `EventView` narrowed to what a pin needs.
+ * Coordinates were fuzzed on the way in (domain rule 2), like an incident's.
+ */
+export type MapEvent = {
+  id: string;
+  title: string;
+  category: string;
+  locationText: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  lat: number;
+  lng: number;
+};
+
 type IncidentMapProps = {
   incidents: readonly MapIncident[];
   center: { lat: number; lng: number };
   zoom?: number;
   /** Fit the viewport to the pins instead of using `center`/`zoom`. */
   fitToIncidents?: boolean;
+  /**
+   * What to frame when `fitToIncidents` is on, where that differs from what is
+   * drawn. The timeline slider narrows `incidents` on every step of a drag, and
+   * framing *those* would re-zoom the map under the reader's finger each time —
+   * so the two map surfaces pass the whole period here and the viewport holds
+   * still while the slider decides what is on it. Defaults to `incidents`.
+   */
+  fitTo?: readonly MapIncident[];
+  /**
+   * Community events, drawn as blue calendar pins over everything else. Never
+   * in the heat layer — density is a picture of what was reported, and a
+   * litter pick is not a report — and never framed by `fitToIncidents`, which
+   * describes the incidents.
+   */
+  events?: readonly MapEvent[];
   mode?: MapMode;
   /**
    * False for a map that is a picture rather than a map — the density thumbnail
@@ -132,6 +167,38 @@ function pinIcon(severity: Severity, recent: boolean): L.DivIcon {
 
   iconCache.set(key, icon);
   return icon;
+}
+
+let eventIconInstance: L.DivIcon | null = null;
+
+/**
+ * The event pin: the incident pin's shape, in blue, with a calendar where the
+ * incident pin has a dot — so it reads as "something on" before it reads as a
+ * colour, which matters to anybody who cannot tell blue from purple. One size:
+ * recency is what sizes an incident pin, and an event has none.
+ */
+function eventIcon(): L.DivIcon {
+  if (eventIconInstance) return eventIconInstance;
+
+  eventIconInstance = L.divIcon({
+    className: "",
+    html: `
+      <svg width="28" height="36" viewBox="0 0 32 42" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M16 1C8.8 1 3 6.8 3 14c0 9.2 11.3 25 12.1 26.1a1.1 1.1 0 0 0 1.8 0C17.7 39 29 23.2 29 14 29 6.8 23.2 1 16 1z"
+              fill="${EVENT_PIN_COLOR}" stroke="#ffffff" stroke-width="2.5" />
+        <svg x="8.5" y="6.5" width="15" height="15" viewBox="0 0 24 24" fill="none"
+             stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 2v4" /><path d="M16 2v4" />
+          <rect width="18" height="18" x="3" y="4" rx="2" />
+          <path d="M3 10h18" />
+        </svg>
+      </svg>`,
+    iconSize: [28, 36],
+    iconAnchor: [14, 36],
+    popupAnchor: [0, -32],
+  });
+
+  return eventIconInstance;
 }
 
 /**
@@ -206,8 +273,8 @@ function MapAccessibility({
  * Focus into a popup when it opens, and back to its pin when it closes.
  *
  * Leaflet moves focus nowhere, and the popup is later in the DOM than every
- * remaining pin — so its "View details" link was only reachable by tabbing past
- * all of them. Escape already closes it.
+ * remaining pin — so its link was only reachable by tabbing past all of them.
+ * Escape already closes it. Shared by incident and event popups.
  *
  * On the `<Popup>`'s own `add`/`remove`, which are exactly "opened" and
  * "closed" and need nothing from the marker but `_source` — the layer the popup
@@ -233,7 +300,8 @@ const POPUP_FOCUS = {
  * What a screen reader says for a pin. Leaflet makes every marker a focusable
  * `role="button"`, but it only applies `alt` to an `<img>` icon and these are
  * div icons with the drawing `aria-hidden` — so without a name every pin was
- * announced as just "button".
+ * announced as just "button". An event's says so first, so the two kinds of
+ * pin cannot be confused by somebody who cannot see that one is blue.
  */
 function pinLabel(incident: MapIncident, occurred: Date): string {
   return `${SEVERITY_LABELS[incident.severity]} severity, ${
@@ -241,11 +309,28 @@ function pinLabel(incident: MapIncident, occurred: Date): string {
   }: ${incident.title}, ${formatTimeAgo(occurred)}`;
 }
 
+function eventPinLabel(event: MapEvent): string {
+  return `Event, ${event.category}: ${event.title}, ${formatEventWhen(
+    event.startsAt,
+    event.endsAt,
+  )}`;
+}
+
+/** Sets a marker's accessible name on the element Leaflet made focusable. */
+function nameMarker(name: string) {
+  return {
+    add: (event: L.LeafletEvent) =>
+      (event.target as L.Marker).getElement()?.setAttribute("aria-label", name),
+  };
+}
+
 export function IncidentMap({
   incidents,
   center,
   zoom = MAP_DEFAULTS.zoom,
   fitToIncidents = false,
+  fitTo,
+  events = [],
   mode = "pins",
   interactive = true,
   now,
@@ -300,7 +385,7 @@ export function IncidentMap({
       */}
       {interactive && <ZoomControl position="bottomright" />}
 
-      <FitBounds incidents={incidents} enabled={fitToIncidents} />
+      <FitBounds incidents={fitTo ?? incidents} enabled={fitToIncidents} />
       <MapAccessibility label={label} interactive={interactive} />
 
       {/*
@@ -320,13 +405,7 @@ export function IncidentMap({
             key={incident.id}
             position={[incident.lat, incident.lng]}
             icon={pinIcon(incident.severity, recent)}
-            eventHandlers={{
-              // The name, set on the element Leaflet made focusable.
-              add: (event) =>
-                event.target
-                  .getElement()
-                  ?.setAttribute("aria-label", pinLabel(incident, occurred)),
-            }}
+            eventHandlers={nameMarker(pinLabel(incident, occurred))}
           >
             <Popup eventHandlers={POPUP_FOCUS}>
               <div className="min-w-56 max-w-72">
@@ -386,6 +465,44 @@ export function IncidentMap({
           </Marker>
         );
       })}
+
+      {/*
+        After the incidents, so Leaflet stacks them on top: there are few of
+        them, and a calendar pin buried under a cluster of reports is one
+        nobody finds.
+      */}
+      {events.map((event) => (
+        <Marker
+          key={`event-${event.id}`}
+          position={[event.lat, event.lng]}
+          icon={eventIcon()}
+          eventHandlers={nameMarker(eventPinLabel(event))}
+          zIndexOffset={500}
+        >
+          <Popup eventHandlers={POPUP_FOCUS}>
+            <div className="min-w-56 max-w-72">
+              <span className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200">
+                {event.category}
+              </span>
+              <h3 className="mt-2 text-sm font-semibold leading-snug text-slate-900">
+                {event.title}
+              </h3>
+              <p className="mt-1 text-xs font-medium text-brand-800">
+                {formatEventWhen(event.startsAt, event.endsAt)}
+              </p>
+              {event.locationText && (
+                <p className="mt-1 text-xs text-slate-500">{event.locationText}</p>
+              )}
+              <Link
+                href={`/events/${event.id}`}
+                className="mt-2.5 inline-block text-xs font-semibold text-brand-700 underline underline-offset-2"
+              >
+                View event
+              </Link>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
     </MapContainer>
   );
 }

@@ -3,21 +3,34 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Flame, MapPinned } from "lucide-react";
-import type { MapIncident, MapMode } from "@/components/incident-map";
+import { CalendarDays, Flame, MapPinned } from "lucide-react";
+import type {
+  MapEvent,
+  MapIncident,
+  MapMode,
+} from "@/components/incident-map";
 import {
   BROWSE_RANGE_VALUES,
   DEFAULT_TIME_RANGE,
+  EVENT_PIN_COLOR,
   SEVERITIES,
   TIME_RANGES,
   type TimeRangePreset,
 } from "@/lib/constants";
 import {
+  dateInputValue,
   resolveTimeRange,
   timeRangeParams,
   withinTimeRange,
 } from "@/lib/date-range";
 import { HEATMAP_LEGEND_CSS } from "@/lib/heatmap";
+import { dayAt, timelineBounds, withinSelection } from "@/lib/timeline";
+import {
+  TimelineSlider,
+  TimelineToggle,
+  useTimelineOpen,
+  useTimelineSelection,
+} from "@/components/map/timeline-slider";
 
 /**
  * The full-screen map, plus the controls that sit on top of it.
@@ -33,6 +46,14 @@ import { HEATMAP_LEGEND_CSS } from "@/lib/heatmap";
  * The heat layer reads the *filtered* set, so the date range applies to both
  * layers. A density map of "all time" and a pin set of "last 7 days" on the same
  * screen would be two different claims about the same village.
+ *
+ * The timeline slider is a second filter on top of the period, and the same
+ * rule holds for it: both layers read what it leaves. What it deliberately does
+ * **not** move is the viewport. The map frames the whole period and holds
+ * still while the slider narrows what is drawn, because re-framing on every
+ * step of a drag re-zooms the map under the reader's finger — and a pattern
+ * moving from one street to the next is only visible against a map that stays
+ * put.
  */
 
 const IncidentMap = dynamic(
@@ -81,6 +102,35 @@ const MODES = [
  * about the village, and it costs nothing to be wrong about on a new device.
  */
 const STORAGE_KEY = "villagewatch:map-mode";
+
+/**
+ * Whether community events are drawn, in localStorage — the layer choice's
+ * store shape, kept beside it. Stored as "hidden" rather than as a positive
+ * flag so that the absence of a value, which is every resident on their first
+ * visit, means shown: a village that turned events on wants them seen.
+ */
+const EVENTS_STORAGE_KEY = "villagewatch:map-events";
+
+function storedEventsShown(): boolean {
+  try {
+    return window.localStorage.getItem(EVENTS_STORAGE_KEY) !== "hidden";
+  } catch {
+    return true;
+  }
+}
+
+function rememberEventsShown(shown: boolean): void {
+  try {
+    window.localStorage.setItem(EVENTS_STORAGE_KEY, shown ? "shown" : "hidden");
+  } catch {
+    // Worst case the choice does not survive a reload.
+  }
+  for (const listener of listeners) listener();
+}
+
+/** Whether the timeline panel is open on this screen. See `useTimelineOpen`. */
+const TIMELINE_STORAGE_KEY = "villagewatch:map-timeline";
+const TIMELINE_PANEL_ID = "map-timeline";
 
 const listeners = new Set<() => void>();
 
@@ -131,6 +181,12 @@ type MapViewProps = {
   center: { lat: number; lng: number };
   zoom: number;
   villageName: string;
+  /**
+   * Upcoming community events with a pin, or **null when the village has
+   * events off** — in which case there is no toggle and no legend entry,
+   * rather than a control for a feature that is not there.
+   */
+  events?: readonly MapEvent[] | null;
 };
 
 export function MapView({
@@ -138,12 +194,24 @@ export function MapView({
   center,
   zoom,
   villageName,
+  events = null,
 }: MapViewProps) {
   const [preset, setPreset] = useState<TimeRangePreset>(DEFAULT_TIME_RANGE);
 
   // No `setState` behind this: the store *is* localStorage, and writing to it
   // notifies every subscriber including this one.
   const mode = useSyncExternalStore(subscribe, storedMode, defaultMode);
+  const eventsShown = useSyncExternalStore(
+    subscribe,
+    storedEventsShown,
+    () => true,
+  );
+  /*
+    Events are not filtered by the period or the timeline. Those describe what
+    was *reported*, looking back; an event is something coming up, and the
+    page already sends only events that have not finished.
+  */
+  const visibleEvents = events && eventsShown ? events : [];
 
   /**
    * The clock, read once when the view mounts.
@@ -176,13 +244,49 @@ export function MapView({
     [preset, custom.from, custom.to, now],
   );
 
-  const visible = useMemo(
+  const [nowDate] = useState(() => new Date(now));
+
+  /** What the period control leaves — the slider's whole track. */
+  const inPeriod = useMemo(
     () =>
       incidents.filter((incident) =>
         withinTimeRange(incident.occurredAt, range),
       ),
     [incidents, range],
   );
+
+  const bounds = useMemo(
+    () =>
+      timelineBounds(
+        range,
+        inPeriod.map((incident) => incident.occurredAt),
+        nowDate,
+      ),
+    [range, inPeriod, nowDate],
+  );
+
+  const { selection, setSelection, narrowed } = useTimelineSelection(bounds);
+
+  /** The `/incidents` query that lists exactly what the map is drawing. */
+  const listParams: Record<string, string> = narrowed
+    ? {
+        range: "custom",
+        from: dateInputValue(dayAt(bounds.start, selection.from)),
+        to: dateInputValue(dayAt(bounds.start, selection.to)),
+      }
+    : timeRangeParams(range);
+  const [timelineOpen, setTimelineOpen] = useTimelineOpen(TIMELINE_STORAGE_KEY);
+
+  /**
+   * What the slider leaves — what both layers draw. The same array as
+   * `inPeriod` when nothing is narrowed, so the untouched map does no extra
+   * work and hands the layers nothing new to redraw.
+   */
+  const visible = useMemo(() => {
+    if (!narrowed) return inPeriod;
+    const within = withinSelection(bounds, selection);
+    return inPeriod.filter((incident) => within(incident.occurredAt));
+  }, [inPeriod, bounds, selection, narrowed]);
 
   const showPins = mode !== "heat";
   const showHeat = mode !== "pins";
@@ -221,22 +325,25 @@ export function MapView({
         */}
         <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
           <p className="text-sm font-semibold text-slate-900">{villageName}</p>
-          {/* Announced when the period or layer changes what is shown. */}
+          {/* Announced when the period, the timeline or the layer changes it. */}
           <p className="mt-0.5 text-xs text-slate-500" aria-live="polite">
             {visible.length === 0
-              ? "Nothing reported in this period"
-              : `${visible.length} ${visible.length === 1 ? "incident" : "incidents"}`}
+              ? narrowed
+                ? "Nothing reported on these dates"
+                : "Nothing reported in this period"
+              : narrowed
+                ? `${visible.length} of ${inPeriod.length} ${inPeriod.length === 1 ? "incident" : "incidents"}`
+                : `${visible.length} ${visible.length === 1 ? "incident" : "incidents"}`}
           </p>
           {/*
-            The map's text alternative, for now. A pin map has no equivalent a
-            screen reader can browse, and the incident list already takes the
-            same period — so the same reports, as a list, are one link away.
-            Visible rather than sr-only: it is as useful to somebody who simply
-            finds a page of text easier than a map.
+            The map's text alternative, for now: the same reports as a list.
+            When the timeline narrows the map, the link carries the slider's
+            own days as a custom range, so the list matches what is drawn
+            rather than the wider period behind it.
           */}
           {visible.length > 0 && (
             <Link
-              href={`/incidents?${new URLSearchParams(timeRangeParams(range)).toString()}`}
+              href={`/incidents?${new URLSearchParams(listParams).toString()}`}
               className="mt-1 inline-block text-xs font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
             >
               See these as a list
@@ -245,6 +352,43 @@ export function MapView({
         </div>
 
         <div className="pointer-events-none flex flex-wrap items-start justify-end gap-2">
+          {/*
+            Its own card rather than a fourth button in the layer group: it is
+            not a layer, and it opens something rather than choosing something.
+          */}
+          {/*
+            Only for a village with events on. A toggle, not a fourth layer
+            button: events sit on top of whichever layer is chosen, and
+            "Pins / Heatmap / Both / Events" would read as four exclusive choices.
+          */}
+          {events && (
+            <div className="pointer-events-auto rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => rememberEventsShown(!eventsShown)}
+                aria-pressed={eventsShown}
+                aria-label={eventsShown ? "Hide events" : "Show events"}
+                title={eventsShown ? "Hide events" : "Show events"}
+                className={`inline-grid size-8 place-items-center rounded-lg transition ${
+                  eventsShown
+                    ? "bg-brand-600 text-white"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              >
+                <CalendarDays className="size-4" aria-hidden />
+              </button>
+            </div>
+          )}
+
+          <div className="pointer-events-auto rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+            <TimelineToggle
+              open={timelineOpen}
+              onToggle={() => setTimelineOpen(!timelineOpen)}
+              controls={TIMELINE_PANEL_ID}
+              narrowed={narrowed}
+            />
+          </div>
+
           <div
             className="pointer-events-auto inline-flex flex-wrap justify-end rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
             role="group"
@@ -364,6 +508,30 @@ export function MapView({
                 </p>
               </div>
             )}
+
+            {/*
+              Up here in the right-hand column and never along the bottom edge.
+              That row is already spoken for three times over — the legend from
+              the left, the zoom control in the bottom-right corner, and the
+              OpenStreetMap attribution under both, which is a licence condition
+              rather than a control. Collapsed by default, so a phone opening the
+              map for the first time sees no more controls than it did before.
+              The width is capped at the viewport less the map's own padding so
+              it can never be the thing that scrolls the page sideways.
+            */}
+            {timelineOpen && (
+              <div className="pointer-events-auto w-72 max-w-[calc(100vw-1.5rem)] rounded-xl bg-white/95 p-3 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+                <TimelineSlider
+                  id={TIMELINE_PANEL_ID}
+                  bounds={bounds}
+                  selection={selection}
+                  onChange={setSelection}
+                  now={nowDate}
+                  shown={visible.length}
+                  total={inPeriod.length}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -373,8 +541,8 @@ export function MapView({
         beneath them. The overlays are absolutely positioned, so the order
         changes nothing on screen — and everything for a keyboard user: Leaflet
         makes the map and every pin a tab stop, up to `MAX_MAP_INCIDENTS` of
-        them, and with the map first the period and layer controls were only
-        reachable after tabbing past all of those.
+        them, and with the map first the period, layer, timeline and events
+        controls were only reachable after tabbing past all of those.
       */}
       <IncidentMap
         incidents={visible}
@@ -384,9 +552,12 @@ export function MapView({
         mode={mode}
         label={`Map of reported incidents in ${villageName}`}
         // Framing the pins beats the village's stored viewport once there is
-        // anything to frame, and re-frames when the range changes. It applies to
-        // the heat layer too — the blobs are drawn from the same set.
-        fitToIncidents={visible.length > 0}
+        // anything to frame, and re-frames when the period changes. It applies
+        // to the heat layer too — the blobs are drawn from the same set. The
+        // *period*, not the slider: see the header of this file.
+        fitToIncidents={inPeriod.length > 0}
+        fitTo={inPeriod}
+        events={visibleEvents}
         className="size-full"
       />
 
@@ -434,6 +605,23 @@ export function MapView({
           </div>
         )}
 
+        {visibleEvents.length > 0 && (
+          <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+            <p className="inline-flex items-center gap-1.5 text-xs text-slate-700">
+              <span
+                className="grid size-4 place-items-center rounded-full text-white"
+                style={{ backgroundColor: EVENT_PIN_COLOR }}
+                aria-hidden
+              >
+                <CalendarDays className="size-2.5" />
+              </span>
+              {visibleEvents.length === 1
+                ? "1 event coming up"
+                : `${visibleEvents.length} events coming up`}
+            </p>
+          </div>
+        )}
+
         {showHeat && (
           <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
             <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
@@ -453,7 +641,8 @@ export function MapView({
         )}
       </div>
 
-      {incidents.length === 0 && (
+      {/* Not over a map that has events on it, which is not empty. */}
+      {incidents.length === 0 && visibleEvents.length === 0 && (
         <div className="pointer-events-none absolute inset-0 z-[750] grid place-items-center p-6">
           <div className="pointer-events-auto max-w-sm rounded-2xl bg-white/95 p-5 text-center shadow-xl ring-1 ring-slate-200 backdrop-blur">
             <span className="mx-auto grid size-11 place-items-center rounded-xl bg-brand-50 text-brand-600 ring-1 ring-brand-100">

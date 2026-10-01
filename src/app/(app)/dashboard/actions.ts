@@ -28,12 +28,14 @@ import {
   saveVillagePoliceReport,
   sendVillagePoliceReport,
 } from "@/lib/police-report-schedule";
+import { readVillageEventsSetting, setVillageEventsEnabled } from "@/lib/events";
 import {
   fieldErrors,
   incidentModerationSchema,
   villageAutoApproveFormSchema,
   villageChannelFormSchema,
   villageEcopsSiteFormSchema,
+  villageEventsFormSchema,
   villageParishCouncilFormSchema,
   villagePoliceReportFormSchema,
   villagePrivacyLevelFormSchema,
@@ -249,6 +251,90 @@ export async function saveAutoApproveAction(
     message: autoApprove
       ? "Auto-approve is on. New reports go live the moment they are filed."
       : "Auto-approve is off. New reports wait for a coordinator.",
+  };
+}
+
+export type EventsSettingState = {
+  ok: boolean;
+  message: string;
+};
+
+/**
+ * Turns community events on or off for the village.
+ *
+ * The auto-approve action's shape, for its reasons: `requireCoordinator()`, the
+ * village off the session (domain rule 4), the value read before the write so
+ * the audit row records what changed. Toned neutral in the trail — it widens
+ * nobody's view of a report and removes no reviewer.
+ *
+ * Turning it off **deletes nothing**. Events already posted stay in the table
+ * and come back if the switch does; a coordinator who wants one gone deletes
+ * it from its page. What off does is hide the pages, the sidebar link and the
+ * map toggle, and refuse new posts at the route.
+ */
+export async function saveEventsEnabledAction(
+  _previous: EventsSettingState,
+  formData: FormData,
+): Promise<EventsSettingState> {
+  const session = await requireCoordinator("/dashboard/settings");
+  const villageId = session.profile?.villageId;
+
+  if (!villageId || !process.env.DATABASE_URL) {
+    return { ok: false, message: "You are not attached to a village." };
+  }
+
+  const parsed = villageEventsFormSchema.safeParse({
+    eventsEnabled: formData.get("eventsEnabled") ?? "",
+  });
+
+  if (!parsed.success) {
+    return { ok: false, message: "That setting is not valid." };
+  }
+
+  const { eventsEnabled } = parsed.data;
+  const before = await readVillageEventsSetting(villageId);
+
+  if (!before.available) {
+    return {
+      ok: false,
+      message:
+        "Community events are not ready on this deployment yet — the database needs updating first.",
+    };
+  }
+
+  try {
+    await setVillageEventsEnabled(villageId, eventsEnabled);
+  } catch (cause) {
+    console.error("Could not save the events setting for village %s", villageId, cause);
+    return { ok: false, message: "Could not save that setting. Try again." };
+  }
+
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorId: session.user.id,
+        actorEmail: session.user.email ?? null,
+        actorRole: session.profile?.role ?? null,
+        villageId,
+        action: "village.events_changed",
+        entityType: "village",
+        entityId: villageId,
+        before: { eventsEnabled: before.enabled },
+        after: { eventsEnabled },
+      },
+    });
+  } catch (cause) {
+    console.error("Could not audit the events change for %s", villageId, cause);
+  }
+
+  // The sidebar link is in the layout, so every authenticated page changes.
+  revalidatePath("/", "layout");
+
+  return {
+    ok: true,
+    message: eventsEnabled
+      ? "Community events are on. Residents can post them, and they show on the map."
+      : "Community events are off. Nothing has been deleted.",
   };
 }
 

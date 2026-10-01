@@ -137,6 +137,8 @@ export type VillageMergeSummary = {
   incidentsRenumbered: number;
   patternAlertsMoved: number;
   coordinatorRequestsMoved: number;
+  /** Community events moved with the village. Optional for older summaries. */
+  communityEventsMoved?: number;
   policeCrimesDeleted: number;
   auditTrailMoved: false;
   referenceMapping: {
@@ -469,6 +471,19 @@ export async function mergeVillages(input: {
           data: { villageId: targetId },
         });
 
+        // Community events go with the residents who posted them: an event is
+        // the absorbed village's calendar, and it is now the merged village's.
+        // The ids go in the audit row like every other moved table's, because
+        // once `village_id` is rewritten nothing else says where they came from.
+        const movedEvents = await tx.communityEvent.findMany({
+          where: { villageId: originId },
+          select: { id: true },
+        });
+        await tx.communityEvent.updateMany({
+          where: { villageId: originId },
+          data: { villageId: targetId },
+        });
+
         // --- Step 6: incidents — renumber, rebuild the reference, then move ---
         //
         // Numbers continue from the target's highest for each year rather than
@@ -585,6 +600,7 @@ export async function mergeVillages(input: {
           incidentsRenumbered: numbered.length,
           patternAlertsMoved: movedAlerts.length,
           coordinatorRequestsMoved: movedRequests.length,
+          communityEventsMoved: movedEvents.length,
           policeCrimesDeleted,
           auditTrailMoved: false,
           referenceMapping,
@@ -611,6 +627,7 @@ export async function mergeVillages(input: {
               movedUserIds: movedUsers.map((u) => u.id),
               movedPatternAlertIds: movedAlerts.map((a) => a.id),
               movedCoordinatorRequestIds: movedRequests.map((r) => r.id),
+              movedCommunityEventIds: movedEvents.map((e) => e.id),
               movedUnnumberedIncidentIds: unnumbered.map((i) => i.id),
               referenceMapping,
             },

@@ -369,6 +369,12 @@ model Village {
   /// the daily cron compares against the schedule's interval.
   policeReportLastSentAt DateTime? @map("police_report_last_sent_at")
 
+  /// Whether residents can post community events — a litter pick, a meeting, a
+  /// police drop-in — and whether they appear on the map and in the sidebar.
+  /// **Off by default**: a village opts in from its settings. See
+  /// `src/lib/events.ts`.
+  eventsEnabled Boolean @default(false) @map("events_enabled")
+
   /// How faces in this village's uploaded media are covered.
   ///
   /// One of `PRIVACY_LEVEL_VALUES` in `src/lib/constants.ts` — `light`,
@@ -418,6 +424,7 @@ model Village {
   patternAlerts       PatternAlert[]
   auditLogs           AuditLog[]
   coordinatorRequests CoordinatorRequest[]
+  communityEvents     CommunityEvent[]
 
   /// Official recorded-crime figures fetched from data.police.uk for this
   /// village's map centre. Open data about a place, not data about a person —
@@ -487,12 +494,13 @@ model User {
   /// this column mean something in the meantime.
   deletedAt DateTime? @map("deleted_at")
 
-  reportedIncidents  Incident[]     @relation("IncidentReporter")
-  moderatedIncidents Incident[]     @relation("IncidentModerator")
+  reportedIncidents  Incident[]       @relation("IncidentReporter")
+  moderatedIncidents Incident[]       @relation("IncidentModerator")
   /// How this resident voted on the seriousness of published reports. Deleted
   /// outright when the account closes — see `src/lib/erasure.ts`.
-  incidentVotes      IncidentVote[] @relation("IncidentVoter")
-  acknowledgedAlerts PatternAlert[] @relation("PatternAlertAcknowledger")
+  incidentVotes      IncidentVote[]   @relation("IncidentVoter")
+  createdEvents      CommunityEvent[] @relation("EventCreator")
+  acknowledgedAlerts PatternAlert[]   @relation("PatternAlertAcknowledger")
 
   /// Villages whose compliance documents this person accepted. Almost always
   /// zero or one — a coordinator belongs to one village — but the relation is
@@ -638,9 +646,14 @@ model Incident {
   /// Hide the reporter's identity from other residents.
   isAnonymous Boolean @default(false) @map("is_anonymous")
 
-  occurredAt DateTime  @map("occurred_at")
-  reportedAt DateTime  @default(now()) @map("reported_at")
-  resolvedAt DateTime? @map("resolved_at")
+  occurredAt     DateTime  @map("occurred_at")
+  reportedAt     DateTime  @default(now()) @map("reported_at")
+  resolvedAt     DateTime? @map("resolved_at")
+  /// What the coordinator said happened, written when they resolved it. Public
+  /// — it is written for the village to read, and is shown on the report, in
+  /// the reporter's notification and in the period report. Null on anything
+  /// not resolved, and on a report resolved before the column existed.
+  resolutionNote String?   @map("resolution_note")
 
   /// Free-text landmark, e.g. "the lane behind the village hall".
   locationText String? @map("location_text")
@@ -1463,4 +1476,55 @@ model VillageInterest {
   /// is the smaller half of the table for as long as the pipeline is worked.
   @@index([status, createdAt])
   @@map("village_interest")
+}
+
+/// Something happening in the village that is not a problem — a litter pick, a
+/// parish meeting, a street party, a police drop-in. Posted by any resident of
+/// a village that has turned events on (`Village.eventsEnabled`).
+///
+/// Deliberately **not** an incident, and none of the incident machinery
+/// applies: no AI pass, no moderation queue, no severity, no `rawDescription`,
+/// no votes, no pattern detection, no police report, no push. It is not
+/// anonymised either — the poster's name is shown on it, which `/privacy` §2
+/// says.
+///
+/// What does apply is domain rule 2 and domain rule 4. `lat`/`lng` are fuzzed by
+/// `LOCATION_FUZZ_METERS` before they are written, because an event held at
+/// somebody's house should not pinpoint the house; and every read is scoped by
+/// `villageId`. There is no geography column and no PostGIS trigger: nothing
+/// queries events by radius.
+///
+/// The poster can delete their own event and a coordinator can delete any in
+/// their village; closing an account deletes every event it posted
+/// (`eraseAccount`). That is the whole retention story, and `/privacy` §7 says
+/// so.
+model CommunityEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  villageId String  @map("village_id") @db.Uuid
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  title        String
+  description  String?
+  /// Free text. `EVENT_CATEGORIES` in `src/lib/constants.ts` is what the form
+  /// suggests, and "Other" lets a resident write their own — so this is never
+  /// an enum, and nothing switches on it.
+  category     String
+  locationText String? @map("location_text")
+  /// Fuzzed on the way in (domain rule 2). Both or neither.
+  lat          Float?
+  lng          Float?
+
+  startsAt DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt   DateTime? @map("ends_at") @db.Timestamptz(3)
+
+  createdById String @map("created_by_id") @db.Uuid
+  createdBy   User   @relation("EventCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([villageId, startsAt])
+  @@index([createdById])
+  @@map("community_events")
 }

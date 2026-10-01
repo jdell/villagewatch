@@ -4,8 +4,11 @@ import { auditContext } from "@/lib/audit-context";
 import { prisma } from "@/lib/prisma";
 import {
   emailIncidentPublished,
+  emailReporterOfResolution,
   notifyIncidentPublished,
   notifyReporterOfDecision,
+  notifyReporterOfResolution,
+  notifyVotersOfResolution,
 } from "@/lib/notifications";
 import { notifySlack } from "@/lib/slack";
 import { formatIncidentAlert } from "@/lib/format-alert";
@@ -92,6 +95,23 @@ export async function applyModeration(input: {
     return { ok: false, error: "The database is not configured." };
   }
 
+  /*
+    A resolution is explained or it does not happen. The note is shown to the
+    village on the report, sent to the reporter and to every resident who voted
+    on it, and printed in the period report — "resolved" with nothing after it
+    tells all of them that something happened and not what. Checked here as
+    well as by `incidentResolutionSchema`, because `moderateFromDetailAction`
+    accepts RESOLVE too and a server action is reachable without its form.
+  */
+  const resolutionNote = action === "RESOLVE" ? note?.trim() : undefined;
+
+  if (action === "RESOLVE" && !resolutionNote) {
+    return {
+      ok: false,
+      error: "Say what happened before resolving — the village sees the note.",
+    };
+  }
+
   const incident = await prisma.incident.findFirst({
     // `REMOVED` is excluded here rather than left to `ALLOWED_FROM` below, which
     // would also reject it but with "an erased report cannot be published" — a
@@ -148,8 +168,13 @@ export async function applyModeration(input: {
       status,
       moderatedById: session.user.id,
       moderatedAt: now,
-      moderationNote: note,
+      // A resolution has its own public column. Writing it here as well would
+      // overwrite the note the reporter was given when the report was
+      // published or rejected, which is a different message to a different
+      // reader.
+      moderationNote: action === "RESOLVE" ? undefined : note,
       resolvedAt: status === "RESOLVED" ? now : undefined,
+      resolutionNote: status === "RESOLVED" ? resolutionNote : undefined,
     },
   });
 
@@ -253,6 +278,39 @@ export async function applyModeration(input: {
         incident.locationText ? ` — ${incident.locationText}` : ""
       }`,
     );
+  }
+
+  if (action === "RESOLVE" && resolutionNote) {
+    /*
+      Three audiences, and none of them is the village broadcast. The reporter
+      is told by push and by email, regardless of their preferences — this is
+      the outcome of something they personally submitted, the same reasoning
+      `notifyReporterOfDecision` follows. Residents who voted on the report are
+      told by push, if they take pushes at all: they said it mattered to them,
+      which is a narrower and better audience than "everybody within 200m".
+      None of the three can throw, so none can fail the resolution, which is
+      already written and audited above.
+    */
+    const resolution = {
+      villageId,
+      villageName: incident.village.name,
+      incidentId: incident.id,
+      reference: incident.reference,
+      title: incident.title,
+      reporterId: incident.reporterId,
+      note: resolutionNote,
+    };
+
+    await notifyReporterOfResolution(resolution);
+    await emailReporterOfResolution(resolution);
+    const voters = await notifyVotersOfResolution({
+      ...resolution,
+      // The reporter has just had their own message, and the coordinator who
+      // resolved it does not need telling what they did.
+      exclude: [incident.reporterId, session.user.id],
+    });
+
+    notified = voters.sent;
   }
 
   if (action === "PUBLISH" || action === "REJECT") {

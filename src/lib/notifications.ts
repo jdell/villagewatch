@@ -11,6 +11,8 @@ import { distanceMeters } from "@/lib/geo";
 import { formatTimeAgo } from "@/lib/format";
 import { sendBulkEmail, type BulkEmailDispatchResult } from "@/lib/email/send";
 import { incidentNotificationEmail } from "@/lib/email/incident-notification";
+import { resolutionEmail } from "@/lib/email/resolution";
+import { sendEmail, type EmailDispatchResult } from "@/lib/email/send";
 import {
   weeklyDigestEmail,
   type WeeklyDigestEmailInput,
@@ -750,6 +752,177 @@ export async function notifyReporterOfDecision(input: {
       incidentId: input.incidentId,
     },
     [{ id: input.reporterId }],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Resolution
+// ---------------------------------------------------------------------------
+
+/** What every resolution dispatch is told. Public columns only. */
+export type ResolvedIncident = {
+  villageId: string;
+  villageName: string;
+  incidentId: string;
+  reference: string;
+  /** The public title, for the reporter's email. Never in a push to voters. */
+  title: string;
+  reporterId: string | null;
+  /** The coordinator's resolution note — public, and always present. */
+  note: string;
+};
+
+/** A push body has room for a sentence, not an essay. */
+const RESOLUTION_PUSH_NOTE_MAX_CHARS = 140;
+
+/**
+ * Tells the reporter their report was resolved, and what the coordinator said.
+ *
+ * Sent regardless of `notifyPush`, on `notifyReporterOfDecision`'s reasoning:
+ * this is the outcome of something they personally submitted, and muting
+ * village news is not asking to stop hearing about their own report.
+ */
+export async function notifyReporterOfResolution(
+  input: ResolvedIncident,
+): Promise<DispatchResult> {
+  if (!input.reporterId) return { matched: 0, sent: 0, skipped: "no_recipients" };
+
+  return dispatch(
+    {
+      villageId: input.villageId,
+      title: "✅ Your report has been resolved",
+      body: `Your report ${input.reference} has been resolved — ${truncate(
+        input.note,
+        RESOLUTION_PUSH_NOTE_MAX_CHARS,
+      )}`,
+      path: `/incidents/${input.incidentId}`,
+      incidentId: input.incidentId,
+    },
+    [{ id: input.reporterId }],
+  );
+}
+
+/**
+ * The same news to the reporter's inbox, with the whole note.
+ *
+ * Not gated on `notifyEmail`, for the reason the push above is not — and the
+ * reason `/privacy` gives under "Choosing whether we email you": a message
+ * about something you did yourself is not village news. A closed account gets
+ * nothing; its address is still on the row, but it asked to stop being a
+ * resident.
+ *
+ * Never throws. The resolution is already written and audited by the time this
+ * runs, and a mail server being down must not be what a coordinator is told.
+ */
+export async function emailReporterOfResolution(
+  input: ResolvedIncident,
+): Promise<EmailDispatchResult> {
+  if (!input.reporterId || !process.env.DATABASE_URL) {
+    return { sent: false, skipped: "no_recipient" };
+  }
+
+  try {
+    const reporter = await prisma.user.findFirst({
+      where: { id: input.reporterId, deletedAt: null },
+      select: { email: true, fullName: true },
+    });
+
+    if (!reporter) return { sent: false, skipped: "no_recipient" };
+
+    return await sendEmail({
+      to: reporter.email,
+      message: resolutionEmail({
+        fullName: reporter.fullName,
+        villageName: input.villageName,
+        incidentId: input.incidentId,
+        reference: input.reference,
+        title: input.title,
+        note: input.note,
+      }),
+    });
+  } catch (cause) {
+    console.error(
+      "[email:resolution] could not email the reporter of %s",
+      input.reference,
+      cause,
+    );
+    return { sent: false, skipped: "failed" };
+  }
+}
+
+/**
+ * Tells the residents who voted on a report that it has been resolved.
+ *
+ * **The one query in the app that selects a voter, and it is built so the
+ * answer never leaves this function.** The vote section of `CLAUDE.md` rests
+ * on nobody being able to find out who voted on what, and that is still true:
+ * the ids are handed to `dispatch` and nothing else, the function returns a
+ * count, and the push itself names nobody — not the voter, not the reporter,
+ * not how anybody voted. What changes is that a vote is now used for something
+ * besides being taken back, which `/privacy` §2 says.
+ *
+ * Filtered by `notifyPush`, unlike the reporter's push above. Voting on a report
+ * is a resident showing an interest in it, not asking for a message; one who has
+ * turned pushes off has asked not to be messaged, and that wins. No radius or
+ * severity floor: those decide which *new* reports somebody hears about, and
+ * this is a report they already chose to engage with.
+ *
+ * Both directions of vote are told. "Less serious than it looks" is as much an
+ * opinion about the report as "more serious", and the resolution is the answer
+ * to both.
+ *
+ * Never throws, same contract as every other dispatch here.
+ */
+export async function notifyVotersOfResolution(
+  input: ResolvedIncident & { exclude: readonly (string | null)[] },
+): Promise<DispatchResult> {
+  if (!process.env.DATABASE_URL) {
+    return { matched: 0, sent: 0, skipped: "no_recipients" };
+  }
+
+  const excluded = input.exclude.filter((id): id is string => Boolean(id));
+
+  let voters: { userId: string }[];
+
+  try {
+    voters = await prisma.incidentVote.findMany({
+      where: {
+        incidentId: input.incidentId,
+        ...(excluded.length > 0 ? { userId: { notIn: excluded } } : {}),
+        // Still a resident of this village, still an open account, still
+        // taking pushes. A resident who moved village keeps their old vote row
+        // and is nobody this village should be messaging.
+        user: {
+          villageId: input.villageId,
+          deletedAt: null,
+          notifyPush: true,
+        },
+      },
+      select: { userId: true },
+    });
+  } catch (cause) {
+    console.error(
+      "[push:resolution] could not read the voters on %s",
+      input.reference,
+      cause,
+    );
+    return { matched: 0, sent: 0, skipped: "failed" };
+  }
+
+  return dispatch(
+    {
+      villageId: input.villageId,
+      title: "A report you rated has been resolved",
+      // The reference and the note, and not the title: the title is
+      // reporter-authored, and the note is the part written to be read.
+      body: `${input.reference} — ${truncate(
+        input.note,
+        RESOLUTION_PUSH_NOTE_MAX_CHARS,
+      )}`,
+      path: `/incidents/${input.incidentId}`,
+      incidentId: input.incidentId,
+    },
+    voters.map((voter) => ({ id: voter.userId })),
   );
 }
 

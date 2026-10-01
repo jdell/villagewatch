@@ -570,6 +570,11 @@ export function ReportView({
                               Pattern: {incident.patternNote}
                             </span>
                           )}
+                          {incident.resolutionNote && (
+                            <span className="mt-0.5 block text-xs text-safe-700 print:text-black">
+                              Resolved: {incident.resolutionNote}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}

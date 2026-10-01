@@ -182,6 +182,26 @@ Computed from `node_modules/tailwindcss/theme.css` (OKLCH → sRGB) and the
 - **The push prompt** is a labelled region, so it can be found, and its dismiss
   button says what it dismisses.
 
+### After merging with the timeline slider and community events
+
+This audit was written against `main` before #46 (the timeline slider) and #48
+(community events) merged; the fixes were carried onto both when the branches
+met.
+
+- **Event pins are named** — "Event, Community clean-up: Litter pick on the
+  rec, Sat, 4 Oct 2026, 10:00–12:00" — leading with "Event" so they cannot be
+  confused with incident pins by somebody who cannot see that one is blue. Their
+  popups take and return focus like an incident's. The event page's single-pin
+  map is a named region.
+- **The timeline and events controls come before the map** in the source, with
+  the rest of the controls. Both were built accessible: the clock toggle has
+  `aria-expanded` and `aria-controls`, each slider handle has a label and an
+  `aria-valuetext` naming its date, the selected range announces, and the events
+  toggle has `aria-pressed` and a name.
+- **"See these as a list" follows the timeline.** When the slider narrows the
+  map, the link carries the slider's own days as a custom range, so the list is
+  what is drawn rather than the wider period behind it.
+
 ---
 
 ## Left, with what is needed

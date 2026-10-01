@@ -363,6 +363,9 @@ export async function collectVillageReport(input: {
           anonymized: true,
           reportedToPolice: true,
           policeReference: true,
+          // Public, written by the coordinator for the village. Null on every
+          // published report and on a report resolved before the note existed.
+          resolutionNote: true,
         },
         orderBy: { occurredAt: "desc" },
         take: REPORT_MAX_INCIDENTS,

@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { Clock, EyeOff, MapPin, Play, ShieldCheck } from "lucide-react";
+import {
+  CircleCheck,
+  Clock,
+  EyeOff,
+  MapPin,
+  Play,
+  ShieldCheck,
+} from "lucide-react";
 import type {
   IncidentStatus,
   IncidentType,
@@ -52,6 +59,12 @@ export type IncidentCardData = {
   locationText?: string | null;
   media?: IncidentCardMedia | null;
   tags?: readonly string[];
+  /**
+   * The coordinator's note, on a RESOLVED report. Public — it is written for
+   * the village — and shown as the badge's tooltip, and under the description
+   * on a compact list row. The detail page gives it its own panel instead.
+   */
+  resolutionNote?: string | null;
 };
 
 type IncidentCardProps = {
@@ -136,7 +149,10 @@ export function IncidentCard({
     media,
     tags,
     reference,
+    resolutionNote,
   } = incident;
+
+  const resolved = status === "RESOLVED";
 
   const isPublic =
     status === undefined ||
@@ -171,6 +187,16 @@ export function IncidentCard({
 
             <SeverityBadge severity={severity} size="sm" />
 
+            {resolved && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-safe-50 px-2.5 py-1 text-xs font-medium text-safe-700 ring-1 ring-inset ring-safe-200"
+                title={resolutionNote ?? undefined}
+              >
+                <CircleCheck className="size-3.5" aria-hidden />
+                Resolved
+              </span>
+            )}
+
             {status && !isPublic && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-300">
                 <ShieldCheck className="size-3.5" aria-hidden />
@@ -194,6 +220,17 @@ export function IncidentCard({
           >
             {description}
           </p>
+
+          {/*
+            On a list row only. A tooltip is invisible on a phone, which is where
+            most residents read this list; the detail page shows the note in its
+            own panel, so repeating it in the card there would print it twice.
+          */}
+          {resolved && compact && resolutionNote && (
+            <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-safe-800">
+              <span className="font-medium">Resolved:</span> {resolutionNote}
+            </p>
+          )}
 
           <dl className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
             <div className="inline-flex items-center gap-1.5">
