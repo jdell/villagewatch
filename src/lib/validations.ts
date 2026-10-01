@@ -35,6 +35,27 @@ const longitude = z
   .min(-180, "Longitude must be between -180 and 180")
   .max(180, "Longitude must be between -180 and 180");
 
+/**
+ * Whether a string is shaped like a UUID — before it reaches a `@db.Uuid`
+ * column.
+ *
+ * Postgres **rejects** a malformed UUID rather than returning no rows, so an id
+ * out of a mistyped link, a crawler or a stray relative URL
+ * (`/incidents/default-icon` reached Sentry) surfaces as a
+ * `PrismaClientKnownRequestError` and a 500 instead of a 404. Every route that
+ * takes an id from a URL or a form checks this first and answers not found.
+ *
+ * Deliberately looser than `z.uuid()`, which also checks the version and
+ * variant nibbles: this is the shape Postgres itself accepts, so it never turns
+ * a row that does exist into a 404. It is a guard against a bad request, not a
+ * statement about which UUIDs we mint.
+ */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_SHAPE.test(value);
+}
+
 const password = z
   .string()
   .min(10, "Use at least 10 characters")

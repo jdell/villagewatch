@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ErrorEvent } from "@sentry/nextjs";
 
-import { scrubEvent, tracesSampleRate } from "@/lib/sentry-scrub";
+import {
+  IGNORED_THIRD_PARTY_ERRORS,
+  scrubEvent,
+  tracesSampleRate,
+} from "@/lib/sentry-scrub";
 
 /**
  * What may leave for Sentry.
@@ -159,5 +163,37 @@ describe("tracesSampleRate", () => {
   it("clamps a value above one", () => {
     vi.stubEnv("SENTRY_TRACES_SAMPLE_RATE", "50");
     expect(tracesSampleRate()).toBe(1);
+  });
+});
+
+describe("IGNORED_THIRD_PARTY_ERRORS", () => {
+  const ignored = (message: string) =>
+    IGNORED_THIRD_PARTY_ERRORS.some((pattern) => pattern.test(message));
+
+  it("drops the two third-party errors exactly as Sentry reported them", () => {
+    expect(ignored("i.showNotification is not a function")).toBe(true);
+    expect(ignored("TypeError: i.showNotification is not a function")).toBe(true);
+    expect(
+      ignored(
+        "undefined is not an object (evaluating 'window.webkit.messageHandlers')",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches whatever identifier the minifier chose", () => {
+    expect(ignored("e.showNotification is not a function")).toBe(true);
+    expect(ignored("this.$sw.showNotification is not a function")).toBe(true);
+  });
+
+  /*
+    The reason these are sentences and not keywords. `ignoreErrors` matches
+    substrings, so a bare "showNotification" or "webkit" would also swallow a
+    real fault of ours that happened to mention either.
+  */
+  it("keeps an error of ours that merely mentions the same words", () => {
+    expect(ignored("Could not showNotification for village abc")).toBe(false);
+    expect(ignored("showNotification failed: permission denied")).toBe(false);
+    expect(ignored("webkit.messageHandlers is not supported here")).toBe(false);
+    expect(ignored("Cannot read properties of undefined (reading 'title')")).toBe(false);
   });
 });

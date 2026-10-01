@@ -7,6 +7,7 @@ import { NoVillage } from "@/components/no-village";
 import { requireSession } from "@/lib/auth";
 import { isCoordinatorRole } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { isUuid } from "@/lib/validations";
 
 export const metadata: Metadata = { title: "Edit report" };
 
@@ -46,6 +47,9 @@ type PageProps = { params: Promise<{ id: string }> };
 
 export default async function EditIncidentPage({ params }: PageProps) {
   const { id } = await params;
+  // See `isUuid` — a malformed id would otherwise reach Postgres and 500.
+  if (!isUuid(id)) notFound();
+
   const session = await requireSession(`/incidents/${id}/edit`);
   const villageId = session.profile?.villageId;
 

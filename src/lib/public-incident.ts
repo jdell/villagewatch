@@ -5,6 +5,7 @@ import {
   PUBLIC_PREVIEW_DESCRIPTION_CHARS,
 } from "@/lib/constants";
 import { truncateWords } from "@/lib/format-alert";
+import { isUuid } from "@/lib/validations";
 
 /**
  * The reads behind `/incident/[id]` and the two public API routes beside it.
@@ -112,12 +113,6 @@ export type CommunityStats = {
   villages: number;
 };
 
-/**
- * Postgres rejects a malformed UUID rather than returning no rows, so an id
- * out of a mistyped link would surface as a 500 on a public page. The column is
- * `@db.Uuid`; this is the cheap shape check that turns that into a 404.
- */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * The teaser for one report, or null if there is nothing to show.
@@ -135,7 +130,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function getPublicIncidentPreview(
   id: string,
 ): Promise<PublicIncidentPreview | null> {
-  if (!UUID.test(id) || !process.env.DATABASE_URL) return null;
+  // `isUuid` — Postgres rejects a malformed UUID rather than returning no rows,
+  // so this is what turns a mistyped link into a 404 rather than a 500.
+  if (!isUuid(id) || !process.env.DATABASE_URL) return null;
 
   try {
     const incident = await prisma.incident.findFirst({

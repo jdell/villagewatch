@@ -2088,7 +2088,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty-four files, 915 tests, covering the
+between the typecheck and the build. Fifty-four files, 923 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -4945,6 +4945,14 @@ the point of this section as much as the code is.
   report. `/privacy` §6 says that in as many words rather than implying a
   guarantee that is not there, and `docs/DPIA.md` §5.4a assesses it as a low
   residual risk with the reasoning written out.
+- **Two third-party errors are dropped before they are sent**, by
+  `IGNORED_THIRD_PARTY_ERRORS` in `sentry-scrub.ts` passed as `ignoreErrors` in
+  the browser init: OneSignal's minified `….showNotification is not a function`
+  and Facebook's in-app browser's `evaluating 'window.webkit.messageHandlers'`.
+  **Sentences, never keywords** — `ignoreErrors` matches substrings, so a bare
+  `"showNotification"` would silence a real fault of ours that mentioned it.
+  The test asserts a near miss is kept. Add to it only for an error provably not
+  ours.
 - **Session Replay is not enabled and the wizard adds it by default.** It
   records the DOM, so on `/dashboard/queue` it would record a coordinator
   reading a resident's unedited account of their neighbours and ship it to
@@ -5137,6 +5145,16 @@ toggle, and `/dashboard` as a thumbnail beside the hotspot list.
   inside a `MapContainer` is what guarantees Leaflet loaded first — there is
   nothing to sequence by hand. `@types/leaflet.heat` augments `declare module
   "leaflet"` rather than declaring its own, which is why `L.heatLayer` types.
+- **`guardRedraw` is what stops a zero-sized canvas crashing the map.** The
+  plugin's `draw` calls `getImageData(0, 0, width, height)` unconditionally,
+  and the canvas takes the container's size — so any draw while the map is 0px
+  wide throws `IndexSizeError`, with points or without, from `onAdd`,
+  `moveend` and `setLatLngs` alike. The wrapper skips the draw at zero size,
+  catches anything else, and **clears `_frame` itself**: only the last line of
+  the plugin's `_redraw` clears it, and a draw that stopped early without
+  clearing it would freeze the layer for good. A `resize` listener resets the
+  canvas, which the plugin never does. An empty `setLatLngs` is still sent —
+  skipping it would leave the last heat on screen.
 - **The layer is created once and fed new points.** `setLatLngs` redraws in
   place; recreating it per render would flash the canvas and drop the plugin's
   own pan and zoom listeners.

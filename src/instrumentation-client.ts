@@ -1,6 +1,11 @@
 import * as Sentry from "@sentry/nextjs";
 
-import { SENTRY_ENVIRONMENT, scrubEvent, tracesSampleRate } from "@/lib/sentry-scrub";
+import {
+  IGNORED_THIRD_PARTY_ERRORS,
+  SENTRY_ENVIRONMENT,
+  scrubEvent,
+  tracesSampleRate,
+} from "@/lib/sentry-scrub";
 
 /**
  * Sentry, browser.
@@ -45,6 +50,14 @@ Sentry.init({
     process.env.NEXT_PUBLIC_APP_VERSION,
 
   beforeSend: scrubEvent,
+
+  /**
+   * Other people's scripts running in our page — OneSignal's SDK and
+   * Facebook's in-app browser. The reasoning, and the rule for adding to it, is
+   * beside the list in `src/lib/sentry-scrub.ts`. Browser only: neither can
+   * throw on the server.
+   */
+  ignoreErrors: [...IGNORED_THIRD_PARTY_ERRORS],
 
   /**
    * **No `replayIntegration`, and this is the line to leave alone.**

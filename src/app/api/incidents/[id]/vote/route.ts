@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
 import { PUBLIC_INCIDENT_STATUSES } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { isUuid } from "@/lib/validations";
 import {
   incidentVoteRule,
   rateLimit,
@@ -88,7 +89,9 @@ export async function POST(
   }
 
   const villageId = session.profile?.villageId;
-  if (!villageId) {
+  // A malformed id is the same 404 a report in another village gets, and like
+  // that one it spends no quota — see `isUuid`.
+  if (!villageId || !isUuid(id)) {
     // No village means no report is visible to this account at all, and the
     // answer is the same one a report in somebody else's village gets.
     return NextResponse.json(

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
 import { removeIncident } from "@/lib/erasure";
+import { isUuid } from "@/lib/validations";
 
 /**
  * DELETE /api/incidents/[id] — the reporter erasing their own report.
@@ -44,7 +45,10 @@ export async function DELETE(
 
   // The tenant boundary, off the session and never off the request.
   const villageId = session.profile?.villageId;
-  if (!villageId) {
+  // A malformed id answers exactly as a report in another village does: it is
+  // not found. Checked before `removeIncident`, because Postgres rejects it
+  // rather than finding no row — see `isUuid`.
+  if (!villageId || !isUuid(id)) {
     return NextResponse.json(
       { error: "That report could not be found" },
       { status: 404 },
