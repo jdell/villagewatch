@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.9.0](https://github.com/jdell/villagewatch/compare/v1.8.1...v1.9.0) (2026-10-01)
+
+
+### Features
+
+* **map:** timeline slider to scrub through the selected period ([43f841a](https://github.com/jdell/villagewatch/commit/43f841a7d5f50af81ebf0ae92ab2e0ee41068ff9))
+
+
+### Documentation
+
+* record community feedback and product ideas from 30 Sep meeting ([f5a7fc5](https://github.com/jdell/villagewatch/commit/f5a7fc562036bd835b34dd98c77ee44b2a1aa2b7))
+
 ### [1.8.1](https://github.com/jdell/villagewatch/compare/v1.8.0...v1.8.1) (2026-09-30)
 
 
