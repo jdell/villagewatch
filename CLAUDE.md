@@ -205,6 +205,13 @@ src/
       incidents/[id]/actions.ts  Moderate / edit / withdraw server actions, and
                               resolveIncidentAction — see Resolving a report
       incidents/new/          Report wizard host (village lookup, server-side)
+      events/                 Community events — upcoming, past under a fold.
+                              Every page answers "not on here" when the village
+                              has `eventsEnabled` off. See Community events
+      events/new/             The event form's host
+      events/[id]/            One event, its pin, and delete for the poster or
+                              a coordinator
+      events/actions.ts       deleteEventAction
       dashboard/              Overview — the coordinator's first tab. Stats,
                               breakdowns, hotspots, the concern panel, the
                               police figures and the activity feed. Read-only:
@@ -251,6 +258,9 @@ src/
     api/admin/villages/merge/ GET previews a merge, POST performs it. The only
                               route gated on SUPER_ADMIN_EMAILS
     api/incidents/            POST create report (writes AI fields + tags)
+    api/events/               POST a community event — any resident of a village
+                              with events on. Village off the session, the pin
+                              fuzzed, rate limited. No AI, no queue, no push
     api/incidents/[id]/       DELETE the reporter's own report — 204/403/404
     api/incidents/[id]/vote/  POST a resident's view of how serious a published
                               report is — up, down, or the same button again to
@@ -353,6 +363,14 @@ src/
                               download, `[data-print-region]` for the sheet
     incident-location-map.tsx Client wrapper for the detail page's single pin
     incident-card.tsx         One incident, used by preview, list and detail
+    event-card.tsx            One community event. Not IncidentCard with a flag:
+                              it names the poster, which a report card never does
+    event-form.tsx            Post an event — one screen, the pin optional and
+                              said to be moved
+    event-location-map.tsx    The one pin on an event's page
+    events-off.tsx            What every events page says when they are off
+    delete-event-button.tsx   Delete, behind an inline "are you sure?"
+    dashboard/events-form.tsx The village switch for community events
     vote-buttons.tsx          Up / down chevrons and two counts, on every
                               published report. Optimistic, and it puts the
                               count back when the request fails
@@ -483,6 +501,9 @@ src/
                               pattern and nothing of a resident's
     moderation.ts             applyModeration, audited readRawDescription, and
                               the village's auto-approve setting (fails closed)
+    events.ts                 Community events — the village switch (degrades
+                              to off), the reads, and delete with its rule.
+                              Server only
     erasure.ts                removeIncident + eraseAccount — Article 17,
                               tombstones the row and deletes the media
     audit-context.ts          The caller's IP and browser for an AuditLog row.
@@ -905,6 +926,12 @@ tests/                        Vitest, unit only — see The test suite
                               domain rules it enforces, the 404 that is not a
                               403, the quota that is not spent on a report the
                               caller cannot see, and a response naming nobody
+  community-events.test.ts    The sixth route handler, there for its gates — the
+                              village and poster off the session whatever the
+                              body says, both village checks before the body and
+                              the quota, a pin stored fuzzed and within radius,
+                              and none stored when none was given. Also the
+                              date window, who may delete, and the "when" line
   incident-resolution.test.ts Resolving through `applyModeration` — no note, no
                               resolution, whichever action sent it; published
                               only and village-scoped; the note in its own
@@ -1419,6 +1446,7 @@ line often enough that an IP limit would silence a household.
 | `POST /api/auth/login`             | `authLogin`       | 5 per minute, **per address** |
 | `POST /api/auth/register`          | `authRegister`    | 3 per hour, **per address** |
 | `POST /api/village-interest`       | `villageInterest` | 5 per hour, **per address** |
+| `POST /api/events`                 | `eventCreate`     | 10 per day  |
 
 The third is the most expensive single call in the app — a month of a village's
 reports goes into the prompt — and the only one a *coordinator* triggers by hand,
@@ -2116,7 +2144,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty-seven files, 970 tests, covering the
+between the typecheck and the build. Fifty-eight files, 990 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -4761,6 +4789,63 @@ section of everything `/reports` produces.
   linked to an account — and the notice says what is recorded, that the totals
   are public within the village while the voter is not, and that it goes with
   the report and with the account.
+
+## Community events
+
+`CommunityEvent`, `Village.eventsEnabled`, `src/lib/events.ts`,
+`POST /api/events`, the three pages under `/events`, and a toggle on `/map`.
+Migration `20261001120000_community_events`. Things on in the village that are
+not problems — a litter pick, a meeting, a police drop-in.
+
+- **Off by default, per village.** A coordinator turns it on from Village
+  settings (`village.events_changed`, toned neutral). Off hides the pages, the
+  sidebar link and the map toggle and refuses new posts at the route; it
+  **deletes nothing**, so turning it back on brings the old events back.
+- **None of the incident machinery, deliberately.** No AI pass, no queue, no
+  severity, no `rawDescription`, no votes, no pattern detection, no police
+  report, no push. An event is not an alert, and a push for a litter pick is how
+  residents learn to ignore the pushes that matter.
+- **Not anonymous, and that is the one thing it does differently from every
+  other resident-written surface.** The poster's name is on the event —
+  `EventCard` exists separately from `IncidentCard` so that difference is a
+  component rather than a prop somebody could pass the wrong way. `/privacy` §2
+  says so.
+- **Two domain rules apply.** The pin is fuzzed by `LOCATION_FUZZ_METERS` in
+  the route before it is written (rule 2) — an event at somebody's house should
+  not pinpoint it — and every read and write is scoped by the session's
+  village (rule 4). No geography column and no trigger: nothing queries events
+  by radius, so `postgis.sql` is untouched.
+- **The route's gates come before the body and the quota**, the order the
+  report route keeps: session, village, `eventsEnabled` and the village being in
+  service, then the schema, the date window (`eventWindowError` — a day of grace
+  behind, a year ahead), then `RATE_LIMITS.eventCreate`, which with a
+  coordinator's delete is the whole defence against spam, since nothing reviews
+  an event first.
+- **Deleting is audited and posting is not.** A coordinator taking down a
+  neighbour's post is a decision somebody answers for; `event.deleted` records
+  which hat was worn. The delete is a hard delete — nothing in the trail
+  references an event except that row.
+- **Two cross-cutting places had to learn about the table.** `eraseAccount`
+  deletes every event the account posted (it carries their name, which is what
+  erasure exists to stop showing), treating a missing table as nothing to
+  delete; and `mergeVillages` moves events with the village and lists their ids
+  in the `village.merged` row, because that row is the rollback record.
+- **The flag is read by a call that degrades, never by adding a column to an
+  existing select.** `(app)/layout.tsx` renders on every authenticated page; a
+  column the database does not have yet there would take every page down over
+  an optional feature. `getVillageEventsEnabled` catches and answers false.
+- **The map shows events that have not finished**, independent of the period
+  control and the timeline — those describe what was reported, looking back. A
+  separate toggle beside the clock, not a fourth layer button, remembered per
+  device and **shown by default**. Events are never in the heat layer and never
+  framed by `fitToIncidents`.
+- **RLS: a village-scoped SELECT and no writes.** Every writer is the owner; a
+  write grant would open a PostgREST insert that skips the fuzzing. **Re-run
+  `rls_policies.sql` after the migration** — the table arrives with RLS off, and
+  `events_enabled` needs its line in the `villages` column grant.
+- **No retention sweep.** An event is kept until its poster or a coordinator
+  deletes it, or the poster closes their account, and `/privacy` §7 says
+  exactly that rather than promising an expiry the code does not enforce.
 
 ## Resolving a report
 

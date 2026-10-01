@@ -245,6 +245,7 @@ ALTER TABLE public.police_neighbourhoods    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ecops_alerts             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ecops_site_syncs         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.village_interest         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.community_events         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."_PatternAlertIncidents" ENABLE ROW LEVEL SECURITY;
 
 -- Nothing in this schema is public. `anon` is the role a signed-out browser
@@ -310,6 +311,8 @@ GRANT SELECT (
   region, postcode, country, timezone, population,
   village_code,
   alert_threshold, contact_email, contact_phone, auto_approve,
+  -- Whether the village shows community events. A switch, not a credential.
+  events_enabled,
   parish_council, privacy_level,
   ecops_site_id,
   mode,
@@ -1376,6 +1379,30 @@ CREATE POLICY ecops_site_syncs_select_site
   ON public.ecops_site_syncs FOR SELECT
   TO authenticated
   USING (site_id = public.vw_current_ecops_site_id());
+
+-- ---------------------------------------------------------------------------
+-- community_events
+-- ---------------------------------------------------------------------------
+--
+-- A village-scoped read and nothing else. Every column is meant for the
+-- village to read — an event is public within it by design, the poster's id
+-- included, since their name is shown on the event — so the grant is
+-- table-wide rather than enumerated, the way `pattern_alerts` is.
+--
+-- **No INSERT, UPDATE or DELETE to anybody.** Every writer is the application
+-- connecting as the owner (`POST /api/events` and the delete action), so a
+-- write grant would have no caller — VW-14 and VW-15's shape exactly — and
+-- what it would open is a direct `POST /rest/v1/community_events` that skips
+-- the coordinate fuzzing (domain rule 2), the `eventsEnabled` check and the
+-- rate limit. A resident could then pin an event to a house to the metre.
+
+GRANT SELECT ON public.community_events TO authenticated;
+
+DROP POLICY IF EXISTS community_events_select_village ON public.community_events;
+CREATE POLICY community_events_select_village
+  ON public.community_events FOR SELECT
+  TO authenticated
+  USING (village_id = public.vw_current_village_id());
 
 -- ---------------------------------------------------------------------------
 -- village_interest

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import type { MapEvent } from "@/components/incident-map";
 import { MapView } from "@/components/map-view";
 import { NoVillage } from "@/components/no-village";
 import { requireSession } from "@/lib/auth";
+import { getVillageEventsEnabled, listMapEvents } from "@/lib/events";
 import { prisma } from "@/lib/prisma";
 import { MAP_DEFAULTS, PUBLIC_INCIDENT_STATUSES } from "@/lib/constants";
 import {
@@ -40,7 +42,7 @@ export default async function MapPage() {
     return <NoVillage />;
   }
 
-  const [village, rows] = await Promise.all([
+  const [village, rows, eventsEnabled] = await Promise.all([
     prisma.village.findUnique({
       where: { id: villageId },
       select: {
@@ -61,7 +63,33 @@ export default async function MapPage() {
       orderBy: { occurredAt: "desc" },
       take: MAX_MAP_INCIDENTS,
     }),
+    getVillageEventsEnabled(villageId),
   ]);
+
+  /*
+    Upcoming events with a pin, or null when the village has events off — null
+    rather than an empty list, so the map can tell "nothing coming up" (the
+    toggle stays, with nothing to show) from "not a feature here" (no toggle at
+    all). Both reads degrade to empty rather than throwing.
+  */
+  const events: MapEvent[] | null = eventsEnabled
+    ? (await listMapEvents(villageId, new Date())).flatMap((event) =>
+        event.lat !== null && event.lng !== null
+          ? [
+              {
+                id: event.id,
+                title: event.title,
+                category: event.category,
+                locationText: event.locationText,
+                startsAt: event.startsAt,
+                endsAt: event.endsAt,
+                lat: event.lat,
+                lng: event.lng,
+              },
+            ]
+          : [],
+      )
+    : null;
 
   if (!village) return <NoVillage />;
 
@@ -77,6 +105,7 @@ export default async function MapPage() {
       center={{ lat: village.centerLat, lng: village.centerLng }}
       zoom={village.defaultZoom || MAP_DEFAULTS.zoom}
       villageName={village.name}
+      events={events}
     />
   );
 }

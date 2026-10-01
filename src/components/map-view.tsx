@@ -2,11 +2,16 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
-import { Flame, MapPinned } from "lucide-react";
-import type { MapIncident, MapMode } from "@/components/incident-map";
+import { CalendarDays, Flame, MapPinned } from "lucide-react";
+import type {
+  MapEvent,
+  MapIncident,
+  MapMode,
+} from "@/components/incident-map";
 import {
   BROWSE_RANGE_VALUES,
   DEFAULT_TIME_RANGE,
+  EVENT_PIN_COLOR,
   SEVERITIES,
   TIME_RANGES,
   type TimeRangePreset,
@@ -92,6 +97,31 @@ const MODES = [
  */
 const STORAGE_KEY = "villagewatch:map-mode";
 
+/**
+ * Whether community events are drawn, in localStorage — the layer choice's
+ * store shape, kept beside it. Stored as "hidden" rather than as a positive
+ * flag so that the absence of a value, which is every resident on their first
+ * visit, means shown: a village that turned events on wants them seen.
+ */
+const EVENTS_STORAGE_KEY = "villagewatch:map-events";
+
+function storedEventsShown(): boolean {
+  try {
+    return window.localStorage.getItem(EVENTS_STORAGE_KEY) !== "hidden";
+  } catch {
+    return true;
+  }
+}
+
+function rememberEventsShown(shown: boolean): void {
+  try {
+    window.localStorage.setItem(EVENTS_STORAGE_KEY, shown ? "shown" : "hidden");
+  } catch {
+    // Worst case the choice does not survive a reload.
+  }
+  for (const listener of listeners) listener();
+}
+
 /** Whether the timeline panel is open on this screen. See `useTimelineOpen`. */
 const TIMELINE_STORAGE_KEY = "villagewatch:map-timeline";
 const TIMELINE_PANEL_ID = "map-timeline";
@@ -145,6 +175,12 @@ type MapViewProps = {
   center: { lat: number; lng: number };
   zoom: number;
   villageName: string;
+  /**
+   * Upcoming community events with a pin, or **null when the village has
+   * events off** — in which case there is no toggle and no legend entry,
+   * rather than a control for a feature that is not there.
+   */
+  events?: readonly MapEvent[] | null;
 };
 
 export function MapView({
@@ -152,12 +188,24 @@ export function MapView({
   center,
   zoom,
   villageName,
+  events = null,
 }: MapViewProps) {
   const [preset, setPreset] = useState<TimeRangePreset>(DEFAULT_TIME_RANGE);
 
   // No `setState` behind this: the store *is* localStorage, and writing to it
   // notifies every subscriber including this one.
   const mode = useSyncExternalStore(subscribe, storedMode, defaultMode);
+  const eventsShown = useSyncExternalStore(
+    subscribe,
+    storedEventsShown,
+    () => true,
+  );
+  /*
+    Events are not filtered by the period or the timeline. Those describe what
+    was *reported*, looking back; an event is something coming up, and the
+    page already sends only events that have not finished.
+  */
+  const visibleEvents = events && eventsShown ? events : [];
 
   /**
    * The clock, read once when the view mounts.
@@ -255,6 +303,7 @@ export function MapView({
         // *period*, not the slider: see the header of this file.
         fitToIncidents={inPeriod.length > 0}
         fitTo={inPeriod}
+        events={visibleEvents}
         className="size-full"
       />
 
@@ -293,6 +342,30 @@ export function MapView({
             Its own card rather than a fourth button in the layer group: it is
             not a layer, and it opens something rather than choosing something.
           */}
+          {/*
+            Only for a village with events on. A toggle, not a fourth layer
+            button: events sit on top of whichever layer is chosen, and
+            "Pins / Heatmap / Both / Events" would read as four exclusive choices.
+          */}
+          {events && (
+            <div className="pointer-events-auto rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => rememberEventsShown(!eventsShown)}
+                aria-pressed={eventsShown}
+                aria-label={eventsShown ? "Hide events" : "Show events"}
+                title={eventsShown ? "Hide events" : "Show events"}
+                className={`inline-grid size-8 place-items-center rounded-lg transition ${
+                  eventsShown
+                    ? "bg-brand-600 text-white"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              >
+                <CalendarDays className="size-4" aria-hidden />
+              </button>
+            </div>
+          )}
+
           <div className="pointer-events-auto rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur">
             <TimelineToggle
               open={timelineOpen}
@@ -493,6 +566,23 @@ export function MapView({
           </div>
         )}
 
+        {visibleEvents.length > 0 && (
+          <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+            <p className="inline-flex items-center gap-1.5 text-xs text-slate-700">
+              <span
+                className="grid size-4 place-items-center rounded-full text-white"
+                style={{ backgroundColor: EVENT_PIN_COLOR }}
+                aria-hidden
+              >
+                <CalendarDays className="size-2.5" />
+              </span>
+              {visibleEvents.length === 1
+                ? "1 event coming up"
+                : `${visibleEvents.length} events coming up`}
+            </p>
+          </div>
+        )}
+
         {showHeat && (
           <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
             <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
@@ -512,7 +602,8 @@ export function MapView({
         )}
       </div>
 
-      {incidents.length === 0 && (
+      {/* Not over a map that has events on it, which is not empty. */}
+      {incidents.length === 0 && visibleEvents.length === 0 && (
         <div className="pointer-events-none absolute inset-0 z-[750] grid place-items-center p-6">
           <div className="pointer-events-auto max-w-sm rounded-2xl bg-white/95 p-5 text-center shadow-xl ring-1 ring-slate-200 backdrop-blur">
             <span className="mx-auto grid size-11 place-items-center rounded-xl bg-brand-50 text-brand-600 ring-1 ring-brand-100">

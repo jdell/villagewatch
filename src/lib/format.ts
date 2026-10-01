@@ -79,6 +79,50 @@ export function formatDate(value: Date | string | number): string {
   return Number.isNaN(date.getTime()) ? "" : DATE_ONLY.format(date);
 }
 
+const EVENT_DAY = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "Europe/London",
+});
+
+const EVENT_TIME = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Europe/London",
+});
+
+/**
+ * When a community event is on — "Sat, 4 Oct 2026, 10:00–12:00".
+ *
+ * The day is named once when the event starts and ends on it, and twice when
+ * it runs past midnight. London rather than the host zone, like every other
+ * formatter here: an event is a time on a village noticeboard, and a Vercel
+ * lambda in UTC would otherwise move every summer event an hour early.
+ */
+export function formatEventWhen(
+  startsAt: Date | string | number,
+  endsAt?: Date | string | number | null,
+): string {
+  const start = toDate(startsAt);
+  if (Number.isNaN(start.getTime())) return "";
+
+  const startDay = EVENT_DAY.format(start);
+  const startTime = EVENT_TIME.format(start);
+  if (endsAt === null || endsAt === undefined) return `${startDay}, ${startTime}`;
+
+  const end = toDate(endsAt);
+  if (Number.isNaN(end.getTime())) return `${startDay}, ${startTime}`;
+
+  const endDay = EVENT_DAY.format(end);
+  const endTime = EVENT_TIME.format(end);
+
+  return endDay === startDay
+    ? `${startDay}, ${startTime}–${endTime}`
+    : `${startDay}, ${startTime} – ${endDay}, ${endTime}`;
+}
+
 /**
  * Value for a `datetime-local` input, in the browser's own zone. Cannot use
  * `toISOString()` — that returns UTC, which silently shifts the time the

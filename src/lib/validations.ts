@@ -5,6 +5,10 @@ import {
   COORDINATOR_REASON_MIN_CHARS,
   DEFAULT_REPORT_RANGE,
   DEFAULT_TIME_RANGE,
+  EVENT_CATEGORY_MAX_CHARS,
+  EVENT_DESCRIPTION_MAX_CHARS,
+  EVENT_MAX_DAYS_AHEAD,
+  EVENT_TITLE_MAX_CHARS,
   INCIDENT_TYPE_VALUES,
   NOTIFICATION_RADIUS_VALUES,
   PRIVACY_LEVEL_VALUES,
@@ -1529,3 +1533,95 @@ export const archiveVillageInterestSchema = z
 export type ArchiveVillageInterestInput = z.infer<
   typeof archiveVillageInterestSchema
 >;
+
+// ---------------------------------------------------------------------------
+// Community events
+// ---------------------------------------------------------------------------
+
+/** Blank optional text arrives as `""` from a form; store it as absent. */
+const optionalText = (max: number, message: string) =>
+  z
+    .string()
+    .trim()
+    .max(max, message)
+    .optional()
+    .transform((value) => (value ? value : undefined));
+
+/**
+ * A community event, as `POST /api/events` receives it.
+ *
+ * **No `villageId` and no poster.** Both come off the session (domain rules 4
+ * and 5); a village id in this body would be a way to post into somebody else's
+ * village, and anything sent under either name is ignored by the route rather
+ * than read.
+ *
+ * The coordinates are the point the resident picked, not what is stored — the
+ * route fuzzes them first (domain rule 2). Both or neither: a latitude alone is
+ * not a place.
+ *
+ * What this cannot check is the date window, because that needs the current
+ * time; `eventWindowError` below is that half, and the route and the form both
+ * call it.
+ */
+export const communityEventSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(3, "Give the event a name")
+      .max(EVENT_TITLE_MAX_CHARS, `Keep the name under ${EVENT_TITLE_MAX_CHARS} characters`),
+    description: optionalText(
+      EVENT_DESCRIPTION_MAX_CHARS,
+      `Keep the description under ${EVENT_DESCRIPTION_MAX_CHARS} characters`,
+    ),
+    category: z
+      .string()
+      .trim()
+      .min(1, "Choose what kind of event this is")
+      .max(EVENT_CATEGORY_MAX_CHARS, `Keep the category under ${EVENT_CATEGORY_MAX_CHARS} characters`),
+    locationText: optionalText(120, "Keep the place under 120 characters"),
+    lat: latitude.optional(),
+    lng: longitude.optional(),
+    startsAt: z.coerce.date({ error: "Say when it starts" }),
+    endsAt: z.coerce.date({ error: "That end time is not a date" }).optional(),
+  })
+  .refine((event) => (event.lat === undefined) === (event.lng === undefined), {
+    error: "Drop a pin on the map, or leave the location empty",
+    path: ["lat"],
+  })
+  .refine((event) => !event.endsAt || event.endsAt >= event.startsAt, {
+    error: "The end has to be after the start",
+    path: ["endsAt"],
+  });
+
+export type CommunityEventInput = z.infer<typeof communityEventSchema>;
+
+/**
+ * The date rule a schema cannot express: an event starts no earlier than a day
+ * ago and no later than `EVENT_MAX_DAYS_AHEAD` from now.
+ *
+ * A day of grace behind, so posting the litter pick that started an hour ago
+ * still works; nothing older, because the events list is a calendar and a post
+ * about last month is a report of something that happened, which is what the
+ * incident form is for. The ceiling ahead catches a mistyped year. Returns the
+ * sentence to show, or null.
+ */
+export function eventWindowError(startsAt: Date, now: Date): string | null {
+  const day = 24 * 60 * 60 * 1000;
+
+  if (startsAt.getTime() < now.getTime() - day) {
+    return "That start time has already passed";
+  }
+  if (startsAt.getTime() > now.getTime() + EVENT_MAX_DAYS_AHEAD * day) {
+    return "That is more than a year away — check the year";
+  }
+  return null;
+}
+
+/** The village settings switch. Unticked arrives as absent, as auto-approve's does. */
+export const villageEventsFormSchema = z.object({
+  eventsEnabled: z
+    .union([z.literal("on"), z.literal("")])
+    .optional()
+    .transform((value) => value === "on"),
+});
