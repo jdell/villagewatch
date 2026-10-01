@@ -94,6 +94,12 @@ export type ReportIncident = {
   /** Whether the reporter said they had already been to the police. */
   reportedToPolice?: boolean;
   policeReference?: string | null;
+  /**
+   * What the coordinator said happened, on a resolved report. Public — it is
+   * written for the village to read — and absent or null on everything else,
+   * which is how the documents below tell the two apart without a status.
+   */
+  resolutionNote?: string | null;
 };
 
 export type IncidentSummaryInput = {
@@ -463,6 +469,10 @@ export function formatIncidentSummary(
     lines.push("", "PATTERN", incident.patternNote.trim());
   }
 
+  if (incident.resolutionNote?.trim()) {
+    lines.push("", "RESOLVED", incident.resolutionNote.trim());
+  }
+
   if (!incident.anonymized) {
     lines.push(
       "",
@@ -648,6 +658,10 @@ export function formatCommunityReport(
 
       if (incident.recurring && incident.patternNote?.trim()) {
         lines.push(`  Pattern: ${incident.patternNote.trim()}`);
+      }
+
+      if (incident.resolutionNote?.trim()) {
+        lines.push(`  Resolved: ${incident.resolutionNote.trim()}`);
       }
 
       lines.push("");

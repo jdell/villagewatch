@@ -864,6 +864,11 @@ function LogRow({
             Pattern: {incident.patternNote.trim()}
           </Text>
         )}
+        {incident.resolutionNote?.trim() && (
+          <Text style={styles.logPattern}>
+            Resolved: {incident.resolutionNote.trim()}
+          </Text>
+        )}
       </View>
     </View>
   );

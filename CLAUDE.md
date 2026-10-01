@@ -202,7 +202,8 @@ src/
       incidents/              List with type + severity filters (GET form)
       incidents/[id]/         Detail — media, tags, map pin; params is a Promise
       incidents/[id]/edit/    Reporter's own edit, queue statuses only
-      incidents/[id]/actions.ts  Moderate / edit / withdraw server actions
+      incidents/[id]/actions.ts  Moderate / edit / withdraw server actions, and
+                              resolveIncidentAction — see Resolving a report
       incidents/new/          Report wizard host (village lookup, server-side)
       dashboard/              Overview — the coordinator's first tab. Stats,
                               breakdowns, hotspots, the concern panel, the
@@ -355,7 +356,8 @@ src/
     vote-buttons.tsx          Up / down chevrons and two counts, on every
                               published report. Optimistic, and it puts the
                               count back when the request fails
-    incident-actions.tsx      Detail-page actions — reporter and coordinator
+    incident-actions.tsx      Detail-page actions — reporter and coordinator.
+                              The Resolve panel is here, inline, note required
     share-summary.tsx         One report for a PCSO — navigator.share, then
                               the clipboard. Coordinator, published only
     copy-alert.tsx            The three share buttons — copy, WhatsApp, Facebook
@@ -580,10 +582,11 @@ src/
                               CSP_REPORT_ONLY says otherwise — see The
                               Content-Security-Policy
     email/                    layout, welcome, weekly-digest,
-                              incident-notification, coordinator-decision — pure
-                              functions to `{ subject, text, html }`. `layout.ts`
-                              is the one branded shell all ten emails render
-                              through, the six auth templates included
+                              incident-notification, coordinator-decision,
+                              resolution — pure functions to
+                              `{ subject, text, html }`. `layout.ts` is the one
+                              branded shell all eleven emails render through,
+                              the six auth templates included
     email/send.ts             The transport, over Resend. Never throws, logs the
                               message with no key set. `sendBulkEmail` beside it
                               fans one message out per recipient — never one
@@ -902,6 +905,18 @@ tests/                        Vitest, unit only — see The test suite
                               domain rules it enforces, the 404 that is not a
                               403, the quota that is not spent on a report the
                               caller cannot see, and a response naming nobody
+  incident-resolution.test.ts Resolving through `applyModeration` — no note, no
+                              resolution, whichever action sent it; published
+                              only and village-scoped; the note in its own
+                              column and the publication note left alone; the
+                              audit row before any message; and the reporter
+                              and the voters told, never the village. Also the
+                              note in both documents that leave the village
+  resolution-notifications.test.ts  The three dispatches, run for real over a
+                              mocked Prisma — the voter query's filters, a
+                              result that is a count and a message that names
+                              nobody, a closed account told nothing, and every
+                              failure a value rather than a throw
   email-branding.test.ts      The one shell, across every email the app sends
                               itself — both parts rendered, a complete document,
                               the brand bar and the mark, the footer's three
@@ -2101,7 +2116,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty-five files, 933 tests, covering the
+between the typecheck and the build. Fifty-seven files, 970 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -4692,9 +4707,13 @@ section of everything `/reports` produces.
   village, which is the one thing this feature promises not to expose.
 - **Nobody's name is rendered anywhere.** Not on a card, not on the detail page,
   not in the dashboard panel, not in the report. The promise is structural
-  rather than remembered: **no query in the app selects a voter**, and
-  `incident-votes.ts` exposes no function that could answer "who voted on this".
-  A single well-meaning "who voted?" panel is what would end that.
+  rather than remembered: `incident-votes.ts` exposes no function that could
+  answer "who voted on this", and **exactly one query in the app selects a
+  voter** — `notifyVotersOfResolution`, which hands the ids to `dispatch` and
+  returns a count, so the answer never reaches a caller, a screen or a log.
+  This sentence said "no query" until 1 October 2026; see Resolving a report
+  for why it stopped being true and what keeps the promise. A single
+  well-meaning "who voted?" panel is still what would end it.
 - **RLS gives a resident their own rows and a coordinator their village's.** The
   counts residents see are computed by the application, which runs as the table
   owner, so withholding the rows through PostgREST costs the product nothing.
@@ -4742,6 +4761,65 @@ section of everything `/reports` produces.
   linked to an account — and the notice says what is recorded, that the totals
   are public within the village while the voter is not, and that it goes with
   the report and with the account.
+
+## Resolving a report
+
+`resolveIncidentAction` in `src/app/(app)/incidents/[id]/actions.ts`, the
+Resolve panel in `incident-actions.tsx`, `Incident.resolutionNote`, and the
+three dispatches in `src/lib/notifications.ts`. Migration
+`20261001090000_incident_resolution_note`.
+
+- **It goes through `applyModeration`, which already had a RESOLVE.** The
+  transition existed from the first schema — `ALLOWED_FROM.RESOLVE` is
+  `PUBLISHED` and `resolvedAt` was set — and nothing called it. The new action
+  is a thin wrapper with its own required-note schema rather than a second
+  write path, so the village scope, the status guard, the audit row and the
+  dispatches are each written once.
+- **No note, no resolution — refused twice.** `incidentResolutionSchema`
+  requires it, and `applyModeration` refuses an empty note on its own, because
+  `moderateFromDetailAction` accepts RESOLVE too and a server action is
+  reachable without its form. A note is what the village, the reporter and
+  every voter are shown; "resolved" with nothing after it tells all of them
+  that something happened and not what.
+- **The note has its own column and leaves `moderationNote` alone.** That one
+  is what the reporter was told when the report was published or rejected —
+  a different message to a different reader — and resolving used to overwrite
+  it with whatever the RESOLVE note was.
+- **The note is public.** It is in `PUBLIC_INCIDENT_SELECT`, in the
+  `incidents` column grant in `rls_policies.sql` beside `resolved_at`, on the
+  card (a badge with the note as its tooltip, and as a line on compact list
+  rows, since a tooltip does not exist on a phone), in a green panel on the
+  detail page, and in both documents `community-report.ts` produces and the
+  PDF. It is written by a coordinator for the village, and the panel says so
+  and asks for no names. **It is not in the social post** — that format carries
+  no free text at all — **and not on the public `/incident/[id]` preview**,
+  which does not read `PUBLIC_INCIDENT_SELECT`.
+- **Three audiences, and the village broadcast is not one of them.** The
+  reporter by push and by email, regardless of their preferences — the outcome
+  of something they submitted, `notifyReporterOfDecision`'s reasoning. And the
+  residents who **voted** on it, by push, filtered by `notifyPush`: they said
+  it mattered to them, and a vote is an interest rather than a request for a
+  message, so a resident who turned pushes off is not messaged.
+- **The voter push is the one query in the app that selects a voter.** The
+  vote section's promise was "no query selects a voter"; the promise that
+  matters, and that still holds, is that nobody can find out who voted on
+  what. The ids go to `dispatch` and nowhere else, the function returns a
+  count, and the message carries the reference and the note — not the
+  reporter-authored title, not a name, not which way anybody voted. `/privacy`
+  §2 says a vote is now used for this as well as for being taken back, and
+  `LEGAL_LAST_UPDATED` moved for it.
+- **`incident.resolve`, not `incident.resolved`.** The registry entry existed
+  and is what `applyModeration` writes for the action, matching
+  `incident.publish`, `.reject` and `.archive`. It is toned `sensitive` now,
+  since it records free text published to the village and a message to every
+  voter; the row carries the note in `after`.
+- **Nothing in the fan-out can throw**, the contract every dispatch has. The
+  resolution is written and audited before any message goes, so a mail server
+  being down is never what a coordinator is told.
+- **Re-run `rls_policies.sql` after the migration.** The `incidents` grant is
+  enumerated per column; until it is re-run, `resolution_note` is invisible
+  through PostgREST, which costs the app nothing (Prisma is the owner) and is
+  the documented failure direction.
 
 ## The coordinator's five tabs
 

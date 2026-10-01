@@ -1021,10 +1021,19 @@ export const AUDIT_ACTIONS = [
     tone: "negative",
   },
   {
+    /**
+     * Toned `sensitive` rather than `positive` since the resolution gained a
+     * note. It is no longer only a status change: a coordinator writes free
+     * text that the whole village reads on the report, and it is pushed to the
+     * reporter and to every resident who voted on it — the one dispatch in the
+     * app whose audience is drawn from the vote table. The row carries the note
+     * in `after`, so the trail records exactly what was said to whom.
+     */
     value: "incident.resolve",
     label: "Resolved",
-    description: "Marked as dealt with",
-    tone: "positive",
+    description:
+      "Marked as dealt with, with a note the village reads and the reporter and voters are sent",
+    tone: "sensitive",
   },
   {
     value: "incident.archive",
@@ -2079,8 +2088,15 @@ export const PRICING = [
  * the letter). Nothing new is collected about a resident, but §6 enumerates
  * every request made on their behalf, so a paragraph added there is a change
  * of substance.
+ *
+ * It moved to **1 October 2026** for resolving a report. Two sentences became
+ * false and were changed rather than left: §2 said a vote is linked to an
+ * account *so that it can be taken back*, and it is now also used to tell the
+ * voter when the report is resolved — a second purpose for data already held,
+ * which is the case this date exists for. And §6 counted four kinds of email
+ * when there are five.
  */
-export const LEGAL_LAST_UPDATED = "2026-09-29";
+export const LEGAL_LAST_UPDATED = "2026-10-01";
 
 /**
  * The data controller under UK GDPR.

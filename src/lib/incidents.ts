@@ -29,6 +29,12 @@ export const PUBLIC_INCIDENT_SELECT = {
   peopleCount: true,
   anonymized: true,
   aiModel: true,
+  /**
+   * What the coordinator said happened, and when. Public by design — written
+   * for the village to read — and null on anything not resolved.
+   */
+  resolvedAt: true,
+  resolutionNote: true,
 } as const;
 
 /**

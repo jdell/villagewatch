@@ -445,6 +445,27 @@ export const incidentModerationSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
+/** Longest resolution note a coordinator can write. Same ceiling as a note. */
+export const RESOLUTION_NOTE_MAX_CHARS = 500;
+
+/**
+ * Resolving a published report. The note is **required**: it is shown to the
+ * village on the report, pushed to the reporter and to residents who voted on
+ * it, and printed in the period report. "Resolved" with nothing after it tells
+ * every one of those readers that something happened and not what.
+ */
+export const incidentResolutionSchema = z.object({
+  incidentId: z.uuid(),
+  note: z
+    .string()
+    .trim()
+    .min(1, "Say what happened, so the village knows how this was dealt with.")
+    .max(
+      RESOLUTION_NOTE_MAX_CHARS,
+      `Keep it under ${RESOLUTION_NOTE_MAX_CHARS} characters.`,
+    ),
+});
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------

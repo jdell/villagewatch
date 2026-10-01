@@ -530,6 +530,9 @@ GRANT SELECT (
   -- to have it.
   severity_rationale,
   occurred_at, reported_at, resolved_at,
+  -- What the coordinator said happened when they resolved the report. Written
+  -- for the village to read, so it is granted like `resolved_at` beside it.
+  resolution_note,
   location_text, lat, lng, location_point, location_fuzz_meters,
   reported_to_police, police_reference,
   view_count, confirm_count,

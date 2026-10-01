@@ -627,6 +627,11 @@ model Incident {
   occurredAt DateTime  @map("occurred_at")
   reportedAt DateTime  @default(now()) @map("reported_at")
   resolvedAt DateTime? @map("resolved_at")
+  /// What the coordinator said happened, written when they resolved it. Public
+  /// — it is written for the village to read, and is shown on the report, in
+  /// the reporter's notification and in the period report. Null on anything
+  /// not resolved, and on a report resolved before the column existed.
+  resolutionNote String? @map("resolution_note")
 
   /// Free-text landmark, e.g. "the lane behind the village hall".
   locationText String? @map("location_text")
