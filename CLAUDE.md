@@ -663,6 +663,11 @@ docs/                         The documents rendered from disk, not restated
                               what each costs to clear, and in what order
   E2E_VERIFICATION.md         What was checked by hand against the deployment,
                               and what its addenda got wrong afterwards
+  ACCESSIBILITY_AUDIT_2026-10-01.md  The WCAG 2.1 AA pass over the wizard, the
+                              map, the badges, the votes, the queue, the forms
+                              and navigation — computed contrast, what was
+                              fixed with it, and what is left. A record of one
+                              pass, like the security audit below
   SECURITY_AUDIT_2026-08-29.md  The source-level security review — 34 findings
                               across the six domains, each with the file it
                               lives in and the change that closes it. A record

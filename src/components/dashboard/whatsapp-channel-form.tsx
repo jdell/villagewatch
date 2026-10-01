@@ -80,7 +80,14 @@ function SaveButton() {
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
-  return <p className="mt-1.5 text-sm text-red-600">{message}</p>;
+  // `role="alert"` so the error is announced when it appears. Linking each
+  // input to its error with `aria-describedby` is still to do — see
+  // docs/ACCESSIBILITY_AUDIT_2026-10-01.md.
+  return (
+    <p role="alert" className="mt-1.5 text-sm text-red-600">
+      {message}
+    </p>
+  );
 }
 
 export function WhatsAppChannelForm({ values }: { values: ChannelSettingsValues }) {

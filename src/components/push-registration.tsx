@@ -260,6 +260,10 @@ export function PushRegistration({
         // how a resident denies it permanently.
         <div
           data-push-prompt
+          // A landmark, so a screen-reader user can find a prompt that appears
+          // at the end of the page and is otherwise never announced.
+          role="region"
+          aria-label="Notification alerts"
           className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-lg sm:inset-x-auto sm:right-4"
         >
           <div className="flex items-start gap-3">
@@ -298,7 +302,7 @@ export function PushRegistration({
             <button
               type="button"
               onClick={dismiss}
-              aria-label="Dismiss"
+              aria-label="Dismiss the notification prompt"
               className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
             >
               <X className="size-4" aria-hidden />

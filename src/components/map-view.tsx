@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { Flame, MapPinned } from "lucide-react";
 import type { MapIncident, MapMode } from "@/components/incident-map";
 import {
@@ -11,7 +12,11 @@ import {
   TIME_RANGES,
   type TimeRangePreset,
 } from "@/lib/constants";
-import { resolveTimeRange, withinTimeRange } from "@/lib/date-range";
+import {
+  resolveTimeRange,
+  timeRangeParams,
+  withinTimeRange,
+} from "@/lib/date-range";
 import { HEATMAP_LEGEND_CSS } from "@/lib/heatmap";
 
 /**
@@ -197,19 +202,6 @@ export function MapView({
     // than the space beneath the header, which is the scroll this line exists
     // to prevent.
     <div className="map-surface relative h-[calc(100dvh-3.5rem-env(safe-area-inset-top))] w-full lg:h-dvh">
-      <IncidentMap
-        incidents={visible}
-        center={center}
-        zoom={zoom}
-        now={now}
-        mode={mode}
-        // Framing the pins beats the village's stored viewport once there is
-        // anything to frame, and re-frames when the range changes. It applies to
-        // the heat layer too — the blobs are drawn from the same set.
-        fitToIncidents={visible.length > 0}
-        className="size-full"
-      />
-
       {/*
         z-index sits above Leaflet's own panes, which top out at 700 — and below
         its controls, which are at 1000. That ordering is why the zoom buttons
@@ -229,11 +221,27 @@ export function MapView({
         */}
         <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
           <p className="text-sm font-semibold text-slate-900">{villageName}</p>
-          <p className="mt-0.5 text-xs text-slate-500">
+          {/* Announced when the period or layer changes what is shown. */}
+          <p className="mt-0.5 text-xs text-slate-500" aria-live="polite">
             {visible.length === 0
               ? "Nothing reported in this period"
               : `${visible.length} ${visible.length === 1 ? "incident" : "incidents"}`}
           </p>
+          {/*
+            The map's text alternative, for now. A pin map has no equivalent a
+            screen reader can browse, and the incident list already takes the
+            same period — so the same reports, as a list, are one link away.
+            Visible rather than sr-only: it is as useful to somebody who simply
+            finds a page of text easier than a map.
+          */}
+          {visible.length > 0 && (
+            <Link
+              href={`/incidents?${new URLSearchParams(timeRangeParams(range)).toString()}`}
+              className="mt-1 inline-block text-xs font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+            >
+              See these as a list
+            </Link>
+          )}
         </div>
 
         <div className="pointer-events-none flex flex-wrap items-start justify-end gap-2">
@@ -359,6 +367,28 @@ export function MapView({
           </div>
         </div>
       </div>
+
+      {/*
+        The map comes **after** the controls in the source, though it is drawn
+        beneath them. The overlays are absolutely positioned, so the order
+        changes nothing on screen — and everything for a keyboard user: Leaflet
+        makes the map and every pin a tab stop, up to `MAX_MAP_INCIDENTS` of
+        them, and with the map first the period and layer controls were only
+        reachable after tabbing past all of those.
+      */}
+      <IncidentMap
+        incidents={visible}
+        center={center}
+        zoom={zoom}
+        now={now}
+        mode={mode}
+        label={`Map of reported incidents in ${villageName}`}
+        // Framing the pins beats the village's stored viewport once there is
+        // anything to frame, and re-frames when the range changes. It applies to
+        // the heat layer too — the blobs are drawn from the same set.
+        fitToIncidents={visible.length > 0}
+        className="size-full"
+      />
 
       {/*
         The legend follows the layers rather than sitting there regardless: a

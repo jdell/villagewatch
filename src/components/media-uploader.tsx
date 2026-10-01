@@ -422,6 +422,11 @@ export function MediaUploader({
         accept={ACCEPT}
         multiple
         className="sr-only"
+        // Out of the tab order and the accessibility tree: the two visible
+        // buttons open it. As an `sr-only` input it was an invisible tab stop
+        // between them and the rest of the step.
+        tabIndex={-1}
+        aria-hidden
         disabled={disabled || atCapacity}
         onChange={(event) => {
           void handleFiles(event.target.files);
@@ -503,6 +508,7 @@ export function MediaUploader({
                         items.filter((entry) => entry.id !== item.id),
                       )
                     }
+                    aria-label={`Dismiss ${item.name}`}
                     className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
                   >
                     <RotateCcw className="size-3.5" aria-hidden />
@@ -538,7 +544,7 @@ export function MediaUploader({
 
       {value.length > 0 && (
         <ul className="grid gap-3 sm:grid-cols-2">
-          {value.map((media) => (
+          {value.map((media, index) => (
             <li
               key={media.id}
               className="overflow-hidden rounded-2xl border border-slate-200 bg-white"
@@ -547,6 +553,7 @@ export function MediaUploader({
                 {media.kind === "video" ? (
                   <video
                     src={media.previewUrl}
+                    aria-label={`Attachment ${index + 1}: your video, with faces covered`}
                     controls
                     playsInline
                     muted
@@ -605,6 +612,8 @@ export function MediaUploader({
                   type="button"
                   onClick={() => removeAttachment(media.id)}
                   disabled={disabled}
+                  // One "Remove" per attachment; the number says which.
+                  aria-label={`Remove attachment ${index + 1}`}
                   className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
                 >
                   <Trash2 className="size-3.5" aria-hidden />

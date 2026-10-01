@@ -20,6 +20,7 @@ import { SeverityBadge } from "@/components/severity-badge";
 import {
   INCIDENT_TYPE_LABELS,
   MAP_DEFAULTS,
+  SEVERITY_LABELS,
   SEVERITY_PIN_COLORS,
 } from "@/lib/constants";
 import { formatDateTime, formatTimeAgo } from "@/lib/format";
@@ -88,6 +89,13 @@ type IncidentMapProps = {
    */
   now: number;
   className?: string;
+  /**
+   * The map's accessible name — "Map of reported incidents in Histon". Leaflet
+   * makes the container focusable and gives it no name, so without this a
+   * screen reader announces an unnamed group. Ignored on a map with
+   * `interactive={false}`, which is hidden from assistive technology instead.
+   */
+  label?: string;
 };
 
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -160,6 +168,79 @@ function FitBounds({
   return null;
 }
 
+/**
+ * Names the map container, or hides it.
+ *
+ * Leaflet renders the container itself, so this sets its attributes from inside
+ * the `MapContainer`. An interactive map is a labelled region; the dashboard's
+ * density thumbnail (`interactive={false}`) is a picture whose `<figcaption>`
+ * already says what it shows, so it is taken out of the accessibility tree and
+ * the tab order rather than announced as a second, unusable map.
+ */
+function MapAccessibility({
+  label,
+  interactive,
+}: {
+  label: string;
+  interactive: boolean;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+
+    if (interactive) {
+      container.setAttribute("role", "region");
+      container.setAttribute("aria-label", label);
+      container.removeAttribute("aria-hidden");
+    } else {
+      container.setAttribute("aria-hidden", "true");
+      container.setAttribute("tabindex", "-1");
+    }
+  }, [map, label, interactive]);
+
+  return null;
+}
+
+/**
+ * Focus into a popup when it opens, and back to its pin when it closes.
+ *
+ * Leaflet moves focus nowhere, and the popup is later in the DOM than every
+ * remaining pin — so its "View details" link was only reachable by tabbing past
+ * all of them. Escape already closes it.
+ *
+ * On the `<Popup>`'s own `add`/`remove`, which are exactly "opened" and
+ * "closed" and need nothing from the marker but `_source` — the layer the popup
+ * is bound to, private in Leaflet's types and stable across 1.x. The focus waits a
+ * tick because react-leaflet renders the content through a portal after the
+ * popup is added — a timeout rather than an animation frame, which a browser
+ * pauses in a background tab.
+ */
+const POPUP_FOCUS = {
+  add: (event: L.LeafletEvent) => {
+    const popup = event.target as L.Popup;
+    setTimeout(() =>
+      popup.getElement()?.querySelector<HTMLElement>("a[href]")?.focus(),
+    );
+  },
+  remove: (event: L.LeafletEvent) => {
+    const source = (event.target as L.Popup & { _source?: L.Marker })._source;
+    source?.getElement()?.focus();
+  },
+};
+
+/**
+ * What a screen reader says for a pin. Leaflet makes every marker a focusable
+ * `role="button"`, but it only applies `alt` to an `<img>` icon and these are
+ * div icons with the drawing `aria-hidden` — so without a name every pin was
+ * announced as just "button".
+ */
+function pinLabel(incident: MapIncident, occurred: Date): string {
+  return `${SEVERITY_LABELS[incident.severity]} severity, ${
+    INCIDENT_TYPE_LABELS[incident.type]
+  }: ${incident.title}, ${formatTimeAgo(occurred)}`;
+}
+
 export function IncidentMap({
   incidents,
   center,
@@ -169,6 +250,7 @@ export function IncidentMap({
   interactive = true,
   now,
   className = "size-full",
+  label = "Map of reported incidents",
 }: IncidentMapProps) {
   // An empty array rather than a conditional around the loop below: the markers
   // are the same markers in every mode, and `heat` is simply a mode with none.
@@ -219,6 +301,7 @@ export function IncidentMap({
       {interactive && <ZoomControl position="bottomright" />}
 
       <FitBounds incidents={incidents} enabled={fitToIncidents} />
+      <MapAccessibility label={label} interactive={interactive} />
 
       {/*
         Under the pins, always. Leaflet puts the heat canvas in the overlay pane
@@ -237,9 +320,15 @@ export function IncidentMap({
             key={incident.id}
             position={[incident.lat, incident.lng]}
             icon={pinIcon(incident.severity, recent)}
-            alt={`${INCIDENT_TYPE_LABELS[incident.type]}: ${incident.title}`}
+            eventHandlers={{
+              // The name, set on the element Leaflet made focusable.
+              add: (event) =>
+                event.target
+                  .getElement()
+                  ?.setAttribute("aria-label", pinLabel(incident, occurred)),
+            }}
           >
-            <Popup>
+            <Popup eventHandlers={POPUP_FOCUS}>
               <div className="min-w-56 max-w-72">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
@@ -276,7 +365,7 @@ export function IncidentMap({
                   is reading it off whichever surface they had open, and the map
                   is the one they had open.
                 */}
-                <p className="mt-1 font-mono text-xs text-slate-400">
+                <p className="mt-1 font-mono text-xs text-slate-500">
                   {incident.reference}
                 </p>
 

@@ -5,7 +5,7 @@ import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
-import { Crosshair, Loader2, MapPin } from "lucide-react";
+import { Crosshair, Loader2, LocateFixed, MapPin } from "lucide-react";
 import { MAP_DEFAULTS } from "@/lib/constants";
 import { formatCoordinates } from "@/lib/format";
 
@@ -89,6 +89,33 @@ export function LocationPicker({
 
   const icon = useMemo(() => pinIcon(), []);
 
+  /*
+    The keyboard route to a pin. Placing one used to need a click and moving it
+    a drag, so a keyboard user could only accept the village centre or share
+    their location. Leaflet already pans a focused map with the arrow keys, so
+    the missing half was a way to drop the pin where the map now is — this
+    button, which reads the map's centre. Kept from `MapContainer`'s ref rather
+    than from a child's effect, which is the shape React's lint rules allow.
+  */
+  const [map, setMap] = useState<L.Map | null>(null);
+
+  function attachMap(instance: L.Map | null) {
+    setMap(instance);
+    instance
+      ?.getContainer()
+      .setAttribute(
+        "aria-label",
+        "Map for placing the pin. Use the arrow keys to move the map, then press Drop pin at the centre of the map.",
+      );
+    instance?.getContainer().setAttribute("role", "region");
+  }
+
+  function dropAtCentre() {
+    if (!map) return;
+    const centre = map.getCenter();
+    onChange({ lat: centre.lat, lng: centre.lng });
+  }
+
   function useMyLocation() {
     if (!("geolocation" in navigator)) {
       setGeoError("This device cannot share its location.");
@@ -123,6 +150,7 @@ export function LocationPicker({
       {/* `map-surface` isolates Leaflet's z-index scale — see globals.css. */}
       <div className="map-surface overflow-hidden rounded-2xl border border-slate-200">
         <MapContainer
+          ref={attachMap}
           center={[center.lat, center.lng]}
           zoom={zoom}
           minZoom={MAP_DEFAULTS.minZoom}
@@ -154,7 +182,11 @@ export function LocationPicker({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="inline-flex items-center gap-2 text-sm text-slate-600">
+        {/* Announced when the pin is dropped or moved, by any of the three means. */}
+        <p
+          className="inline-flex items-center gap-2 text-sm text-slate-600"
+          aria-live="polite"
+        >
           <MapPin className="size-4 shrink-0 text-slate-400" aria-hidden />
           {value ? (
             <span>
@@ -168,6 +200,16 @@ export function LocationPicker({
           )}
         </p>
 
+        <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={dropAtCentre}
+          disabled={!map}
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+        >
+          <LocateFixed className="size-4" aria-hidden />
+          Drop pin at the centre of the map
+        </button>
         <button
           type="button"
           onClick={useMyLocation}
@@ -181,9 +223,14 @@ export function LocationPicker({
           )}
           {locating ? "Finding you…" : "Use my location"}
         </button>
+        </div>
       </div>
 
-      {geoError && <p className="text-sm text-amber-700">{geoError}</p>}
+      {geoError && (
+        <p role="alert" className="text-sm text-amber-700">
+          {geoError}
+        </p>
+      )}
 
       <p className="text-xs text-slate-500">
         Pins are shifted slightly before they are saved, so the map never shows

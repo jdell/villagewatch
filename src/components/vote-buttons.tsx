@@ -68,6 +68,14 @@ export function VoteButtons({
   // Synchronous, unlike the state below it. See the header.
   const busy = useRef(false);
   const [pending, setPending] = useState(false);
+  /*
+    What a screen reader is told once the vote has landed. The count lives in
+    each button's `aria-label`, and a changed label on the focused element is
+    not re-read by most screen readers — so a resident who voted heard nothing,
+    and one whose vote failed and was put back heard only the toast. Written
+    from the server's answer, never the optimistic one.
+  */
+  const [announcement, setAnnouncement] = useState("");
 
   async function cast(pressed: VoteInput) {
     if (busy.current) return;
@@ -93,20 +101,32 @@ export function VoteButtons({
       if (!response.ok) {
         setState(previous);
         toast.error(result.error ?? "Your vote could not be saved.");
+        setAnnouncement("Your vote could not be saved.");
         return;
       }
 
       // The server's count, not the optimistic one. Two residents voting on the
       // same report in the same minute each get the total as it stands.
-      setState({
+      const next: VoteState = {
         up: result.up ?? previous.up,
         down: result.down ?? previous.down,
         score: result.score ?? previous.score,
         myVote: result.myVote ?? null,
-      });
+      };
+      setState(next);
+
+      const tally = `${next.up} rated it more serious, ${next.down} less serious.`;
+      setAnnouncement(
+        next.myVote === "up"
+          ? `You rated this more serious than it looks. ${tally}`
+          : next.myVote === "down"
+            ? `You rated this less serious than it looks. ${tally}`
+            : `Your vote was removed. ${tally}`,
+      );
     } catch {
       setState(previous);
       toast.error("Network error — check your connection and try again.");
+      setAnnouncement("Your vote could not be saved.");
     } finally {
       busy.current = false;
       setPending(false);
@@ -146,6 +166,10 @@ export function VoteButtons({
       >
         <ChevronDown className={icon} aria-hidden />
       </Button>
+
+      <span className="sr-only" aria-live="polite">
+        {announcement}
+      </span>
     </div>
   );
 }
@@ -178,7 +202,14 @@ function Button({
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
+      /*
+        `aria-disabled` rather than `disabled` while a vote is in flight. A
+        disabled button that has focus loses it — some browsers move focus to
+        <body> — so a keyboard user would be thrown to the top of the page by
+        every vote. The `busy` ref above is what stops a second press, so the
+        real attribute was never needed for that.
+      */
+      aria-disabled={disabled}
       /*
         `aria-pressed` rather than a label that changes: the button does not
         become a different control when it is on, it becomes a control in a
@@ -189,7 +220,7 @@ function Button({
       // The visible number needs the sentence beside it or it is a bare digit.
       aria-label={`${label} — ${count} ${count === 1 ? "vote" : "votes"}`}
       title={label}
-      className={`inline-flex items-center gap-1.5 rounded-lg border text-xs font-medium tabular-nums transition disabled:cursor-not-allowed disabled:opacity-60 ${size} ${
+      className={`inline-flex items-center gap-1.5 rounded-lg border text-xs font-medium tabular-nums transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 aria-disabled:cursor-wait aria-disabled:opacity-60 ${size} ${
         pressed
           ? active
           : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900"

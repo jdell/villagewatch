@@ -173,6 +173,9 @@ export function ArchiveInterest({
           rows={2}
           maxLength={500}
           autoFocus
+          // A placeholder is not a label, and disappears as soon as somebody
+          // types.
+          aria-label="Reason for archiving"
           placeholder="Moved away — their new village is already live."
           className="mt-2 block w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
         />

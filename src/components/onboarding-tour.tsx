@@ -179,7 +179,19 @@ export function OnboardingTour() {
     if (!active) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") finish();
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+
+      // Escape belongs to whatever has focus first. Listening on the window,
+      // the tour used to swallow the Escape that closes the date picker, the
+      // village search or the navigation drawer — and dismissing the tour is
+      // permanent. It only takes an Escape nothing else could have meant.
+      const target = event.target as HTMLElement | null;
+      const elsewhere = target?.closest(
+        '[role="dialog"]:not([data-tour-card]), [role="combobox"], [role="listbox"], input, textarea, select',
+      );
+      if (elsewhere) return;
+
+      finish();
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -203,6 +215,7 @@ export function OnboardingTour() {
       role="dialog"
       aria-modal="false"
       aria-labelledby="tour-title"
+      data-tour-card
       data-print-hide
       className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:inset-x-auto sm:right-4"
     >
@@ -215,7 +228,8 @@ export function OnboardingTour() {
           <p id="tour-title" className="text-sm font-semibold text-slate-900">
             {current.title}
           </p>
-          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+          {/* Announced as Next moves through the steps; focus stays on the button. */}
+          <p className="mt-1 text-sm leading-relaxed text-slate-600" aria-live="polite">
             {current.body}
           </p>
 
