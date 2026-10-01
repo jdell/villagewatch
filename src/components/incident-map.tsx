@@ -69,6 +69,14 @@ type IncidentMapProps = {
   zoom?: number;
   /** Fit the viewport to the pins instead of using `center`/`zoom`. */
   fitToIncidents?: boolean;
+  /**
+   * What to frame when `fitToIncidents` is on, where that differs from what is
+   * drawn. The timeline slider narrows `incidents` on every step of a drag, and
+   * framing *those* would re-zoom the map under the reader's finger each time —
+   * so the two map surfaces pass the whole period here and the viewport holds
+   * still while the slider decides what is on it. Defaults to `incidents`.
+   */
+  fitTo?: readonly MapIncident[];
   mode?: MapMode;
   /**
    * False for a map that is a picture rather than a map — the density thumbnail
@@ -165,6 +173,7 @@ export function IncidentMap({
   center,
   zoom = MAP_DEFAULTS.zoom,
   fitToIncidents = false,
+  fitTo,
   mode = "pins",
   interactive = true,
   now,
@@ -218,7 +227,7 @@ export function IncidentMap({
       */}
       {interactive && <ZoomControl position="bottomright" />}
 
-      <FitBounds incidents={incidents} enabled={fitToIncidents} />
+      <FitBounds incidents={fitTo ?? incidents} enabled={fitToIncidents} />
 
       {/*
         Under the pins, always. Leaflet puts the heat canvas in the overlay pane

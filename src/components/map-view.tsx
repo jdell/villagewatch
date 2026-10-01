@@ -13,6 +13,13 @@ import {
 } from "@/lib/constants";
 import { resolveTimeRange, withinTimeRange } from "@/lib/date-range";
 import { HEATMAP_LEGEND_CSS } from "@/lib/heatmap";
+import { timelineBounds, withinSelection } from "@/lib/timeline";
+import {
+  TimelineSlider,
+  TimelineToggle,
+  useTimelineOpen,
+  useTimelineSelection,
+} from "@/components/map/timeline-slider";
 
 /**
  * The full-screen map, plus the controls that sit on top of it.
@@ -28,6 +35,14 @@ import { HEATMAP_LEGEND_CSS } from "@/lib/heatmap";
  * The heat layer reads the *filtered* set, so the date range applies to both
  * layers. A density map of "all time" and a pin set of "last 7 days" on the same
  * screen would be two different claims about the same village.
+ *
+ * The timeline slider is a second filter on top of the period, and the same
+ * rule holds for it: both layers read what it leaves. What it deliberately does
+ * **not** move is the viewport. The map frames the whole period and holds
+ * still while the slider narrows what is drawn, because re-framing on every
+ * step of a drag re-zooms the map under the reader's finger — and a pattern
+ * moving from one street to the next is only visible against a map that stays
+ * put.
  */
 
 const IncidentMap = dynamic(
@@ -76,6 +91,10 @@ const MODES = [
  * about the village, and it costs nothing to be wrong about on a new device.
  */
 const STORAGE_KEY = "villagewatch:map-mode";
+
+/** Whether the timeline panel is open on this screen. See `useTimelineOpen`. */
+const TIMELINE_STORAGE_KEY = "villagewatch:map-timeline";
+const TIMELINE_PANEL_ID = "map-timeline";
 
 const listeners = new Set<() => void>();
 
@@ -171,13 +190,40 @@ export function MapView({
     [preset, custom.from, custom.to, now],
   );
 
-  const visible = useMemo(
+  const [nowDate] = useState(() => new Date(now));
+
+  /** What the period control leaves — the slider's whole track. */
+  const inPeriod = useMemo(
     () =>
       incidents.filter((incident) =>
         withinTimeRange(incident.occurredAt, range),
       ),
     [incidents, range],
   );
+
+  const bounds = useMemo(
+    () =>
+      timelineBounds(
+        range,
+        inPeriod.map((incident) => incident.occurredAt),
+        nowDate,
+      ),
+    [range, inPeriod, nowDate],
+  );
+
+  const { selection, setSelection, narrowed } = useTimelineSelection(bounds);
+  const [timelineOpen, setTimelineOpen] = useTimelineOpen(TIMELINE_STORAGE_KEY);
+
+  /**
+   * What the slider leaves — what both layers draw. The same array as
+   * `inPeriod` when nothing is narrowed, so the untouched map does no extra
+   * work and hands the layers nothing new to redraw.
+   */
+  const visible = useMemo(() => {
+    if (!narrowed) return inPeriod;
+    const within = withinSelection(bounds, selection);
+    return inPeriod.filter((incident) => within(incident.occurredAt));
+  }, [inPeriod, bounds, selection, narrowed]);
 
   const showPins = mode !== "heat";
   const showHeat = mode !== "pins";
@@ -204,9 +250,11 @@ export function MapView({
         now={now}
         mode={mode}
         // Framing the pins beats the village's stored viewport once there is
-        // anything to frame, and re-frames when the range changes. It applies to
-        // the heat layer too — the blobs are drawn from the same set.
-        fitToIncidents={visible.length > 0}
+        // anything to frame, and re-frames when the period changes. It applies
+        // to the heat layer too — the blobs are drawn from the same set. The
+        // *period*, not the slider: see the header of this file.
+        fitToIncidents={inPeriod.length > 0}
+        fitTo={inPeriod}
         className="size-full"
       />
 
@@ -231,12 +279,29 @@ export function MapView({
           <p className="text-sm font-semibold text-slate-900">{villageName}</p>
           <p className="mt-0.5 text-xs text-slate-500">
             {visible.length === 0
-              ? "Nothing reported in this period"
-              : `${visible.length} ${visible.length === 1 ? "incident" : "incidents"}`}
+              ? narrowed
+                ? "Nothing reported on these dates"
+                : "Nothing reported in this period"
+              : narrowed
+                ? `${visible.length} of ${inPeriod.length} ${inPeriod.length === 1 ? "incident" : "incidents"}`
+                : `${visible.length} ${visible.length === 1 ? "incident" : "incidents"}`}
           </p>
         </div>
 
         <div className="pointer-events-none flex flex-wrap items-start justify-end gap-2">
+          {/*
+            Its own card rather than a fourth button in the layer group: it is
+            not a layer, and it opens something rather than choosing something.
+          */}
+          <div className="pointer-events-auto rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+            <TimelineToggle
+              open={timelineOpen}
+              onToggle={() => setTimelineOpen(!timelineOpen)}
+              controls={TIMELINE_PANEL_ID}
+              narrowed={narrowed}
+            />
+          </div>
+
           <div
             className="pointer-events-auto inline-flex flex-wrap justify-end rounded-xl bg-white/95 p-1 shadow-lg ring-1 ring-slate-200 backdrop-blur"
             role="group"
@@ -354,6 +419,30 @@ export function MapView({
                 <p className="mt-2 max-w-56 text-[11px] leading-relaxed text-slate-500">
                   {range.notice ?? "Both dates are included."}
                 </p>
+              </div>
+            )}
+
+            {/*
+              Up here in the right-hand column and never along the bottom edge.
+              That row is already spoken for three times over — the legend from
+              the left, the zoom control in the bottom-right corner, and the
+              OpenStreetMap attribution under both, which is a licence condition
+              rather than a control. Collapsed by default, so a phone opening the
+              map for the first time sees no more controls than it did before.
+              The width is capped at the viewport less the map's own padding so
+              it can never be the thing that scrolls the page sideways.
+            */}
+            {timelineOpen && (
+              <div className="pointer-events-auto w-72 max-w-[calc(100vw-1.5rem)] rounded-xl bg-white/95 p-3 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+                <TimelineSlider
+                  id={TIMELINE_PANEL_ID}
+                  bounds={bounds}
+                  selection={selection}
+                  onChange={setSelection}
+                  now={nowDate}
+                  shown={visible.length}
+                  total={inPeriod.length}
+                />
               </div>
             )}
           </div>

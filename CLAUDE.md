@@ -343,7 +343,11 @@ src/
     map/heatmap-layer.tsx     leaflet.heat as a react-leaflet child. The plugin
                               is imported dynamically inside the effect
     map/hotspot-heatmap.tsx   The dashboard's density thumbnail — heat only,
-                              not interactive
+                              not interactive. A one-handle timeline below it
+    map/timeline-slider.tsx   The timeline: a second filter inside the period,
+                              over incidents already in the browser. Two handles
+                              on /map, one on the thumbnail; collapsed behind a
+                              clock toggle, remembered per device
     qr-invite.tsx             The invite QR — SVG on screen, canvas behind the
                               download, `[data-print-region]` for the sheet
     incident-location-map.tsx Client wrapper for the detail page's single pin
@@ -553,6 +557,9 @@ src/
                               — one resolver, client-safe, nothing rejects
     calendar.ts               The month grid and the range chip behind /reports'
                               date picker. Client-safe, pure, host zone
+    timeline.ts               The timeline slider's day arithmetic — the track,
+                              the selection, the midnight boundaries. Client-
+                              safe, pure, host zone, like calendar.ts
     structured-data.ts        The landing page's JSON-LD graph. Server or client;
                               every field in it is a claim that has to be true
     votes.ts                  The toggle rule, the tally arithmetic and the
@@ -776,6 +783,12 @@ tests/                        Vitest, unit only — see The test suite
                               month, the 31st that skips February, the date that
                               is shaped right and does not exist, and the year
                               the chip prints only where it says something
+  timeline.test.ts            The slider's arithmetic — `all` starting on the
+                              earliest report, a future end pulled back to
+                              today, the last day inclusive to its midnight and
+                              the next one out, calendar-day steps across the
+                              clocks going back, and a handle stopped at the
+                              other rather than swapped
   mask-email.test.ts          The mask on the resident list — the fixed width
                               that hides a local part's length, the last-@ split,
                               and every unparseable input failing closed to
@@ -2088,7 +2101,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty-four files, 915 tests, covering the
+between the typecheck and the build. Fifty-five files, 933 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -5143,6 +5156,20 @@ toggle, and `/dashboard` as a thumbnail beside the hotspot list.
 - **The heat reads the date-filtered set the pins read.** A density map of "all
   time" beside a pin set of "last 7 days" would be two different claims about the
   same village.
+- **The timeline slider narrows both layers and moves neither viewport.**
+  `src/components/map/timeline-slider.tsx` is a second filter inside the period,
+  and both layers read what it leaves — the rule above, one level down. What it
+  does not touch is the framing: `IncidentMap` takes `fitTo`, and both surfaces
+  pass the whole *period* there while the slider-filtered set goes to
+  `incidents`. Framing the slider's set instead re-zooms the map on every step
+  of a drag, which is the obvious way to wire it and makes a pattern moving from
+  one street to the next impossible to see. Its track is the period's own days
+  in the host zone (`src/lib/timeline.ts`), and a change of period resets it
+  during render against a stored key, not in an effect — an effect draws one
+  frame of the old offsets over the new period. The panel sits in the top-right
+  column, never along the bottom, which is the legend's, the zoom control's and
+  the attribution's — see The map's corners. Its label is `formatRangeChip`, so
+  it reads "15 Sept" under current ICU exactly as the three period chips do.
 - **Pins are the default and the choice is remembered per device**, in
   localStorage through `useSyncExternalStore` — the same store shape as the
   onboarding tour and for the same reasons: localStorage cannot be read during
