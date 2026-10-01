@@ -13,6 +13,7 @@ import {
   incidentEditSchema,
   incidentModerationSchema,
   incidentResolutionSchema,
+  isUuid,
 } from "@/lib/validations";
 
 /**
@@ -173,7 +174,9 @@ export async function editIncidentAction(
   const villageId = session.profile?.villageId;
   const incidentId = formData.get("incidentId");
 
-  if (!villageId || typeof incidentId !== "string") {
+  // `isUuid` rather than a string check: a malformed id reaches Postgres as an
+  // error, not as zero rows.
+  if (!villageId || !isUuid(incidentId)) {
     return { ok: false, message: "That report could not be found." };
   }
 
@@ -298,7 +301,7 @@ export async function deleteIncidentAction(
   const villageId = session.profile?.villageId;
   const incidentId = formData.get("incidentId");
 
-  if (!villageId || typeof incidentId !== "string") {
+  if (!villageId || !isUuid(incidentId)) {
     return { ok: false, message: "That report could not be found." };
   }
 

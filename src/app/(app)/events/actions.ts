@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth";
 import { deleteCommunityEvent } from "@/lib/events";
+import { isUuid } from "@/lib/validations";
 
 /**
  * Taking an event down — the poster's own, or any in the village for a
@@ -21,7 +22,7 @@ export async function deleteEventAction(
   const villageId = session.profile?.villageId;
   const eventId = formData.get("eventId");
 
-  if (!villageId || typeof eventId !== "string") {
+  if (!villageId || !isUuid(eventId)) {
     return { ok: false, message: "That event could not be found." };
   }
 

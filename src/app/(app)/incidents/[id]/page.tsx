@@ -30,6 +30,7 @@ import { canReporterErase } from "@/lib/erasure";
 import { formatIncidentAlert } from "@/lib/format-alert";
 import { readVoteStates } from "@/lib/incident-votes";
 import { PUBLIC_INCIDENT_SELECT, toMapIncident } from "@/lib/incidents";
+import { isUuid } from "@/lib/validations";
 import { signedMediaUrls } from "@/lib/media/storage";
 import { getVillageChannel } from "@/lib/whatsapp-channel";
 import { formatDateTime } from "@/lib/format";
@@ -54,6 +55,10 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { id } = await params;
+  // Before anything reads the database — see `isUuid`. The page below answers
+  // the same id with `notFound()`.
+  if (!isUuid(id)) return { title: "Incident" };
+
   const session = await requireSession(`/incidents/${id}`);
   const villageId = session.profile?.villageId;
 
@@ -86,6 +91,10 @@ export async function generateMetadata({
 
 export default async function IncidentDetailPage({ params }: PageProps) {
   const { id } = await params;
+  // A malformed id is a 404, not a Prisma error: Postgres rejects it rather
+  // than finding no row. Before the session, since it reveals nothing.
+  if (!isUuid(id)) notFound();
+
   const session = await requireSession(`/incidents/${id}`);
   const villageId = session.profile?.villageId;
   const role = session.profile?.role;

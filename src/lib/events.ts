@@ -2,6 +2,7 @@ import type { Session } from "@/lib/auth";
 import { auditContext } from "@/lib/audit-context";
 import { isCoordinatorRole, EVENT_PAST_LIST_SIZE } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { isUuid } from "@/lib/validations";
 
 /**
  * Community events. **Server only.**
@@ -236,7 +237,10 @@ export async function getVillageEvent(
   villageId: string,
   eventId: string,
 ): Promise<EventView | null> {
-  if (!process.env.DATABASE_URL) return null;
+  // `isUuid` — a malformed id from the URL is not found, rather than a Prisma
+  // error that reaches the log (and Sentry) before the catch below turns it
+  // into the same answer.
+  if (!isUuid(eventId) || !process.env.DATABASE_URL) return null;
 
   try {
     const row = await prisma.communityEvent.findFirst({

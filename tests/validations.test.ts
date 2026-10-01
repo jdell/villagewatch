@@ -9,6 +9,7 @@ import {
   structuredIncidentSchema,
   villageParishCouncilFormSchema,
   incidentResolutionSchema,
+  isUuid,
   RESOLUTION_NOTE_MAX_CHARS,
 } from "@/lib/validations";
 
@@ -416,6 +417,25 @@ describe("villageParishCouncilFormSchema", () => {
   it("rejects a name too long for the report footer", () => {
     expect(stored("A".repeat(121))).toBeUndefined();
     expect(stored("A".repeat(120))).toBe("A".repeat(120));
+  });
+});
+
+describe("isUuid", () => {
+  it("accepts the shape Postgres accepts, in either case", () => {
+    expect(isUuid("2f4c7d9e-1a20-4b6e-9a51-8f0a5e8c3b1d")).toBe(true);
+    expect(isUuid("2F4C7D9E-1A20-4B6E-9A51-8F0A5E8C3B1D")).toBe(true);
+    // Not a valid v4 — `z.uuid()` refuses it — and still a row Postgres could
+    // hold, so it must not be turned into a 404.
+    expect(isUuid("11111111-1111-1111-1111-111111111111")).toBe(true);
+  });
+
+  it("refuses what reached Sentry, and anything else that is not one", () => {
+    expect(isUuid("default-icon")).toBe(false);
+    expect(isUuid("")).toBe(false);
+    expect(isUuid("2f4c7d9e-1a20-4b6e-9a51-8f0a5e8c3b1d/edit")).toBe(false);
+    expect(isUuid(" 2f4c7d9e-1a20-4b6e-9a51-8f0a5e8c3b1d")).toBe(false);
+    expect(isUuid(null)).toBe(false);
+    expect(isUuid(undefined)).toBe(false);
   });
 });
 

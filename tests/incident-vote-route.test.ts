@@ -165,6 +165,16 @@ describe("what may be voted on", () => {
     expect(mocks.deleteMany).not.toHaveBeenCalled();
   });
 
+  it("answers a malformed id with the same 404, before the database sees it", async () => {
+    // `/incidents/default-icon` reached Sentry as a Prisma error: Postgres
+    // rejects a non-UUID rather than finding no row. See `isUuid`.
+    const response = await post("up", "default-icon");
+
+    expect(response.status).toBe(404);
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+    expect(mocks.queryRaw).not.toHaveBeenCalled();
+  });
+
   it("spends no quota on a report the caller cannot see", async () => {
     // A stale page must not cost somebody their ten-second window on the
     // reports they *can* vote on.

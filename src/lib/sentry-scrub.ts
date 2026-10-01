@@ -144,6 +144,36 @@ export function scrubEvent(event: ErrorEvent): ErrorEvent {
 }
 
 /**
+ * Errors thrown by somebody else's JavaScript running in our page, which no
+ * change of ours can fix. Passed to the browser `Sentry.init` as
+ * `ignoreErrors`, so they are dropped before `beforeSend` and never reach
+ * Frankfurt.
+ *
+ * **Regexes for the whole failure, never a bare word.** `ignoreErrors` matches
+ * any message that *contains* a string, so listing `"showNotification"` would
+ * also silence a real bug of ours that happened to mention it. Each entry here
+ * is the exact sentence the third party produces, and
+ * `tests/sentry-scrub.test.ts` asserts both that it matches the reported
+ * message and that it does not match a near miss.
+ *
+ * - **OneSignal.** `TypeError: i.showNotification is not a function`, from the
+ *   minified SDK once permission is granted. Nothing in this codebase calls
+ *   `showNotification`; the identifier before it is whatever the minifier
+ *   chose, so it is matched loosely.
+ * - **Facebook's in-app browser.** `undefined is not an object (evaluating
+ *   'window.webkit.messageHandlers')`, from the script Facebook injects into
+ *   pages opened inside its app — which is how a link shared to a village group
+ *   is opened. Nothing in this codebase touches `window.webkit`.
+ *
+ * Add to this only for an error that is provably not ours, and with the
+ * sentence rather than a keyword.
+ */
+export const IGNORED_THIRD_PARTY_ERRORS: readonly RegExp[] = [
+  /\b[\w$.]+\.showNotification is not a function\b/,
+  /evaluating '(?:window\.)?webkit\.messageHandlers/,
+];
+
+/**
  * The DSN, and the two names it can arrive under.
  *
  * The browser bundle can only read `NEXT_PUBLIC_SENTRY_DSN` — it is inlined at

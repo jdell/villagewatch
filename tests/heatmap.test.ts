@@ -95,6 +95,21 @@ describe("toHeatPoints", () => {
     expect(points[0][2]).toBeCloseTo(0.8);
   });
 
+  it("drops a point it cannot place rather than handing the canvas a NaN", () => {
+    const placed = incident("HIGH", 0);
+    const missing = [
+      { ...incident("HIGH", 0), lat: Number.NaN },
+      { ...incident("HIGH", 0), lng: null as unknown as number },
+      { ...incident("HIGH", 0), lat: undefined as unknown as number },
+    ];
+
+    expect(toHeatPoints([...missing, placed], NOW)).toHaveLength(1);
+  });
+
+  it("returns an empty list for no incidents — the layer clears rather than skipping", () => {
+    expect(toHeatPoints([], NOW)).toEqual([]);
+  });
+
   it("never produces an intensity above the layer's max", () => {
     const max = HEATMAP_CONFIG.max;
 

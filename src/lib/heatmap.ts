@@ -130,11 +130,19 @@ export function toHeatPoints(
   incidents: readonly HeatSource[],
   now: number,
 ): HeatPoint[] {
-  return incidents.map((incident) => [
-    incident.lat,
-    incident.lng,
-    HEAT_SEVERITY_WEIGHT[incident.severity] * recencyWeight(incident.occurredAt, now),
-  ]);
+  // A point the canvas cannot place is dropped rather than drawn at NaN. The
+  // type says both are numbers; this is the guard for a row that arrives
+  // without them anyway — the map's own query filters them out, and nothing
+  // checks that a later caller will.
+  return incidents
+    .filter(
+      (incident) => Number.isFinite(incident.lat) && Number.isFinite(incident.lng),
+    )
+    .map((incident) => [
+      incident.lat,
+      incident.lng,
+      HEAT_SEVERITY_WEIGHT[incident.severity] * recencyWeight(incident.occurredAt, now),
+    ]);
 }
 
 /**
