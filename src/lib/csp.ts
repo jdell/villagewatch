@@ -141,6 +141,16 @@ export function buildContentSecurityPolicy(nonce: string): string {
      * under `/onesignal/` — are same-origin files. See `withCsp` in
      * `src/proxy.ts` for why the *worker scripts themselves* are served without
      * this header.
+     *
+     * The voice-input transcription worker (`src/lib/voice/transcribe.worker.ts`)
+     * is a same-origin chunk under `/_next/static`, which `src/proxy.ts`'s
+     * matcher excludes — so, like the service workers, it is served with no
+     * policy of its own, and **this page's `connect-src` does not govern its
+     * fetches**. That is why `huggingface.co`, its `*.cdn.hf.co` redirect and
+     * the onnxruntime wasm on `cdn.jsdelivr.net` appear nowhere above. Bring
+     * `/_next/static` under the proxy and all three need listing, or the model
+     * download fails and the button reports that speech recognition could not
+     * run.
      */
     `worker-src 'self' blob:`,
 

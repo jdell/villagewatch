@@ -83,6 +83,12 @@ export const metadata: Metadata = {
  *   - Report text is sent to Anthropic for anonymisation
  *     (`src/lib/ai/structure-incident.ts`). Residents are told before they file,
  *     not after.
+ *   - §5's voice paragraph: a spoken report is transcribed **on the device**
+ *     (`src/lib/voice/`, `src/components/voice-input.tsx`), the recording is
+ *     never uploaded or stored, and what reaches Anthropic is the transcript as
+ *     ordinary text. The model download is in §6 beside the map tiles, because
+ *     it is an outbound request made by the resident's browser. Send audio to
+ *     any server and both paragraphs become false.
  *   - §6 names what the staff channel is told (`src/lib/slack.ts`). Slack is a
  *     third party outside the UK and a channel is retained indefinitely, so what
  *     a message carries is a disclosure rather than an implementation detail:
@@ -627,6 +633,16 @@ export default function PrivacyPage() {
           sentence saying why it chose that level &mdash; and pulls out a few
           keywords.
         </P>
+        <P>
+          <strong>If you speak your report instead of typing it</strong>, your
+          voice is turned into text on your own phone or computer, by a speech
+          model that runs in the browser. The recording is never sent to us, to
+          Anthropic or to anyone else, and it is never stored: it is discarded as
+          soon as the text has been produced, and the microphone is switched off
+          the moment you stop. What is sent to Anthropic is the text, exactly as
+          if you had typed it &mdash; and it lands in the box first, so you can
+          read and correct it before anything is sent.
+        </P>
         <UL>
           <LI>
             <strong>You see the result before anyone else does.</strong> The
@@ -904,6 +920,14 @@ export default function PrivacyPage() {
           Map tiles come from OpenStreetMap and are fetched by your browser
           directly, so their servers see your IP address as they would for any
           website you visit. No report data is sent with those requests.
+        </P>
+        <P>
+          The first time you speak a report, your browser downloads the speech
+          model it needs (about 45&nbsp;MB) from Hugging Face, and the software
+          that runs it from jsDelivr. Like the map tiles, those servers see your
+          IP address and nothing else &mdash; no recording, no text and nothing
+          about your report is sent with them. The model is then kept by your
+          browser, so later recordings download nothing.
         </P>
         {/*
           Not a disclosure, and it is in this section anyway because a resident

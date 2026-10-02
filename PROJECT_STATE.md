@@ -1104,6 +1104,7 @@ as working — to anybody, and least of all in a grant application.
 | ~~Push notifications~~ | **Delivered to a real device, 31 August** | Out of this table. Both failure modes were silent and both are now known-good: the `/onesignal/` worker path and the three keys reaching Vercel with a redeploy behind them. Re-check with `curl -I https://villagewatch.app/onesignal/OneSignalSDKWorker.js` after any OneSignal dashboard change |
 | The public incident preview | No link has ever been opened against a real report, and no card has been rendered by a real crawler | `/incident/[id]` and the two routes under `/api/incidents`. The 404 path, the OG card and the public/protected split are all verified locally against a build; what needs a real report is: **what the card looks like** pasted into WhatsApp, which is the whole point of the page; **that the extract is an extract** — view source on a real report and confirm only ~100 characters of the description are in the HTML, and that the landmark and coordinates are absent rather than merely blurred; **that a `PENDING_REVIEW` id 404s**, which is domain rule 6 with no signed-in resident behind it; and **an unanonymised report**, where `description` is the reporter's own wording and the extract is the first line of it. Blocked behind L7 like everything else — there is no `ACTIVE` village |
 | The village merge | No villages have ever been merged, by the script or the screen | `/admin/villages/merge`. It needs `SUPER_ADMIN_EMAILS` set (there is no default) **and** an `ACTIVE`, compliance-complete target — neither exists yet, so the guard refuses today and would move nothing if it did not. Rehearse against a restored copy before the first real one. Three things to read afterwards: the reference mapping on the `village.merged` audit entry, which is the only thing a reversal can be built from; that the archived village's `/dashboard/audit` history is unreachable, as designed; and that the coordinators of the absorbed village now hold coordinator access in the survivor |
+| Voice input | Never used on a real phone. Tested end to end in desktop Chrome with synthesised speech only | The "Speak instead" button on step 1 of the wizard. Four things to look at on the first iPhone: **whether Safari's `MediaRecorder` output decodes** (it records `audio/mp4`, not webm, and `decodeAudioData` is what reads it); **the 45 MB first download on mobile data**, and whether the progress line moves; **how long a 90-second recording takes to transcribe** on a mid-range Android, which is the case Whisper-tiny on WebAssembly is slowest on; and **accents and wind** — the transcript lands in the box for the resident to correct, which is the safeguard, so read a few and judge whether it is good enough to offer |
 | The retention job | Never run against data | It deletes files and takes reports off the map. Read the counts in the response before trusting the schedule |
 | Erasure | `removeIncident` / `eraseAccount` have never touched a bucket | Confirm the object is gone, not just the row |
 | The weekly digest | Cron has never fired | It is the only thing that creates `PatternAlert` rows — and nothing renders them |
@@ -1230,6 +1231,27 @@ behaviour changes in the *same commit* as the behaviour, not in a later pass.
 ---
 
 ## Recent completions
+
+**Voice input in the report wizard — 2 October 2026.** Community feedback idea
+#2. A "Speak instead" button under the description: up to 90 seconds, a pulsing
+dot, a level meter and a countdown, and absent in a browser that cannot record.
+
+- **Transcribed on the device, not by Claude.** The brief asked for the audio to
+  go to `POST /api/incidents/process` and on to Claude; the Messages API takes
+  no audio, so that was not buildable. Joel chose on-device Whisper over a
+  third-party speech API — `onnx-community/whisper-tiny.en` through
+  `@huggingface/transformers` in a Web Worker. **The recording never leaves the
+  phone** and is never stored; the transcript lands in the description box and
+  goes through the existing AI pass as text.
+- **The route did not change**, so there is no `audio` field to accept — a test
+  asserts the schema drops one, and that what reaches Anthropic is text.
+- **After speaking, the wizard runs the AI pass and moves to Where**, not
+  Preview, so the pin is not skipped. If the pass fails, the transcript stays in
+  the box and the resident adds a title themselves. Continue is held while
+  recording, downloading the model or transcribing.
+- `/privacy` §5 and §6 changed, and `LEGAL_LAST_UPDATED` moved to 2 October. No
+  migration and no schema change. 60 files, 1,032 tests pass.
+- **Never used on a real phone** — see Built, but never exercised.
 
 **The AI severity proposal — 5 September 2026.** `docs/AI_SEVERITY_PROPOSAL_PLAN.md`,
 implemented.

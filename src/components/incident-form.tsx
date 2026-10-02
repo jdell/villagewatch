@@ -23,6 +23,7 @@ import { AiPreview, type AiPreviewFields } from "@/components/ai-preview";
 import { CopyAlert } from "@/components/copy-alert";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { MediaUploader, type AttachedMedia } from "@/components/media-uploader";
+import { VoiceInput } from "@/components/voice-input";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
   INCIDENT_TYPES,
@@ -301,6 +302,16 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState<PublishedReport | null>(null);
   const [ai, setAi] = useState<AiState>(IDLE_AI);
+
+  /*
+    Voice input on step 1. `voiceBusy` covers recording, the model download
+    and transcription; `voiceFilling` covers the AI pass that turns the
+    transcript into a category and a title. Continue is held through both, the
+    same gate the preview step puts on the rewrite — leaving the step with a
+    recording in flight would lose it.
+  */
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceFilling, setVoiceFilling] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   // The success screen's heading, focused once when it replaces the wizard.
@@ -434,7 +445,14 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
    * `publicDescription` and a plain explanation on screen, which is exactly
    * where the wizard stood before this existed.
    */
-  async function runAiPass(force = false) {
+  /**
+   * How a pass ended, for the one caller that needs to know: voice input,
+   * which moves on from step 1 only when the pass filled in the category and
+   * title it cannot ask a spoken report for. Every other caller ignores it.
+   */
+  async function runAiPass(
+    force = false,
+  ): Promise<"done" | "failed" | "skipped"> {
     const values = getValues();
     const signature = aiSignature(values);
 
@@ -442,8 +460,10 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
     // One running over *different* inputs — the reporter went back mid-rewrite
     // and edited — is stale, so a new pass supersedes it rather than the old
     // one landing as a rewrite of text that is no longer the report.
-    if (ai.status === "processing" && ai.signature === signature) return;
-    if (!force && ai.status !== "idle" && ai.signature === signature) return;
+    if (ai.status === "processing" && ai.signature === signature) return "skipped";
+    if (!force && ai.status !== "idle" && ai.signature === signature) {
+      return ai.status === "done" ? "done" : "skipped";
+    }
 
     const run = ++aiRunRef.current;
     setAi({ ...IDLE_AI, status: "processing", signature });
@@ -515,10 +535,10 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
           result.error ?? "The rewrite could not be produced.",
           result.pattern,
         );
-        return;
+        return "failed";
       }
 
-      if (superseded()) return;
+      if (superseded()) return "skipped";
 
       const incident = result.incident;
 
@@ -557,8 +577,50 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
         error: null,
         signature,
       });
+      return "done";
     } catch {
       failWith("Could not reach the rewriting service.");
+      return "failed";
+    }
+  }
+
+  /**
+   * A spoken description, transcribed on the device.
+   *
+   * The transcript goes into the description box — added to anything already
+   * typed rather than replacing it — and then, when it is long enough for the
+   * AI pass to accept, through that same pass: the one call, the one quota and
+   * the one anonymisation a typed report gets. That is what fills in the
+   * category, the title and the landmark a spoken report cannot be asked for
+   * field by field.
+   *
+   * It then moves on to **Where**, not to the preview. Skipping the pin would
+   * file every spoken report at the village centre. If the pass did not run —
+   * no key, a rate limit, a short transcript — the resident stays here with
+   * their words in the box to add a title themselves; being limited never
+   * blocks filing.
+   */
+  async function handleTranscript(text: string) {
+    const typed = getValues("description").trim();
+    setValue("description", typed ? `${typed} ${text}` : text, {
+      shouldValidate: true,
+    });
+
+    if (getValues("description").trim().length < 20) {
+      toast.info("Your words are in the box. Add a little more, then continue.");
+      return;
+    }
+
+    setVoiceFilling(true);
+    const outcome = await runAiPass(true);
+    setVoiceFilling(false);
+
+    if (outcome === "done") {
+      await goNext();
+    } else {
+      toast.info(
+        "Your words are in the box. Give the report a title and a category, then continue.",
+      );
     }
   }
 
@@ -569,6 +631,7 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
     // hold anybody here — it falls back to their own wording, and being rate
     // limited must never block filing.
     if (step === PREVIEW_STEP && ai.status === "processing") return;
+    if (voiceBusy) return;
 
     const fields = STEP_FIELDS[step];
     if (fields.length > 0) {
@@ -930,6 +993,26 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
                 id="description-error"
                 message={errors.description?.message}
               />
+              {/*
+                The alternative to typing, beneath the box it fills. Absent in a
+                browser that cannot record or run the model on the device.
+              */}
+              <div className="mt-3">
+                <VoiceInput
+                  onTranscript={(text) => void handleTranscript(text)}
+                  onBusyChange={setVoiceBusy}
+                  disabled={voiceFilling}
+                />
+                {voiceFilling && (
+                  <p
+                    className="mt-2 flex items-center gap-2 text-xs text-slate-600"
+                    role="status"
+                  >
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                    Filling in the category and title from what you said…
+                  </p>
+                )}
+              </div>
             </div>
 
             <div>
@@ -1131,7 +1214,11 @@ export function IncidentForm({ village, canPostAlert = false }: IncidentFormProp
             <button
               type="button"
               onClick={goNext}
-              disabled={step === PREVIEW_STEP && ai.status === "processing"}
+              disabled={
+                (step === PREVIEW_STEP && ai.status === "processing") ||
+                voiceBusy ||
+                voiceFilling
+              }
               className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {step === 0 && media.length === 0 && !textOnly

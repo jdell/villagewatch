@@ -2144,8 +2144,15 @@ export const PRICING = [
  * it. No new data and no new processor — but a new way the same summary leaves
  * the village, without a coordinator pressing a button each time, which is a
  * change of substance in the section that lists who sees what.
+ *
+ * It moved to **2 October 2026** for voice input. §5 gained a paragraph saying
+ * a spoken report is transcribed on the device and the recording is never sent
+ * or stored, and §6 gained the speech model's download from Hugging Face — an
+ * outbound request the resident's browser makes, which §6 enumerates beside the
+ * map tiles. No new data reaches any processor: Anthropic receives text, as it
+ * always did.
  */
-export const LEGAL_LAST_UPDATED = "2026-10-01";
+export const LEGAL_LAST_UPDATED = "2026-10-02";
 
 /**
  * The data controller under UK GDPR.

@@ -341,6 +341,9 @@ src/
     admin/village-merge-form.tsx  Two selectors, a preview of what moves, and a
                               confirmation that asks for the village's name
     incident-form.tsx         5-step wizard, react-hook-form + Zod
+    voice-input.tsx           "Speak instead" on step 1 — 90s, countdown, level
+                              meter. Transcribed on the device; the recording
+                              never leaves it. See Voice input
     media-uploader.tsx        Blur-then-upload; never touches the original
     location-picker.tsx       Leaflet pin picker — dynamic import, ssr: false
     ai-preview.tsx            Review / publish screens, reprocess + edit
@@ -653,6 +656,10 @@ src/
                               nothing at all for a village too young to have a
                               baseline. Server only
     media/face-blur.ts        MediaPipe WASM face detection + canvas blur
+    voice/audio.ts            Voice input's pure half — downmix, transcript
+                              cleaning, countdown, level, support probe
+    voice/transcribe.worker.ts  Whisper in a Web Worker. The only network it
+                              touches is the model and its runtime
     media/storage.ts          Signed URLs + base64 stills — service-role, server only
     supabase/                 server.ts, client.ts, admin.ts, env.ts
     supabase/cookie-options.ts  The session cookie's flags and its lifetime,
@@ -765,7 +772,13 @@ scripts/
 tests/                        Vitest, unit only — see The test suite
   rate-limit.test.ts          Quotas, independence, fail-open, the 429
   auth.test.ts                requireSession / requireAdmin / isPlatformAdmin
-  structure-incident.test.ts  Every typed failure of the AI pass, none thrown
+  structure-incident.test.ts  Every typed failure of the AI pass, none thrown —
+                              and a spoken report being text by the time it gets
+                              here: same result shape, no audio block sent, and
+                              an `audio` field dropped by the schema
+  voice-audio.test.ts         Voice input's pure helpers — Whisper's
+                              `[BLANK_AUDIO]` annotations stripped, the downmix,
+                              the countdown, and no button without every API
   validations.test.ts         The Zod schemas, both directions
   channel-code.test.ts        extractChannelCode + the dashboard's channel form
   format-alert.test.ts        The WhatsApp alert — severity, place, the link —
@@ -2171,7 +2184,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Fifty-nine files, 1,019 tests, covering the
+between the typecheck and the build. Sixty files, 1,032 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -2791,6 +2804,59 @@ selector on `/dashboard`. Four levels — `light` (blur, 15px), `standard` (blur
   the notice now names both modes and which is the default. The promise that
   matters is unchanged and still structural — there is no server-side fallback,
   so an original with a face in it cannot be uploaded either way.
+
+## Voice input
+
+`src/components/voice-input.tsx` on step 1 of the wizard, over
+`src/lib/voice/audio.ts` and `src/lib/voice/transcribe.worker.ts`. A resident
+can speak their report instead of typing it — up to `VOICE_MAX_SECONDS` (90).
+
+- **Speech becomes text on the device, and that is domain rule 3 applied to
+  sound.** A voice identifies a person as surely as a face does, so the
+  recording is never uploaded, never stored, and is dropped the moment the
+  transcript exists. The microphone tracks are stopped when recording stops, so
+  the browser's indicator goes out at once. Never add a server-side fallback,
+  and never "temporarily" upload a recording to debug recognition.
+- **The brief asked for audio to go to Claude, and Claude cannot take it.** The
+  Messages API accepts text, images and documents — no audio block exists. The
+  choice was a third-party speech API (a new processor and the voice leaving the
+  device) or a model in the browser; Joel chose the browser. So
+  `POST /api/incidents/process` is **unchanged**: the transcript arrives as an
+  ordinary `description`, and `incidentProcessSchema` drops an `audio` key if
+  one is sent. Asserted in `tests/structure-incident.test.ts`.
+- **The model is `onnx-community/whisper-tiny.en`, q8, on WebAssembly** —
+  about 43.5 MB, downloaded once from Hugging Face and cached by the browser;
+  the runtime's wasm comes from jsDelivr. The worker is warmed when recording
+  *starts*, so the download overlaps the resident talking. `/privacy` §6 names
+  the download beside the map tiles: those servers see an IP address and
+  nothing else.
+- **The worker is not under the CSP, and that is why no host was added.** It is
+  a `/_next/static` chunk, which the proxy matcher excludes, so the page's
+  `connect-src` does not govern its fetches — the same position as the two
+  service workers. The note on `worker-src` in `src/lib/csp.ts` says what has to
+  be listed if that ever changes.
+- **The transcript lands in the box first.** It is appended to whatever was
+  typed, never replaces it, and the resident can correct it — the text area is
+  the alternative and is untouched. Whisper's non-speech annotations
+  (`[BLANK_AUDIO]`, `(wind blowing)`) are stripped by `cleanTranscript`, and an
+  empty result says so rather than filling the box with nothing.
+- **Then the AI pass fills the category and title, and the wizard moves to
+  Where — not Preview.** Skipping the pin would lose the one field speech cannot
+  supply. `runAiPass(true)` runs on the transcript; moving the pin changes
+  `aiSignature`, so Preview reruns it then and only then. If the pass fails or
+  is rate limited, the wizard stays on step 1 and asks for a title and category
+  — the AI pass must never block filing, and neither must voice.
+- **Continue is held while there is a recording to lose** — recording,
+  downloading the model, transcribing, and the AI pass that follows. **Not**
+  while the microphone permission prompt is open: an ignored prompt never
+  resolves, and counting it would lock the resident out of typing too.
+- **Absent, not disabled, where it cannot work** — no `getUserMedia`,
+  `MediaRecorder`, `Worker`, WebAssembly or `AudioContext`. The probe is
+  `useSyncExternalStore` with a `false` server snapshot, so nothing mismatches
+  on hydration.
+- **Never used on a real phone.** Verified end to end in desktop Chrome with
+  synthesised speech; Safari records `audio/mp4` and is the first thing to
+  check.
 
 ## The AI pass
 

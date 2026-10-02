@@ -409,3 +409,71 @@ describe("when the response is unusable", () => {
     logged.mockRestore();
   });
 });
+
+/*
+  Voice input. The recording is transcribed on the resident's device
+  (`src/components/voice-input.tsx`, `src/lib/voice/`) and what reaches this
+  module is the transcript, as an ordinary description — the Messages API takes
+  no audio. These pin the server half of that promise: a spoken report is the
+  same request and the same result as a typed one, and no audio can ride along
+  on the way in or come back on the way out.
+*/
+describe("a spoken report", () => {
+  const transcript =
+    "Two men were trying car door handles on Mill Lane at about 11 last night. One had a red jacket. They ran towards the recreation ground when a dog barked.";
+
+  it("produces the same shape of result as a typed description", async () => {
+    mocks.create.mockResolvedValue(modelResponse(modelRecord()));
+    const typed = await structureIncident(input());
+
+    mocks.create.mockResolvedValue(modelResponse(modelRecord()));
+    const spoken = await structureIncident(input({ description: transcript }));
+
+    expect(spoken.ok).toBe(true);
+    expect(typed.ok).toBe(true);
+    if (!spoken.ok || !typed.ok) return;
+    expect(Object.keys(spoken).sort()).toEqual(Object.keys(typed).sort());
+    expect(Object.keys(spoken.data).sort()).toEqual(Object.keys(typed.data).sort());
+  });
+
+  it("sends Anthropic text, and never an audio block", async () => {
+    mocks.create.mockResolvedValue(modelResponse(modelRecord()));
+
+    await structureIncident(input({ description: transcript }));
+
+    const request = mocks.create.mock.calls[0][0] as {
+      messages: { content: string | { type: string }[] }[];
+    };
+    const blocks = request.messages.flatMap((message) =>
+      typeof message.content === "string" ? [{ type: "text" }] : message.content,
+    );
+
+    for (const block of blocks) {
+      expect(["text", "image"]).toContain(block.type);
+    }
+    expect(JSON.stringify(request)).not.toMatch(/"audio"|audio\/(webm|mp4|ogg|wav)/i);
+    expect(JSON.stringify(request)).toContain("Mill Lane");
+  });
+
+  it("carries nothing audio-shaped back in the result", async () => {
+    mocks.create.mockResolvedValue(modelResponse(modelRecord()));
+
+    const result = await structureIncident(input({ description: transcript }));
+
+    expect(JSON.stringify(result)).not.toMatch(/audio|recording|base64/i);
+  });
+
+  it("drops an audio field sent to the process route rather than accepting it", async () => {
+    const { incidentProcessSchema } = await import("@/lib/validations");
+
+    const parsed = incidentProcessSchema.parse({
+      description: transcript,
+      lat: 52.25,
+      lng: 0.1,
+      audio: "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=",
+    });
+
+    expect(parsed).not.toHaveProperty("audio");
+    expect(parsed.description).toBe(transcript);
+  });
+});
