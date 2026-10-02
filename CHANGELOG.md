@@ -3,6 +3,13 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.11.0](https://github.com/jdell/villagewatch/compare/v1.10.0...v1.11.0) (2026-10-02)
+
+
+### Features
+
+* voice input for report wizard ([de0056b](https://github.com/jdell/villagewatch/commit/de0056b5659bb919c7b16cb2e31e4a84504d8bf7))
+
 ## [1.10.0](https://github.com/jdell/villagewatch/compare/v1.9.2...v1.10.0) (2026-10-01)
 
 
