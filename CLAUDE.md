@@ -2429,13 +2429,10 @@ fallback when it is unset.
 
 ## Deployment guardrails
 
-- **`main` auto-deploys to production.** The rule here used to be "never push
-  directly to `main`", and it is **overridden** — Joel pushes straight to `main`
-  and that is the working arrangement. See Known Pitfalls below; do not block on
-  it, do not open a PR to route around it, and do not reinstate the rule in a
-  later edit of this file.
-- Feature branch → PR → Vercel preview → review → merge is still the shape for
-  anything somebody else is meant to read before it lands.
+- **`main` auto-deploys to production, so nothing is pushed to it directly.**
+  Every change goes feature branch → PR → Vercel preview → review → merge.
+  No direct pushes to `main`, whoever is making the change. See Known Pitfalls
+  below.
 - **Commits are Conventional Commits.** `.github/workflows/version.yml` bumps the
   version, writes `CHANGELOG.md` and tags when a `feat`, `fix`, `perf`,
   `refactor` or `revert` lands on `main`. The release commit carries `[skip ci]`,
@@ -2540,8 +2537,10 @@ only moves the failure somewhere slower and more public.
    code actually does, and a false sentence in a privacy notice is worse debt
    than a missing one. `CLAUDE.md` too, if the change alters something this file
    describes.
-8. **Pushed to `main`.** Conventional Commit subject, so `version.yml` can bump
-   the version and write `CHANGELOG.md`.
+8. **Pushed to a feature branch, with a PR opened against `main`.**
+   Conventional Commit subject, so `version.yml` can bump the version and write
+   `CHANGELOG.md` once the PR is reviewed and merged. Never pushed to `main`
+   directly.
 9. **The Vercel deploy succeeds** — open the deployment and look at it. A green
    local build and a green deploy are different claims, and the difference is
    the environment variables. Check the preview URL renders the changed screen,
@@ -2561,12 +2560,10 @@ The gotchas that have cost time, in one place. Each has a fuller section
 elsewhere in this file; this is the index to read before starting, not a
 replacement for them.
 
-- **"Never push to `main`" is overridden.** Joel pushes directly to `main`. Do
-  not block on it, do not insist on a PR, and do not restore the old rule when
-  editing Deployment guardrails. What still holds is everything the rule was
-  protecting: `main` deploys to production the moment it lands, so the Definition
-  of Done above is the review beat, and a migration that DROPs or renames still
-  wants the deploy to land first.
+- **All changes require a PR. Direct pushes to `main` are not allowed.**
+  `main` deploys to production the moment it lands, so every change goes through
+  a feature branch and a reviewed PR before it is merged. See Deployment
+  guardrails.
 - **Next.js 16 is not the Next.js you know.** `middleware.ts` is `proxy.ts` and
   lives at `src/proxy.ts`; `cookies()` and `headers()` are **async**, which is
   why `createClient()` in `src/lib/supabase/server.ts` is async and must never
