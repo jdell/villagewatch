@@ -187,6 +187,13 @@ type MapViewProps = {
    * rather than a control for a feature that is not there.
    */
   events?: readonly MapEvent[] | null;
+  /**
+   * The map on a phone: the whole viewport, with no top bar above it
+   * and the tab bar over its foot. The overlays move to clear both — the
+   * status bar at the top, the tab bar at the bottom — and so do Leaflet's own
+   * bottom corners, through `.vw-full-bleed` in globals.css.
+   */
+  fullBleed?: boolean;
 };
 
 export function MapView({
@@ -195,6 +202,7 @@ export function MapView({
   zoom,
   villageName,
   events = null,
+  fullBleed = false,
 }: MapViewProps) {
   const [preset, setPreset] = useState<TimeRangePreset>(DEFAULT_TIME_RANGE);
 
@@ -305,7 +313,13 @@ export function MapView({
     // height included. Subtract one without the other and the map is taller
     // than the space beneath the header, which is the scroll this line exists
     // to prevent.
-    <div className="map-surface relative h-[calc(100dvh-3.5rem-env(safe-area-inset-top))] w-full lg:h-dvh">
+    <div
+      className={`map-surface relative w-full lg:h-dvh ${
+        fullBleed
+          ? "vw-full-bleed h-dvh"
+          : "h-[calc(100dvh-3.5rem-env(safe-area-inset-top))]"
+      }`}
+    >
       {/*
         z-index sits above Leaflet's own panes, which top out at 700 — and below
         its controls, which are at 1000. That ordering is why the zoom buttons
@@ -314,7 +328,11 @@ export function MapView({
         overlay is what loses, and what a resident was left reading was two zoom
         buttons on top of their village's name.
       */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[800] flex flex-wrap items-start justify-between gap-3 p-3 sm:p-4">
+      <div
+        className={`pointer-events-none absolute inset-x-0 top-0 z-[800] flex flex-wrap items-start justify-between gap-3 p-3 sm:p-4 ${
+          fullBleed ? "pt-[max(0.75rem,env(safe-area-inset-top))]" : ""
+        }`}
+      >
         {/*
           This card keeps its natural width on a phone without being told to:
           the control group beside it is wider than the viewport, so `flex-wrap`
@@ -583,7 +601,11 @@ export function MapView({
         rows. It is a licence condition rather than a control, so it gets the
         20px it needs while the padding beside it is being written out anyway.
       */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[800] flex flex-wrap justify-center gap-2 pb-5 pl-3 pr-14 pt-3 sm:justify-start sm:pl-4 sm:pr-16 sm:pt-4">
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-[800] flex flex-wrap justify-center gap-2 pl-3 pr-14 pt-3 sm:justify-start sm:pl-4 sm:pr-16 sm:pt-4 ${
+          fullBleed ? "pb-[calc(var(--vw-tab-bar)+1.25rem)] lg:pb-5" : "pb-5"
+        }`}
+      >
         {showPins && (
           <div className="pointer-events-auto rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
             <p className="text-xs font-medium text-slate-500">Severity</p>

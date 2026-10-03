@@ -134,6 +134,42 @@ body {
 }
 
 /*
+ * The tab bar, and everything that has to clear it.
+ *
+ * `--vw-tab-bar` is the bar's height as `TabBar` draws it: 82px, or the 54px
+ * row plus the home-indicator inset where that is taller. One custom property
+ * so the four things below cannot disagree about it. Below `lg` only — from
+ * 1024px up there is no tab bar, and these rules switch off with it.
+ *
+ * - `.vw-tab-bar-pad` is the page padding on every modern screen but the map,
+ *   so the last thing on a page can be scrolled clear of the bar.
+ * - `.vw-above-tab-bar` lifts the two fixed cards that sit at the bottom of
+ *   the viewport — the push prompt and the onboarding tour — above it rather
+ *   than under it.
+ * - `.vw-full-bleed` is the modern map's wrapper. Leaflet's bottom corners —
+ *   the zoom buttons and the OpenStreetMap attribution, which is a licence
+ *   condition and may not be covered — are moved up by the bar's height,
+ *   because the map itself runs underneath it.
+ */
+:root {
+  --vw-tab-bar: max(82px, calc(54px + env(safe-area-inset-bottom)));
+}
+
+@media (max-width: 1023.98px) {
+  .vw-tab-bar-pad {
+    padding-bottom: calc(var(--vw-tab-bar) + 1rem);
+  }
+
+  .vw-above-tab-bar {
+    bottom: calc(var(--vw-tab-bar) + 0.75rem);
+  }
+
+  .vw-full-bleed .leaflet-bottom {
+    bottom: var(--vw-tab-bar);
+  }
+}
+
+/*
  * The mobile drawer's entrance.
  *
  * `app-shell.tsx` mounts the drawer on a state flip, so without this it simply

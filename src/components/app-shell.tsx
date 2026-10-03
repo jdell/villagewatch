@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { TabBar } from "@/components/modern/tab-bar";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { PushRegistration } from "@/components/push-registration";
 import type { UserRole } from "@/generated/prisma/enums";
@@ -203,6 +204,19 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  /*
+    Below `lg`, a bottom tab bar (`TabBar`) is the way between the main
+    screens, and the map runs full-bleed — no top bar over it, drawn under the
+    tab bar. From `lg` up the sidebar is the navigation and nothing changes.
+    See "The redesign" in CLAUDE.md.
+
+    The top bar stays on every other screen, and that is deliberate rather
+    than unfinished: it is the only way to the drawer, and the drawer is the
+    only way to Events, the coordinator tabs, the platform pages and Sign out.
+    Five tabs cannot carry those, and dropping them would make the redesign a
+    feature removal for every coordinator.
+  */
+  const fullBleed = pathname === "/map";
 
   /*
     The drawer behaves as a modal dialog, because on a phone it is one: it
@@ -575,7 +589,9 @@ export function AppShell({
           `map-view.tsx` subtracts the same two values — keep them in step.
         */}
         <header
-          className="sticky top-0 z-[1000] flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 border-b border-slate-200 bg-white pt-[env(safe-area-inset-top)] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:hidden"
+          className={`sticky top-0 z-[1000] h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 border-b border-slate-200 bg-white pt-[env(safe-area-inset-top)] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:hidden ${
+            fullBleed ? "hidden" : "flex"
+          }`}
           data-print-hide
         >
           <button
@@ -605,10 +621,24 @@ export function AppShell({
           `tabIndex={-1}` so the skip link's target can take focus; it is not
           a control, so it carries no focus ring of its own.
         */}
-        <main id="main" tabIndex={-1} className="flex-1 outline-none">
+        {/*
+          Below `lg` every page but the map is padded clear of the
+          tab bar, so the last thing on it can be scrolled into view rather than
+          living under the bar. The map is the exception on purpose: it runs
+          edge to edge and under the bar, and keeps its own controls clear.
+        */}
+        <main
+          id="main"
+          tabIndex={-1}
+          className={`flex-1 outline-none ${
+            fullBleed ? "" : "vw-tab-bar-pad lg:pb-0"
+          }`}
+        >
           {children}
         </main>
       </div>
+
+      <TabBar />
 
       {/*
         Four steps on first arrival, then never again on this device. Renders

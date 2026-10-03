@@ -264,7 +264,7 @@ export function PushRegistration({
           // at the end of the page and is otherwise never announced.
           role="region"
           aria-label="Notification alerts"
-          className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-lg sm:inset-x-auto sm:right-4"
+          className="vw-above-tab-bar fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-lg sm:inset-x-auto sm:right-4"
         >
           <div className="flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700">

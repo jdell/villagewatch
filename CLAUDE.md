@@ -198,6 +198,8 @@ src/
                               only, and the one screen with no undo behind it —
                               see Merging villages
       coordinator-apply/      The resident's application form + its action
+      trends/                 Counted reports over a period — the modern tab
+                              bar's fourth tab. Reachable in both interfaces
       map/                    Full-screen Leaflet map, severity pins, heatmap
       incidents/              List with type + severity filters (GET form)
       incidents/[id]/         Detail — media, tags, map pin; params is a Promise
@@ -322,6 +324,8 @@ src/
     site-footer.tsx           Public footer, incl. the legal links — shared
     legal-page.tsx            Shell + typography for /privacy and /terms
     status-screen.tsx         Shell behind not-found.tsx and error.tsx
+    modern/tab-bar.tsx        The bottom tab bar, below lg only. See The
+                              redesign
     village-service-banner.tsx  What a resident is told when their village is
                               not in service. Rendered by (app)/layout.tsx above
                               every authenticated page; absent when it is
@@ -5022,6 +5026,40 @@ section of everything `/reports` produces.
   linked to an account — and the notice says what is recorded, that the totals
   are public within the village while the voter is not, and that it goes with
   the report and with the account.
+
+## The redesign
+
+The map-first redesign, from the "VillageWatch UX Redesign" Claude Design
+artifact (Turn 1, the clickable mobile and desktop prototypes). It is the
+interface — there is no flag and no classic fallback; PR #56's per-village
+switch was discarded. It is built in stacked phases, and each adds a bullet
+group here.
+
+- **Phones get the tab bar; desktops keep the sidebar.** Everything below
+  `lg` (1024px) that the redesign changes is listed phase by phase below. From
+  `lg` up the sidebar is still the navigation.
+- **Phase A — the shell.** Below `lg`, a bottom tab bar (`modern/tab-bar.tsx`):
+  Map `/map`, List `/incidents`, a raised Report button `/incidents/new`,
+  Trends `/trends`, Settings `/settings`. 82px, `rgba(255,255,255,.96)` behind a
+  12px blur, a 1px `#e2e8f0` rule, the Report button `#0284c7`.
+- **The top bar stays everywhere but the map**, and that is the decision rather
+  than an unfinished one: the drawer behind it is the only way to Events, the
+  coordinator tabs, the platform pages and Sign out, and five tabs cannot carry
+  those. The map runs full-bleed — no top bar, drawn under the tab bar — with
+  its overlays clear of the status bar and the tab bar (`MapView`'s
+  `fullBleed`).
+- **`--vw-tab-bar` in globals.css is the bar's height**, and four things read
+  it: the page padding (`.vw-tab-bar-pad`), the push prompt and the tour
+  (`.vw-above-tab-bar`), and Leaflet's bottom corners on the full-bleed map
+  (`.vw-full-bleed`) — the attribution is a licence condition and may not sit
+  under the bar. Change the bar's height there and in `TAB_BAR_HEIGHT`.
+- **Geist was already the app's font** — `next/font/google` in
+  `app/layout.tsx`, wired to `--font-sans` — so the brief's Geist requirement
+  needed no change.
+- **`/trends` is real from the first phase**: the period control and the
+  resident `VillageSummary` that `/incidents` renders above its list, on a page
+  of its own. `SUMMARY_TREND_LABELS` moved into `village-summary.tsx` so the two
+  pages share it.
 
 ## Community events
 
