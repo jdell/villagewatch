@@ -1,30 +1,60 @@
 name: Version
 
-# Bumps the version, writes CHANGELOG.md and tags the commit whenever something
+# Bumps the version, writes CHANGELOG.md and tags the release whenever something
 # releasable lands on main.
 #
-# Two loops have to be broken for this to be safe, because the workflow's own
-# output is a push to the branch that triggers it:
+# ## It never pushes to main
 #
-#   1. The release commit carries `[skip ci]`, which GitHub Actions and Vercel
-#      both honour — so the bump neither re-triggers this workflow nor spends a
-#      production deploy on a commit that changed a version number.
-#   2. The `if` below refuses to run on a `chore(release):` commit regardless.
-#      Belt and braces: a skip keyword is a convention, and the cost of it
-#      silently changing is an infinite loop that tags a hundred versions.
+# `main` is protected by a ruleset whose `pull_request` rule has no bypass
+# actors — every change goes through a PR, the bot's included. This workflow
+# used to finish with `git push --follow-tags origin HEAD:main`, and from the
+# day that rule was switched on (2 October 2026) every run died there. Worse,
+# `--follow-tags` is not atomic: the remote accepted the *tag* and refused the
+# *branch*, so each failed run left a tag pointing at a release commit that is
+# not on main. v1.12.0 and v1.12.1 are both that — orphans, never released.
 #
-# It also refuses to release nothing. standard-version bumps a patch even when
-# every commit since the last tag was a `chore`, so the first step works out
-# whether anything user-visible actually landed and stops if it did not.
+# So the release is a pull request now, in two halves:
 #
-# And it refuses to collide. standard-version computes the next version from
-# `package.json` and tags it; if that tag already exists the run dies at
-# `git tag` with "tag already exists", *after* it has written the changelog and
-# the bump commit. The version step below works the tag out first and steps past
-# any that are taken, so a repository whose tags and `package.json` have drifted
-# apart — a force-push over a release commit, a tag pushed by hand, a squashed
-# merge that dropped the bump — releases the next free version instead of failing
-# every push to main until somebody deletes a tag.
+#   1. `version` — on a releasable push, run standard-version on a fresh
+#      branch from main **without tagging**, force-push it as `release/next`,
+#      and open (or retitle) the release PR. One rolling branch, regenerated
+#      from main on every releasable push, so there is only ever one release
+#      PR and it always describes everything unreleased.
+#   2. `tag` — on every push to main, if the version in package.json has a
+#      `chore(release):` commit in main's history and no tag yet, tag that
+#      commit. This is what runs when the release PR is merged, and it is the
+#      only thing that creates a tag — so a tag exists only for a release that
+#      actually landed.
+#
+# `tag` runs first and `version` waits for it, so the push that merges the
+# release PR tags it and then finds nothing left to release.
+#
+# ## Loops, and why the release commit no longer carries [skip ci]
+#
+# The release PR's merge is itself a push to main. The `version` job refuses a
+# `chore(release):` head commit, and its releasable-commit count starts from
+# the tag `tag` has just pushed, so there is nothing for it to do. `[skip ci]`
+# would have been the second guard, but on a rebase or squash merge it lands in
+# the head commit and GitHub then skips this whole workflow — including the
+# `tag` job, which is the one run that must not be skipped. The cost is that
+# merging the release PR deploys to production, which is also what puts the new
+# version on screen rather than leaving production one patch behind.
+#
+# ## Collisions
+#
+# standard-version computes the next version from `package.json`. If that tag
+# already exists — the orphans above, a tag pushed by hand, a force-push over a
+# release commit — the version step steps the patch until it finds a free one,
+# rather than releasing nothing and leaving those commits out of the changelog.
+#
+# ## The repository setting this depends on
+#
+# Opening the PR with the workflow's own token needs "Allow GitHub Actions to
+# create and approve pull requests" (Settings → Actions → General). With it off
+# the branch is still pushed, the PR step prints a link to open it by hand, and
+# the run still succeeds. A PR opened by the workflow token triggers no other
+# workflows, so CI does not run on it; the ruleset requires no status checks,
+# and CI runs on main when it merges.
 
 on:
   push:
@@ -38,9 +68,52 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
+  tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Tag a release that has just landed
+        run: |
+          set -euo pipefail
+
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null 2>&1 ||
+             [ -n "$(git ls-remote --tags origin "refs/tags/${tag}")" ]; then
+            echo "${tag} is already tagged. Nothing to do."
+            exit 0
+          fi
+
+          # The release commit standard-version wrote, by its subject. On a
+          # squash merge the subject gains " (#N)", which this still matches.
+          release_commit="$(
+            git log -1 --no-merges --format=%H -E --grep="^chore\(release\): ${version//./\\.}( |$)" HEAD || true
+          )"
+
+          if [ -z "$release_commit" ]; then
+            echo "No release commit for ${version} on main yet. Nothing to tag."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$tag" "$release_commit" -m "chore(release): ${version}"
+          # A tag is not a branch, so the main ruleset does not apply to it.
+          git push origin "refs/tags/${tag}"
+          echo "Tagged ${release_commit} as ${tag}."
+
   version:
+    needs: tag
     if: >-
       !startsWith(github.event.head_commit.message, 'chore(release):') &&
       !contains(github.event.head_commit.message, '[skip ci]')
@@ -163,7 +236,8 @@ jobs:
 
           echo "release_as=$release_as" >> "$GITHUB_OUTPUT"
 
-      - name: Release
+      - name: Push the release branch
+        id: release
         if: steps.check.outputs.release == 'true'
         run: |
           set -euo pipefail
@@ -171,13 +245,51 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          git switch -c release/next
+
           # Empty for the ordinary case, which is the whole point: standard-
           # version works the version out itself unless the one it chose is
           # already taken.
           release_as="${{ steps.version.outputs.release_as }}"
 
+          # `--skip.tag`: the tag is the `tag` job's, once this is on main.
           npx standard-version \
             ${release_as:+--release-as "$release_as"} \
-            --releaseCommitMessageFormat "chore(release): {{currentTag}} [skip ci]"
+            --skip.tag \
+            --releaseCommitMessageFormat "chore(release): {{currentTag}}"
 
-          git push --follow-tags origin HEAD:${{ github.ref_name }}
+          version="$(node -p "require('./package.json').version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+          # Rebuilt from main every time, so a force-push is the intent: the
+          # branch is a generated artefact, never somebody's work.
+          git push --force origin HEAD:refs/heads/release/next
+
+      - name: Open or update the release PR
+        if: steps.check.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          title="chore(release): ${VERSION}"
+          body="$(cat <<EOF
+          Generated by version.yml from \`main\` at ${GITHUB_SHA}.
+
+          Merging this lands the bump to **${VERSION}** and its CHANGELOG entry on main; the \`tag\` job then tags it \`v${VERSION}\`. Nothing is tagged until it merges. This branch is rebuilt on every releasable push to main, so a newer push replaces it.
+          EOF
+          )"
+
+          existing="$(gh pr list --head release/next --state open --json number --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --title "$title" --body "$body"
+            echo "Updated release PR #${existing} to ${VERSION}."
+          elif gh pr create --base main --head release/next --title "$title" --body "$body"; then
+            echo "Opened the release PR for ${VERSION}."
+          else
+            # "GitHub Actions is not permitted to create or approve pull
+            # requests" — a repository setting, not a fault in the release.
+            echo "::warning::Could not open the release PR (is 'Allow GitHub Actions to create and approve pull requests' off?). Open it by hand: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/main...release/next?expand=1"
+          fi

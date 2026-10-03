@@ -1035,7 +1035,9 @@ vitest.config.ts              node environment, the `@/*` alias, no setup file
 .github/workflows/
   ci.yml                      lint → typecheck → test → build, PRs and main
   database.yml                migrate deploy → postgis.sql → rls_policies.sql
-  version.yml                 standard-version bump on a releasable push to main
+  version.yml                 On a releasable push to main, a release PR from
+                              `release/next`; on its merge, the tag. Never
+                              pushes to main — see Deployment guardrails
 SETUP.md                      Thirteen-step first-run guide + troubleshooting
 PROJECT_STATE.md              Where the project is right now — live version,
                               branches, open items, blockers, what shipped.
@@ -2453,11 +2455,30 @@ fallback when it is unset.
   Every change goes feature branch → PR → Vercel preview → review → merge.
   No direct pushes to `main`, whoever is making the change. See Known Pitfalls
   below.
-- **Commits are Conventional Commits.** `.github/workflows/version.yml` bumps the
-  version, writes `CHANGELOG.md` and tags when a `feat`, `fix`, `perf`,
-  `refactor` or `revert` lands on `main`. The release commit carries `[skip ci]`,
-  which stops both the workflow re-triggering itself and Vercel spending a
-  production deploy on a version bump.
+- **Commits are Conventional Commits.** When a `feat`, `fix`, `perf`,
+  `refactor` or `revert` lands on `main`, `.github/workflows/version.yml` bumps
+  the version and writes `CHANGELOG.md` — **on a branch, as a PR**, never by
+  pushing to `main`.
+- **The release is a PR because the bot is held to the same rule as everyone.**
+  The `main` ruleset's `pull_request` rule has no bypass actors, so from
+  2 October 2026 the workflow's old final step, `git push --follow-tags origin
+  HEAD:main`, was refused on every run. `--follow-tags` is not atomic: the remote
+  took the *tag* and refused the *branch*, so the merges of #52 and #53 each left
+  an orphan tag — `v1.12.0` and `v1.12.1` point at release commits that are not
+  on `main` and were never released. Now the `version` job force-pushes one
+  rolling `release/next` branch, rebuilt from `main` on each releasable push,
+  and opens or retitles the release PR; the `tag` job tags the
+  `chore(release):` commit only once it is on `main`. A tag therefore exists
+  only for a release that landed. Opening the PR with the workflow token needs
+  "Allow GitHub Actions to create and approve pull requests"; with it off the run
+  still succeeds and prints a link to open the PR by hand.
+- **The release commit no longer carries `[skip ci]`.** On a rebase or squash
+  merge it would be the head commit, and GitHub would skip the whole workflow —
+  including the `tag` job, the one run that must happen. Loops are prevented by
+  the `version` job refusing a `chore(release):` head commit and by its
+  releasable-commit count starting from the tag just pushed. The cost is a
+  production deploy when the release PR merges, which is also what puts the new
+  number on screen — see The version on screen.
 - **The release step works out its own tag first and steps past one that is
   taken.** standard-version derives the next version from `package.json` and then
   runs `git tag`; where the tags and `package.json` have drifted apart the run
@@ -2467,8 +2488,9 @@ fallback when it is unset.
   `package.json` on `main` reads `0.1.29`, which is one force-push or hand-made
   tag away in any repository. The job asks `standard-version --dry-run` what it
   would call the release, checks that tag locally **and** on the remote — a local
-  one is what `git tag` refuses, a remote one is what `git push --follow-tags`
-  refuses several steps later — and passes `--release-as` the next free patch.
+  one is what `git tag` refuses, a remote one is what the tag push refuses
+  later — and passes `--release-as` the next free patch. It is what stepped past
+  the two orphans above to `v1.12.2`.
   Stepping past rather than skipping: the commits that earned the release are
   real, and a job that quietly released nothing would leave them out of the
   changelog for good.
@@ -2558,9 +2580,9 @@ only moves the failure somewhere slower and more public.
    than a missing one. `CLAUDE.md` too, if the change alters something this file
    describes.
 8. **Pushed to a feature branch, with a PR opened against `main`.**
-   Conventional Commit subject, so `version.yml` can bump the version and write
-   `CHANGELOG.md` once the PR is reviewed and merged. Never pushed to `main`
-   directly.
+   Conventional Commit subject, so that once the PR is reviewed and merged
+   `version.yml` opens the release PR that bumps the version and writes
+   `CHANGELOG.md`. Never pushed to `main` directly.
 9. **The Vercel deploy succeeds** — open the deployment and look at it. A green
    local build and a green deploy are different claims, and the difference is
    the environment variables. Check the preview URL renders the changed screen,
@@ -6073,12 +6095,12 @@ front of it, and the public footer beside the copyright line.
   so changing it needs a redeploy.
 - **Empty renders nothing.** A build with no version says nothing rather than
   inventing a number, and each of the three surfaces tests the label first.
-- **Production sits one patch behind `main`, and that is not a failed deploy.**
-  `version.yml` bumps the version *after* a release lands, in a commit carrying
-  `[skip ci]` — which is what stops Vercel spending a production deploy on a
-  version bump. So the number on screen is the version of the commit the build
-  came from, and `package.json` on `main` is a patch ahead until the next real
-  change deploys.
+- **Production shows the last release that was merged, not the last feature.**
+  The bump arrives as a release PR after the feature lands, so between the two
+  `main` and production carry the previous version number. Merging the release
+  PR deploys — the release commit no longer carries `[skip ci]` — and the number
+  on screen catches up. It used to sit a patch behind `main` for the opposite
+  reason: the bump was pushed with `[skip ci]` and never deployed on its own.
 
 ## The period
 
