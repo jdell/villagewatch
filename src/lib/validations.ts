@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { UI_VERSIONS } from "@/lib/ui-version";
 import {
   ARCHIVE_REASON_VALUES,
   COORDINATOR_APPLICANT_ROLE_VALUES,
@@ -1077,6 +1078,20 @@ export const villagePostcodeFormSchema = z.object({
       }
       return postcode;
     }),
+});
+
+/**
+ * The village's interface — `saveVillageUiVersionAction` — and a resident's
+ * session override of it, `setUiVersionOverrideAction`. The same two values in
+ * both, so a form that posts anything else is refused rather than stored: the
+ * column is free text and this enum is the only thing standing in front of it.
+ */
+export const villageUiVersionFormSchema = z.object({
+  uiVersion: z.enum(UI_VERSIONS, "Choose Classic or Modern"),
+});
+
+export const uiVersionOverrideSchema = z.object({
+  uiVersion: z.enum(UI_VERSIONS),
 });
 
 /**

@@ -1225,9 +1225,13 @@ export default function PrivacyPage() {
       <LegalSection id="cookies" title="11. Cookies">
         <P>
           {APP_NAME} sets only strictly necessary cookies: the ones that keep you
-          signed in and protect the sign-in form. There are no analytics cookies,
-          no advertising cookies, and nothing that follows you to other sites —
-          which is why you have not been asked to accept anything.
+          signed in and protect the sign-in form, and — only if you press{" "}
+          <strong>Try the new look</strong> or{" "}
+          <strong>Switch to classic view</strong> — one that remembers which
+          version of the app you chose until you close your browser. There are
+          no analytics cookies, no advertising cookies, and nothing that follows
+          you to other sites — which is why you have not been asked to accept
+          anything.
         </P>
       </LegalSection>
 

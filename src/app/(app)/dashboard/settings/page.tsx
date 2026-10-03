@@ -6,6 +6,8 @@ import { PoliceReportForm } from "@/components/dashboard/police-report-form";
 import { EventsForm } from "@/components/dashboard/events-form";
 import { InviteShare } from "@/components/dashboard/invite-share";
 import { EcopsSiteForm } from "@/components/dashboard/ecops-site-form";
+import { UiVersionForm } from "@/components/dashboard/ui-version-form";
+import { readVillageUiVersion } from "@/lib/ui-version-server";
 import { VillagePostcodeForm } from "@/components/dashboard/village-postcode-form";
 import { ParishCouncilForm } from "@/components/dashboard/parish-council-form";
 import { PrivacyLevelForm } from "@/components/dashboard/privacy-level-form";
@@ -74,6 +76,7 @@ export default async function VillageSettingsPage() {
     residents,
     policeReport,
     events,
+    uiVersion,
   ] = await Promise.all([
     // The join code is read here and only here in the authenticated app — this
     // is the screen that hands it out, to the coordinator whose village it is.
@@ -113,6 +116,9 @@ export default async function VillageSettingsPage() {
     // Whether the column exists as well as its value, so the switch can say
     // "not ready yet" rather than refusing a save.
     readVillageEventsSetting(villageId),
+    // The village's own value, never the viewer's session override — this is
+    // the form that edits the column.
+    readVillageUiVersion(villageId),
   ]);
 
   if (!village) return <NoVillage />;
@@ -230,6 +236,8 @@ export default async function VillageSettingsPage() {
         />
 
         <EventsForm value={events.enabled} available={events.available} />
+
+        <UiVersionForm value={uiVersion.value} available={uiVersion.available} />
 
         {/*
           Handing the village to a parish council. One direction, and the copy

@@ -375,6 +375,13 @@ model Village {
   /// `src/lib/events.ts`.
   eventsEnabled Boolean @default(false) @map("events_enabled")
 
+  /// Which interface this village's residents get: `classic` or `modern`.
+  /// Village-wide A/B switch for the redesign, set by a coordinator. A resident
+  /// can override it for their own browser session with a cookie. Free text
+  /// rather than an enum, narrowed by `resolveUiVersion` in
+  /// `src/lib/ui-version.ts`, the `privacyLevel` precedent. See that file.
+  uiVersion String @default("classic") @map("ui_version")
+
   /// How faces in this village's uploaded media are covered.
   ///
   /// One of `PRIVACY_LEVEL_VALUES` in `src/lib/constants.ts` — `light`,

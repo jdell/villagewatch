@@ -30,12 +30,15 @@ import {
   sendVillagePoliceReport,
 } from "@/lib/police-report-schedule";
 import { readVillageEventsSetting, setVillageEventsEnabled } from "@/lib/events";
+import { setVillageUiVersion } from "@/lib/ui-version-server";
+import { UI_VERSION_META } from "@/lib/ui-version";
 import {
   fieldErrors,
   incidentModerationSchema,
   villageAutoApproveFormSchema,
   villageChannelFormSchema,
   villageEcopsSiteFormSchema,
+  villageUiVersionFormSchema,
   villagePostcodeFormSchema,
   villageEventsFormSchema,
   villageParishCouncilFormSchema,
@@ -1096,4 +1099,55 @@ export async function saveVillagePostcodeAction(
   revalidatePath("/reports");
 
   return { ok: true, message: result.message };
+}
+
+// ---------------------------------------------------------------------------
+// The interface version
+// ---------------------------------------------------------------------------
+
+export type UiVersionState = {
+  ok: boolean;
+  message: string;
+  fieldErrors?: Record<string, string>;
+};
+
+/**
+ * Moves the village between the classic interface and the redesign. The rules
+ * — coordinator only, the village off the session, audited on a real change —
+ * are `setVillageUiVersion`'s, so they are tested without a request context.
+ */
+export async function saveVillageUiVersionAction(
+  _previous: UiVersionState,
+  formData: FormData,
+): Promise<UiVersionState> {
+  const session = await requireCoordinator("/dashboard/settings");
+
+  const parsed = villageUiVersionFormSchema.safeParse({
+    uiVersion: formData.get("uiVersion"),
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Check the highlighted field.",
+      fieldErrors: fieldErrors(parsed.error),
+    };
+  }
+
+  const result = await setVillageUiVersion({
+    session,
+    uiVersion: parsed.data.uiVersion,
+  });
+
+  if (!result.ok) return { ok: false, message: result.error };
+
+  // Every authenticated page renders the shell this decides.
+  revalidatePath("/", "layout");
+
+  return {
+    ok: true,
+    message: result.changed
+      ? `${UI_VERSION_META[result.value].label} interface set for the village.`
+      : "Nothing to change.",
+  };
 }

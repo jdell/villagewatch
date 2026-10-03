@@ -322,6 +322,11 @@ src/
     site-footer.tsx           Public footer, incl. the legal links — shared
     legal-page.tsx            Shell + typography for /privacy and /terms
     status-screen.tsx         Shell behind not-found.tsx and error.tsx
+    ui-version-context.tsx    The resolved classic/modern flag for Client
+                              Components — `useUiVersion()`. Provided by
+                              (app)/layout.tsx. See The UI version flag
+    ui-version-switch.tsx     "Try the new look" / "Switch to classic view" in
+                              the sidebar footer — a session cookie, per resident
     village-service-banner.tsx  What a resident is told when their village is
                               not in service. Rendered by (app)/layout.tsx above
                               every authenticated page; absent when it is
@@ -377,6 +382,8 @@ src/
     event-location-map.tsx    The one pin on an event's page
     events-off.tsx            What every events page says when they are off
     delete-event-button.tsx   Delete, behind an inline "are you sure?"
+    dashboard/ui-version-form.tsx  Classic or Modern (beta) for the village.
+                              Says the modern interface is not built yet
     dashboard/events-form.tsx The village switch for community events
     vote-buttons.tsx          Up / down chevrons and two counts, on every
                               published report. Optimistic, and it puts the
@@ -516,6 +523,11 @@ src/
                               pattern and nothing of a resident's
     moderation.ts             applyModeration, audited readRawDescription, and
                               the village's auto-approve setting (fails closed)
+    ui-version.ts             The UI version flag's rules — the two values,
+                              override then village then classic. Client-safe
+    ui-version-server.ts      Its server half: the column read (degrades to
+                              classic), the audited write, the cookie, and
+                              getEffectiveUiVersion for Server Components
     events.ts                 Community events — the village switch (degrades
                               to off), the reads, and delete with its rule.
                               Server only
@@ -978,6 +990,11 @@ tests/                        Vitest, unit only — see The test suite
                               domain rules it enforces, the 404 that is not a
                               403, the quota that is not spent on a report the
                               caller cannot see, and a response naming nobody
+  ui-version.test.ts          The UI version flag — override before village
+                              before classic, `toString` never recognised, the
+                              audited write scoped off the session, and the
+                              override a session cookie that is cleared rather
+                              than set when it matches the village
   community-events.test.ts    The sixth route handler, there for its gates — the
                               village and poster off the session whatever the
                               body says, both village checks before the body and
@@ -2210,7 +2227,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty-three files, 1,075 tests, covering the
+between the typecheck and the build. Sixty-four files, 1,089 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -5022,6 +5039,58 @@ section of everything `/reports` produces.
   linked to an account — and the notice says what is recorded, that the totals
   are public within the village while the voter is not, and that it goes with
   the report and with the account.
+
+## The UI version flag
+
+`Village.uiVersion` — `classic` or `modern`, default `classic` — with
+`src/lib/ui-version.ts` (the rules, client-safe), `src/lib/ui-version-server.ts`
+(the column, the cookie, the audited write), `UiVersionForm` on Village settings
+and `UiVersionSwitch` in the sidebar footer. Migration
+`20261003120000_village_ui_version`. It exists so the redesign can be tried one
+village at a time.
+
+- **Both values render the same shell today.** This is the plumbing: the flag
+  is resolved once per request and readable everywhere, and nothing branches on
+  it yet. The settings form says so in as many words, because a coordinator who
+  chose "Modern (beta)" and saw nothing change would otherwise go looking for a
+  difference that is not there. When the modern shell is built, branch on
+  `useUiVersion().effective` in a Client Component or `getEffectiveUiVersion()`
+  in a Server Component — never on the column directly, which would ignore the
+  resident's override. `data-ui-version` on the shell's root is the same value,
+  for CSS.
+- **Override, then village, then classic.** `resolveUiVersion` is the one place
+  that order lives. Anything unrecognised in either is ignored rather than
+  guessed at, and `parseUiVersion` uses `includes` over the tuple rather than
+  `in` over an object, `resolvePrivacyLevel`'s trap.
+- **A `String` column with no CHECK constraint**, the `privacyLevel` precedent:
+  `villageUiVersionFormSchema` is the only writer and the read narrows. The
+  read **degrades** like the events flag, to `available: false` and classic,
+  because `(app)/layout.tsx` makes it on every authenticated render and a
+  database behind on the migration must cost the flag rather than every page.
+- **The coordinator's write is audited, the resident's is not.**
+  `village.ui_version_changed`, toned neutral, both values, only on a real
+  change. The resident's switch is one person's view of the app and writes a
+  cookie and nothing else.
+- **The override is a session cookie** (`vw-ui-version`): no `maxAge`, gone when
+  the browser closes, `httpOnly` because the server renders from it and no
+  script reads it. Choosing the village's own version **clears** it rather than
+  setting it, so a coordinator who later moves the village does not leave a
+  resident pinned to the old value with nothing on screen to say why.
+- **The switch is in the sidebar footer, not `SiteFooter`.** The brief said "the
+  site footer", but `SiteFooter` is rendered only on the public, signed-out
+  pages, where there is no village to override. The sidebar footer — name,
+  Sign out, version — is the authenticated app's footer.
+- **A form, not a link**, because it changes state and a GET that did could be
+  fired by a prefetch.
+- **`/privacy` §11 changed and `LEGAL_LAST_UPDATED` stayed on 3 October**, the
+  day it already said. The section said the only cookies were the sign-in ones.
+  This one is set only when a resident presses the switch, so it is a cookie
+  they asked for rather than one needing consent, but a section that lists the
+  cookies has to list it.
+- **Re-run `rls_policies.sql` after the migration** — `ui_version` is named in
+  the `villages` column grant. Applied against a throwaway PostGIS: the
+  migration lands with no drift, and the grant gives `authenticated` the column
+  and still withholds `join_code`.
 
 ## Community events
 
