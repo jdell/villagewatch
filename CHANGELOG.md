@@ -3,6 +3,18 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+## [1.12.0](https://github.com/jdell/villagewatch/compare/v1.11.0...v1.12.0) (2026-10-03)
+
+
+### Features
+
+* let the reporter or a coordinator set a report's police reference ([e967949](https://github.com/jdell/villagewatch/commit/e9679491a6d791f65008a9054b660cd04369bb41))
+
+
+### Documentation
+
+* require PRs for all changes to main ([d340053](https://github.com/jdell/villagewatch/commit/d340053e6c54c85b672f85aca8b6e95da0612936))
+
 ## [1.11.0](https://github.com/jdell/villagewatch/compare/v1.10.0...v1.11.0) (2026-10-02)
 
 
