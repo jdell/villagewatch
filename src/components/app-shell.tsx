@@ -216,7 +216,10 @@ export function AppShell({
     Five tabs cannot carry those, and dropping them would make the redesign a
     feature removal for every coordinator.
   */
-  const fullBleed = pathname === "/map";
+  // The map, and the two tabs that are sheets over it on a phone — see
+  // `NarrowScreenSwitch`. Below `lg` only, like everything else here.
+  const fullBleed =
+    pathname === "/map" || pathname === "/incidents" || pathname === "/trends";
 
   /*
     The drawer behaves as a modal dialog, because on a phone it is one: it

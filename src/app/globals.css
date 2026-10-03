@@ -166,6 +166,11 @@ body {
 
   /* Plus the Report button's 18px rise above the bar, which would otherwise
    * sit on the middle of the attribution. */
+  /* A browsing sheet — list, trends, an incident — resting on the tab bar. */
+  .vw-sheet-above-tab-bar {
+    bottom: var(--vw-tab-bar);
+  }
+
   .vw-full-bleed .leaflet-bottom {
     bottom: calc(var(--vw-tab-bar) + 20px);
   }

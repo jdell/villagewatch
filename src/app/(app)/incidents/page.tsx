@@ -32,6 +32,9 @@ import {
 } from "@/components/village-summary";
 import { getIncidentTrend } from "@/lib/charts/incident-series";
 import { signedMediaUrls } from "@/lib/media/storage";
+import { MapScreen } from "@/components/modern/map-screen";
+import { NarrowScreenSwitch } from "@/components/modern/narrow-screen-switch";
+import { loadMapExtras, loadVillageMap } from "@/lib/map/load-map";
 
 export const metadata: Metadata = { title: "Incidents" };
 
@@ -184,7 +187,7 @@ export default async function IncidentsPage({
   const filtered =
     Boolean(type || severity) || range.preset !== DEFAULT_TIME_RANGE;
 
-  return (
+  const page = (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
       {/* Set by the redirect at the end of `deleteIncidentAction`. */}
       {params.deleted === "1" && <FlashToast message="Report deleted" />}
@@ -375,5 +378,35 @@ export default async function IncidentsPage({
         </p>
       )}
     </div>
+  );
+
+  /*
+    The List tab is a sheet over the map on a phone,
+    and this page from `lg` up, where the sidebar is the navigation. Both
+    renderings arrive; `NarrowScreenSwitch` mounts the map only on a narrow
+    screen. The map is the same data `/map` reads (`loadVillageMap`), so the
+    sheet lists exactly the pins drawn above it.
+  */
+  const map = await loadVillageMap(villageId);
+  if (!map) return page;
+  const { ownPending, ...extras } = await loadMapExtras(
+    session,
+    villageId,
+    map.villageName,
+  );
+
+  return (
+    <NarrowScreenSwitch
+      narrow={
+        <MapScreen
+          {...map}
+          {...extras}
+          incidents={[...ownPending, ...map.incidents]}
+          initialSheet="list"
+        />
+      }
+    >
+      {page}
+    </NarrowScreenSwitch>
   );
 }

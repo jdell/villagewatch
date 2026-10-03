@@ -339,6 +339,11 @@ src/
                               AI draft, confirm + place the pin, send
     modern/incident-sheet.tsx A tapped pin's sheet — badges, the report, the
                               pattern and resolution panels, the full report
+    modern/list-sheet.tsx     The List tab on a phone: every pin, in words
+    modern/trends-sheet.tsx   The Trends tab on a phone: period, bars, and the
+                              timeline that replays the period on the map
+    modern/narrow-screen-switch.tsx  /incidents and /trends: the map with a
+                              sheet below lg, the page from lg up
     village-service-banner.tsx  What a resident is told when their village is
                               not in service. Rendered by (app)/layout.tsx above
                               every authenticated page; absent when it is
@@ -536,6 +541,11 @@ src/
                               divIcon — heat fill, glyph, states. Client-safe
     map/glyphs.ts             Lucide icons as SVG strings, read from
                               lucide-react's own icon modules — see its header
+    map/load-map.ts           The map's queries, shared by /map, /incidents
+                              and /trends — and what MapScreen adds: own pending
+                              reports, the report gate. Server only
+    map/trends.ts             The Trends sheet's bars and replay arithmetic.
+                              Client-safe
     map/pattern.ts            Which reports "Show" frames — the detector's
                               radius and window over the map. Client-safe
     map/report-draft.ts       The report sheet's "when" chips and the exact
@@ -1008,6 +1018,9 @@ tests/                        Vitest, unit only — see The test suite
                               lucide's modules, the heat ramp, the dark glyph on
                               light fills, sizes, pulse, pending, pattern,
                               resolved, and a cache key per distinct look
+  map-trends.test.ts          The Trends timeline — today's reports in today's
+                              bar, empty days as zeroes, the buckets per period,
+                              and no cut-off at "up to today"
   incident-sheet.test.ts      The incident sheet's pattern rule matching the
                               detector's constants, and its severity badge text
                               clearing 4.5:1
@@ -2249,7 +2262,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty-seven files, 1,115 tests, covering the
+between the typecheck and the build. Sixty-eight files, 1,124 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -5196,6 +5209,30 @@ group here.
   asserts they agree.
 - **Severity badges in the sheets use `PIN_SOFT`** — a pale wash of the
   pin's heat colour with a dark text of it; a test holds every pair to 4.5:1.
+- **Phase F — List and Trends as sheets over the map.** On a phone,
+  `/incidents` and `/trends` render the same map screen with their sheet up;
+  from `lg` they are the pages they always were. `NarrowScreenSwitch` sends both
+  renderings and mounts the map only once `matchMedia` says the screen is
+  narrow, so a desktop never loads Leaflet for a hidden map and never sees a
+  swap. Closing either sheet goes to `/map`. `loadVillageMap` /
+  `loadMapExtras` (`map/load-map.ts`) are the `/map` page's queries, moved
+  so the three routes read the same data the same way.
+- **The List sheet** is every pin the map draws, in words — the pin at 42px, the
+  title, "In review · Theft · 3 hours ago · High Street" — newest day first,
+  most serious first within a day. A row opens that report's sheet. The filter
+  button in its header opens the one filter sheet. It is the map's text
+  alternative, which the old map gave as a link to another page.
+- **The Trends sheet** is the period control (the same setting as the pill's),
+  a bar per day up to a month (thirty bars for ninety days, twenty-six for a
+  year), and the timeline: dragging it back stops the map at that day, forward
+  replays the period, and play does the dragging from the start to today. The
+  map holds its framing throughout. While it is back from today the timeline
+  chip from Phase B shows and clears it.
+- **Browsing sheets rest on the tab bar** (`aboveTabBar`): the List, Trends and
+  incident sheets leave the navigation in reach, while the modal ones — filters
+  and the report flow — cover it. The first framing keeps the pins clear of the
+  route's sheet (`fitClearBottom`), keyed on the route rather than the live
+  sheet so closing the list to open a pin does not re-frame the map under it.
 - **Clustering is not built.** The handoff's decluttering system (clusters
   below zoom 17, donut rings of the severity mix) is outside the brief's six
   phases; at a village's volume the glyph discs are legible without it, and it

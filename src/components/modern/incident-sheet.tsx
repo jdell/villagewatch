@@ -61,7 +61,8 @@ export function IncidentSheet({
       open
       onClose={onClose}
       labelledBy="incident-sheet-title"
-      maxHeightClass="max-h-[70dvh]"
+      maxHeightClass="max-h-[62dvh]"
+      aboveTabBar
     >
       <div className="flex flex-col gap-3 px-[18px] pt-3 pb-7">
         <div className="flex items-start gap-3">

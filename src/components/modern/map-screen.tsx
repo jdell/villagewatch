@@ -22,6 +22,9 @@ import {
 import type { MapEvent, MapIncident, MapMode } from "@/components/incident-map";
 import { FilterSheet } from "@/components/modern/filter-sheet";
 import { IncidentSheet } from "@/components/modern/incident-sheet";
+import { ListSheet } from "@/components/modern/list-sheet";
+import { TrendsSheet } from "@/components/modern/trends-sheet";
+import { untilForScrub } from "@/lib/map/trends";
 import { MapKey } from "@/components/modern/map-key";
 import { ReportFlow, type ReportGate } from "@/components/modern/report-flow";
 import type { PrivacyLevel } from "@/lib/constants";
@@ -30,6 +33,8 @@ import {
   DEFAULT_MAP_FILTERS,
   activeFilterCount,
   applyMapFilters,
+  periodDays,
+  periodPhrase,
   summaryLine,
   type MapFilters,
 } from "@/lib/map/filters";
@@ -111,6 +116,12 @@ export type MapScreenProps = {
    * flow opens over the map. See `ReportFlow`.
    */
   startReporting?: boolean;
+  /**
+   * The sheet this route opens over the map: `/incidents` is the List tab and
+   * `/trends` the Trends tab, and on a phone each is this
+   * screen with its sheet up. Closing it goes to `/map`.
+   */
+  initialSheet?: "list" | "trends";
 };
 
 export function MapScreen({
@@ -123,8 +134,18 @@ export function MapScreen({
   privacyLevel,
   canPostAlert,
   startReporting = false,
+  initialSheet,
 }: MapScreenProps) {
   const router = useRouter();
+  const [sheet, setSheet] = useState<"list" | "trends" | null>(
+    initialSheet ?? null,
+  );
+
+  /** Close the List or Trends sheet — and leave its route for the map's. */
+  function closeSheet() {
+    setSheet(null);
+    if (initialSheet) router.replace("/map", { scroll: false });
+  }
   const [reporting, setReporting] = useState(startReporting);
 
   // The Report tab is a link to `/map?report=1`, so pressing it while already
@@ -157,11 +178,12 @@ export function MapScreen({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   /**
-   * The timeline's end, as epoch milliseconds at the end of a day — reports
-   * after it are hidden, so dragging it back replays the period. Null is "up
-   * to today", which is the map at rest.
+   * The timeline, as days back from today: reports after that day are hidden,
+   * so dragging it back and forward replays the period. 0 is "up to today",
+   * which is the map at rest. Set from the Trends sheet; the chip clears it.
    */
-  const [until, setUntil] = useState<number | null>(null);
+  const [scrub, setScrub] = useState(0);
+  const until = untilForScrub(scrub, now);
 
   /** The incident whose sheet is open — a tapped pin. */
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -207,6 +229,9 @@ export function MapScreen({
   /** Open a pin's sheet, and bring the pin into the part of the map above it. */
   function select(incident: MapIncident) {
     if (reporting) return;
+    // A pin's sheet and the List / Trends sheet share the bottom of the
+    // screen; the one just asked for wins.
+    setSheet(null);
     setSelectedId(incident.id);
     setLayersOpen(false);
     const map = mapRef.current;
@@ -406,7 +431,7 @@ export function MapScreen({
             <span aria-live="polite">Up to {DAY_LABEL.format(until)}</span>
             <button
               type="button"
-              onClick={() => setUntil(null)}
+              onClick={() => setScrub(0)}
               aria-label="Clear the timeline"
               className="grid size-8 place-items-center rounded-full bg-white/15 hover:bg-white/25"
             >
@@ -430,6 +455,14 @@ export function MapScreen({
         pinStyle="glyph"
         onSelect={select}
         selectedId={selected?.id ?? null}
+        // The List sheet and the tab bar under it cover about two thirds of a
+        // phone, the Trends sheet about half; frame the pins above them. Off
+        // the route's sheet, not the live one: the framing runs again whenever
+        // this changes, and closing the list to open a pin must not re-frame
+        // the map out from under the pin it just panned to.
+        fitClearBottom={
+          initialSheet === "list" ? 0.65 : initialSheet === "trends" ? 0.5 : 0
+        }
         className="size-full"
       />
 
@@ -450,6 +483,32 @@ export function MapScreen({
         </div>
       )}
 
+      <ListSheet
+        open={sheet === "list" && !reporting}
+        onClose={closeSheet}
+        incidents={visible}
+        now={now}
+        periodPhrase={periodPhrase(filters.period)}
+        filterCount={filterCount}
+        onOpenFilters={openFilters}
+        onSelect={select}
+      />
+
+      <TrendsSheet
+        open={sheet === "trends" && !reporting}
+        onClose={closeSheet}
+        incidents={filtered}
+        period={filters.period}
+        periodDays={periodDays(filters.period)}
+        onPeriodChange={(period) => {
+          setFilters((current) => ({ ...current, period }));
+          setScrub(0);
+        }}
+        scrub={scrub}
+        onScrubChange={setScrub}
+        now={now}
+      />
+
       <IncidentSheet
         incident={reporting ? null : selected}
         now={now}
@@ -466,7 +525,7 @@ export function MapScreen({
           setFilters(next);
           // A new period is a new track: an end date from the old one would
           // hide reports the new period is meant to show.
-          if (next.period !== filters.period) setUntil(null);
+          if (next.period !== filters.period) setScrub(0);
         }}
         resultCount={visible.length}
         legend={<MapKey />}

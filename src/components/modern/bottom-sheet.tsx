@@ -56,6 +56,12 @@ type BottomSheetProps = {
   /** A footer that stays put while the content scrolls — the sheet's main action. */
   footer?: React.ReactNode;
   className?: string;
+  /**
+   * Sit on top of the tab bar rather than over it — the List, Trends and
+   * incident sheets, which are part of browsing and leave the navigation in
+   * reach. The modal sheets (filters, the report flow) cover it instead.
+   */
+  aboveTabBar?: boolean;
 };
 
 export function BottomSheet({
@@ -68,6 +74,7 @@ export function BottomSheet({
   children,
   footer,
   className = "",
+  aboveTabBar = false,
 }: BottomSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const fallbackId = useId();
@@ -107,7 +114,7 @@ export function BottomSheet({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[1060] ${modal ? "" : "pointer-events-none"}`}
+      className={`fixed inset-0 ${aboveTabBar ? "z-[1040]" : "z-[1060]"} ${modal ? "" : "pointer-events-none"}`}
       data-print-hide
     >
       {modal && (
@@ -125,7 +132,9 @@ export function BottomSheet({
         aria-modal={modal || undefined}
         aria-labelledby={labelledBy}
         aria-label={labelledBy ? undefined : (label ?? fallbackId)}
-        className={`pointer-events-auto absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-xl flex-col rounded-t-[22px] bg-white shadow-[0_-6px_24px_rgba(15,23,42,.12)] animate-[vw-sheet-in_200ms_ease-out] motion-reduce:animate-none lg:bottom-4 lg:max-w-md lg:rounded-[22px] lg:shadow-[0_10px_32px_rgba(15,23,42,.18)] ${maxHeightClass} ${className}`}
+        className={`pointer-events-auto absolute inset-x-0 mx-auto ${
+          aboveTabBar ? "vw-sheet-above-tab-bar" : "bottom-0"
+        } flex w-full max-w-xl flex-col rounded-t-[22px] bg-white shadow-[0_-6px_24px_rgba(15,23,42,.12)] animate-[vw-sheet-in_200ms_ease-out] motion-reduce:animate-none lg:bottom-4 lg:max-w-md lg:rounded-[22px] lg:shadow-[0_10px_32px_rgba(15,23,42,.18)] ${maxHeightClass} ${className}`}
       >
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {children}
@@ -135,7 +144,9 @@ export function BottomSheet({
             {footer}
           </div>
         )}
-        {!footer && <div className="h-[env(safe-area-inset-bottom)] shrink-0" />}
+        {!footer && !aboveTabBar && (
+          <div className="h-[env(safe-area-inset-bottom)] shrink-0" />
+        )}
       </div>
     </div>,
     document.body,
