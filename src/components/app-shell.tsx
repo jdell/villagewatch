@@ -220,6 +220,13 @@ export function AppShell({
   // `NarrowScreenSwitch`. Below `lg` only, like everything else here.
   const fullBleed =
     pathname === "/map" || pathname === "/incidents" || pathname === "/trends";
+  /*
+    A report's own page draws its own bar — back to the map, the reference,
+    share — so the shell's would be a second one above it. Below `lg` only, like
+    `fullBleed`; unlike it the page still scrolls and keeps the tab bar's
+    padding. The drawer is one tap away on the map.
+  */
+  const ownTopBar = /^\/incidents\/[0-9a-f-]{36}$/i.test(pathname);
 
   /*
     The drawer behaves as a modal dialog, because on a phone it is one: it
@@ -589,11 +596,12 @@ export function AppShell({
 
           The height carries the inset as well as the padding, or the bar keeps
           its old 56px and the inset eats the content instead of clearing it.
-          `map-view.tsx` subtracts the same two values — keep them in step.
+          The report page's own bar (`report/report-nav.tsx`) is the same
+          height for the same reason.
         */}
         <header
           className={`sticky top-0 z-[1000] h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 border-b border-slate-200 bg-white pt-[env(safe-area-inset-top)] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:hidden ${
-            fullBleed ? "hidden" : "flex"
+            fullBleed || ownTopBar ? "hidden" : "flex"
           }`}
           data-print-hide
         >

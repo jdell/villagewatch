@@ -122,8 +122,8 @@ body {
  * container should have been. The whole 200-1000 scale collapses to one layer
  * in the page, and Leaflet's internal ordering is untouched inside it.
  *
- * It goes on the *wrapper*, never on `.leaflet-container` itself: `map-view.tsx`
- * puts its own overlays (the village card, the range toggle, the legend) beside
+ * It goes on the *wrapper*, never on `.leaflet-container` itself: `MapScreen`
+ * puts its own overlays (the summary pill, the filter button, the rail) beside
  * the container and deliberately numbers them against Leaflet's scale. Isolating
  * the container would strand those siblings above the zoom control and bury the
  * zoom buttons under a white card. Isolating the wrapper keeps map chrome and

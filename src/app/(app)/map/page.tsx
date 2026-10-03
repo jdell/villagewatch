@@ -3,6 +3,7 @@ import { MapScreen } from "@/components/modern/map-screen";
 import { NoVillage } from "@/components/no-village";
 import { requireSession } from "@/lib/auth";
 import { loadMapExtras, loadVillageMap } from "@/lib/map/load-map";
+import { isUuid } from "@/lib/validations";
 
 export const metadata: Metadata = { title: "Map" };
 
@@ -43,12 +44,22 @@ export default async function MapPage({
     map.villageName,
   );
 
+  const query = await searchParams;
+  // From a report's page. Narrowed to a uuid before it reaches the screen, and
+  // the screen ignores one that is not on the map — so it selects nothing the
+  // viewer could not already tap.
+  const focus = typeof query.incident === "string" && isUuid(query.incident)
+    ? query.incident
+    : null;
+
   return (
     <MapScreen
       {...map}
       {...extras}
       incidents={[...ownPending, ...map.incidents]}
-      startReporting={(await searchParams).report === "1"}
+      startReporting={query.report === "1"}
+      initialSelectedId={focus}
+      focusPattern={focus !== null && query.pattern === "1"}
     />
   );
 }

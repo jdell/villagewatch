@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import type { MapEvent } from "@/components/incident-map";
 
 /**
- * The one pin on an event's own page. `IncidentLocationMap`'s twin, drawing an
+ * The one pin on an event's own page. `ReportMapHeader`'s twin, drawing an
  * event rather than a report through the same map component — the
  * `next/dynamic` call is here because Leaflet touches `window` on import.
  */

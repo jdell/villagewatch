@@ -654,6 +654,12 @@ model Incident {
   /// the reporter's notification and in the period report. Null on anything
   /// not resolved, and on a report resolved before the column existed.
   resolutionNote String?   @map("resolution_note")
+  /// When the reporter (or a coordinator) said the thing was over — "It's over
+  /// now" on the report page. Null means nobody has said so. It is what turns
+  /// off "Happening now", which is otherwise derived from `occurredAt`; it is
+  /// not a resolution, carries no note and tells nobody. Public, like
+  /// `resolvedAt` beside it. See Phase G in "The redesign", CLAUDE.md.
+  endedAt        DateTime? @map("ended_at")
 
   /// Free-text landmark, e.g. "the lane behind the village hall".
   locationText String? @map("location_text")

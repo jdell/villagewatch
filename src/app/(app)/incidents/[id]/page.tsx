@@ -1,24 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  ArrowLeft,
-  CircleCheck,
-  EyeOff,
-  MapPin,
-  ShieldCheck,
-  Sparkles,
-  TrendingUp,
-  Users,
-} from "lucide-react";
 import { CopyAlert } from "@/components/copy-alert";
-import { IncidentActions } from "@/components/incident-actions";
-import { IncidentCard } from "@/components/incident-card";
-import { IncidentLocationMap } from "@/components/incident-location-map";
 import { NoVillage } from "@/components/no-village";
-import { PoliceReferenceField } from "@/components/police-reference-field";
+import { ReportPage } from "@/components/report/report-page";
 import { ShareSummary } from "@/components/share-summary";
-import { VoteButtons } from "@/components/vote-buttons";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getVillageController, getVillageMode } from "@/lib/villages";
@@ -29,18 +14,24 @@ import {
 import {
   INCIDENT_ACTION_PARAM,
   INCIDENT_APPROVE_ACTION,
-  INCIDENT_STATUS_LABELS,
   PUBLIC_INCIDENT_STATUSES,
   isCoordinatorRole,
 } from "@/lib/constants";
 import { canReporterErase } from "@/lib/erasure";
-import { formatIncidentAlert } from "@/lib/format-alert";
+import { formatIncidentAlert, reportShareUrl } from "@/lib/format-alert";
+import { readIncidentEndedAt } from "@/lib/incident-ended";
+import {
+  canMarkOver,
+  isHappeningNow,
+  reportBannerKind,
+} from "@/lib/incident-live";
 import { readVoteStates } from "@/lib/incident-votes";
 import { PUBLIC_INCIDENT_SELECT, toMapIncident } from "@/lib/incidents";
+import { relatedIncidents } from "@/lib/related-incidents";
 import { isUuid } from "@/lib/validations";
 import { signedMediaUrls } from "@/lib/media/storage";
 import { getVillageChannel } from "@/lib/whatsapp-channel";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatTimeAgo } from "@/lib/format";
 
 /**
  * One incident in full.
@@ -113,7 +104,7 @@ export default async function IncidentDetailPage({
     pending-report push lands (`pendingReportMessage`). Compared against the one
     value it can have rather than passed through, and carried through the
     sign-in redirect so a coordinator whose session had lapsed still arrives at
-    the open panel.
+    the open sheet.
   */
   const requestedAction = (await searchParams)[INCIDENT_ACTION_PARAM];
   const approveRequested = requestedAction === INCIDENT_APPROVE_ACTION;
@@ -140,30 +131,34 @@ export default async function IncidentDetailPage({
       villageId,
       // An erased report is gone for everyone, including the reporter who
       // erased it and the coordinator who could otherwise see every status in
-      // their village. It falls through to `notFound()` below, which is where
-      // CLAUDE.md has always said a withdrawn report lands.
+      // their village. It falls through to `notFound()` below.
       status: { not: "REMOVED" },
       OR: [
         // Published and resolved reports are the public surface (domain rule 6).
         { status: { in: [...PUBLIC_INCIDENT_STATUSES] } },
         // A reporter can always see their own report while it waits for review
-        // — it is their own words, and being unable to check on it is the most
-        // common reason someone files the same thing twice.
+        // — being unable to check on it is the most common reason somebody
+        // files the same thing twice.
         { reporterId: session.user.id },
         // A coordinator sees every status in their own village: the queue links
-        // here, and reviewing a report from the dashboard card alone means
-        // deciding without the map pin or the media. Widening the *read* is
-        // safe because this page still selects the public columns only — the
-        // verbatim text stays behind the audited reveal in the queue.
+        // here. Widening the *read* is safe because this page still selects the
+        // public columns only — the verbatim text stays behind the audited
+        // reveal in the queue.
         ...(isCoordinator ? [{}] : []),
       ],
     },
     select: {
       ...PUBLIC_INCIDENT_SELECT,
       reporterId: true,
-      isAnonymous: true,
       reportedToPolice: true,
       policeReference: true,
+      // The model's one sentence for the severity — public-safe by
+      // construction, and in the `incidents` column grant.
+      severityRationale: true,
+      // What the reporter was told at review. Read only for the reporter and
+      // a coordinator, and only on a rejected report, below.
+      moderationNote: true,
+      moderatedAt: true,
       tags: { select: { label: true }, orderBy: { label: "asc" } },
       media: {
         // Only media that has been through redaction is ever served
@@ -173,8 +168,7 @@ export default async function IncidentDetailPage({
           id: true,
           redactedPath: true,
           mimeType: true,
-          width: true,
-          height: true,
+          createdAt: true,
         },
         orderBy: { position: "asc" },
       },
@@ -183,9 +177,8 @@ export default async function IncidentDetailPage({
 
   if (!incident) notFound();
 
-  const urls = await signedMediaUrls(
-    incident.media.flatMap((item) => item.redactedPath ?? []),
-  );
+  const now = new Date();
+  const nowMs = now.getTime();
 
   const pin = toMapIncident(incident);
   const isPublic = (PUBLIC_INCIDENT_STATUSES as readonly string[]).includes(
@@ -195,11 +188,6 @@ export default async function IncidentDetailPage({
   const inQueue =
     incident.status === "DRAFT" || incident.status === "PENDING_REVIEW";
   const deletable = canReporterErase(incident.status);
-  /*
-    Opens the approve confirmation, and only for somebody who could press it on
-    a report still waiting. A resident who follows the link gets the page they
-    would have got anyway, and the action re-checks the role regardless.
-  */
   const openApprove = approveRequested && isCoordinator && inQueue;
   /*
     The link from a push outlives the decision it was about: a second
@@ -207,25 +195,49 @@ export default async function IncidentDetailPage({
     Approve button on it and no explanation of why.
   */
   const alreadyReviewed = approveRequested && isCoordinator && !inQueue;
-  const currentStatus = INCIDENT_STATUS_LABELS[incident.status].toLowerCase();
-  /*
-    The police reference is the one thing on a published report that can still
-    change — it usually arrives after the report is on the map. The reporter and
-    any coordinator of the village; `setIncidentPoliceReference` re-checks both,
-    plus the status, against the row itself.
-  */
   const canSetPoliceReference = isPublic && (isReporter || isCoordinator);
 
   /*
-    The alert a coordinator posts to WhatsApp by hand — nothing posts it for
-    them (see `src/lib/whatsapp-channel.ts`). Coordinators only, and published
-    reports only: a channel is public, so offering this on a report still in the
-    queue would be a button that publishes past the moderation queue and past the
-    tenant boundary in one press (domain rules 4 and 6).
+    Everything that is not the report row, in one round. Each read degrades on
+    its own rather than taking the page down:
 
-    Built from the columns already on the page. `PUBLIC_INCIDENT_SELECT` has no
-    `rawDescription`, so there is nothing here that could reach a channel that is
-    not already on the village map.
+    - `endedAt` — read separately, see `readIncidentEndedAt`.
+    - The media URLs, signed for the redacted copies only.
+    - The pattern's other reports, for the pattern card.
+    - The vote tally, on a public report only — the vote route refuses a
+      report in the queue (domain rule 6), so a button here would mislead.
+    - The village's controller and mode, behind the coordinator-and-public
+      gate the summary and the alert sit behind, so a resident's page makes
+      neither read.
+  */
+  const [endedAt, urls, related, voteStates, controller, mode] =
+    await Promise.all([
+      readIncidentEndedAt(incident.id, villageId),
+      signedMediaUrls(incident.media.flatMap((item) => item.redactedPath ?? [])),
+      pin && incident.recurring && isPublic
+        ? relatedIncidents(pin, villageId)
+        : Promise.resolve([]),
+      isPublic
+        ? readVoteStates({ incidentIds: [incident.id], userId: session.user.id })
+        : Promise.resolve(null),
+      isCoordinator && isPublic
+        ? getVillageController(villageId)
+        : Promise.resolve(null),
+      isCoordinator && isPublic ? getVillageMode(villageId) : Promise.resolve(null),
+    ]);
+
+  const votes = voteStates?.get(incident.id) ?? null;
+  const live = { status: incident.status, occurredAt: incident.occurredAt, endedAt };
+  const banner = reportBannerKind(live, nowMs);
+  const happening = isHappeningNow(live, nowMs);
+  const markOverAllowed =
+    (isReporter || isCoordinator) && canMarkOver(live, nowMs);
+
+  /*
+    The WhatsApp alert and the written summary for a PCSO — coordinators and
+    published reports only, for the reasons "The public share buttons" and
+    "Sharing with police and the parish council" give. Both built from the
+    public columns already on the page.
   */
   const alert =
     isCoordinator && isPublic
@@ -240,70 +252,12 @@ export default async function IncidentDetailPage({
           patternNote: incident.patternNote,
         })
       : null;
-
   const channel = alert ? await getVillageChannel(villageId) : null;
 
-  /*
-    The written summary a coordinator sends to their PCSO or the parish council.
-
-    Gated the same way the WhatsApp alert is — coordinators, and published or
-    resolved reports only — and the reasoning carries over even though the
-    destination does not. A channel is public and a named officer is not, but
-    approving a report is still the act that says it is fit to leave the queue
-    (domain rule 6), and a button that sends an unreviewed report over the
-    reporter's head to the police is not one to hand out. A coordinator who
-    wants the police to have it can approve it first; that is a decision, and
-    it leaves a trail.
-
-    Built from the columns already on the page, so — as with the alert — there
-    is nothing in it that is not already on the village map. `parishCouncil` is
-    the one extra read: it names the data controller in the footer, which is
-    what makes the document answerable to somebody outside the village.
-
-    `mode` is the other, and it is a separate call rather than a column on
-    `getVillageController` for the reason `/reports` documents: that function's
-    whole shape is a retry that drops `parish_council` on a database missing it,
-    and a second new column in the same SELECT would mean a database missing
-    `mode` losing the council name with it. It decides no part of the document —
-    `formatIncidentSummary` names no recipient — only the copy on the panel
-    around it, which told every village it had a parish council until now.
-
-    Both reads are behind the same gate as the summary, so a resident's page
-    still makes neither.
-  */
-  const [village, mode] =
-    isCoordinator && isPublic
-      ? await Promise.all([
-          getVillageController(villageId),
-          getVillageMode(villageId),
-        ])
-      : [null, null];
-
-  /*
-    The village's own view of how serious this is.
-
-    Published and resolved reports only, which is the same gate
-    `POST /api/incidents/[id]/vote` applies — a report still in the queue has not
-    cleared moderation (domain rule 6), and offering its reporter a control to
-    push it up an ordering before a coordinator has looked at it would be a
-    button that does nothing but mislead the person pressing it.
-
-    `myVote` is this reader's own and nothing else comes back. There is no
-    surface here — or anywhere — that says who voted which way.
-  */
-  const votes = isPublic
-    ? (
-        await readVoteStates({
-          incidentIds: [incident.id],
-          userId: session.user.id,
-        })
-      ).get(incident.id) ?? null
-    : null;
-
-  const summary = village
+  const summary = controller
     ? formatIncidentSummary({
-        villageName: village.name,
-        dataController: reportController(village.parishCouncil),
+        villageName: controller.name,
+        dataController: reportController(controller.parishCouncil),
         incident: {
           id: incident.id,
           reference: incident.reference,
@@ -324,281 +278,113 @@ export default async function IncidentDetailPage({
       })
     : null;
 
+  const shareUrl = reportShareUrl({
+    id: incident.id,
+    isPublic,
+    isCoordinator,
+  });
+
+  const bannerCopy = (() => {
+    switch (banner) {
+      case "in_review":
+        return {
+          when: null,
+          text: isReporter
+            ? "Only you and your coordinator can see this. It goes on the village map once they have read it."
+            : "Not on the village map yet. You can see it because you moderate this village.",
+          action: isCoordinator
+            ? { href: "#moderate", label: "Review it" }
+            : isReporter && inQueue
+              ? { href: "#reporter-actions", label: "Edit or withdraw it" }
+              : null,
+        };
+      case "happening_now":
+        return {
+          when: `reported ${formatTimeAgo(incident.occurredAt)}`,
+          text: "This is recent enough that it may still be going on. If you are nearby, take care — and call 999 if anybody is in danger.",
+          action: markOverAllowed
+            ? { href: "#reporter-actions", label: "It's over now" }
+            : null,
+        };
+      case "published":
+        return {
+          when: incident.moderatedAt ? formatDateTime(incident.moderatedAt) : null,
+          text: "On the village map. Neighbours who asked to hear about reports like this were alerted.",
+          action: null,
+        };
+      case "resolved":
+        return {
+          when: incident.resolvedAt ? formatDateTime(incident.resolvedAt) : null,
+          text:
+            incident.resolutionNote ??
+            "Your coordinator marked this as dealt with.",
+          action: null,
+        };
+      case "rejected":
+        return {
+          when: null,
+          text:
+            (isReporter || isCoordinator) && incident.moderationNote
+              ? `Your coordinator decided not to publish this: “${incident.moderationNote}”`
+              : "Your coordinator decided not to publish this. It is not on the map.",
+          action: null,
+        };
+      case "archived":
+        return {
+          when: null,
+          text: "Taken off the village map. Nothing in it was deleted.",
+          action: null,
+        };
+    }
+  })();
+
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
-      <Link
-        href="/incidents"
-        className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-700"
-      >
-        <ArrowLeft className="size-4" aria-hidden />
-        All incidents
-      </Link>
-
-      {openApprove && (
-        <div className="mt-4 flex gap-3 rounded-xl bg-brand-50 p-3.5 ring-1 ring-brand-200">
-          <ShieldCheck className="size-5 shrink-0 text-brand-600" aria-hidden />
-          <div className="text-sm leading-relaxed text-brand-900">
-            <p className="font-medium">Read it, then approve</p>
-            <p className="mt-1 text-brand-800">
-              Approving publishes this report to the village map and alerts
-              your neighbours. Read what it says first — the confirmation is{" "}
-              <a
-                href="#approve-panel"
-                className="font-medium underline underline-offset-2"
-              >
-                at the bottom of the page
-              </a>
-              .
-            </p>
-          </div>
-        </div>
-      )}
-
-      {alreadyReviewed && (
-        <div className="mt-4 flex gap-3 rounded-xl bg-slate-50 p-3.5 ring-1 ring-slate-200">
-          <ShieldCheck className="size-5 shrink-0 text-slate-500" aria-hidden />
-          <p className="text-sm leading-relaxed text-slate-700">
-            <span className="font-medium text-slate-900">Already reviewed.</span>{" "}
-            {`This report is now ${currentStatus}, so there is nothing left to approve.`}
-          </p>
-        </div>
-      )}
-
-      {!isPublic && (
-        <div className="mt-4 flex gap-3 rounded-xl bg-amber-50 p-3.5 ring-1 ring-amber-200">
-          <ShieldCheck className="size-5 shrink-0 text-amber-600" aria-hidden />
-          <div className="text-sm leading-relaxed text-amber-900">
-            <p className="font-medium">
-              {isReporter ? "Only you can see this" : "Not published"}
-            </p>
-            <p className="mt-1 text-amber-800">
-              {isReporter
-                ? "Your report is with your village coordinator. It appears on the map once they have reviewed it."
-                : "This report is not on the village map. You are seeing it because you moderate this village."}
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className="mt-4">
-        <IncidentCard
-          incident={{
-            id: incident.id,
-            reference: incident.reference,
-            type: incident.type,
-            severity: incident.severity,
-            status: incident.status,
-            title: incident.title,
-            description: incident.description,
-            occurredAt: incident.occurredAt,
-            locationText: incident.locationText,
-            tags: incident.tags.map((tag) => tag.label),
-            resolutionNote: incident.resolutionNote,
-          }}
-          footer={
-            votes ? (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <VoteButtons incidentId={incident.id} initial={votes} />
-                <p className="text-xs text-slate-500">
-                  How serious your village thinks this is. Your neighbours see
-                  the totals, never who voted.
-                </p>
-              </div>
-            ) : undefined
-          }
-        />
-      </div>
-
-      {/*
-        Directly under the report, above the pattern note: it is the answer to
-        the report, and the first thing somebody returning to it is looking
-        for. The date is `resolvedAt`, which a report resolved before the note
-        column existed still has — so it can say when without saying what.
-      */}
-      {incident.status === "RESOLVED" && (
-        <div className="mt-4 flex gap-3 rounded-xl bg-safe-50 p-3.5 ring-1 ring-safe-200">
-          <CircleCheck className="size-5 shrink-0 text-safe-600" aria-hidden />
-          <div className="text-sm leading-relaxed text-safe-900">
-            <p className="font-medium">
-              Resolved
-              {incident.resolvedAt && (
-                <span className="font-normal text-safe-700">
-                  {" "}
-                  · {formatDateTime(incident.resolvedAt)}
-                </span>
-              )}
-            </p>
-            <p className="mt-1 whitespace-pre-line text-safe-800">
-              {incident.resolutionNote ??
-                "Your coordinator marked this as dealt with."}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {incident.recurring && incident.patternNote && (
-        <div className="mt-4 flex gap-3 rounded-xl bg-amber-50 p-3.5 ring-1 ring-amber-200">
-          <TrendingUp className="size-5 shrink-0 text-amber-600" aria-hidden />
-          <div className="text-sm leading-relaxed text-amber-900">
-            <p className="font-medium">Part of a pattern</p>
-            <p className="mt-1 text-amber-800">{incident.patternNote}</p>
-          </div>
-        </div>
-      )}
-
-      {incident.media.length > 0 && (
-        <section className="mt-6">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <EyeOff className="size-4 text-slate-400" aria-hidden />
-            Blurred media
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Faces were blurred on the reporter&rsquo;s device before upload. The
-            originals were never sent to us.
-          </p>
-
-          <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {incident.media.map((item) => {
-              const url = item.redactedPath
-                ? urls.get(item.redactedPath)
-                : undefined;
-              if (!url) return null;
-
-              return (
-                <li
-                  key={item.id}
-                  className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100"
-                >
-                  {item.mimeType.startsWith("video/") ? (
-                    <video
-                      src={url}
-                      controls
-                      playsInline
-                      preload="metadata"
-                      className="h-56 w-full object-cover"
+    <ReportPage
+      incident={incident}
+      pin={pin}
+      urls={urls}
+      banner={banner}
+      bannerCopy={bannerCopy}
+      happening={happening}
+      endedAt={endedAt}
+      votes={votes}
+      related={related}
+      shareUrl={shareUrl}
+      isReporter={isReporter}
+      isCoordinator={isCoordinator}
+      isPublic={isPublic}
+      inQueue={inQueue}
+      deletable={deletable}
+      markOverAllowed={markOverAllowed}
+      canSetPoliceReference={canSetPoliceReference}
+      openApprove={openApprove}
+      alreadyReviewed={alreadyReviewed}
+      coordinatorExtras={
+        <>
+                {summary && mode && (
+                  <div className="mt-5">
+                    <ShareSummary
+                      text={summary}
+                      shareTitle={`${incident.reference} — ${incident.title}`}
+                      anonymized={incident.anonymized}
+                      mode={mode}
                     />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={url}
-                      alt="Blurred media attached to this report"
-                      className="h-56 w-full object-cover"
-                      loading="lazy"
+                  </div>
+                )}
+                {alert && (
+                  <div className="mt-5">
+                    <CopyAlert
+                      text={alert}
+                      incidentId={incident.id}
+                      channelUrl={channel?.url ?? null}
+                      anonymized={incident.anonymized}
+                      title="Post this to WhatsApp"
+                      hint="Your neighbours were alerted in the app when this was published — this is the text for your village's WhatsApp Channel, which nothing posts to automatically."
                     />
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
-      {pin && (
-        <section className="mt-6">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <MapPin className="size-4 text-slate-400" aria-hidden />
-            Where
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            The pin is shifted slightly from the reported position, so the map
-            never shows exactly where the reporter was standing.
-          </p>
-          <div className="mt-3">
-            <IncidentLocationMap incident={pin} />
-          </div>
-        </section>
-      )}
-
-      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-        <h2 className="text-sm font-semibold text-slate-900">Report details</h2>
-        <dl className="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-slate-500">Reference</dt>
-            <dd className="mt-0.5 font-mono text-slate-900">
-              {incident.reference}
-            </dd>
-          </div>
-
-          <div>
-            <dt className="text-slate-500">Filed</dt>
-            <dd className="mt-0.5 text-slate-900">
-              {formatDateTime(incident.reportedAt)}
-            </dd>
-          </div>
-
-          {incident.peopleCount !== null && (
-            <div>
-              <dt className="text-slate-500">People involved</dt>
-              <dd className="mt-0.5 inline-flex items-center gap-1.5 text-slate-900">
-                <Users className="size-4 text-slate-400" aria-hidden />
-                {incident.peopleCount}
-              </dd>
-            </div>
-          )}
-
-          {canSetPoliceReference ? (
-            <PoliceReferenceField
-              incidentId={incident.id}
-              policeReference={incident.policeReference}
-              reportedToPolice={incident.reportedToPolice}
-            />
-          ) : (
-            incident.reportedToPolice && (
-              <div>
-                <dt className="text-slate-500">Reported to police</dt>
-                <dd className="mt-0.5 font-mono text-slate-900">
-                  {incident.policeReference ?? "Yes"}
-                </dd>
-              </div>
-            )
-          )}
-        </dl>
-
-        <p className="mt-4 inline-flex items-start gap-2 border-t border-slate-100 pt-4 text-xs leading-relaxed text-slate-500">
-          <Sparkles className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          {incident.anonymized
-            ? "This description was rewritten to remove personal details before publication, and checked by the reporter."
-            : "This description is the reporter's own wording, reviewed by a coordinator."}
-        </p>
-      </section>
-
-      {summary && mode && (
-        <section className="mt-6">
-          <ShareSummary
-            text={summary}
-            shareTitle={`${incident.reference} — ${incident.title}`}
-            anonymized={incident.anonymized}
-            mode={mode}
-          />
-        </section>
-      )}
-
-      {alert && (
-        <section className="mt-6">
-          <CopyAlert
-            text={alert}
-            incidentId={incident.id}
-            channelUrl={channel?.url ?? null}
-            anonymized={incident.anonymized}
-            title="Post this to WhatsApp"
-            hint="Coordinators only. Your neighbours were alerted in the app when this was published — this is the text for your village's WhatsApp Channel, which nothing posts to automatically."
-          />
-        </section>
-      )}
-
-      <IncidentActions
-        incidentId={incident.id}
-        status={incident.status}
-        canEdit={isReporter && inQueue}
-        // Wider than `canEdit` on purpose. Editing a published report is a
-        // coordinator's call, because the village has already been alerted to
-        // what it said; erasing it is the reporter's right and not conditional
-        // on the queue (UK GDPR Article 17). `removeIncident` re-checks both the
-        // ownership and the status — this only decides whether a button exists.
-        canDelete={isReporter && deletable}
-        canModerate={isCoordinator}
-        openApprove={openApprove}
-      />
-    </div>
+                  </div>
+                )}
+        </>
+      }
+    />
   );
 }

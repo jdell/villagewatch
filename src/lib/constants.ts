@@ -1072,6 +1072,19 @@ export const AUDIT_ACTIONS = [
     tone: "neutral",
   },
   {
+    /**
+     * "It's over now" on the report page — the reporter, or a coordinator,
+     * saying the thing described has stopped, which turns off "Happening now".
+     * Neutral: it writes a timestamp, publishes nothing and tells nobody. The
+     * row records which hat was worn.
+     */
+    value: "incident.ended",
+    label: "Marked as over",
+    description:
+      "The reporter or a coordinator said the incident was no longer happening",
+    tone: "neutral",
+  },
+  {
     value: "incident.deleted",
     label: "Deleted by the reporter",
     description:

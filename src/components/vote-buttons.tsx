@@ -54,6 +54,12 @@ type VoteButtonsProps = {
   initial: VoteState;
   /** Smaller, for a list row. */
   compact?: boolean;
+  /**
+   * Two equal buttons with words on them — "More serious" and "Less" — for the
+   * vote card on a report's page. Same control, same toggle, same request; the
+   * chevrons alone are for places with no room for a sentence.
+   */
+  wide?: boolean;
   className?: string;
 };
 
@@ -61,6 +67,7 @@ export function VoteButtons({
   incidentId,
   initial,
   compact = false,
+  wide = false,
   className = "",
 }: VoteButtonsProps) {
   const [state, setState] = useState<VoteState>(initial);
@@ -133,12 +140,16 @@ export function VoteButtons({
     }
   }
 
-  const size = compact ? "h-8 px-2" : "h-9 px-2.5";
-  const icon = compact ? "size-3.5" : "size-4";
+  const size = wide
+    ? "h-12 flex-1 justify-center rounded-xl px-3 text-sm"
+    : compact
+      ? "h-8 rounded-lg px-2 text-xs"
+      : "h-9 rounded-lg px-2.5 text-xs";
+  const icon = compact ? "size-3.5" : wide ? "size-[18px]" : "size-4";
 
   return (
     <div
-      className={`inline-flex items-center gap-1 ${className}`}
+      className={`${wide ? "flex gap-2" : "inline-flex gap-1"} items-center ${className}`}
       // Read as one control rather than as two buttons and a stray number.
       role="group"
       aria-label="How serious does your village think this is?"
@@ -151,6 +162,7 @@ export function VoteButtons({
         count={state.up}
         size={size}
         tone="up"
+        text={wide ? "More serious" : undefined}
       >
         <ChevronUp className={icon} aria-hidden />
       </Button>
@@ -163,6 +175,7 @@ export function VoteButtons({
         count={state.down}
         size={size}
         tone="down"
+        text={wide ? "Less" : undefined}
       >
         <ChevronDown className={icon} aria-hidden />
       </Button>
@@ -182,8 +195,11 @@ function Button({
   count,
   size,
   tone,
+  text,
   children,
 }: {
+  /** A visible word beside the chevron. The `aria-label` already says it all. */
+  text?: string;
   pressed: boolean;
   disabled: boolean;
   onClick: () => void;
@@ -220,14 +236,17 @@ function Button({
       // The visible number needs the sentence beside it or it is a bare digit.
       aria-label={`${label} — ${count} ${count === 1 ? "vote" : "votes"}`}
       title={label}
-      className={`inline-flex items-center gap-1.5 rounded-lg border text-xs font-medium tabular-nums transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 aria-disabled:cursor-wait aria-disabled:opacity-60 ${size} ${
+      className={`inline-flex items-center gap-1.5 border font-medium tabular-nums transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 aria-disabled:cursor-wait aria-disabled:opacity-60 ${size} ${
         pressed
           ? active
           : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900"
       }`}
     >
       {children}
-      <span aria-hidden>{count}</span>
+      {text && <span aria-hidden>{text}</span>}
+      <span aria-hidden className={text ? "font-semibold" : undefined}>
+        {count}
+      </span>
     </button>
   );
 }

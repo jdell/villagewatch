@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 
 /**
  * This file exists to own the four `next/dynamic` calls, which are only legal
- * from a Client Component — the same reason `map-view.tsx` and
+ * from a Client Component — the same reason `modern/map-screen.tsx` and
  * `hotspot-heatmap.tsx` each own theirs.
  *
  * ## Why the charts are deferred at all
@@ -26,7 +26,7 @@ import dynamic from "next/dynamic";
  *
  * ## One file rather than four
  *
- * `map-view.tsx` and `hotspot-heatmap.tsx` are two wrappers around one
+ * `modern/map-screen.tsx` and `hotspot-heatmap.tsx` are two wrappers around one
  * component because they differ in what they pass it and what they draw while
  * it loads. These four differ in neither: the reason to defer is identical, the
  * skeleton is identical, and four files repeating it would be four places for

@@ -136,6 +136,42 @@ export function incidentUrl(id: string, appUrl: string = appBaseUrl()): string {
 }
 
 /**
+ * What the Share button on a report's page sends — the one place a *resident*
+ * gets a share button, so the rule is written here and tested
+ * (`tests/report-share.test.ts`).
+ *
+ * - **Not public** (still in the queue, rejected, archived): nothing. Domain
+ *   rule 6 — and the button is not drawn.
+ * - **A coordinator**: the public preview, `incidentUrl` — what the WhatsApp
+ *   and Facebook buttons already send, so one person can put one report in
+ *   front of one audience through two doors and get the same page.
+ * - **A resident**: the signed-in page, `/incidents/[id]`. "The public share
+ *   buttons" are coordinator-only on purpose — a resident never gets a button
+ *   that republishes a neighbour's report outside the village — and this link
+ *   opens for nobody but a signed-in resident of the same village.
+ *
+ * Absolute where the base parses, relative where it does not, for
+ * `incidentUrl`'s reason.
+ */
+export function reportShareUrl(input: {
+  id: string;
+  isPublic: boolean;
+  isCoordinator: boolean;
+  appUrl?: string;
+}): string | null {
+  if (!input.isPublic) return null;
+  const base = input.appUrl ?? appBaseUrl();
+  if (input.isCoordinator) return incidentUrl(input.id, base);
+
+  const path = `/incidents/${input.id}`;
+  try {
+    return new URL(path, base).toString();
+  } catch {
+    return path;
+  }
+}
+
+/**
  * WhatsApp's own share link, with the alert prefilled.
  *
  * `https://wa.me/?text=` rather than a `whatsapp://` scheme URL. The two behave
