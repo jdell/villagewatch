@@ -22,9 +22,10 @@ import { BarChart3, List, Map, Plus, Settings } from "lucide-react";
  * cover a label — `max()` against the inset, never a fixed sum.
  *
  * Report is the raised centre button, in `#0284c7`, because it is the one
- * action the app exists for. It links to `/incidents/new` — the same wizard the
- * desktop sidebar's button opens — so it works from every tab and with
- * JavaScript off.
+ * action the app exists for. It links to `/map?report=1`, which opens the
+ * two-step report sheet over the map (`ReportFlow`) from whichever tab it was
+ * pressed on. The five-step wizard at `/incidents/new` is unchanged and is
+ * what the desktop sidebar's button opens.
  *
  * ## Active state
  *
@@ -37,7 +38,7 @@ import { BarChart3, List, Map, Plus, Settings } from "lucide-react";
 const TABS = [
   { href: "/map", label: "Map", icon: Map, tour: "map" },
   { href: "/incidents", label: "List", icon: List },
-  { href: "/incidents/new", label: "Report", icon: Plus, raised: true, tour: "report" },
+  { href: "/map?report=1", label: "Report", icon: Plus, raised: true, tour: "report" },
   { href: "/trends", label: "Trends", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },
 ] as const;
@@ -53,8 +54,8 @@ export function TabBar() {
     .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
     .sort((a, b) => b.length - a.length)[0];
 
-  // `/incidents/new` starts with `/incidents/`, so the report wizard would
-  // otherwise light the List tab while the raised button is the thing in use.
+  // `/incidents/new` starts with `/incidents/`, so the wizard — still reachable
+  // by URL — would otherwise light the List tab.
   const current = pathname.startsWith("/incidents/new") ? null : activeHref;
 
   return (

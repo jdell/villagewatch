@@ -335,6 +335,8 @@ src/
     modern/map-key.tsx        "How to read the map", inside the filter sheet
     modern/pin-preview.tsx    One map pin drawn outside the map — the key, the
                               list rows, the incident sheet
+    modern/report-flow.tsx    The two-step report sheet over the map — describe,
+                              AI draft, confirm + place the pin, send
     village-service-banner.tsx  What a resident is told when their village is
                               not in service. Rendered by (app)/layout.tsx above
                               every authenticated page; absent when it is
@@ -356,7 +358,8 @@ src/
     incident-form.tsx         5-step wizard, react-hook-form + Zod
     voice-input.tsx           "Speak instead" on step 1 — 90s, countdown, level
                               meter. Transcribed on the device; the recording
-                              never leaves it. See Voice input
+                              never leaves it. See Voice input. `variant=
+                              "inline"` is the report sheet's mic-in-the-box
     media-uploader.tsx        Blur-then-upload; never touches the original
     location-picker.tsx       Leaflet pin picker — dynamic import, ssr: false
     ai-preview.tsx            Review / publish screens, reprocess + edit
@@ -531,6 +534,8 @@ src/
                               divIcon — heat fill, glyph, states. Client-safe
     map/glyphs.ts             Lucide icons as SVG strings, read from
                               lucide-react's own icon modules — see its header
+    map/report-draft.ts       The report sheet's "when" chips and the exact
+                              POST /api/incidents body. Client-safe
     map/filters.ts            The map's filters — one function behind
                               the pill, the badge and the pins. Client-safe
     events.ts                 Community events — the village switch (degrades
@@ -999,6 +1004,9 @@ tests/                        Vitest, unit only — see The test suite
                               lucide's modules, the heat ramp, the dark glyph on
                               light fills, sizes, pulse, pending, pattern,
                               resolved, and a cache key per distinct look
+  report-draft.test.ts        The report sheet's body, parsed by the route's own
+                              incidentReportSchema — both description columns,
+                              the defaults, the "when" chips, the title fallback
   map-filters.test.ts         The map's filters — the periods being real
                               presets, an empty list meaning everything, the
                               badge never counting the period
@@ -2234,7 +2242,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty-five files, 1,100 tests, covering the
+between the typecheck and the build. Sixty-six files, 1,110 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -5132,6 +5140,35 @@ group here.
   the public API exposes only components. `waves.mjs` is an alias with no node
   of its own — `Waves` is `waves-horizontal`. The test loads every glyph, so an
   upgrade that moves the files fails there.
+- **Phase D — the report flow.** On a phone, the tab bar's Report button is
+  `/map?report=1`, which opens `ReportFlow` over the map. **Step 1, "What
+  happened?"**: the reporter's words, typed or spoken into the same box
+  (`VoiceInput variant="inline"`), an optional photo through the unchanged
+  `MediaUploader`, and when. "Draft my report" sends it to `POST
+  /api/incidents/process`. **Step 2, "Check it and place the pin"**: the AI's
+  category, title, rewrite and suggested severity, all editable, while the map
+  stays live above the sheet and the reporter drags it under a dashed
+  crosshair. "Send report" files through `POST /api/incidents`. Then a
+  confirmation with the reference and "View on map". The wizard at
+  `/incidents/new` is unchanged and is what the desktop sidebar opens.
+- **Same routes, same body.** `buildReportPayload` produces the wizard's exact
+  body — both description columns, anonymous by default, not reported to the
+  police (the reference can be added on the report's page later), `ai` as
+  provenance only. The test parses it with `incidentReportSchema` itself, so a
+  schema change that the sheet does not follow fails there.
+- **The AI never blocks filing.** A failed or rate-limited draft still moves to
+  step 2, with the reporter's own words, a category grid to choose from, a
+  title from their first line and LOW severity — the wizard's fallback.
+  `incidentReportSchema` requires a severity, so the sheet always has one
+  selected.
+- **The pin starts where the reporter is** (design option 1i), from one quiet
+  `getCurrentPosition` when the flow opens, and the map's centre if refused.
+  That point seeds the pattern lookup in the draft call; the filed location is
+  wherever the crosshair ends up, read from the map, and the server fuzzes it
+  (domain rule 2). The device position is used for nothing else.
+- **The gates are the wizard page's.** `/map` reads the service state and the
+  compliance gate and passes a `ReportGate`; a blocked village gets
+  the same refusal and, for a coordinator, the same link to fix it.
 - **Clustering is not built.** The handoff's decluttering system (clusters
   below zoom 17, donut rings of the severity mix) is outside the brief's six
   phases; at a village's volume the glyph discs are legible without it, and it

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -33,9 +33,14 @@ import { createPortal } from "react-dom";
  * z-index scale stays inside it (see globals.css). A sheet rendered in place
  * is trapped in that context: whatever its own z-index, the tab bar outside it
  * draws on top, and the sheet's footer — its main button — ends up underneath.
- * Rendered into `<body>`, it stacks against the shell instead. A sheet only
- * ever opens after a tap, so `document` always exists by then.
+ * Rendered into `<body>`, it stacks against the shell instead.
+ *
+ * Not on the server, though: a sheet can be open on the first render —
+ * `/map?report=1` opens the report flow — and the server has no `document` to
+ * portal into. `useSyncExternalStore` with a `false` server snapshot renders
+ * nothing there and the sheet on the client's first pass, with no mismatch.
  */
+const noSubscription = () => () => {};
 
 type BottomSheetProps = {
   open: boolean;
@@ -66,6 +71,11 @@ export function BottomSheet({
 }: BottomSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const fallbackId = useId();
+  const onClient = useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false,
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -93,7 +103,7 @@ export function BottomSheet({
     };
   }, [open, modal, onClose]);
 
-  if (!open) return null;
+  if (!open || !onClient) return null;
 
   return createPortal(
     <div
