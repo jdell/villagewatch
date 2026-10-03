@@ -16,6 +16,7 @@ import { IncidentActions } from "@/components/incident-actions";
 import { IncidentCard } from "@/components/incident-card";
 import { IncidentLocationMap } from "@/components/incident-location-map";
 import { NoVillage } from "@/components/no-village";
+import { PoliceReferenceField } from "@/components/police-reference-field";
 import { ShareSummary } from "@/components/share-summary";
 import { VoteButtons } from "@/components/vote-buttons";
 import { requireSession } from "@/lib/auth";
@@ -168,6 +169,13 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const inQueue =
     incident.status === "DRAFT" || incident.status === "PENDING_REVIEW";
   const deletable = canReporterErase(incident.status);
+  /*
+    The police reference is the one thing on a published report that can still
+    change — it usually arrives after the report is on the map. The reporter and
+    any coordinator of the village; `setIncidentPoliceReference` re-checks both,
+    plus the status, against the row itself.
+  */
+  const canSetPoliceReference = isPublic && (isReporter || isCoordinator);
 
   /*
     The alert a coordinator posts to WhatsApp by hand — nothing posts it for
@@ -459,13 +467,21 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             </div>
           )}
 
-          {incident.reportedToPolice && (
-            <div>
-              <dt className="text-slate-500">Reported to police</dt>
-              <dd className="mt-0.5 font-mono text-slate-900">
-                {incident.policeReference ?? "Yes"}
-              </dd>
-            </div>
+          {canSetPoliceReference ? (
+            <PoliceReferenceField
+              incidentId={incident.id}
+              policeReference={incident.policeReference}
+              reportedToPolice={incident.reportedToPolice}
+            />
+          ) : (
+            incident.reportedToPolice && (
+              <div>
+                <dt className="text-slate-500">Reported to police</dt>
+                <dd className="mt-0.5 font-mono text-slate-900">
+                  {incident.policeReference ?? "Yes"}
+                </dd>
+              </div>
+            )
           )}
         </dl>
 

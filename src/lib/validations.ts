@@ -492,6 +492,31 @@ export const incidentResolutionSchema = z.object({
     ),
 });
 
+/** Longest police reference anybody can store — the wizard's own ceiling. */
+export const POLICE_REFERENCE_MAX_CHARS = 60;
+
+/**
+ * Setting or changing the police reference on a report already on the map.
+ *
+ * Same ceiling as the wizard's field, so a reference that could be filed can be
+ * corrected and one that could not be filed cannot be smuggled in afterwards.
+ * Blank is allowed and means "take it off" — it becomes `null`, never `""`, so
+ * nothing downstream mistakes an empty string for a reference (the
+ * `policeReference?.trim() ||` fallbacks in `community-report.ts` would cope,
+ * and the detail page's `?? "Yes"` would not).
+ */
+export const incidentPoliceReferenceSchema = z.object({
+  incidentId: z.uuid(),
+  policeReference: z
+    .string()
+    .trim()
+    .max(
+      POLICE_REFERENCE_MAX_CHARS,
+      `Keep the police reference under ${POLICE_REFERENCE_MAX_CHARS} characters`,
+    )
+    .transform((value) => (value.length > 0 ? value : null)),
+});
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------

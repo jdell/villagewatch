@@ -471,7 +471,10 @@ export default function PrivacyPage() {
           </LI>
           <LI>
             The category, how serious you judged it, when it happened, any
-            landmark you typed, and whether you have reported it to the police.
+            landmark you typed, and whether you have reported it to the police
+            — with the reference they gave you, if you add one. You or your
+            coordinator can add or correct that reference after the report is
+            published, and your neighbours see it on the report.
             Where the AI suggests a different level from yours and you accept
             it, both answers are kept, so your coordinator can see that the two
             differed.
@@ -1113,7 +1116,7 @@ export default function PrivacyPage() {
           <Definition term="Rectification">
             Have inaccurate details corrected. You can edit your own report
             yourself, in the app, at any point before a coordinator has reviewed
-            it.
+            it, and add or correct its police reference at any point after.
           </Definition>
           <Definition term="Erasure">
             Ask for your data to be deleted — and you do not have to ask us. Any
