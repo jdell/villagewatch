@@ -6,6 +6,7 @@ import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { BottomSheet } from "@/components/modern/bottom-sheet";
 import { INCIDENT_TYPES, SEVERITIES } from "@/lib/constants";
+import { PIN_HEAT } from "@/lib/map/glyph-pin";
 import {
   DEFAULT_MAP_FILTERS,
   MODERN_MAP_PERIODS,
@@ -236,7 +237,7 @@ export function FilterSheet({
                 >
                   <span
                     className="size-[9px] rounded-full shadow-[0_0_0_1.5px_#fff]"
-                    style={{ backgroundColor: severity.pin }}
+                    style={{ backgroundColor: PIN_HEAT[severity.value as Severity] }}
                     aria-hidden
                   />
                   {severity.label}

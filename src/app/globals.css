@@ -187,6 +187,34 @@ body {
 }
 
 /*
+ * A modern pin under 24 hours old: a disc in the pin's own colour behind it
+ * that grows and fades, from the handoff's `vwpulse`. Under reduced motion it
+ * is not drawn at all — a static ring the size of the pin would read as part of
+ * the pin.
+ */
+@keyframes vw-pin-pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
+
+.vw-pin-pulse {
+  animation: vw-pin-pulse 2.4s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vw-pin-pulse {
+    display: none;
+  }
+}
+
+/*
  * The mobile drawer's entrance.
  *
  * `app-shell.tsx` mounts the drawer on a state flip, so without this it simply
