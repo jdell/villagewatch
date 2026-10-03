@@ -61,6 +61,7 @@ type IncidentRow = {
   lat: number | null;
   lng: number | null;
   recurring: boolean;
+  status?: MapIncident["status"];
 };
 
 /**
@@ -86,5 +87,6 @@ export function toMapIncident(row: IncidentRow): MapIncident | null {
     lat: row.lat,
     lng: row.lng,
     recurring: row.recurring,
+    ...(row.status ? { status: row.status } : {}),
   };
 }

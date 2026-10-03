@@ -198,8 +198,8 @@ src/
                               only, and the one screen with no undo behind it —
                               see Merging villages
       coordinator-apply/      The resident's application form + its action
-      trends/                 Counted reports over a period — the modern tab
-                              bar's fourth tab. Reachable in both interfaces
+      trends/                 Counted reports over a period — the tab bar's
+                              fourth tab. Also reachable from the sidebar
       map/                    Full-screen Leaflet map, severity pins, heatmap
       incidents/              List with type + severity filters (GET form)
       incidents/[id]/         Detail — media, tags, map pin; params is a Promise
@@ -324,8 +324,15 @@ src/
     site-footer.tsx           Public footer, incl. the legal links — shared
     legal-page.tsx            Shell + typography for /privacy and /terms
     status-screen.tsx         Shell behind not-found.tsx and error.tsx
-    modern/tab-bar.tsx        The bottom tab bar, below lg only. See The
-                              redesign
+    modern/tab-bar.tsx        The bottom tab bar, below lg
+                              only. See The redesign
+    modern/map-screen.tsx     /map's screen: summary pill, filter button,
+                              layers and locate rail, timeline chip
+    modern/filter-sheet.tsx   The one filter sheet — period, categories,
+                              severities, two switches and the map key
+    modern/bottom-sheet.tsx   The sheet every modern panel slides up in.
+                              Portalled to <body> — see its header
+    modern/map-key.tsx        "How to read the map", inside the filter sheet
     village-service-banner.tsx  What a resident is told when their village is
                               not in service. Rendered by (app)/layout.tsx above
                               every authenticated page; absent when it is
@@ -355,8 +362,6 @@ src/
                               ssr:false. `mode` picks pins / heat / both. The
                               zoom control is `bottomright`, never Leaflet's own
                               top-left default — see The map's corners
-    map-view.tsx              Client wrapper: dynamic import, date range incl.
-                              the custom pair, and the layer toggle in localStorage
     time-range-fields.tsx     The period control on /incidents and /dashboard —
                               a select, and the dates only under Custom. Renders
                               inside the caller's own GET form
@@ -520,6 +525,8 @@ src/
                               pattern and nothing of a resident's
     moderation.ts             applyModeration, audited readRawDescription, and
                               the village's auto-approve setting (fails closed)
+    map/filters.ts            The map's filters — one function behind
+                              the pill, the badge and the pins. Client-safe
     events.ts                 Community events — the village switch (degrades
                               to off), the reads, and delete with its rule.
                               Server only
@@ -982,6 +989,9 @@ tests/                        Vitest, unit only — see The test suite
                               domain rules it enforces, the 404 that is not a
                               403, the quota that is not spent on a report the
                               caller cannot see, and a response naming nobody
+  map-filters.test.ts         The map's filters — the periods being real
+                              presets, an empty list meaning everything, the
+                              badge never counting the period
   community-events.test.ts    The sixth route handler, there for its gates — the
                               village and poster off the session whatever the
                               body says, both village checks before the body and
@@ -2214,7 +2224,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty-three files, 1,075 tests, covering the
+between the typecheck and the build. Sixty-four files, 1,086 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -5046,8 +5056,7 @@ group here.
   than an unfinished one: the drawer behind it is the only way to Events, the
   coordinator tabs, the platform pages and Sign out, and five tabs cannot carry
   those. The map runs full-bleed — no top bar, drawn under the tab bar — with
-  its overlays clear of the status bar and the tab bar (`MapView`'s
-  `fullBleed`).
+  its overlays clear of the status bar and the tab bar.
 - **`--vw-tab-bar` in globals.css is the bar's height**, and four things read
   it: the page padding (`.vw-tab-bar-pad`), the push prompt and the tour
   (`.vw-above-tab-bar`), and Leaflet's bottom corners on the full-bleed map
@@ -5060,6 +5069,31 @@ group here.
   resident `VillageSummary` that `/incidents` renders above its list, on a page
   of its own. `SUMMARY_TREND_LABELS` moved into `village-summary.tsx` so the two
   pages share it.
+- **Phase B — the map's overlays.** `/map` renders `MapScreen`, over the same
+  query, on every screen size; `MapView` — the map with five floating controls
+  that came before — is deleted. At rest: the summary pill (village,
+  count, period — tap to filter), the filter button with a badge, and a
+  two-button rail (layers popover: reports / heatmap / events; locate). The
+  timeline chip appears under the pill only while a timeline narrows the map.
+  Everything the old map floated over the tiles moved into one filter sheet
+  — period (7d / 30d / 90d / 12m, which are `TIME_RANGES` presets), categories
+  (eight, then "+9 more"), severities, "Show resolved" and "Patterns only", and
+  the map key. Design options 1d and 1f.
+- **`applyMapFilters` is the one filter.** The pill's count, the badge (which
+  never counts the period — it is always set), the sheet's "Show 18 reports"
+  and the pins are all its answer. It only narrows what the page sent, which is
+  still `PUBLIC_INCIDENT_STATUSES` in the session's village.
+- **`MapIncident.status` is optional and new**, so "Show resolved" can work;
+  `toMapIncident` passes it through where the row has it.
+- **Every sheet is portalled to `<body>`.** The map's wrapper is an isolated
+  stacking context (`.map-surface`), and a sheet rendered inside it lost to the
+  tab bar whatever its z-index — the footer button ended up underneath.
+- **Locate** recentres on the device's position and does nothing else with it:
+  not sent, not stored, not logged. A refusal is a toast.
+- **The basemap is muted** (`.vw-muted`): the tile pane only, desaturated so
+  road colours do not compete with severity colours. Leaflet's bottom corners
+  sit above the tab bar *and* the Report button's 18px rise, or the button
+  covers the middle of the attribution.
 
 ## Community events
 
@@ -5558,56 +5592,34 @@ to be what somebody actually sees.
 
 ## The map's corners
 
-`/map` is four overlays and a set of Leaflet controls competing for the same
-four corners, and the competition is not a fair one: Leaflet numbers its
-controls at 1000 and `map-view.tsx` deliberately numbers its own overlays at 800
-against that scale (see the note on `.map-surface` in `globals.css`). A control
-and an overlay in the same corner is therefore a control drawn **over** a card,
-not beside it.
+`/map` is `MapScreen` (see The redesign), and its overlays and Leaflet's
+controls compete for the same four corners. Leaflet numbers its controls at
+1000 and the overlays sit at 800 against that scale (see the note on
+`.map-surface` in `globals.css`), so a control and an overlay in the same
+corner is a control drawn **over** a card, not beside it.
 
 - **The zoom control is `bottomright`, and `zoomControl` is `false` on every
   `MapContainer` in the codebase.** Leaflet's default is `topleft`, which is
-  where the village card sits — 10px of control margin against a card that
-  starts 12px in — so on a phone the + and − buttons were drawn on top of the
-  village's name and its incident count, which is the one label saying what a
-  resident is looking at. Reported from an iPhone in portrait, where the top
-  overlays stack rather than share a row and there is least room to lose.
-- **Bottom right is the corner nothing else claims.** Village card top left,
-  layer and period controls top right, legend along the bottom from the left.
-  Leaflet inserts a bottom control *before* whatever is already in that corner,
-  so the OpenStreetMap attribution stays flush with the edge and the buttons
-  stack above it — not under it, which would hide a licence condition.
-- **The legend row reserves that column** with a right padding wide enough for a
-  34px control and its 10px margin. It is centred until `sm`, so the width that
-  bites is the one wide enough to sit both legend cards on one line and too
-  narrow to left-align them: at 500px the density card's right edge landed seven
-  pixels inside the buttons. Written per side rather than as `p-3` with a `pr-`
-  override: the shorthand and the directional utility are two different
-  properties, and which wins inside a breakpoint is a question about Tailwind's
-  output order rather than about that file.
-- **Both pill groups wrap inside their own card.** The four periods want 367px
-  and an iPhone in portrait has 366px of row. Nothing ran off the screen —
-  flexbox squeezed the pills instead, breaking a label in half inside its own
-  button, so a resident chose between "Last 30" over "days" and "Custom" over
-  "range".
-- **The same row clears the OpenStreetMap attribution.** A 17px strip flush
-  with the bottom edge that the density card had always covered the top of when
-  the two legend cards wrap onto separate rows. Attribution is a licence
-  condition rather than a control, so the bottom padding is the one that has to
-  be right whatever else is on screen.
-- **The village card is deliberately *not* `shrink-0`.** It looks like it should
-  be, and it measures as a no-op at 375, 390 and 720: flexbox breaks a line
-  before it shrinks anything on it, and the control group beside the card is
-  wider than a phone, so `flex-wrap` on the parent has already moved the group
-  to its own row before shrinking is reached.
+  where the summary pill sits; the + and − buttons once landed on top of the
+  village's name, the one label saying what a resident is looking at.
+- **Each corner has one owner.** The summary pill and filter button along the
+  top, the layers and locate rail top right, nothing of the map's own along the
+  bottom — which on a phone is the tab bar's.
+- **Leaflet's bottom corners are lifted above the tab bar and the Report
+  button's 18px rise** (`.vw-full-bleed .leaflet-bottom`), because the map runs
+  underneath both. The OpenStreetMap attribution is a licence condition rather
+  than a control and may not sit under either; Leaflet inserts a bottom control
+  *before* whatever is already in that corner, so the attribution stays flush
+  with the lifted edge and the zoom buttons stack above it.
+- **The legend is not on the map at all** — it is the key in the filter sheet.
 - **`interactive={false}` has no zoom control at all**, which is the dashboard's
   density thumbnail — there is no zoom on it to control.
 
 ## The heatmap
 
 `src/lib/heatmap.ts` decides the intensities, `src/components/map/heatmap-layer.tsx`
-draws them, and two screens show them: `/map` behind a Pins / Heatmap / Both
-toggle, and `/dashboard` as a thumbnail beside the hotspot list.
+draws them, and two screens show them: `/map` behind the Heatmap switch in the
+layers popover, and `/dashboard` as a thumbnail beside the hotspot list.
 
 - **Intensity is severity weight × recency decay**, both in 0..1, so a single
   point never exceeds the layer's `max` of 1. That is what makes the top of the

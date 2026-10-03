@@ -23,7 +23,7 @@ import { BarChart3, List, Map, Plus, Settings } from "lucide-react";
  *
  * Report is the raised centre button, in `#0284c7`, because it is the one
  * action the app exists for. It links to `/incidents/new` — the same wizard the
- * classic sidebar's button opens — so it works from every tab and with
+ * desktop sidebar's button opens — so it works from every tab and with
  * JavaScript off.
  *
  * ## Active state
