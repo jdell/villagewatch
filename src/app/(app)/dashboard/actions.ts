@@ -20,6 +20,7 @@ import {
   getVillagePrivacyLevel,
   setResidentRole,
   setVillageParishCouncil,
+  setVillagePostcode,
   setVillagePrivacyLevel,
 } from "@/lib/villages";
 import { PRIVACY_LEVEL_META } from "@/lib/constants";
@@ -35,6 +36,7 @@ import {
   villageAutoApproveFormSchema,
   villageChannelFormSchema,
   villageEcopsSiteFormSchema,
+  villagePostcodeFormSchema,
   villageEventsFormSchema,
   villageParishCouncilFormSchema,
   villagePoliceReportFormSchema,
@@ -1046,4 +1048,52 @@ export async function saveEcopsSiteAction(
         ? "Police alerts turned off for this village."
         : `Police alerts will come from site ${ecopsSiteId}. The next scheduled fetch will fill the panel.`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The village postcode
+// ---------------------------------------------------------------------------
+
+export type VillagePostcodeState = {
+  ok: boolean;
+  message: string;
+  fieldErrors?: Record<string, string>;
+};
+
+/**
+ * Sets the postcode "Write to your MP" sends to Parliament's Members API.
+ *
+ * The rules — coordinator only, the village off the session, audited on a real
+ * change — are `setVillagePostcode`'s, so they are tested without a request
+ * context. This parses the field and revalidates the two screens that read it.
+ */
+export async function saveVillagePostcodeAction(
+  _previous: VillagePostcodeState,
+  formData: FormData,
+): Promise<VillagePostcodeState> {
+  const session = await requireCoordinator("/dashboard/settings");
+
+  const parsed = villagePostcodeFormSchema.safeParse({
+    postcode: formData.get("postcode") ?? "",
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Check the highlighted field.",
+      fieldErrors: fieldErrors(parsed.error),
+    };
+  }
+
+  const result = await setVillagePostcode({
+    session,
+    postcode: parsed.data.postcode,
+  });
+
+  if (!result.ok) return { ok: false, message: result.error };
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/reports");
+
+  return { ok: true, message: result.message };
 }

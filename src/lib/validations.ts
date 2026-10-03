@@ -1024,6 +1024,61 @@ export const villageParishCouncilFormSchema = z.object({
     .transform((value) => value || null),
 });
 
+/** `Village.postcode` is held to this, though the column itself is unbounded. */
+export const VILLAGE_POSTCODE_MAX_CHARS = 10;
+
+/**
+ * A UK postcode, loosely: one or two letters, a digit, an optional letter or
+ * digit, then a digit and two letters. Spaces are dropped before the test.
+ *
+ * Loose on purpose. It accepts every real postcode, `GIR 0AA` aside, and some
+ * shapes Royal Mail has never issued — the only check that settles whether a
+ * postcode exists is Parliament's own lookup, which `lookupMpByPostcode` makes
+ * and which says so in words when it finds nothing. A strict pattern would be a
+ * second opinion that could only ever disagree with the authoritative one by
+ * refusing something real.
+ */
+const UK_POSTCODE = /^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/;
+
+/**
+ * `cb24 9ab`, `CB249AB` and ` Cb24  9Ab ` all become `CB24 9AB` — uppercase,
+ * one space before the last three characters. Returns null for anything that
+ * is not postcode-shaped, rather than a half-normalised string.
+ */
+export function normalizeUkPostcode(value: string): string | null {
+  const compact = value.replace(/\s+/g, "").toUpperCase();
+  if (!UK_POSTCODE.test(compact)) return null;
+  return `${compact.slice(0, -3)} ${compact.slice(-3)}`;
+}
+
+/**
+ * The village's postcode — `saveVillagePostcodeAction`. It is what "Write to
+ * your MP" sends to Parliament's Members API to find the constituency, and
+ * nothing else in the app reads it.
+ *
+ * Empty clears it, stored as `null` rather than `""`, because
+ * `lookupMpByPostcode` tests for a blank and says "no postcode set" — an empty
+ * string would pass that test and reach the API as a search for nothing.
+ */
+export const villagePostcodeFormSchema = z.object({
+  postcode: z
+    .string()
+    .trim()
+    .max(VILLAGE_POSTCODE_MAX_CHARS, "That is too long for a postcode")
+    .transform((value, ctx) => {
+      if (value === "") return null;
+      const postcode = normalizeUkPostcode(value);
+      if (!postcode) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Enter a UK postcode, like CB24 9AB, or leave it empty",
+        });
+        return z.NEVER;
+      }
+      return postcode;
+    }),
+});
+
 /**
  * The village's Neighbourhood Alert ("eCops") site — `saveEcopsSiteAction`.
  *

@@ -79,7 +79,7 @@ export async function lookupMpByPostcode(
       ok: false,
       code: "no_postcode",
       message:
-        "This village has no postcode set. Add one in the village directory to look up your MP.",
+        "This village has no postcode set. A coordinator can add one under Village settings to look up your MP.",
     };
   }
 
