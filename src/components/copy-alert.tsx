@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { Check, ClipboardCopy, MessageCircle, Share2 } from "lucide-react";
-import { copyText } from "@/lib/clipboard";
+import { MessageCircle } from "lucide-react";
+import { ShareButtons } from "@/components/share-buttons";
 import {
   facebookShareUrl,
   incidentUrl,
@@ -81,9 +79,6 @@ type CopyAlertProps = {
   hint?: string;
 };
 
-/** How long the button stays saying "Copied!" before going back. */
-const COPIED_MS = 2_000;
-
 export function CopyAlert({
   text,
   incidentId,
@@ -92,46 +87,10 @@ export function CopyAlert({
   title = "Post this to WhatsApp",
   hint,
 }: CopyAlertProps) {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // Null on a deployment whose base URL will not resolve, where the report's
   // address comes out relative — see `facebookShareUrl`. The button goes rather
   // than posting a dead link to a public feed.
   const facebookUrl = facebookShareUrl(incidentUrl(incidentId), text);
-
-  useEffect(() => {
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, []);
-
-  function markCopied() {
-    setCopied(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), COPIED_MS);
-  }
-
-  async function handleCopy() {
-    if (await copyText(text)) {
-      markCopied();
-      toast.success("Copied!");
-      return;
-    }
-
-    toast.error("Could not reach the clipboard — select the text and copy it.");
-  }
-
-  /**
-   * Copy, then leave. Best effort and deliberately quiet: the navigation is the
-   * thing the coordinator asked for, and a clipboard failure must not stand in
-   * front of it — the text is still on screen to copy by hand.
-   */
-  async function openWith(url: string) {
-    if (await copyText(text)) markCopied();
-
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -162,47 +121,13 @@ export function CopyAlert({
         {text}
       </pre>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
-        >
-          {copied ? (
-            <Check className="size-4" aria-hidden />
-          ) : (
-            <ClipboardCopy className="size-4" aria-hidden />
-          )}
-          {copied ? (
-            "Copied!"
-          ) : (
-            <>
-              <span aria-hidden>📋 </span>Copy alert
-            </>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => openWith(channelUrl ?? whatsappShareUrl(text))}
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-        >
-          <MessageCircle className="size-4" aria-hidden />
-          <span aria-hidden>💬 </span>Open WhatsApp
-          <span className="sr-only"> (opens in a new tab)</span>
-        </button>
-
-        {facebookUrl && (
-          <button
-            type="button"
-            onClick={() => openWith(facebookUrl)}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            <Share2 className="size-4" aria-hidden />
-            <span aria-hidden>📘 </span>Share to Facebook
-            <span className="sr-only"> (opens in a new tab)</span>
-          </button>
-        )}
+      <div className="mt-3">
+        <ShareButtons
+          text={text}
+          copyLabel="Copy alert"
+          whatsappUrl={channelUrl ?? whatsappShareUrl(text)}
+          facebookUrl={facebookUrl}
+        />
       </div>
 
       <p className="mt-2 text-xs text-slate-400">

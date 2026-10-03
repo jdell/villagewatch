@@ -185,6 +185,16 @@ function incidentLine(incident: SocialIncident): string {
 }
 
 /**
+ * The last two lines of anything VillageWatch puts on a public feed. Exported
+ * so the weekly summary share (`format-summary-share.ts`) carries the same
+ * words — the reasoning on `formatSocialPost` below applies to every public post, not just this one.
+ */
+export const EMERGENCY_DISCLAIMER = [
+  "⚠️ In an emergency always call 999. For non-urgent police matters call 101.",
+  "VillageWatch is not an emergency service and reports here do not reach the police.",
+] as const;
+
+/**
  * The week's published reports as a Facebook-ready post.
  *
  * ```
@@ -286,7 +296,6 @@ export function formatSocialPost(input: SocialPostInput): string {
     `👀 Neighbours in ${villageName.trim()} report what they see, and everyone gets told.`,
     `Join your village: ${join}`,
     "",
-    "⚠️ In an emergency always call 999. For non-urgent police matters call 101.",
-    "VillageWatch is not an emergency service and reports here do not reach the police.",
+    ...EMERGENCY_DISCLAIMER,
   ].join("\n");
 }

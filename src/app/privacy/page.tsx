@@ -746,6 +746,19 @@ export default function PrivacyPage() {
             the village. Nothing is posted automatically, and a report only
             appears in it if it was already published on the village map.
           </Definition>
+          <Definition term="Anyone, if your coordinator shares a weekly summary">
+            Each week {APP_NAME} writes your coordinator a short summary of
+            what the village published &mdash; a paragraph written by AI from
+            the same anonymised descriptions your neighbours read, or a plain
+            count when AI was unavailable. The AI is told never to include
+            names, house numbers or vehicle registrations, and names areas and
+            landmarks only. Your coordinator can share that paragraph to
+            Facebook, where a post is public, to WhatsApp, or by email to
+            whoever they choose. It goes with your village&rsquo;s name, the
+            dates of the week and the emergency numbers, and nothing else: no
+            report, no link to one, no photograph and never your name. Nothing
+            is sent automatically; a coordinator presses the button each time.
+          </Definition>
           <Definition term="Anyone given a link to a published report">
             Every published report has a preview page that opens without an
             account, so that a link shared with your village actually shows

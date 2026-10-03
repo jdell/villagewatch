@@ -12,6 +12,7 @@ import {
   DATA_CONTROLLER,
   REPORT_RANGES,
   WEEKLY_SUMMARY_HISTORY_SIZE,
+  isCoordinatorRole,
 } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { dateInputValue } from "@/lib/date-range";
@@ -338,6 +339,10 @@ export default async function ReportsPage({
           detector: summary.detector,
           createdAt: summary.createdAt.toISOString(),
         }))}
+        villageName={village.name}
+        // `requireCoordinator` above already decided this; passed rather than
+        // assumed so the share buttons carry their own gate.
+        canShare={isCoordinatorRole(session.profile?.role)}
       />
     </div>
   );

@@ -2185,6 +2185,12 @@ export const PRICING = [
  * true of the column or became true with this change, and none was stated —
  * and §8's rectification right gained the one thing a reporter can now
  * correct after a report is published.
+ *
+ * It changed again the same day for sharing a weekly summary: §6 gained an
+ * entry for it. The AI's weekly paragraph had only ever been read by
+ * coordinators inside the app, and three buttons now put it on Facebook, in
+ * WhatsApp or in an email — a new route out of the app for text derived from
+ * residents' reports, which is the case §6 exists to list.
  */
 export const LEGAL_LAST_UPDATED = "2026-10-03";
 

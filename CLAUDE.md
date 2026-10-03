@@ -390,6 +390,9 @@ src/
                               the clipboard. Coordinator, published only
     copy-alert.tsx            The three share buttons — copy, WhatsApp, Facebook
                               — over one alert text. Coordinator, published only
+    share-buttons.tsx         The button row itself — Copy, WhatsApp, Facebook,
+                              Email — copying before it opens anything. Shared
+                              by CopyAlert and the weekly summary cards
     reports/report-period-picker.tsx  The period — one row, and the dates only
                               when the preset is Custom. Still a GET form. The
                               calendar itself is date-range-chip.tsx
@@ -401,7 +404,9 @@ src/
                               on paper — one format, three destinations
     reports/weekly-summary-history.tsx  The digests the village has already had.
                               Read-only, and it says which were written by a
-                              model and which were counted
+                              model and which were counted. Share buttons on
+                              each card, coordinator-gated
+    reports/summary-share.tsx Facebook, WhatsApp and Email under one summary
     incident-edit-form.tsx    Five-field edit, no wizard, no re-anonymisation
     settings-form.tsx         Profile + notification preferences, one action
     delete-account.tsx        The danger zone — type your email to confirm
@@ -569,6 +574,9 @@ src/
                               Client-safe, and the narrowest format in the
                               codebase — no description, no title, no link to a
                               report. See The social digest
+    digest/format-summary-share.ts  One weekly summary as shared — the village
+                              and the week, the digest's paragraph, the 999
+                              lines — and its three links. Client-safe
     community-report.ts       The police/council documents — one incident and a
                               period. Client-safe, no rawDescription/lat/lng
     police-api.ts             The data.police.uk client — typed failures, never
@@ -808,6 +816,11 @@ tests/                        Vitest, unit only — see The test suite
                               title can reach it even when one is smuggled into
                               the input, that the 999 line survives a quiet week,
                               and that an absent baseline states no trend
+  summary-share.test.tsx      Sharing a weekly summary — the village and the
+                              week first and the 999 lines last, a mailto with
+                              no recipient and no `+`, Facebook dropped rather
+                              than given a relative link, and no buttons on the
+                              card without the coordinator gate
   chart-layout.test.ts        What a chart card reserves — the key's gaps
                               counted between its rows rather than one per row,
                               and the ring's height as the floor. The doughnut's
@@ -2205,7 +2218,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty-two files, 1,069 tests, covering the
+between the typecheck and the build. Sixty-three files, 1,076 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -3744,6 +3757,28 @@ the format they carry.
   published report it is simply one of the options in front of a coordinator.
   `/privacy` §6 says that in as many words rather than implying a setting that
   does not exist.
+- **The weekly summaries on `/reports` have the same buttons, minus Copy, plus
+  Email.** `SummaryShare` under each card, gated on `isCoordinatorRole` by the
+  page. The row is `ShareButtons`, extracted from `CopyAlert` so "copy first,
+  then open" is written once; `CopyAlert` renders the same markup it did. The
+  text is `formatSummaryShare`: the village and the week, the digest's
+  paragraph, and `EMERGENCY_DISCLAIMER` — the social post's 999 lines, exported
+  so both public formats carry the same words.
+- **A summary has no page, so Facebook's card is the deployment's origin.**
+  `facebookShareUrl(appBaseUrl(), text)`, hidden when the origin is not absolute
+  `http(s)`. The summary goes in `quote` and on the clipboard.
+- **Email is a `mailto:` with no recipient**, built with `encodeURIComponent`
+  rather than `URLSearchParams`, whose `+` for a space lands literally in some
+  clients' subject lines. Opened in the same tab, since `window.open` on a
+  `mailto:` leaves an empty tab behind.
+- **This is the first route by which the AI's weekly paragraph leaves the app,
+  and `/privacy` §6 gained an entry for it.** `logDigestAlert` formats the same
+  paragraph for the channel and nothing posts that. The paragraph is model prose
+  over the week's `description`s — usually the anonymised rewrite, the
+  reporter's own words where the AI pass did not run — under a prompt forbidding
+  names, house numbers and registrations. That is a weaker guarantee than the
+  social post's, which carries no free text at all, so the card shows exactly
+  what is shared and says a Facebook post is public.
 
 ## Scheduled police reports
 

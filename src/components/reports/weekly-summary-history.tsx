@@ -1,6 +1,7 @@
 import { CalendarRange, Sparkles } from "lucide-react";
 import type { IncidentType, Severity } from "@/generated/prisma/enums";
 import { SeverityBadge } from "@/components/severity-badge";
+import { SummaryShare } from "@/components/reports/summary-share";
 import { INCIDENT_TYPE_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 
@@ -52,8 +53,18 @@ export type WeeklySummary = {
 
 export function WeeklySummaryHistory({
   summaries,
+  villageName,
+  canShare,
 }: {
   summaries: readonly WeeklySummary[];
+  /** Named in the shared text, so a post read out of context says where. */
+  villageName: string;
+  /**
+   * Whether to render the share buttons — the coordinator gate the incident
+   * share buttons use. `/reports` is coordinator-only already; this is the
+   * component saying so rather than relying on where it happens to be mounted.
+   */
+  canShare: boolean;
 }) {
   return (
     <section className="mt-6" data-print-hide>
@@ -63,8 +74,8 @@ export function WeeklySummaryHistory({
       </h2>
       <p className="mt-1 text-sm text-slate-500">
         Written automatically every Sunday from the reports your village
-        published that week. Nothing here is sent to anyone — it is a record you
-        can read back over.
+        published that week. Nothing here is sent to anyone unless you share it
+        — it is a record you can read back over.
       </p>
 
       {summaries.length === 0 ? (
@@ -118,6 +129,15 @@ export function WeeklySummaryHistory({
                     <Sparkles className="size-3.5 shrink-0" aria-hidden />
                     Written by VillageWatch AI from the week’s published reports.
                   </p>
+                )}
+
+                {canShare && (
+                  <SummaryShare
+                    villageName={villageName}
+                    windowStart={summary.windowStart}
+                    windowEnd={summary.windowEnd}
+                    summary={summary.summary}
+                  />
                 )}
               </li>
             );
