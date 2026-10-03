@@ -3,6 +3,25 @@
 Every release of VillageWatch. Generated from Conventional Commits by
 `standard-version` — see CONTRIBUTING in the README for the commit format.
 
+### [1.12.2](https://github.com/jdell/villagewatch/compare/v1.11.0...v1.12.2) (2026-10-03)
+
+
+### Features
+
+* Approve and Review buttons on the coordinator's pending-report push ([d4f37c2](https://github.com/jdell/villagewatch/commit/d4f37c2771c11cbdc49b7422456abdcbb0cd9b7a))
+* let the reporter or a coordinator set a report's police reference ([e967949](https://github.com/jdell/villagewatch/commit/e9679491a6d791f65008a9054b660cd04369bb41))
+* village postcode on Village settings, unblocking "Write to your MP" ([12ec1be](https://github.com/jdell/villagewatch/commit/12ec1beaa124cbcf82b2424cff7e568e47962d93))
+
+
+### Documentation
+
+* require PRs for all changes to main ([d340053](https://github.com/jdell/villagewatch/commit/d340053e6c54c85b672f85aca8b6e95da0612936))
+
+
+### Fixes
+
+* **ci:** release through a PR instead of pushing to main ([df5049a](https://github.com/jdell/villagewatch/commit/df5049aa59e64ac7080862dee87014e94de1307b)), closes [#52](https://github.com/jdell/villagewatch/issues/52) [#53](https://github.com/jdell/villagewatch/issues/53)
+
 ## [1.11.0](https://github.com/jdell/villagewatch/compare/v1.10.0...v1.11.0) (2026-10-02)
 
 
