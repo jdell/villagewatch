@@ -106,6 +106,7 @@ export default async function MapPage() {
       zoom={village.defaultZoom || MAP_DEFAULTS.zoom}
       villageName={village.name}
       events={events}
+      fullBleed
     />
   );
 }

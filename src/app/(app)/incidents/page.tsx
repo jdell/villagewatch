@@ -26,16 +26,12 @@ import {
 } from "@/lib/constants";
 import { readVoteStates } from "@/lib/incident-votes";
 import { INCIDENT_PAGE_SIZE, PUBLIC_INCIDENT_SELECT } from "@/lib/incidents";
-import { VillageSummary } from "@/components/village-summary";
+import {
+  SUMMARY_TREND_LABELS,
+  VillageSummary,
+} from "@/components/village-summary";
 import { getIncidentTrend } from "@/lib/charts/incident-series";
 import { signedMediaUrls } from "@/lib/media/storage";
-
-/** What the summary's trend caption calls its buckets. */
-const SUMMARY_TREND_LABELS = {
-  day: "by day",
-  week: "by week",
-  month: "by month",
-} as const;
 
 export const metadata: Metadata = { title: "Incidents" };
 

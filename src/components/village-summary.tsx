@@ -43,6 +43,16 @@ import type { SeriesBucket } from "@/lib/charts/series";
  * different span from the list it heads would be worse than no summary.
  */
 
+/**
+ * What the trend caption calls its buckets. Shared by `/incidents` and
+ * `/trends`, the two pages that render this summary.
+ */
+export const SUMMARY_TREND_LABELS = {
+  day: "by day",
+  week: "by week",
+  month: "by month",
+} as const;
+
 export function VillageSummary({
   trend,
   trendLabel,
