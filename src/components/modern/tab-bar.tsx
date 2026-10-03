@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, List, Map, Plus, Settings } from "lucide-react";
+import { BarChart3, List, Map, Plus, UserRound } from "lucide-react";
 
 /**
  * The bottom tab bar — phones and tablets only.
@@ -40,7 +40,7 @@ const TABS = [
   { href: "/incidents", label: "List", icon: List },
   { href: "/map?report=1", label: "Report", icon: Plus, raised: true, tour: "report" },
   { href: "/trends", label: "Trends", icon: BarChart3 },
-  { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },
+  { href: "/settings", label: "You", icon: UserRound, tour: "settings" },
 ] as const;
 
 /** The tab bar's height without the safe area, in px. `globals.css` repeats it. */

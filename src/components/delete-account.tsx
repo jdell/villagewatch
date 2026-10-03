@@ -10,13 +10,12 @@ import {
 } from "@/app/(app)/settings/actions";
 
 /**
- * Closing your own account, from the bottom of `/settings`.
+ * Closing your own account, on `/settings/account` — a sub-page of "You" of
+ * its own, reached from a red "Delete my account" row.
  *
- * Its own component and its own `<form>` rather than a section of
- * `SettingsForm`, for two reasons. HTML forbids nested forms, and this posts a
- * different action to a different end — but more to the point, the save button
- * on that form is something a resident presses without reading, and this must
- * never be reachable by the same reflex.
+ * Its own component, its own `<form>` and now its own page, rather than a
+ * section of a settings form: a Save button is something a resident presses
+ * without reading, and this must never be reachable by the same reflex.
  *
  * Three gates before anything happens: the section is collapsed behind a button,
  * the confirmation asks for the account's own email address typed out, and the
@@ -54,7 +53,7 @@ export function DeleteAccount({ email }: { email: string }) {
   const matches = typed.trim().toLowerCase() === email.trim().toLowerCase();
 
   return (
-    <section className="mt-4 rounded-2xl border border-red-200 bg-white p-4 sm:p-6">
+    <section className="rounded-[18px] bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,.06),0_2px_8px_rgba(15,23,42,.05)] ring-1 ring-red-100">
       <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
         <TriangleAlert className="size-4 text-red-600" aria-hidden />
         Delete my account

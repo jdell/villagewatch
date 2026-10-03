@@ -730,6 +730,29 @@ export const settingsFormSchema = z.object({
 
 export type SettingsFormInput = z.output<typeof settingsFormSchema>;
 
+/**
+ * The two halves of `settingsFormSchema`, one per sub-page of "You" —
+ * `/settings/profile` and `/settings/notifications` each post their own form
+ * and save their own fields. Picked rather than written again, so the rules for
+ * a name or a radius cannot differ between the two screens and the whole.
+ *
+ * `.pick` keeps `z.object`'s default of stripping unknown keys, which is the
+ * property domain rule 5 rests on here: a post that names `role`, `villageId`
+ * or `verifiedAt` parses to an object without them. Asserted in
+ * `tests/you.test.ts`.
+ */
+export const profileSettingsSchema = settingsFormSchema.pick({
+  fullName: true,
+  addressLine: true,
+});
+
+export const notificationSettingsSchema = settingsFormSchema.pick({
+  notifyPush: true,
+  notifyEmail: true,
+  notifyMinSeverity: true,
+  notifyRadiusMeters: true,
+});
+
 // ---------------------------------------------------------------------------
 // The village's WhatsApp Channel
 // ---------------------------------------------------------------------------

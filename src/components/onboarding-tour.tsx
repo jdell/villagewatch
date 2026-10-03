@@ -90,6 +90,21 @@ function markCompleted(): void {
   for (const listener of listeners) listener();
 }
 
+/**
+ * Show the tour again — "How VillageWatch works" on "You". Clears the flag and
+ * tells this tab's subscribers, which is all it takes: the tour is mounted in
+ * the shell and reads the store, so it appears over whatever page is open.
+ */
+export function restartTour(): void {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage blocked: `hasCompleted` reads that as done, so nothing appears,
+    // which is the same answer the tour gives on its own in that browser.
+  }
+  for (const listener of listeners) listener();
+}
+
 // ---------------------------------------------------------------------------
 // The steps
 // ---------------------------------------------------------------------------
@@ -107,7 +122,7 @@ const STEPS: readonly Step[] = [
     target: "map",
     icon: Map,
     title: "This is your map",
-    body: "Every report your coordinator has published, colour-coded by how serious it is. Green is worth knowing about, purple means call 999 first.",
+    body: "Every report your coordinator has published, coloured by how serious it is — yellow is worth knowing about, dark red means call 999 first.",
   },
   {
     target: "report",
@@ -139,6 +154,16 @@ export function OnboardingTour() {
   const [step, setStep] = useState(0);
 
   const active = !completed;
+
+  // Restarted from "You" after being finished: begin at the first step, not
+  // the last one it was closed on. Adjusted during render against the previous
+  // value — React's pattern for state that follows a prop — so no frame shows
+  // the wrong step.
+  const [wasActive, setWasActive] = useState(active);
+  if (active !== wasActive) {
+    setWasActive(active);
+    if (active) setStep(0);
+  }
   const target = active ? STEPS[step].target : null;
 
   // Syncing React state out to the DOM, which is what an effect is actually

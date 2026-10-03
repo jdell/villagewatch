@@ -7,19 +7,24 @@ import { prisma } from "@/lib/prisma";
 import { eraseAccount } from "@/lib/erasure";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { fieldErrors, settingsFormSchema } from "@/lib/validations";
+import {
+  fieldErrors,
+  notificationSettingsSchema,
+  profileSettingsSchema,
+} from "@/lib/validations";
 
 /**
- * Saving the settings form.
+ * Saving the two sub-pages of "You" — `/settings/profile` and
+ * `/settings/notifications`. One action each, because each page is its own
+ * form with its own Save; one action for both would mean the profile page
+ * posting notification fields it does not render.
  *
- * The fields a resident may change are exactly the fields listed in
- * `settingsFormSchema` — their name, their street or area, and how they want to
- * be told about things. **`role`, `verifiedAt` and `villageId` are not among
- * them** (domain rule 5): those are set by server code from a verified join
- * code or a coordinator action, and a form post that named them would otherwise
- * be a self-service promotion to coordinator.
- *
- * The update is keyed on the session user id, never on anything in the form.
+ * The fields a resident may change are exactly those in `profileSettingsSchema`
+ * and `notificationSettingsSchema` — their name, their street or area, and how
+ * they want to be told about things. **`role`, `verifiedAt` and `villageId` are
+ * not among them** (domain rule 5): a form post naming them parses to an object
+ * without them. The update is keyed on the session user id, never on anything
+ * in the form.
  */
 
 export type SettingsState = {
@@ -28,19 +33,58 @@ export type SettingsState = {
   fieldErrors?: Record<string, string>;
 };
 
-export async function saveSettingsAction(
-  _previous: SettingsState,
-  formData: FormData,
+async function saveFields(
+  path: string,
+  data: Record<string, unknown>,
 ): Promise<SettingsState> {
-  const session = await requireSession("/settings");
+  const session = await requireSession(path);
 
   if (!process.env.DATABASE_URL) {
     return { ok: false, message: "The database is not configured." };
   }
 
-  const parsed = settingsFormSchema.safeParse({
+  try {
+    await prisma.user.update({ where: { id: session.user.id }, data });
+  } catch (cause) {
+    console.error("Could not save settings for %s", session.user.id, cause);
+    return { ok: false, message: "Could not save your settings. Try again." };
+  }
+
+  // "You" renders the name and the summary rows; the sidebar renders the name.
+  revalidatePath("/settings", "layout");
+  revalidatePath("/", "layout");
+
+  return { ok: true, message: "Saved." };
+}
+
+export async function saveProfileAction(
+  _previous: SettingsState,
+  formData: FormData,
+): Promise<SettingsState> {
+  const parsed = profileSettingsSchema.safeParse({
     fullName: formData.get("fullName"),
     addressLine: formData.get("addressLine") || undefined,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Check the highlighted fields.",
+      fieldErrors: fieldErrors(parsed.error),
+    };
+  }
+
+  return saveFields("/settings/profile", {
+    fullName: parsed.data.fullName,
+    addressLine: parsed.data.addressLine ?? null,
+  });
+}
+
+export async function saveNotificationsAction(
+  _previous: SettingsState,
+  formData: FormData,
+): Promise<SettingsState> {
+  const parsed = notificationSettingsSchema.safeParse({
     // An unchecked checkbox is absent from the payload entirely, which is why
     // the schema treats "missing" as false rather than as "leave unchanged".
     notifyPush: formData.get("notifyPush") ?? "",
@@ -57,30 +101,7 @@ export async function saveSettingsAction(
     };
   }
 
-  const values = parsed.data;
-
-  try {
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: {
-        fullName: values.fullName,
-        addressLine: values.addressLine ?? null,
-        notifyPush: values.notifyPush,
-        notifyEmail: values.notifyEmail,
-        notifyMinSeverity: values.notifyMinSeverity,
-        notifyRadiusMeters: values.notifyRadiusMeters,
-      },
-    });
-  } catch (cause) {
-    console.error("Could not save settings for %s", session.user.id, cause);
-    return { ok: false, message: "Could not save your settings. Try again." };
-  }
-
-  // The sidebar renders the display name from the same row.
-  revalidatePath("/settings");
-  revalidatePath("/", "layout");
-
-  return { ok: true, message: "Settings saved." };
+  return saveFields("/settings/notifications", parsed.data);
 }
 
 /**

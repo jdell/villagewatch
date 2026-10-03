@@ -1,35 +1,57 @@
 import type { Metadata } from "next";
+import {
+  BellRing,
+  ClipboardCheck,
+  FileText,
+  LogOut,
+  MapPin,
+  MessageCircle,
+  QrCode,
+  Settings2,
+  ShieldCheck,
+  Trash2,
+  UserRound,
+  Users,
+  EyeOff,
+} from "lucide-react";
 import { CoordinatorApplication } from "@/components/coordinator-application";
-import { DeleteAccount } from "@/components/delete-account";
 import { FlashToast } from "@/components/flash-toast";
-import { SettingsForm } from "@/components/settings-form";
+import { ProfileCard } from "@/components/you/profile-card";
+import { ReplayTourRow } from "@/components/you/replay-tour-row";
+import { SettingsGroup, SettingsRow } from "@/components/you/settings-list";
 import { requireSession } from "@/lib/auth";
 import { getLatestCoordinatorRequest } from "@/lib/coordinator-requests";
+import { prisma } from "@/lib/prisma";
 import { getVillageChannel } from "@/lib/whatsapp-channel";
+import { daysSince, RADIUS_STOPS, radiusStop } from "@/lib/you";
+import { readYouStats } from "@/lib/you-stats";
 import {
   APP_NAME,
-  canApplyForCoordinator,
-  isCoordinatorRole,
+  SEVERITY_LABELS,
   USER_ROLE_LABELS,
   VERSION_LABEL,
+  canApplyForCoordinator,
+  isCoordinatorRole,
 } from "@/lib/constants";
 
-export const metadata: Metadata = { title: "Settings" };
+export const metadata: Metadata = { title: "You" };
 
 /**
- * Profile, notification preferences and the sign-out button.
+ * "You" — the Settings tab, redesigned as a page about the resident rather
+ * than a form. A profile card, the coordinator application, then grouped rows
+ * that each say the current value and push to a sub-page to change it:
+ * `/settings/profile`, `/settings/notifications`, `/settings/account`.
  *
- * The form's initial values come from the session profile, which is read
- * server-side on every request — `(app)/layout.tsx` forces this route dynamic,
- * so a resident who just saved never sees a cached copy of their old settings.
+ * Nothing on this page writes. Every control lives on a sub-page with its own
+ * form and its own Save, so there is never a half-edited screen to leave. Role
+ * and village are shown and never editable — both are set by server code from a
+ * verified join code or a coordinator action (domain rule 5); asking for a
+ * different role is the coordinator application, a form on its own page.
  *
- * Role and village are shown but not editable: both are set by server code from
- * a verified join code or a coordinator action (domain rule 5). Asking to have
- * the role changed is the one thing this screen can start, and it starts it by
- * linking to `/coordinator-apply` rather than by putting a role field on a form
- * — see `CoordinatorApplication`.
+ * `(app)/layout.tsx` forces this route dynamic, so a resident who has just
+ * saved on a sub-page comes back to the value they saved.
  */
-export default async function SettingsPage({
+export default async function YouPage({
   searchParams,
 }: {
   // Next 16: `searchParams` is a Promise and has to be awaited.
@@ -37,104 +59,206 @@ export default async function SettingsPage({
 }) {
   const session = await requireSession("/settings");
   const profile = session.profile;
+  const villageId = profile?.villageId ?? null;
+  const coordinator = isCoordinatorRole(profile?.role);
+  const canApply = canApplyForCoordinator(profile?.role);
 
-  // A resident with no village has no channel to follow — `getVillageChannel`
-  // is scoped by the village id off the session profile and never by anything
-  // that arrived in a request (domain rule 4).
-  const [{ applied }, channel, coordinatorRequest] = await Promise.all([
-    searchParams,
-    profile?.villageId ? getVillageChannel(profile.villageId) : null,
-    // Only read for someone who could still apply. A coordinator's own old
-    // application is history they have no use for on this screen.
-    canApplyForCoordinator(profile?.role)
-      ? getLatestCoordinatorRequest(session.user.id)
-      : null,
-  ]);
+  // Every read keyed on the session — the user id or the village off the
+  // profile, never anything from the request (domain rule 4).
+  const [{ applied }, village, channel, coordinatorRequest, stats] =
+    await Promise.all([
+      searchParams,
+      villageId
+        ? prisma.village
+            .findUnique({ where: { id: villageId }, select: { name: true } })
+            .catch(() => null)
+        : null,
+      villageId ? getVillageChannel(villageId) : null,
+      // A coordinator's own old application is history they have no use for.
+      canApply ? getLatestCoordinatorRequest(session.user.id) : null,
+      readYouStats(session.user.id),
+    ]);
+
+  const radius = RADIUS_STOPS[radiusStop(profile?.notifyRadiusMeters ?? null)];
+  const notificationsSummary = [
+    profile?.notifyPush ? "Push" : null,
+    profile?.notifyEmail ? "Email" : null,
+  ]
+    .filter(Boolean)
+    .join(" & ");
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-10">
-      {/* Set by the redirect at the end of `applyForCoordinatorAction`. */}
-      {applied === "1" && (
-        <FlashToast message="Application sent. We will let you know." />
-      )}
+    <div className="min-h-full bg-[#f1f5f9] lg:bg-transparent">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-6 lg:px-6 lg:py-8">
+        {/* Set by the redirect at the end of `applyForCoordinatorAction`. */}
+        {applied === "1" && (
+          <FlashToast message="Application sent. We will let you know." />
+        )}
 
-      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-        Settings
-      </h1>
-      <p className="mt-1 text-sm text-slate-500">
-        Your profile, and exactly how much you want to be told.
-      </p>
+        <h1 className="px-1 text-[28px] font-[750] tracking-tight text-[#0f172a]">
+          You
+        </h1>
 
-      {profile?.role && (
-        <p className="mt-3 inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-          {USER_ROLE_LABELS[profile.role]}
-          {profile.verifiedAt ? " · verified" : " · not yet verified"}
-        </p>
-      )}
+        <ProfileCard
+          name={profile?.fullName ?? ""}
+          roleLabel={profile?.role ? USER_ROLE_LABELS[profile.role] : null}
+          villageName={village?.name ?? null}
+          verified={Boolean(profile?.verifiedAt)}
+          stats={[
+            { label: "Reports filed", value: stats.reportsFiled },
+            { label: "Rated", value: stats.rated },
+            {
+              label: "Days a member",
+              value: profile ? daysSince(profile.createdAt, new Date()) : null,
+            },
+          ]}
+        />
 
-      <SettingsForm
-        values={{
-          fullName: profile?.fullName ?? "",
-          email: session.user.email ?? "",
-          addressLine: profile?.addressLine ?? "",
-          notifyPush: profile?.notifyPush ?? true,
-          notifyEmail: profile?.notifyEmail ?? true,
-          notifyMinSeverity: profile?.notifyMinSeverity ?? "LOW",
-          notifyRadiusMeters: profile?.notifyRadiusMeters ?? null,
-        }}
-        channel={
-          // `null` only where the resident has no village at all. Everyone else
-          // sees the section — with the follow link if their village runs a
-          // channel, and "not set up yet" if it does not. A coordinator also
-          // gets the way through to the dashboard form that sets one up.
-          profile?.villageId
-            ? {
-                url: channel?.url ?? null,
-                canSetUp: isCoordinatorRole(profile?.role),
-              }
-            : null
-        }
-      />
-
-      {/*
-        Outside SettingsForm, and below the save button, because it is not a
-        setting: applying is a form on its own page and the state shown here is
-        the outcome of one. Rendered only for a resident with a village — there
-        is nothing to coordinate without one.
-      */}
-      {canApplyForCoordinator(profile?.role) && profile?.villageId && (
-        <div className="mt-4">
+        {canApply && villageId && (
           <CoordinatorApplication request={coordinatorRequest} />
-        </div>
-      )}
+        )}
 
-      {/*
-        Last on the page, and the only thing below the save button that is not
-        an outcome of it. Rendered for everyone with an email — which is
-        everyone, since it is the sign-in address — because the right to erasure
-        does not depend on having joined a village yet.
-      */}
-      {session.user.email && <DeleteAccount email={session.user.email} />}
+        <SettingsGroup title="Profile" id="profile">
+          <SettingsRow
+            icon={UserRound}
+            label="Name"
+            value={profile?.fullName || "Not set"}
+            href="/settings/profile"
+          />
+          <SettingsRow
+            icon={MapPin}
+            label="Street or area"
+            value={profile?.addressLine || "Not set"}
+            href="/settings/profile"
+          />
+          {/*
+            Not a switch, because there is nothing for one to change: no
+            neighbour has ever been shown who filed a report, and a coordinator
+            always is — see "Filing anonymously". A toggle here would be a
+            control that moves nothing, so this says what is true instead.
+          */}
+          <SettingsRow
+            icon={EyeOff}
+            label="Filing anonymously"
+            detail="Always, to your neighbours. Your coordinator sees who filed, so they can follow up."
+          />
+          <SettingsRow
+            icon={FileText}
+            label="Email"
+            value={session.user.email ?? ""}
+            href="/settings/account"
+          />
+        </SettingsGroup>
 
-      {/*
-        Sits outside SettingsForm because HTML forbids nested forms — the button
-        inside the settings form targets it by id. It is a real POST to the
-        logout route so the Supabase cookies are cleared by a route handler
-        rather than by client code that might not run.
-      */}
-      <form id="sign-out" action="/api/auth/logout" method="post" />
+        <SettingsGroup title="Notifications" id="notifications">
+          <SettingsRow
+            icon={BellRing}
+            iconTile="bg-[#f0f9ff] text-[#0284c7]"
+            label="Alerts"
+            detail={
+              notificationsSummary
+                ? `${notificationsSummary} · ${SEVERITY_LABELS[profile?.notifyMinSeverity ?? "LOW"]} and above · ${radius.label.toLowerCase()}`
+                : "Off — you will not be told about new reports"
+            }
+            href="/settings/notifications"
+          />
+        </SettingsGroup>
 
-      {/*
-        The build, named in full rather than as a bare `v0.1.24`. This is the
-        one a resident is asked to read out to whoever is helping them, and
-        "VillageWatch 0.1.24" survives being repeated over the phone in a way a
-        number on its own does not. Nothing renders on a build with no version.
-      */}
-      {VERSION_LABEL && (
-        <p className="mt-10 text-center text-xs text-slate-400">
-          {APP_NAME} {VERSION_LABEL}
-        </p>
-      )}
+        {villageId && (
+          <SettingsGroup
+            title="Village"
+            id="village"
+            footer={
+              channel?.url
+                ? "A WhatsApp Channel is public: anyone with the link can read it. Posts carry a headline, an area and a link — never your name, your wording, or the exact spot."
+                : undefined
+            }
+          >
+            {channel?.url ? (
+              <SettingsRow
+                icon={MessageCircle}
+                iconTile="bg-[#f0fdf4] text-[#16a34a]"
+                label="WhatsApp Channel"
+                detail="Follow the village's serious alerts outside the app"
+                href={channel.url}
+                external
+              />
+            ) : (
+              <SettingsRow
+                icon={MessageCircle}
+                label="WhatsApp Channel"
+                detail={
+                  coordinator
+                    ? "Not set up yet — set one up in village settings"
+                    : "Not set up yet"
+                }
+                href={coordinator ? "/dashboard/settings#channels" : undefined}
+              />
+            )}
+          </SettingsGroup>
+        )}
+
+        {/*
+          The coordinator's shortcuts into their own village's settings. The
+          sidebar has all of them from `lg` up; on a phone the tab bar has none,
+          and these four are the ones a coordinator reaches for from a phone.
+        */}
+        {coordinator && (
+          <SettingsGroup title="Coordinator" id="coordinator">
+            <SettingsRow
+              icon={Settings2}
+              iconTile="bg-[#0f172a] text-white"
+              label="Village settings"
+              href="/dashboard/settings"
+            />
+            <SettingsRow
+              icon={Users}
+              label="Residents"
+              href="/dashboard/settings#residents"
+            />
+            <SettingsRow icon={QrCode} label="Invite" href="/dashboard/settings#invite" />
+            <SettingsRow
+              icon={ClipboardCheck}
+              label="Compliance"
+              href="/dashboard/compliance"
+            />
+          </SettingsGroup>
+        )}
+
+        <SettingsGroup>
+          <ReplayTourRow />
+          <SettingsRow icon={ShieldCheck} label="Privacy notice" href="/privacy" />
+          <SettingsRow icon={FileText} label="Terms of use" href="/terms" />
+        </SettingsGroup>
+
+        <SettingsGroup>
+          {/*
+            A real POST to the logout route, so the Supabase cookies are cleared
+            by a route handler rather than by client code that might not run.
+            The form is below; the row submits it by id.
+          */}
+          <SettingsRow icon={LogOut} label="Sign out" formId="sign-out" />
+          <SettingsRow
+            icon={Trash2}
+            iconTile="bg-[#fef2f2] text-[#b91c1c]"
+            label="Delete my account"
+            tone="danger"
+            href="/settings/account"
+          />
+        </SettingsGroup>
+
+        <form id="sign-out" action="/api/auth/logout" method="post" />
+
+        {/*
+          The build, named in full rather than as a bare number — the one a
+          resident is asked to read out to whoever is helping them.
+        */}
+        {VERSION_LABEL && (
+          <p className="text-center text-xs text-[#94a3b8]">
+            {APP_NAME} {VERSION_LABEL}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

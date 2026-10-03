@@ -249,8 +249,14 @@ src/
                               thing in the app that renders `PatternAlert`
       reports/actions.ts      generateNarrativeAction — the one Claude call,
                               rate limited, and where the audit row is written
-      settings/               Profile and notification preferences
-      settings/actions.ts     saveSettingsAction — never touches role/village
+      settings/               "You" — the profile card, the coordinator
+                              application, and grouped rows that each push to a
+                              sub-page. Writes nothing. See Phase H
+      settings/profile/       Name and street or area
+      settings/notifications/ Push, email, severity floor, radius with a map
+      settings/account/       The sign-in address, and closing the account
+      settings/actions.ts     saveProfileAction, saveNotificationsAction,
+                              deleteAccountAction — never touch role/village
     forgot-password/          Ask for a reset link — public, no session
     reset-password/           Where the link lands; expired-link state built in
     api/auth/                 login, logout, register route handlers
@@ -351,7 +357,8 @@ src/
                               not in service. Rendered by (app)/layout.tsx above
                               every authenticated page; absent when it is
     coordinator-apply-form.tsx  The application — role, detail, why
-    coordinator-application.tsx Settings section: apply / pending / declined
+    coordinator-application.tsx On "You": the dark "Become a coordinator"
+                              card, or the pending / declined state
     flash-toast.tsx           One toast after a redirecting server action
     markdown-view.tsx         Renders lib/markdown.ts's tree as React — no
                               dangerouslySetInnerHTML, so nothing to sanitise
@@ -439,8 +446,18 @@ src/
                               Read-only, and it says which were written by a
                               model and which were counted
     incident-edit-form.tsx    Five-field edit, no wizard, no re-anonymisation
-    settings-form.tsx         Profile + notification preferences, one action
-    delete-account.tsx        The danger zone — type your email to confirm
+    you/settings-list.tsx     SettingsGroup and SettingsRow — white cards of
+                              56px+ rows with chevrons, iOS Settings' shape
+    you/profile-card.tsx      Initials avatar, name, role · village, verified,
+                              and three figures — all the resident's own
+    you/sub-page-bar.tsx      "← You" and the sub-page's name
+    you/profile-form.tsx      The Profile sub-page's form
+    you/notifications-form.tsx  Two switches, a severity segmented control, the
+                              radius slider and its circle
+    you/radius-preview-map.tsx  The circle on a map — a picture, ssr: false
+    you/replay-tour-row.tsx   "How VillageWatch works" — the tour, again
+    delete-account.tsx        The danger zone — type your email to confirm.
+                              On /settings/account
     push-registration.tsx     OneSignal init, login(userId), consent banner
     onboarding-tour.tsx       Four-step first-run tour; useSyncExternalStore
     service-worker.tsx        Registers /sw.js in production only
@@ -706,6 +723,10 @@ src/
     rate-limit.ts             Fixed windows counted in `rate_limit` — server only
     format.ts                 Time-ago, dates, sizes — en-GB
     incidents.ts              PUBLIC_INCIDENT_SELECT (no rawDescription), mappers
+    you.ts                    Initials, days a member, the radius slider's stops
+                              — client-safe and pure
+    you-stats.ts              The profile card's figures, each degrading to a
+                              dash. Server only
     incident-live.ts          "Happening now" — derived, never stored — and
                               which banner a report's page draws. Client-safe
     incident-ended.ts         "It's over now": who may, what it writes
@@ -1065,6 +1086,9 @@ tests/                        Vitest, unit only — see The test suite
                               audit row before any message; and the reporter
                               and the voters told, never the village. Also the
                               note in both documents that leave the village
+  you.test.ts                 "You" — initials, days, the slider's stops, and
+                              the two settings halves dropping role, village and
+                              verification from a post (domain rule 5)
   incident-live.test.ts       "Happening now" — the window's edges, never in the
                               queue, ended by `endedAt` — and one banner per
                               status
@@ -2170,7 +2194,8 @@ feed it. All four templates have a caller now; three of them gained one on
   existed since the first migration with nothing honouring it and no checkbox in
   front of it; honouring it without adding the checkbox would have been a
   village that could not stop the email. `settingsFormSchema`, the action, the
-  page and `SettingsForm` all gained it.
+  page and the form all gained it — today the Notifications sub-page of "You"
+  (`notificationSettingsSchema`, `saveNotificationsAction`).
 - **`emailIncidentPublished` is deliberately *not* inside
   `notifyIncidentPublished`**, which is the obvious place for it. That function
   has three callers and only two are a publish: `POST /api/notifications` is a
@@ -2294,7 +2319,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Seventy-one files, 1,145 tests, covering the
+between the typecheck and the build. Seventy-two files, 1,155 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -5120,7 +5145,7 @@ group here.
   `lg` up the sidebar is still the navigation.
 - **Phase A — the shell.** Below `lg`, a bottom tab bar (`modern/tab-bar.tsx`):
   Map `/map`, List `/incidents`, a raised Report button `/incidents/new`,
-  Trends `/trends`, Settings `/settings`. 82px, `rgba(255,255,255,.96)` behind a
+  Trends `/trends`, You `/settings` (labelled Settings until Phase H). 82px, `rgba(255,255,255,.96)` behind a
   12px blur, a 1px `#e2e8f0` rule, the Report button `#0284c7`.
 - **The top bar stays everywhere but the map**, and that is the decision rather
   than an unfinished one: the drawer behind it is the only way to Events, the
@@ -5328,6 +5353,45 @@ group here.
   in `app-shell.tsx`) — the page has its own bar, and two stacked bars is the
   thing the design removes. The tab bar stays; the drawer is a tap away on the
   map. `IncidentLocationMap` had no caller left and is deleted.
+- **Phase H — "You".** The Settings tab is a page about the resident: a
+  profile card (initials avatar on sky-600, name, role · village, a verified
+  badge, three figures), the coordinator application as a dark card, then
+  white groups of rows — Profile, Notifications, Village (the WhatsApp
+  Channel), Coordinator (Village settings, Residents, Invite, Compliance —
+  coordinators only), then How VillageWatch works, Privacy, Terms, Sign out,
+  Delete my account, and the version. Rows say the current value and push to a
+  sub-page — `/settings/profile`, `/settings/notifications`,
+  `/settings/account` — each with a back bar, its own form and its own Save.
+  "You" itself writes nothing. The tab is labelled **You**; the desktop
+  sidebar still says Settings, because there it sits among other settings.
+- **Two actions where there was one.** `saveProfileAction` and
+  `saveNotificationsAction` parse `profileSettingsSchema` and
+  `notificationSettingsSchema`, both `.pick`s of `settingsFormSchema` — so a
+  sub-page cannot post fields it does not render, and `role`, `villageId` and
+  `verifiedAt` are stripped as unknown keys (domain rule 5,
+  `tests/you.test.ts`). `SettingsForm` and `saveSettingsAction` are gone.
+- **"Witnessed" is "Rated", and "days active" is "days a member".** Nothing
+  records a witness — corroboration is a proposal, not a table — and nothing
+  writes `User.lastActiveAt`. The card counts what exists (votes cast, days
+  since the profile row) and names it for what it is, in `you-stats.ts`.
+- **"Anonymous default" is a sentence, not a switch.** There is no per-user
+  default to set, and the per-report flag changes nothing anybody sees (see
+  Filing anonymously) — a toggle would be a control that moves nothing. The row
+  says what is true: never your name to neighbours, always to your coordinator.
+  The old profile copy said the opposite ("unless you file them anonymously")
+  and is corrected.
+- **The radius is a slider over `NOTIFICATION_RADII`, outwards, ending at the
+  whole village** (`RADIUS_STOPS`), with the circle drawn on a small map around
+  the resident's own approximate home. With no home location there is nothing
+  to measure from, and the form says so instead of drawing a circle.
+- **"How VillageWatch works" replays the onboarding tour** (`restartTour`),
+  rather than linking to the landing page a signed-in resident has no reason to
+  read. The tour's first step stopped saying green and purple — the pins have
+  been the heat ramp since Phase C.
+- **The shell's top bar is hidden on the three sub-pages**, which have a back
+  bar of their own, and kept on "You", where it is a phone's only way to the
+  drawer from that tab. Dashboard settings gained a `#residents` anchor for the
+  coordinator's Residents row.
 - **Clustering is not built.** The handoff's decluttering system (clusters
   below zoom 17, donut rings of the severity mix) is outside the brief's six
   phases; at a village's volume the glyph discs are legible without it, and it
