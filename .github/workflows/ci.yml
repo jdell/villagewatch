@@ -29,8 +29,9 @@ name: CI
 # so nothing here needs a database or an API key either. A test that wanted a
 # secret would be a test this workflow could not run.
 #
-# A commit carrying `[skip ci]` — which is every `chore(release):` commit from
-# version.yml — is skipped by GitHub Actions natively. No `if:` needed.
+# A commit carrying `[skip ci]` is skipped by GitHub Actions natively. The
+# `chore(release):` commits version.yml writes no longer carry it — see the
+# header of that file — so CI runs on a release when its PR merges.
 
 on:
   pull_request:
