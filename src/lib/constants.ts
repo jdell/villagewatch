@@ -278,6 +278,16 @@ export const INCIDENT_STATUS_LABELS = {
   REMOVED: "Erased",
 } satisfies Record<IncidentStatus, string>;
 
+/**
+ * `?action=approve` on an incident's page — where the "Approve" button on a
+ * coordinator's pending-report push lands. It opens the approve confirmation
+ * and nothing more: the coordinator still reads the report and presses
+ * Confirm, and `moderateFromDetailAction` re-checks everything. One constant so
+ * the push that builds the link and the page that reads it cannot drift.
+ */
+export const INCIDENT_ACTION_PARAM = "action";
+export const INCIDENT_APPROVE_ACTION = "approve";
+
 /** Statuses a resident is allowed to see on the map and public list. */
 export const PUBLIC_INCIDENT_STATUSES = [
   "PUBLISHED",

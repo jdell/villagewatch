@@ -26,7 +26,13 @@ import {
   formatIncidentSummary,
   reportController,
 } from "@/lib/community-report";
-import { PUBLIC_INCIDENT_STATUSES, isCoordinatorRole } from "@/lib/constants";
+import {
+  INCIDENT_ACTION_PARAM,
+  INCIDENT_APPROVE_ACTION,
+  INCIDENT_STATUS_LABELS,
+  PUBLIC_INCIDENT_STATUSES,
+  isCoordinatorRole,
+} from "@/lib/constants";
 import { canReporterErase } from "@/lib/erasure";
 import { formatIncidentAlert } from "@/lib/format-alert";
 import { readVoteStates } from "@/lib/incident-votes";
@@ -50,7 +56,10 @@ import { formatDateTime } from "@/lib/format";
  * public columns only, so there is nothing here to leak.
  */
 
-type PageProps = { params: Promise<{ id: string }> };
+type PageProps = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
 export async function generateMetadata({
   params,
@@ -90,13 +99,30 @@ export async function generateMetadata({
   };
 }
 
-export default async function IncidentDetailPage({ params }: PageProps) {
+export default async function IncidentDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { id } = await params;
   // A malformed id is a 404, not a Prisma error: Postgres rejects it rather
   // than finding no row. Before the session, since it reveals nothing.
   if (!isUuid(id)) notFound();
 
-  const session = await requireSession(`/incidents/${id}`);
+  /*
+    `?action=approve` is where the Approve button on a coordinator's
+    pending-report push lands (`pendingReportMessage`). Compared against the one
+    value it can have rather than passed through, and carried through the
+    sign-in redirect so a coordinator whose session had lapsed still arrives at
+    the open panel.
+  */
+  const requestedAction = (await searchParams)[INCIDENT_ACTION_PARAM];
+  const approveRequested = requestedAction === INCIDENT_APPROVE_ACTION;
+
+  const session = await requireSession(
+    approveRequested
+      ? `/incidents/${id}?${INCIDENT_ACTION_PARAM}=${INCIDENT_APPROVE_ACTION}`
+      : `/incidents/${id}`,
+  );
   const villageId = session.profile?.villageId;
   const role = session.profile?.role;
 
@@ -169,6 +195,19 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const inQueue =
     incident.status === "DRAFT" || incident.status === "PENDING_REVIEW";
   const deletable = canReporterErase(incident.status);
+  /*
+    Opens the approve confirmation, and only for somebody who could press it on
+    a report still waiting. A resident who follows the link gets the page they
+    would have got anyway, and the action re-checks the role regardless.
+  */
+  const openApprove = approveRequested && isCoordinator && inQueue;
+  /*
+    The link from a push outlives the decision it was about: a second
+    coordinator may have got there first. Saying so beats a page with no
+    Approve button on it and no explanation of why.
+  */
+  const alreadyReviewed = approveRequested && isCoordinator && !inQueue;
+  const currentStatus = INCIDENT_STATUS_LABELS[incident.status].toLowerCase();
   /*
     The police reference is the one thing on a published report that can still
     change — it usually arrives after the report is on the map. The reporter and
@@ -294,6 +333,36 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         <ArrowLeft className="size-4" aria-hidden />
         All incidents
       </Link>
+
+      {openApprove && (
+        <div className="mt-4 flex gap-3 rounded-xl bg-brand-50 p-3.5 ring-1 ring-brand-200">
+          <ShieldCheck className="size-5 shrink-0 text-brand-600" aria-hidden />
+          <div className="text-sm leading-relaxed text-brand-900">
+            <p className="font-medium">Read it, then approve</p>
+            <p className="mt-1 text-brand-800">
+              Approving publishes this report to the village map and alerts
+              your neighbours. Read what it says first — the confirmation is{" "}
+              <a
+                href="#approve-panel"
+                className="font-medium underline underline-offset-2"
+              >
+                at the bottom of the page
+              </a>
+              .
+            </p>
+          </div>
+        </div>
+      )}
+
+      {alreadyReviewed && (
+        <div className="mt-4 flex gap-3 rounded-xl bg-slate-50 p-3.5 ring-1 ring-slate-200">
+          <ShieldCheck className="size-5 shrink-0 text-slate-500" aria-hidden />
+          <p className="text-sm leading-relaxed text-slate-700">
+            <span className="font-medium text-slate-900">Already reviewed.</span>{" "}
+            {`This report is now ${currentStatus}, so there is nothing left to approve.`}
+          </p>
+        </div>
+      )}
 
       {!isPublic && (
         <div className="mt-4 flex gap-3 rounded-xl bg-amber-50 p-3.5 ring-1 ring-amber-200">
@@ -528,6 +597,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         // ownership and the status — this only decides whether a button exists.
         canDelete={isReporter && deletable}
         canModerate={isCoordinator}
+        openApprove={openApprove}
       />
     </div>
   );

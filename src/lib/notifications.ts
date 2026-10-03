@@ -24,6 +24,8 @@ import {
 import {
   APP_ORIGIN,
   COORDINATOR_ROLES,
+  INCIDENT_ACTION_PARAM,
+  INCIDENT_APPROVE_ACTION,
   LOCATION_FUZZ_METERS,
   MAX_PUSH_RECIPIENTS,
   SEVERITY_META,
@@ -194,7 +196,7 @@ export type DispatchResult = {
   skipped?: "not_configured" | "no_recipients" | "failed";
 };
 
-type PushMessage = {
+export type PushMessage = {
   villageId: string;
   title: string;
   body: string;
@@ -203,7 +205,17 @@ type PushMessage = {
   /** Written onto the `Notification` rows this dispatch creates. */
   incidentId?: string;
   patternAlertId?: string;
+  /**
+   * Action buttons under the notification, each a deep link of its own. Sent
+   * as OneSignal's `web_buttons`, which is the web-push field that carries a
+   * URL — `buttons` is the native-app one and has nowhere to put a link. A
+   * browser that draws no buttons (Safari, iOS) shows the notification without
+   * them and the tap still opens `path`, so a button is never the only way in.
+   */
+  actions?: readonly PushAction[];
 };
+
+export type PushAction = { id: string; text: string; path: string };
 
 type Recipient = { id: string };
 
@@ -242,11 +254,14 @@ async function dispatch(
     // The one branch a fresh clone takes. Logged rather than silent, because
     // "did that alert go out?" is otherwise unanswerable in development.
     console.log(
-      "[push:not-configured] %s — %s → %d resident(s) (%s)",
+      "[push:not-configured] %s — %s → %d resident(s) (%s)%s",
       message.title,
       message.body,
       audience.length,
       url,
+      message.actions?.length
+        ? ` buttons: ${message.actions.map((a) => `${a.text} → ${a.path}`).join(", ")}`
+        : "",
     );
 
     await recordNotifications(message, audience, null);
@@ -277,6 +292,13 @@ async function dispatch(
   notification.headings = { en: message.title };
   notification.contents = { en: message.body };
   notification.web_url = url;
+  if (message.actions?.length) {
+    notification.web_buttons = message.actions.map((action) => ({
+      id: action.id,
+      text: action.text,
+      url: absoluteUrl(action.path),
+    }));
+  }
   notification.data = {
     incidentId: message.incidentId ?? null,
     patternAlertId: message.patternAlertId ?? null,
@@ -969,16 +991,51 @@ export async function notifyCoordinatorsOfPendingReport(input: {
     select: { id: true },
   });
 
-  return dispatch(
-    {
-      villageId: input.villageId,
-      title: `📥 ${SEVERITY_META[input.severity].label} report awaiting review`,
-      body: `${input.reference} — ${input.title}`,
-      path: "/dashboard",
-      incidentId: input.incidentId,
-    },
-    coordinators,
-  );
+  return dispatch(pendingReportMessage(input), coordinators);
+}
+
+/**
+ * The pending-report push itself, apart from its audience so it can be tested
+ * without OneSignal.
+ *
+ * The tap opens the report — it used to open `/dashboard`, which since the
+ * redesign is Overview and does not list the queue — and two buttons sit under
+ * it:
+ *
+ * - **Approve** opens the same page with `?action=approve`, which has the
+ *   confirmation already open. It approves nothing: the coordinator still reads
+ *   the report and presses Confirm, because a push notification is not a place
+ *   to make a decision that alerts the whole village.
+ * - **Review** opens the queue, for a coordinator who would rather see
+ *   everything waiting than this one report.
+ *
+ * There is deliberately no Reject. Rejecting needs a reason the reporter is
+ * sent, and a notification button cannot collect one.
+ */
+export function pendingReportMessage(input: {
+  villageId: string;
+  incidentId: string;
+  reference: string;
+  title: string;
+  severity: Severity;
+}): PushMessage {
+  const incidentPath = `/incidents/${input.incidentId}`;
+
+  return {
+    villageId: input.villageId,
+    title: `📥 ${SEVERITY_META[input.severity].label} report awaiting review`,
+    body: `${input.reference} — ${input.title}`,
+    path: incidentPath,
+    incidentId: input.incidentId,
+    actions: [
+      {
+        id: "approve",
+        text: "Approve",
+        path: `${incidentPath}?${INCIDENT_ACTION_PARAM}=${INCIDENT_APPROVE_ACTION}`,
+      },
+      { id: "review", text: "Review", path: "/dashboard/queue" },
+    ],
+  };
 }
 
 // ---------------------------------------------------------------------------

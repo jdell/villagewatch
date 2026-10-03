@@ -1001,6 +1001,11 @@ tests/                        Vitest, unit only — see The test suite
                               result that is a count and a message that names
                               nobody, a closed account told nothing, and every
                               failure a value rather than a throw
+  push-action-buttons.test.ts The pending-report push's two buttons — the tap
+                              opening the report, Approve opening it with the
+                              confirmation open, Review opening the queue, no
+                              Reject, and the buttons leaving as `web_buttons`
+                              with absolute URLs through a mocked OneSignal
   email-branding.test.ts      The one shell, across every email the app sends
                               itself — both parts rendered, a complete document,
                               the brand bar and the mark, the footer's three
@@ -2205,7 +2210,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty-two files, 1,069 tests, covering the
+between the typecheck and the build. Sixty-three files, 1,075 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -3273,6 +3278,24 @@ adding one, and it is read in exactly one place that matters:
   to hear less village news, and this is work, not news. The reporter is
   excluded from their own alert. Reference and title only; a push body lands on
   a lock screen.
+- **That push opens the report and carries two buttons, Approve and Review.**
+  `pendingReportMessage` builds it. The tap opens `/incidents/[id]` — it opened
+  `/dashboard` until 3 October 2026, which since the redesign is Overview and
+  does not list the queue. **Approve** opens the same page with
+  `?action=approve` (`INCIDENT_ACTION_PARAM` / `INCIDENT_APPROVE_ACTION`), where
+  a banner at the top says to read the report and the confirmation is already
+  open at the bottom. It approves nothing: Confirm is the same PUBLISH submit,
+  and `moderateFromDetailAction` re-checks the role, the village and the status.
+  The panel is expanded rather than scrolled to, so the report is read before
+  the button. **Review** opens `/dashboard/queue`. **There is no Reject** — a
+  rejection needs a reason the reporter is sent, and a notification button
+  cannot collect one. A link that arrives after another coordinator has already
+  decided says so rather than showing a page with no Approve button.
+- **They are `web_buttons`, not `buttons`.** OneSignal's `buttons` is the
+  native-app field and has no URL; `web_buttons` is the web-push field that
+  carries one. Chrome and Edge draw them; Safari and iOS do not, and show the
+  notification without them — the tap still opens the report, so a button is
+  never the only way in.
 - **`village.auto_approve_changed` is audited and toned `sensitive`**, alongside
   `village.channel_update`. That one widens who can read a published report;
   this one removes the person who decides whether it is published at all.

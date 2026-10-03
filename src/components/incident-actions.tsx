@@ -45,6 +45,12 @@ type IncidentActionsProps = {
   canDelete: boolean;
   /** Viewer is a coordinator, moderator or admin in this village. */
   canModerate: boolean;
+  /**
+   * Arrived from the Approve button on a pending-report push. Opens the
+   * approve confirmation instead of showing the one-press button. It decides
+   * nothing — Confirm is the same PUBLISH submit, re-checked by the action.
+   */
+  openApprove?: boolean;
 };
 
 function ActionButton({
@@ -122,12 +128,16 @@ export function IncidentActions({
   canEdit,
   canDelete,
   canModerate,
+  openApprove = false,
 }: IncidentActionsProps) {
   const [moderation, moderate] = useActionState(moderateFromDetailAction, IDLE);
   const [removal, remove] = useActionState(deleteIncidentAction, IDLE);
   const [resolution, resolve] = useActionState(resolveIncidentAction, IDLE);
   const [confirming, setConfirming] = useState(false);
   const [resolving, setResolving] = useState(false);
+  // Initial state only: a coordinator who cancels it has the ordinary buttons
+  // back, and nothing reopens it until they follow another push.
+  const [approving, setApproving] = useState(openApprove);
 
   useEffect(() => {
     // A success revalidates the page into RESOLVED, which is what closes the
@@ -253,15 +263,53 @@ export function IncidentActions({
             </div>
           )}
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            {inQueue && (
-              <>
+          {/*
+            Inside the moderation form, so Confirm submits the same PUBLISH
+            with the same optional note — there is no second write path. Not a
+            modal and not scrolled to: the page's banner points down here, and
+            the report is above it, which is the order it should be read in.
+          */}
+          {inQueue && approving && (
+            <div
+              id="approve-panel"
+              className="mt-4 rounded-xl bg-safe-50 p-4 ring-1 ring-safe-200"
+            >
+              <p className="text-sm font-medium text-slate-900">
+                Approve this report?
+              </p>
+              <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+                It goes on the village map and your neighbours are alerted. If
+                anything in it identifies somebody, edit or reject it instead.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <ActionButton
                   action="PUBLISH"
                   icon={Check}
-                  label="Approve & alert"
+                  label="Confirm & publish"
                   className="bg-safe-600 text-white hover:bg-safe-700"
                 />
+                <button
+                  type="button"
+                  onClick={() => setApproving(false)}
+                  className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-medium text-slate-600 transition hover:text-slate-900"
+                >
+                  Not now
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {inQueue && (
+              <>
+                {!approving && (
+                  <ActionButton
+                    action="PUBLISH"
+                    icon={Check}
+                    label="Approve & alert"
+                    className="bg-safe-600 text-white hover:bg-safe-700"
+                  />
+                )}
                 <ActionButton
                   action="REJECT"
                   icon={X}
