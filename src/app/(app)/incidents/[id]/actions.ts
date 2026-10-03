@@ -7,11 +7,13 @@ import { auditContext } from "@/lib/audit-context";
 import { prisma } from "@/lib/prisma";
 import { applyModeration } from "@/lib/moderation";
 import { removeIncident } from "@/lib/erasure";
+import { setIncidentPoliceReference } from "@/lib/police-reference";
 import { isCoordinatorRole } from "@/lib/constants";
 import {
   fieldErrors,
   incidentEditSchema,
   incidentModerationSchema,
+  incidentPoliceReferenceSchema,
   incidentResolutionSchema,
   isUuid,
 } from "@/lib/validations";
@@ -35,6 +37,10 @@ import {
  *   row and the village alert cannot be skipped by coming in from here.
  * - **A coordinator** may resolve a published report with a note, through that
  *   same path — `resolveIncidentAction` below.
+ * - **The reporter or a coordinator** may set the police reference on a
+ *   published or resolved report — `setPoliceReferenceAction` below. The one
+ *   column a published report can still have changed, because it is a pointer
+ *   to the police's record rather than a statement about what happened.
  */
 
 export type IncidentActionState = {
@@ -156,6 +162,56 @@ export async function resolveIncidentAction(
   revalidatePath("/reports");
 
   return { ok: true, message: "Report resolved" };
+}
+
+/**
+ * Add, correct or remove the police reference on a report already on the map.
+ *
+ * The rule — reporter or coordinator, published or resolved, own village — is
+ * `setIncidentPoliceReference`'s, so it is tested without a request context.
+ * This parses the form and revalidates the three surfaces that print the
+ * reference: the report itself, the list, and the period report.
+ */
+export async function setPoliceReferenceAction(
+  _previous: IncidentActionState,
+  formData: FormData,
+): Promise<IncidentActionState> {
+  const session = await requireSession("/incidents");
+
+  const parsed = incidentPoliceReferenceSchema.safeParse({
+    incidentId: formData.get("incidentId"),
+    policeReference: formData.get("policeReference") ?? "",
+  });
+
+  if (!parsed.success) {
+    const errors = fieldErrors(parsed.error);
+    return {
+      ok: false,
+      message: errors.policeReference ?? "That report could not be found.",
+      fieldErrors: errors,
+    };
+  }
+
+  const result = await setIncidentPoliceReference({
+    session,
+    incidentId: parsed.data.incidentId,
+    policeReference: parsed.data.policeReference,
+  });
+
+  if (!result.ok) return { ok: false, message: result.error };
+
+  revalidatePath(`/incidents/${parsed.data.incidentId}`);
+  revalidatePath("/incidents");
+  revalidatePath("/reports");
+
+  return {
+    ok: true,
+    message: !result.changed
+      ? "Nothing to change"
+      : result.policeReference
+        ? "Police reference saved"
+        : "Police reference removed",
+  };
 }
 
 /**

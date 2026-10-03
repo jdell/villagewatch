@@ -1048,6 +1048,20 @@ export const AUDIT_ACTIONS = [
     tone: "neutral",
   },
   {
+    /**
+     * Written by `setIncidentPoliceReference` — the reporter or a coordinator
+     * adding, correcting or removing the police reference on a report already
+     * on the map. Neutral: the reference is a public column (it is in the
+     * `incidents` grant and on the detail page) and the row records the value
+     * either side of the change, so a wrong one can be traced to who typed it.
+     */
+    value: "incident.crime_reference_updated",
+    label: "Police reference changed",
+    description:
+      "The reporter or a coordinator added, corrected or removed the police reference",
+    tone: "neutral",
+  },
+  {
     value: "incident.deleted",
     label: "Deleted by the reporter",
     description:
@@ -2151,8 +2165,15 @@ export const PRICING = [
  * outbound request the resident's browser makes, which §6 enumerates beside the
  * map tiles. No new data reaches any processor: Anthropic receives text, as it
  * always did.
+ *
+ * It moved to **3 October 2026** for the editable police reference. §2 now
+ * says the reference is held, that the reporter or a coordinator can change it
+ * after publication and that neighbours see it on the report — all three were
+ * true of the column or became true with this change, and none was stated —
+ * and §8's rectification right gained the one thing a reporter can now
+ * correct after a report is published.
  */
-export const LEGAL_LAST_UPDATED = "2026-10-02";
+export const LEGAL_LAST_UPDATED = "2026-10-03";
 
 /**
  * The data controller under UK GDPR.

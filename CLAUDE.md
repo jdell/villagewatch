@@ -383,6 +383,9 @@ src/
                               count back when the request fails
     incident-actions.tsx      Detail-page actions — reporter and coordinator.
                               The Resolve panel is here, inline, note required
+    police-reference-field.tsx  The police reference row in "Report details",
+                              editable by the reporter and coordinators. See
+                              The police reference
     share-summary.tsx         One report for a PCSO — navigator.share, then
                               the clipboard. Coordinator, published only
     copy-alert.tsx            The three share buttons — copy, WhatsApp, Facebook
@@ -515,6 +518,9 @@ src/
                               Server only
     erasure.ts                removeIncident + eraseAccount — Article 17,
                               tombstones the row and deletes the media
+    police-reference.ts       setIncidentPoliceReference — the one column a
+                              published report can still have changed. Reporter
+                              or coordinator, own village, audited. Server only
     audit-context.ts          The caller's IP and browser for an AuditLog row.
                               Server only, never throws — the server actions
                               have no `request` to read them off
@@ -977,6 +983,11 @@ tests/                        Vitest, unit only — see The test suite
                               audit row before any message; and the reporter
                               and the voters told, never the village. Also the
                               note in both documents that leave the village
+  police-reference.test.ts    The police reference — the reporter on their own
+                              report and a coordinator on any, published and
+                              resolved only, the guard in the write's `where`
+                              as well as the read's, blank clearing to null,
+                              and no audit row for a save that changed nothing
   resolution-notifications.test.ts  The three dispatches, run for real over a
                               mocked Prisma — the voter query's filters, a
                               result that is a count and a message that names
@@ -2184,7 +2195,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty files, 1,032 tests, covering the
+between the typecheck and the build. Sixty-one files, 1,044 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -2201,7 +2212,8 @@ landing page's pricing promises, the mapper in front of every Supabase auth
 failure, the email transport's failure modes, the branded shell every email
 renders through, the six Supabase auth templates,
 the vote — its toggle, its ordering, and the two domain rules its route
-enforces — the one change a coordinator may make to a resident's role, the
+enforces — who may change a published report's police reference, the one
+change a coordinator may make to a resident's role, the
 mask in front of every email address on the resident list, the report route's
 own two paths, the two legal pages' placeholder text, the session cookie's flags
 and its lifetime clamp, the Content-Security-Policy's few load-bearing
@@ -5039,6 +5051,41 @@ three dispatches in `src/lib/notifications.ts`. Migration
   through PostgREST, which costs the app nothing (Prisma is the owner) and is
   the documented failure direction.
 
+## The police reference
+
+`setIncidentPoliceReference` in `src/lib/police-reference.ts`,
+`setPoliceReferenceAction` in `incidents/[id]/actions.ts`, and
+`PoliceReferenceField` in the detail page's "Report details". The column is
+`Incident.policeReference`; there is no `crimeReference`, and "crime reference"
+is only the button's wording. No migration.
+
+- **It is the one column on a published report that can still change.** The
+  wizard asks for a reference at filing, which is the wrong moment for most
+  reporters — it arrives days later, after the report is on the map. It is safe
+  to leave open because it says nothing about what happened: it points at the
+  police's record. The description, title and severity stay as the village was
+  alerted to them, which is the constraint below in The Queue tab's Edit
+  button.
+- **The reporter, or any coordinator of the village.** Coordinators because the
+  officer often gives the reference to whoever rang them. Written as a dropped
+  ownership clause, `editIncidentAction`'s shape, so a resident who is not the
+  reporter gets `not_found` — the same answer as a report that does not exist.
+- **`PUBLIC_INCIDENT_STATUSES` only, and the guard is in the write's `where` as
+  well as the read's.** A queued report is editable in full already; a report
+  archived between the read and the write is refused rather than annotated.
+- **Adding a reference sets `reportedToPolice`; removing one leaves it alone.**
+  The usual reason to clear a reference is a typo, not that the call never
+  happened, so the page goes on saying "Yes" rather than claiming the opposite.
+- **Blank means remove, and is stored as `null`, never `""`.** The detail page's
+  `policeReference ?? "Yes"` would print an empty string.
+- **`incident.crime_reference_updated`, toned neutral**, with both values in
+  `before`/`after` and `byCoordinator`. The column is already public — it is in
+  the `incidents` grant and on the detail page — so no RLS change. A save that
+  changed nothing writes no row.
+- **`/privacy` §2 and §8 changed and `LEGAL_LAST_UPDATED` moved** — the notice
+  had not said the reference is held, that neighbours see it, or that it can be
+  corrected after publication.
+
 ## The coordinator's five tabs
 
 `docs/COORDINATOR_DASHBOARD_REDESIGN.md` is the design document, written before
@@ -5112,7 +5159,8 @@ It is now **a coordinator of the same village, on a report still in the queue**,
 as well as the reporter. Both constraints that matter are unchanged:
 
 - **Queue statuses only.** A published report cannot be rewritten by anybody,
-  which is the constraint residents have actually read.
+  which is the constraint residents have actually read. The police reference is
+  the one exception, and it is not a rewrite — see The police reference.
 - **Village-scoped**, from the session profile (domain rule 4).
 - **`rawDescription` is untouched** — the form edits five public columns, and
   there is no re-anonymisation pass, which was already true of the reporter's
