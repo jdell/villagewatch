@@ -1,11 +1,24 @@
 import type { Metadata } from "next";
 import type { MapEvent } from "@/components/incident-map";
 import { MapScreen } from "@/components/modern/map-screen";
+import type { ReportGate } from "@/components/modern/report-flow";
+import {
+  COMPLIANCE_BLOCKED_MESSAGE,
+  getVillageCompliance,
+} from "@/lib/compliance";
+import {
+  getVillagePrivacyLevel,
+  getVillageServiceState,
+} from "@/lib/villages";
 import { NoVillage } from "@/components/no-village";
 import { requireSession } from "@/lib/auth";
 import { getVillageEventsEnabled, listMapEvents } from "@/lib/events";
 import { prisma } from "@/lib/prisma";
-import { MAP_DEFAULTS, PUBLIC_INCIDENT_STATUSES } from "@/lib/constants";
+import {
+  MAP_DEFAULTS,
+  PUBLIC_INCIDENT_STATUSES,
+  isCoordinatorRole,
+} from "@/lib/constants";
 import {
   MAX_MAP_INCIDENTS,
   PUBLIC_INCIDENT_SELECT,
@@ -34,7 +47,11 @@ export const metadata: Metadata = { title: "Map" };
  * toggle instant; a village that outgrows `MAX_MAP_INCIDENTS` wants clustering,
  * not pagination.
  */
-export default async function MapPage() {
+export default async function MapPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await requireSession("/map");
   const villageId = session.profile?.villageId;
 
@@ -126,6 +143,45 @@ export default async function MapPage() {
     .map(toMapIncident)
     .flatMap((incident) => (incident ? [{ ...incident, pending: true }] : []));
 
+  /*
+    The map opens the report flow over itself, so it needs what
+    `/incidents/new` reads before it renders the wizard: whether the village is
+    taking reports (the service gate, then the compliance gate — the same order
+    and the same words), and how it covers faces, which the uploader applies on
+    the device. `POST /api/incidents` refuses a blocked village regardless; this
+    is what stops somebody describing an incident before being told.
+  */
+  const canPostAlert = isCoordinatorRole(session.profile?.role);
+  const [service, compliance, privacyLevel] = await Promise.all([
+    getVillageServiceState(villageId),
+    getVillageCompliance(villageId),
+    getVillagePrivacyLevel(villageId),
+  ]);
+
+  const reportGate: ReportGate = !service.inService
+    ? {
+        ok: false,
+        title: `${village.name} is not taking reports`,
+        message: service.message,
+      }
+    : !compliance.complete
+      ? {
+          ok: false,
+          title: "Reporting is not open yet",
+          message: COMPLIANCE_BLOCKED_MESSAGE,
+          ...(canPostAlert
+            ? {
+                fix: {
+                  href: "/dashboard/compliance",
+                  label: "Complete compliance setup",
+                },
+              }
+            : {}),
+        }
+      : { ok: true };
+
+  const report = (await searchParams).report;
+
   return (
     <MapScreen
       incidents={[...ownPending, ...incidents]}
@@ -133,6 +189,10 @@ export default async function MapPage() {
       zoom={village.defaultZoom || MAP_DEFAULTS.zoom}
       villageName={village.name}
       events={events}
+      reportGate={reportGate}
+      privacyLevel={privacyLevel.value}
+      canPostAlert={canPostAlert}
+      startReporting={report === "1"}
     />
   );
 }

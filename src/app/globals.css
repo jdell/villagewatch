@@ -141,12 +141,12 @@ body {
  * so the four things below cannot disagree about it. Below `lg` only — from
  * 1024px up there is no tab bar, and these rules switch off with it.
  *
- * - `.vw-tab-bar-pad` is the page padding on every modern screen but the map,
+ * - `.vw-tab-bar-pad` is the page padding on every screen but the map,
  *   so the last thing on a page can be scrolled clear of the bar.
  * - `.vw-above-tab-bar` lifts the two fixed cards that sit at the bottom of
  *   the viewport — the push prompt and the onboarding tour — above it rather
  *   than under it.
- * - `.vw-full-bleed` is the modern map's wrapper. Leaflet's bottom corners —
+ * - `.vw-full-bleed` is the map's wrapper. Leaflet's bottom corners —
  *   the zoom buttons and the OpenStreetMap attribution, which is a licence
  *   condition and may not be covered — are moved up by the bar's height,
  *   because the map itself runs underneath it.
@@ -172,7 +172,7 @@ body {
 }
 
 /*
- * The modern map's basemap: OpenStreetMap, desaturated. The design's rule is
+ * The map's basemap: OpenStreetMap, desaturated. The design's rule is
  * that road colours must not compete with the severity colours of the pins, so
  * the tiles lose most of their saturation and a little contrast. A filter on
  * the tile pane only — pins, heat and controls are untouched — and the
@@ -187,7 +187,7 @@ body {
 }
 
 /*
- * A modern pin under 24 hours old: a disc in the pin's own colour behind it
+ * A glyph pin under 24 hours old: a disc in the pin's own colour behind it
  * that grows and fades, from the handoff's `vwpulse`. Under reduced motion it
  * is not drawn at all — a static ring the size of the pin would read as part of
  * the pin.
@@ -239,9 +239,16 @@ body {
   }
 }
 
-/* A modern bottom sheet arriving: a short rise, so it reads as coming up over
+/* A bottom sheet arriving: a short rise, so it reads as coming up over
  * the map rather than appearing in place. `motion-reduce` turns it off at the
  * call site. */
+/* The recording dot in the report sheet. */
+@keyframes vw-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
 @keyframes vw-sheet-in {
   from {
     transform: translateY(24px);

@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import type L from "leaflet";
 import { toast } from "sonner";
 import {
@@ -21,6 +22,8 @@ import {
 import type { MapEvent, MapIncident, MapMode } from "@/components/incident-map";
 import { FilterSheet } from "@/components/modern/filter-sheet";
 import { MapKey } from "@/components/modern/map-key";
+import { ReportFlow, type ReportGate } from "@/components/modern/report-flow";
+import type { PrivacyLevel } from "@/lib/constants";
 import {
   DEFAULT_MAP_FILTERS,
   activeFilterCount,
@@ -97,6 +100,15 @@ export type MapScreenProps = {
   villageName: string;
   /** Null when the village has events off — no Events layer at all, then. */
   events?: readonly MapEvent[] | null;
+  /** Whether this village can take a report right now, and if not, why. */
+  reportGate: ReportGate;
+  privacyLevel: PrivacyLevel;
+  canPostAlert: boolean;
+  /**
+   * Arrived with `?report=1` — the tab bar's Report button — so the report
+   * flow opens over the map. See `ReportFlow`.
+   */
+  startReporting?: boolean;
 };
 
 export function MapScreen({
@@ -105,7 +117,31 @@ export function MapScreen({
   zoom,
   villageName,
   events = null,
+  reportGate,
+  privacyLevel,
+  canPostAlert,
+  startReporting = false,
 }: MapScreenProps) {
+  const router = useRouter();
+  const [reporting, setReporting] = useState(startReporting);
+
+  // The Report tab is a link to `/map?report=1`, so pressing it while already
+  // on the map changes the prop rather than mounting a new screen. Adjusted
+  // during render against the previous value — React's pattern for state that
+  // follows a prop — rather than in an effect, which would draw a frame of the
+  // map without the sheet first.
+  const [seenStart, setSeenStart] = useState(startReporting);
+  if (startReporting !== seenStart) {
+    setSeenStart(startReporting);
+    if (startReporting) setReporting(true);
+  }
+
+  function stopReporting() {
+    setReporting(false);
+    // Drop `?report=1`, or a refresh would open the flow again.
+    if (startReporting) router.replace("/map", { scroll: false });
+  }
+
   // The clock, once: reading it during render is impure (the React Compiler
   // rejects it), and pinning it stops the period's cutoff sliding underneath
   // somebody sitting on the page.
@@ -182,7 +218,10 @@ export function MapScreen({
   return (
     <div className="map-surface vw-full-bleed vw-muted relative h-dvh w-full">
       <div className="pointer-events-none absolute inset-0 z-[800]">
-        {/* The pill and the filter button — 1d. */}
+        {/* The pill and the filter button — 1d. Hidden while reporting, when
+            the top of the map is the placement banner's. */}
+        {!reporting && (
+        <>
         <div className="absolute top-[calc(12px+env(safe-area-inset-top))] right-3 left-3 flex gap-2">
           <button
             type="button"
@@ -295,6 +334,21 @@ export function MapScreen({
             })}
           </div>
         )}
+
+        </>
+        )}
+
+        <ReportFlow
+          open={reporting}
+          onClose={stopReporting}
+          getMap={() => mapRef.current}
+          gate={reportGate}
+          privacyLevel={privacyLevel}
+          canPostAlert={canPostAlert}
+          onViewOnMap={(report) =>
+            mapRef.current?.setView([report.lat, report.lng], 17)
+          }
+        />
 
         {/* The timeline chip — only while the timeline narrows the map. */}
         {until !== null && (

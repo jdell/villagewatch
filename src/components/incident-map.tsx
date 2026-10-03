@@ -69,7 +69,7 @@ export type MapIncident = {
    */
   status?: IncidentStatus;
   /**
-   * The viewer's own report, still with the coordinator — added to the modern
+   * The viewer's own report, still with the coordinator — added to the
    * map for its reporter only, and drawn with a dashed outline. Never set for
    * anybody else's (domain rule 6).
    */
@@ -199,7 +199,7 @@ function pinIcon(severity: Severity, recent: boolean): L.DivIcon {
 
 const glyphCache = new Map<string, L.DivIcon>();
 
-/** The modern disc, cached by everything that changes how it looks. */
+/** The glyph disc, cached by everything that changes how it looks. */
 function glyphIcon(incident: MapIncident, now: number): L.DivIcon {
   const pin = glyphPin(incident, now);
   const cached = glyphCache.get(pin.key);

@@ -66,12 +66,23 @@ export function VoiceInput({
   onTranscript,
   onBusyChange,
   disabled = false,
+  variant = "panel",
 }: {
   /** The cleaned transcript. Never called with an empty string. */
   onTranscript: (text: string) => void;
   /** True while recording, loading the model or transcribing. */
   onBusyChange?: (busy: boolean) => void;
   disabled?: boolean;
+  /**
+   * `panel` is the wizard's: a "Speak instead" button in its own box,
+   * with the explanation underneath. `inline` is the report sheet's: a
+   * 44px round mic for the caller to sit in the corner of its textarea — the
+   * caller's wrapper must be `relative`, since the button is absolutely placed
+   * top-right — and a recording strip and status line that flow under it.
+   * Same recorder, same worker, same promise: the recording never leaves the
+   * device.
+   */
+  variant?: "panel" | "inline";
 }) {
   const supported = useVoiceSupported();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
@@ -290,6 +301,68 @@ export function VoiceInput({
 
   const recording = phase.kind === "recording";
   const remaining = VOICE_MAX_SECONDS - elapsed;
+
+  if (variant === "inline") {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={recording ? stop : () => void start()}
+          disabled={disabled || (busy && !recording)}
+          aria-pressed={recording}
+          aria-label={recording ? "Stop recording" : "Record a voice note"}
+          className={`absolute top-2 right-2 grid size-11 place-items-center rounded-full transition disabled:opacity-60 ${
+            recording
+              ? "bg-[#dc2626] shadow-[0_0_0_6px_rgba(220,38,38,.18)]"
+              : "bg-[#f1f5f9] hover:bg-[#e2e8f0]"
+          }`}
+        >
+          {recording ? (
+            <Square className="size-4 fill-white text-white" strokeWidth={3} aria-hidden />
+          ) : busy ? (
+            <Loader2 className="size-5 animate-spin text-[#0f172a]" aria-hidden />
+          ) : (
+            <Mic className="size-5 text-[#0f172a]" aria-hidden />
+          )}
+        </button>
+
+        {recording && (
+          <div className="mt-2 flex h-11 items-center gap-2.5 rounded-xl bg-[#fef2f2] px-3">
+            <span
+              className="size-2 rounded-full bg-[#dc2626] animate-[vw-blink_1s_steps(2)_infinite] motion-reduce:animate-none"
+              aria-hidden
+            />
+            <span className="w-9 font-mono text-xs font-semibold text-[#991b1b] tabular-nums">
+              {formatCountdown(remaining)}
+            </span>
+            {/* The level meter — the design's wave, driven by the real level. */}
+            <span className="h-2 flex-1 overflow-hidden rounded-full bg-[#fecaca]" aria-hidden>
+              <span
+                className="block h-full rounded-full bg-[#dc2626] transition-[width] duration-75"
+                style={{ width: `${Math.round(level * 100)}%` }}
+              />
+            </span>
+            <span className="text-[12.5px] font-[550] text-[#991b1b]">Listening…</span>
+          </div>
+        )}
+
+        <p className="mt-1.5 text-xs leading-relaxed text-[#64748b]" aria-live="polite">
+          {phase.kind === "idle" &&
+            "Tap the mic to speak instead. It is turned into text on this phone, and the recording is never sent anywhere."}
+          {phase.kind === "requesting" && "Waiting for the microphone…"}
+          {recording && "Tap the square to stop. You can edit the text afterwards."}
+          {phase.kind === "loading" &&
+            (phase.percent === null
+              ? "Downloading the speech model…"
+              : `Downloading the speech model — ${phase.percent}%.`)}
+          {phase.kind === "transcribing" && "Turning your recording into text…"}
+          {phase.kind === "error" && (
+            <span className="text-amber-800">{phase.message}</span>
+          )}
+        </p>
+      </>
+    );
+  }
 
   return (
     <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-200">
