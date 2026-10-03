@@ -6,6 +6,7 @@ import { PoliceReportForm } from "@/components/dashboard/police-report-form";
 import { EventsForm } from "@/components/dashboard/events-form";
 import { InviteShare } from "@/components/dashboard/invite-share";
 import { EcopsSiteForm } from "@/components/dashboard/ecops-site-form";
+import { VillagePostcodeForm } from "@/components/dashboard/village-postcode-form";
 import { ParishCouncilForm } from "@/components/dashboard/parish-council-form";
 import { PrivacyLevelForm } from "@/components/dashboard/privacy-level-form";
 import {
@@ -85,6 +86,7 @@ export default async function VillageSettingsPage() {
         region: true,
         status: true,
         joinCode: true,
+        postcode: true,
       },
     }),
     // The raw column values rather than `getVillageChannel`'s filtered view —
@@ -187,6 +189,14 @@ export default async function VillageSettingsPage() {
             </dd>
           </div>
         </dl>
+
+        {/*
+          The postcode "Write to your MP" looks the constituency up from. A
+          profile fact rather than a flow setting, so it sits with the read-only
+          card above rather than among the switches below. The column has
+          existed since the first migration; the ONS seed just never filled it.
+        */}
+        <VillagePostcodeForm value={village.postcode} />
 
         {/*
           The controller first, because it is the one setting here that changes

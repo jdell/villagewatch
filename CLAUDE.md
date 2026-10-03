@@ -481,6 +481,9 @@ src/
     dashboard/ecops-site-form.tsx  Which Neighbourhood Alert site the village
                               reads. One number, and the copy says it cannot be
                               checked when you save it
+    dashboard/village-postcode-form.tsx  The postcode "Write to your MP" looks
+                              the constituency up from. Asks for a public place,
+                              not anybody's home. See The village postcode
     dashboard/police-crime-panel.tsx  The Home Office's figures beside the
                               village's own, and the neighbourhood policing
                               team. Two counts, never one chart
@@ -913,6 +916,11 @@ tests/                        Vitest, unit only — see The test suite
                               body, a vacant seat), the postcode being all that
                               is sent, and a failed contact call costing the
                               email and address rather than the lookup
+  village-postcode.test.ts    The village postcode — every spelling to one
+                              normal form, the loose check refusing what is not
+                              a postcode, blank stored as null rather than "",
+                              and setVillagePostcode coordinator-only, scoped
+                              off the session, silent on an unchanged save
   ecops-alerts.test.ts        The Neighbourhood Alert client over a stubbed
                               fetch — every failure a value rather than a throw,
                               an **empty channel read as a success** (which is
@@ -2195,7 +2203,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty-one files, 1,044 tests, covering the
+between the typecheck and the build. Sixty-two files, 1,069 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -2212,8 +2220,8 @@ landing page's pricing promises, the mapper in front of every Supabase auth
 failure, the email transport's failure modes, the branded shell every email
 renders through, the six Supabase auth templates,
 the vote — its toggle, its ordering, and the two domain rules its route
-enforces — who may change a published report's police reference, the one
-change a coordinator may make to a resident's role, the
+enforces — who may change a published report's police reference, the village
+postcode's normal form and who may set it, the one change a coordinator may make to a resident's role, the
 mask in front of every email address on the resident list, the report route's
 own two paths, the two legal pages' placeholder text, the session cookie's flags
 and its lifetime clamp, the Content-Security-Policy's few load-bearing
@@ -3314,6 +3322,41 @@ setting, and the only one that changes nothing about how a report flows.
   has to do it. `setVillageParishCouncil` returns the same distinction rather
   than throwing, so the action never tells somebody to "try again" at something
   that cannot work until a migration runs.
+
+## The village postcode
+
+`Village.postcode`, `setVillagePostcode` in `src/lib/villages.ts`,
+`saveVillagePostcodeAction`, and `VillagePostcodeForm` in the Village profile
+section of `/dashboard/settings`. It is what `lookupMpByPostcode` sends to
+Parliament's Members API, and nothing else reads it.
+
+- **The column has existed since the first migration and nothing wrote it.**
+  The ONS directory carries no postcode, so every village was seeded without
+  one and "Write to your MP" refused for all of them. No migration: the column
+  is already `String?` and already in the `villages` SELECT grant in
+  `rls_policies.sql`, so `rls_policies.sql` needs no re-run either.
+- **Loose validation, one normal form.** `normalizeUkPostcode` uppercases,
+  drops spaces and puts one before the last three characters, so `cb249ab` and
+  `CB24 9AB` are stored identically. The pattern accepts every real postcode
+  bar `GIR 0AA` and some that were never issued; whether one exists is settled
+  by Parliament's lookup, which says so when it finds nothing. A stricter check
+  could only ever disagree with that by refusing something real.
+- **Ten characters in `villagePostcodeFormSchema`, not in the column.** The
+  brief asked for a ceiling of 10, and adding `@db.VarChar(10)` would be a
+  migration to narrow a column nothing else writes. The schema is the only
+  writer.
+- **Blank is `null`, never `""`.** `lookupMpByPostcode` tests for a blank and
+  answers "no postcode set"; an empty string would reach the API as a search
+  for nothing.
+- **The form asks for a public place, not a home.** The value goes to
+  Parliament, is kept against the village and is in the audit trail, and a
+  coordinator's own postcode is the obvious thing to type. Any postcode in the
+  constituency finds the same MP.
+- **`village.postcode_changed`, toned neutral**, both values in
+  `before`/`after`, written only when the value changed, and swallowed if it
+  fails after the write — `saveEcopsSiteAction`'s rule.
+- **`/privacy` did not change.** §6 already says the village's postcode is sent
+  to Parliament's Members API and nothing else; this only fills in the value.
 
 ## Push notifications
 

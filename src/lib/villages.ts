@@ -1123,6 +1123,106 @@ export async function setVillageParishCouncil(
 }
 
 // ---------------------------------------------------------------------------
+// The village postcode, which finds the MP
+// ---------------------------------------------------------------------------
+
+/**
+ * Set or clear `Village.postcode`, as the village's own coordinator.
+ *
+ * The column has existed since the first migration and nothing in the app
+ * wrote it — the ONS directory carries no postcode, so every village was
+ * seeded without one, and "Write to your MP" refused for all of them with "no
+ * postcode set". This is that write.
+ *
+ * The village is the caller's own, off the revalidated session profile and
+ * never a parameter (domain rule 4), so there is no shape of call that sets
+ * another village's postcode. The value arrives already normalised by
+ * `villagePostcodeFormSchema`; `null` clears it.
+ *
+ * Audited as `village.postcode_changed`, and only when the value actually
+ * changed — a Save on an unchanged field records nothing. The audit write
+ * follows the act and is swallowed if it fails, `saveEcopsSiteAction`'s rule:
+ * telling somebody their change failed when it succeeded would be false.
+ */
+export async function setVillagePostcode(input: {
+  session: Session;
+  postcode: string | null;
+}): Promise<VillageOutcome> {
+  const { session, postcode } = input;
+  const villageId = session.profile?.villageId;
+
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "The database is not configured." };
+  }
+
+  if (!villageId || !isCoordinatorRole(session.profile?.role)) {
+    return {
+      ok: false,
+      error: "Only a village coordinator can change that.",
+    };
+  }
+
+  let before: string | null;
+
+  try {
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      select: { postcode: true },
+    });
+
+    if (!village) {
+      return { ok: false, error: "That village could not be found." };
+    }
+
+    before = village.postcode;
+
+    if (before === postcode) {
+      return { ok: true, message: "Nothing to change." };
+    }
+
+    await prisma.village.update({
+      where: { id: villageId },
+      data: { postcode },
+    });
+  } catch (cause) {
+    console.error("Could not save the postcode for village %s", villageId, cause);
+    return { ok: false, error: "Could not save the postcode. Try again." };
+  }
+
+  try {
+    const context = await auditContext();
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: session.user.id,
+        actorEmail: session.user.email ?? null,
+        actorRole: session.profile?.role ?? null,
+        villageId,
+        action: "village.postcode_changed",
+        entityType: "village",
+        entityId: villageId,
+        // Two postcodes and nothing else. The form asks for a public place
+        // rather than anybody's home, which is what keeps these out of the
+        // category of a resident's personal data.
+        before: { postcode: before },
+        after: { postcode },
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      },
+    });
+  } catch (cause) {
+    console.error("Could not audit the postcode change for village %s", villageId, cause);
+  }
+
+  return {
+    ok: true,
+    message: postcode
+      ? `Postcode saved as ${postcode}. "Write to your MP" will use it.`
+      : "Postcode removed.",
+  };
+}
+
+// ---------------------------------------------------------------------------
 // The face redaction level, as the village's own coordinator sets it
 // ---------------------------------------------------------------------------
 

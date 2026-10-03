@@ -1392,6 +1392,19 @@ export const AUDIT_ACTIONS = [
     tone: "neutral",
   },
   {
+    /**
+     * Written by `setVillagePostcode`. Neutral: a postcode for the village is
+     * published geography rather than anything about a resident, and the only
+     * thing it decides is which MP "Write to your MP" addresses. The row
+     * carries both values so a letter to the wrong constituency can be traced.
+     */
+    value: "village.postcode_changed",
+    label: "Village postcode changed",
+    description:
+      "A coordinator set or changed the postcode used to find the village's MP",
+    tone: "neutral",
+  },
+  {
     value: "village.ecops_site_changed",
     label: "Police alert feed changed",
     description:
