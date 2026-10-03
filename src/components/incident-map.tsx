@@ -170,6 +170,12 @@ type IncidentMapProps = {
   onSelect?: (incident: MapIncident) => void;
   /** The incident whose sheet is open, drawn with the glyph pin's halo. */
   selectedId?: string | null;
+  /**
+   * When framing, the fraction of the map's height a sheet covers at the
+   * bottom — so the pins land above it rather than under it. 0 is the whole
+   * map, which is every caller but the map with a sheet up.
+   */
+  fitClearBottom?: number;
 };
 
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -288,9 +294,12 @@ function eventIcon(): L.DivIcon {
 function FitBounds({
   incidents,
   enabled,
+  clearBottom = 0,
 }: {
   incidents: readonly MapIncident[];
   enabled: boolean;
+  /** Fraction of the map's height to keep clear at the bottom — see `fitClearBottom`. */
+  clearBottom?: number;
 }) {
   const map = useMap();
 
@@ -301,13 +310,24 @@ function FitBounds({
       incidents.map((incident) => [incident.lat, incident.lng] as [number, number]),
     );
 
-    map.fitBounds(bounds, {
-      padding: [48, 48],
+    const options = {
       // Without a ceiling a single incident zooms to building level, which
       // undoes the point of fuzzing the coordinates in the first place.
       maxZoom: MAP_DEFAULTS.zoom + 1,
-    });
-  }, [map, incidents, enabled]);
+    };
+
+    if (clearBottom > 0) {
+      // A sheet is up: frame the pins in the part of the map above it, and
+      // under the overlays along the top rather than behind them.
+      map.fitBounds(bounds, {
+        ...options,
+        paddingTopLeft: [48, 96],
+        paddingBottomRight: [48, 48 + Math.round(map.getSize().y * clearBottom)],
+      });
+    } else {
+      map.fitBounds(bounds, { ...options, padding: [48, 48] });
+    }
+  }, [map, incidents, enabled, clearBottom]);
 
   return null;
 }
@@ -436,6 +456,7 @@ export function IncidentMap({
   pinStyle = "teardrop",
   onSelect,
   selectedId = null,
+  fitClearBottom = 0,
 }: IncidentMapProps) {
   // An empty array rather than a conditional around the loop below: the markers
   // are the same markers in every mode, and `heat` is simply a mode with none.
@@ -485,7 +506,11 @@ export function IncidentMap({
       */}
       {interactive && <ZoomControl position="bottomright" />}
 
-      <FitBounds incidents={fitTo ?? incidents} enabled={fitToIncidents} />
+      <FitBounds
+        incidents={fitTo ?? incidents}
+        enabled={fitToIncidents}
+        clearBottom={fitClearBottom}
+      />
       <MapAccessibility label={label} interactive={interactive} />
       {onReady && <MapReady onReady={onReady} />}
 

@@ -19,6 +19,9 @@ import {
   timeRangeFilter,
 } from "@/lib/date-range";
 import { prisma } from "@/lib/prisma";
+import { MapScreen } from "@/components/modern/map-screen";
+import { NarrowScreenSwitch } from "@/components/modern/narrow-screen-switch";
+import { loadMapExtras, loadVillageMap } from "@/lib/map/load-map";
 
 export const metadata: Metadata = { title: "Trends" };
 
@@ -32,8 +35,8 @@ export const metadata: Metadata = { title: "Trends" };
  * category labels, with no field that could carry a reporter, a description,
  * a coordinate or even an incident id.
  *
- * Only the tab bar links to it, so on a desktop it is reachable by URL alone;
- * it is a page like any other there.
+ * Only the tab bar links to it. On a phone it is the Trends sheet over the
+ * map instead; this page is what `lg` and up get, reachable there by URL.
  *
  * Scoped by the session's village (domain rule 4) and narrowed to
  * `PUBLIC_INCIDENT_STATUSES` (domain rule 6), exactly as `/incidents` is.
@@ -81,7 +84,7 @@ export default async function TrendsPage({
     }))
     .sort((a, b) => b.value - a.value);
 
-  return (
+  const page = (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
       <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
         Trends
@@ -117,5 +120,34 @@ export default async function TrendsPage({
         />
       )}
     </div>
+  );
+
+  /*
+    The Trends tab is a sheet over the map on a phone —
+    the timeline replays the period on the map behind it — and this page from
+    `lg` up. Both renderings arrive; `NarrowScreenSwitch` mounts the map only
+    on a narrow screen.
+  */
+  const map = await loadVillageMap(villageId);
+  if (!map) return page;
+  const { ownPending, ...extras } = await loadMapExtras(
+    session,
+    villageId,
+    map.villageName,
+  );
+
+  return (
+    <NarrowScreenSwitch
+      narrow={
+        <MapScreen
+          {...map}
+          {...extras}
+          incidents={[...ownPending, ...map.incidents]}
+          initialSheet="trends"
+        />
+      }
+    >
+      {page}
+    </NarrowScreenSwitch>
   );
 }

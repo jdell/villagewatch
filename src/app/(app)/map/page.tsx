@@ -1,51 +1,26 @@
 import type { Metadata } from "next";
-import type { MapEvent } from "@/components/incident-map";
 import { MapScreen } from "@/components/modern/map-screen";
-import type { ReportGate } from "@/components/modern/report-flow";
-import {
-  COMPLIANCE_BLOCKED_MESSAGE,
-  getVillageCompliance,
-} from "@/lib/compliance";
-import {
-  getVillagePrivacyLevel,
-  getVillageServiceState,
-} from "@/lib/villages";
 import { NoVillage } from "@/components/no-village";
 import { requireSession } from "@/lib/auth";
-import { getVillageEventsEnabled, listMapEvents } from "@/lib/events";
-import { prisma } from "@/lib/prisma";
-import {
-  MAP_DEFAULTS,
-  PUBLIC_INCIDENT_STATUSES,
-  isCoordinatorRole,
-} from "@/lib/constants";
-import {
-  MAX_MAP_INCIDENTS,
-  PUBLIC_INCIDENT_SELECT,
-  toMapIncident,
-} from "@/lib/incidents";
+import { loadMapExtras, loadVillageMap } from "@/lib/map/load-map";
 
 export const metadata: Metadata = { title: "Map" };
 
 /**
  * The village map.
  *
- * A Server Component that does the querying and hands a flat array to
+ * A Server Component that does the querying and hands flat arrays to
  * `MapScreen`, which owns the Leaflet import — `ssr: false` is only legal from a
  * Client Component, and Leaflet touches `window` the moment it is imported.
  *
- * Two constraints on the query, both load-bearing:
+ * The queries, and the two constraints on them, are `src/lib/map/load-map.ts`
+ * — shared with `/incidents` and `/trends`, which on a phone render this same
+ * map with their sheet open.
  *
- *   - Scoped by `villageId` from the session. The village is the tenant
- *     boundary (domain rule 4).
- *   - Filtered to `PUBLIC_INCIDENT_STATUSES`. Drafts, reports awaiting review
- *     and rejected ones stay in the moderation queue and never reach a
- *     resident's map (domain rule 6).
- *
- * The whole set is sent at once and the date-range toggle filters it in the
+ * The whole set is sent at once and the period and filters narrow it in the
  * browser. At a village's volume that is a few tens of kilobytes and makes the
- * toggle instant; a village that outgrows `MAX_MAP_INCIDENTS` wants clustering,
- * not pagination.
+ * controls instant; a village that outgrows `MAX_MAP_INCIDENTS` wants
+ * clustering, not pagination.
  */
 export default async function MapPage({
   searchParams,
@@ -59,140 +34,21 @@ export default async function MapPage({
     return <NoVillage />;
   }
 
-  const [village, rows, eventsEnabled] = await Promise.all([
-    prisma.village.findUnique({
-      where: { id: villageId },
-      select: {
-        name: true,
-        centerLat: true,
-        centerLng: true,
-        defaultZoom: true,
-      },
-    }),
-    prisma.incident.findMany({
-      where: {
-        villageId,
-        status: { in: [...PUBLIC_INCIDENT_STATUSES] },
-        lat: { not: null },
-        lng: { not: null },
-      },
-      select: PUBLIC_INCIDENT_SELECT,
-      orderBy: { occurredAt: "desc" },
-      take: MAX_MAP_INCIDENTS,
-    }),
-    getVillageEventsEnabled(villageId),
-  ]);
+  const map = await loadVillageMap(villageId);
+  if (!map) return <NoVillage />;
 
-  /*
-    Upcoming events with a pin, or null when the village has events off — null
-    rather than an empty list, so the map can tell "nothing coming up" (the
-    toggle stays, with nothing to show) from "not a feature here" (no toggle at
-    all). Both reads degrade to empty rather than throwing.
-  */
-  const events: MapEvent[] | null = eventsEnabled
-    ? (await listMapEvents(villageId, new Date())).flatMap((event) =>
-        event.lat !== null && event.lng !== null
-          ? [
-              {
-                id: event.id,
-                title: event.title,
-                category: event.category,
-                locationText: event.locationText,
-                startsAt: event.startsAt,
-                endsAt: event.endsAt,
-                lat: event.lat,
-                lng: event.lng,
-              },
-            ]
-          : [],
-      )
-    : null;
-
-  if (!village) return <NoVillage />;
-
-  const incidents = rows
-    .map(toMapIncident)
-    .filter((incident): incident is NonNullable<typeof incident> =>
-      Boolean(incident),
-    );
-
-  /*
-    The map shows the viewer their *own* reports still waiting for a
-    coordinator, with a dashed outline — "yours, in review" — so a resident who
-    has just filed can see it landed. Their own and nobody else's: the query is
-    keyed on `reporterId` from the session, and a coordinator viewing the map
-    sees their own pending reports the same way, not the village's queue. That
-    is the visibility the incident page already gives a reporter (the reporter
-    can always open their own report while it waits), so domain rule 6 is
-    unchanged — nothing in the queue reaches anybody but its author.
-  */
-  const ownPending = (
-    await prisma.incident.findMany({
-      where: {
-        villageId,
-        reporterId: session.user.id,
-        status: "PENDING_REVIEW",
-        lat: { not: null },
-        lng: { not: null },
-      },
-      select: PUBLIC_INCIDENT_SELECT,
-      orderBy: { occurredAt: "desc" },
-      take: 20,
-    })
-  )
-    .map(toMapIncident)
-    .flatMap((incident) => (incident ? [{ ...incident, pending: true }] : []));
-
-  /*
-    The map opens the report flow over itself, so it needs what
-    `/incidents/new` reads before it renders the wizard: whether the village is
-    taking reports (the service gate, then the compliance gate — the same order
-    and the same words), and how it covers faces, which the uploader applies on
-    the device. `POST /api/incidents` refuses a blocked village regardless; this
-    is what stops somebody describing an incident before being told.
-  */
-  const canPostAlert = isCoordinatorRole(session.profile?.role);
-  const [service, compliance, privacyLevel] = await Promise.all([
-    getVillageServiceState(villageId),
-    getVillageCompliance(villageId),
-    getVillagePrivacyLevel(villageId),
-  ]);
-
-  const reportGate: ReportGate = !service.inService
-    ? {
-        ok: false,
-        title: `${village.name} is not taking reports`,
-        message: service.message,
-      }
-    : !compliance.complete
-      ? {
-          ok: false,
-          title: "Reporting is not open yet",
-          message: COMPLIANCE_BLOCKED_MESSAGE,
-          ...(canPostAlert
-            ? {
-                fix: {
-                  href: "/dashboard/compliance",
-                  label: "Complete compliance setup",
-                },
-              }
-            : {}),
-        }
-      : { ok: true };
-
-  const report = (await searchParams).report;
+  const { ownPending, ...extras } = await loadMapExtras(
+    session,
+    villageId,
+    map.villageName,
+  );
 
   return (
     <MapScreen
-      incidents={[...ownPending, ...incidents]}
-      center={{ lat: village.centerLat, lng: village.centerLng }}
-      zoom={village.defaultZoom || MAP_DEFAULTS.zoom}
-      villageName={village.name}
-      events={events}
-      reportGate={reportGate}
-      privacyLevel={privacyLevel.value}
-      canPostAlert={canPostAlert}
-      startReporting={report === "1"}
+      {...map}
+      {...extras}
+      incidents={[...ownPending, ...map.incidents]}
+      startReporting={(await searchParams).report === "1"}
     />
   );
 }
