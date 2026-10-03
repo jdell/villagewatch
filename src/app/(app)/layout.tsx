@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { UiVersionProvider } from "@/components/ui-version-context";
 import { VillageServiceBanner } from "@/components/village-service-banner";
 import { isPlatformAdmin, requireSession } from "@/lib/auth";
 import {
@@ -8,6 +9,7 @@ import {
 } from "@/lib/constants";
 import { getVillageEventsEnabled } from "@/lib/events";
 import { prisma } from "@/lib/prisma";
+import { getEffectiveUiVersion } from "@/lib/ui-version-server";
 
 /**
  * Never prerender anything behind auth. Reading cookies would normally force
@@ -67,7 +69,7 @@ export default async function AppLayout({
     authenticated render for the handful of people who can act on it, which is
     the price of the queue being visible without opening it.
   */
-  const [village, pendingCount, eventsEnabled] = await Promise.all([
+  const [village, pendingCount, eventsEnabled, uiVersion] = await Promise.all([
     profile?.villageId && process.env.DATABASE_URL
       ? prisma.village.findUnique({
           where: { id: profile.villageId },
@@ -101,46 +103,57 @@ export default async function AppLayout({
     profile?.villageId
       ? getVillageEventsEnabled(profile.villageId)
       : Promise.resolve(false),
+    /*
+      Classic or modern: the village's setting, then this resident's session
+      override. Its own read for the events flag's reason — it degrades to
+      classic rather than throwing on a database behind on the migration — and
+      cached per request, so a Server Component below that asks again
+      (`getEffectiveUiVersion`) costs nothing. Both versions render the same
+      shell today; this is the flag the redesign will be built behind.
+    */
+    getEffectiveUiVersion(),
   ]);
 
   return (
-    <AppShell
-      user={{
-        id: session.user.id,
-        name: profile?.fullName ?? session.user.email ?? "Resident",
-        email: session.user.email ?? "",
-        role: profile?.role ?? null,
-        villageName: village?.name ?? null,
-        // Defaults to true for an auth user whose profile row does not exist
-        // yet, matching the schema default — the prompt is the thing that asks,
-        // and it still cannot fire without a browser permission.
-        notifyPush: profile?.notifyPush ?? true,
-        // Decided here rather than in the shell: `ADMIN_EMAILS` is server-only
-        // and a Client Component cannot read it.
-        isAdmin: isPlatformAdmin(session),
-        // Same reason, different variable: a Client Component cannot query.
-        pendingCount,
-        eventsEnabled,
-      }}
-    >
-      {/*
-        Above every authenticated page, so a resident whose village has been
-        suspended finds out on whatever screen they opened rather than at the end
-        of the report wizard. Absent entirely for the ordinary case — a village
-        in service renders nothing here.
+    <UiVersionProvider value={uiVersion}>
+      <AppShell
+        user={{
+          id: session.user.id,
+          name: profile?.fullName ?? session.user.email ?? "Resident",
+          email: session.user.email ?? "",
+          role: profile?.role ?? null,
+          villageName: village?.name ?? null,
+          // Defaults to true for an auth user whose profile row does not exist
+          // yet, matching the schema default — the prompt is the thing that asks,
+          // and it still cannot fire without a browser permission.
+          notifyPush: profile?.notifyPush ?? true,
+          // Decided here rather than in the shell: `ADMIN_EMAILS` is server-only
+          // and a Client Component cannot read it.
+          isAdmin: isPlatformAdmin(session),
+          // Same reason, different variable: a Client Component cannot query.
+          pendingCount,
+          eventsEnabled,
+        }}
+      >
+        {/*
+          Above every authenticated page, so a resident whose village has been
+          suspended finds out on whatever screen they opened rather than at the end
+          of the report wizard. Absent entirely for the ordinary case — a village
+          in service renders nothing here.
 
-        It sits inside `AppShell`'s `<main>` rather than above the shell, so it
-        scrolls with the page and does not push the sidebar down.
-      */}
-      {village && village.status !== "ACTIVE" && (
-        <VillageServiceBanner
-          status={village.status}
-          message={VILLAGE_SERVICE_MESSAGES[village.status]}
-          villageName={village.name}
-        />
-      )}
+          It sits inside `AppShell`'s `<main>` rather than above the shell, so it
+          scrolls with the page and does not push the sidebar down.
+        */}
+        {village && village.status !== "ACTIVE" && (
+          <VillageServiceBanner
+            status={village.status}
+            message={VILLAGE_SERVICE_MESSAGES[village.status]}
+            villageName={village.name}
+          />
+        )}
 
-      {children}
-    </AppShell>
+        {children}
+      </AppShell>
+    </UiVersionProvider>
   );
 }

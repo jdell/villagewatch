@@ -1415,6 +1415,18 @@ export const AUDIT_ACTIONS = [
     tone: "neutral",
   },
   {
+    /**
+     * Written by `setVillageUiVersion` — a coordinator moving the village
+     * between the classic interface and the redesign. Neutral: it changes how
+     * the app looks and nothing about what is collected or who can see it.
+     */
+    value: "village.ui_version_changed",
+    label: "Interface changed",
+    description:
+      "A coordinator switched the village between the classic interface and the redesign",
+    tone: "neutral",
+  },
+  {
     value: "village.ecops_site_changed",
     label: "Police alert feed changed",
     description:
@@ -2195,6 +2207,13 @@ export const PRICING = [
  * true of the column or became true with this change, and none was stated —
  * and §8's rectification right gained the one thing a reporter can now
  * correct after a report is published.
+ *
+ * It changed again the same day for the UI version switch: §11 said the only
+ * cookies were the sign-in ones, and a resident who presses "Try the new look"
+ * now gets a second — a session cookie holding the word `classic` or `modern`.
+ * Set only by that press, so it is the kind of cookie a user asks for rather
+ * than one that needs consent, but a cookies section that lists them has to
+ * list it.
  */
 export const LEGAL_LAST_UPDATED = "2026-10-03";
 

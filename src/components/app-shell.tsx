@@ -24,6 +24,8 @@ import {
 import { Logo } from "@/components/logo";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { PushRegistration } from "@/components/push-registration";
+import { useUiVersion } from "@/components/ui-version-context";
+import { UiVersionSwitch } from "@/components/ui-version-switch";
 import type { UserRole } from "@/generated/prisma/enums";
 import {
   COORDINATOR_ROLES,
@@ -203,6 +205,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { effective: uiVersion } = useUiVersion();
 
   /*
     The drawer behaves as a modal dialog, because on a phone it is one: it
@@ -447,6 +450,13 @@ export function AppShell({
         </form>
 
         {/*
+          The resident's own switch between the classic interface and the
+          redesign, for this browser session. Above the version label because
+          both answer "what am I looking at?".
+        */}
+        <UiVersionSwitch />
+
+        {/*
           The build, quietly. It is here so that "which version are you on?" is
           a question a coordinator can answer from the screen they are already
           looking at, rather than one that needs a screenshot of a bug report
@@ -460,7 +470,13 @@ export function AppShell({
   );
 
   return (
-    <div className="flex min-h-full flex-1 bg-slate-50">
+    <div
+      className="flex min-h-full flex-1 bg-slate-50"
+      // The resolved interface version, on the root of every authenticated
+      // page. Nothing styles on it yet — both versions render this shell — but
+      // it makes the flag visible in the DOM for whoever builds the modern one.
+      data-ui-version={uiVersion}
+    >
       {/*
         The first thing a keyboard user reaches on every authenticated page,
         and invisible until it is focused. Without it, every page starts with

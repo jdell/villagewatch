@@ -313,6 +313,8 @@ GRANT SELECT (
   alert_threshold, contact_email, contact_phone, auto_approve,
   -- Whether the village shows community events. A switch, not a credential.
   events_enabled,
+  -- Classic or modern interface. A display switch, not a credential.
+  ui_version,
   parish_council, privacy_level,
   ecops_site_id,
   mode,
