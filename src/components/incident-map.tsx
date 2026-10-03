@@ -68,6 +68,10 @@ export type MapIncident = {
    * resolved reports" switch does.
    */
   status?: IncidentStatus;
+  /** The pattern note, public by construction — the incident sheet's panel. */
+  patternNote?: string | null;
+  /** What the coordinator said happened, on a resolved report. Public by design. */
+  resolutionNote?: string | null;
   /**
    * The viewer's own report, still with the coordinator — added to the
    * map for its reporter only, and drawn with a dashed outline. Never set for
@@ -159,6 +163,13 @@ type IncidentMapProps = {
    * see `src/lib/map/glyph-pin.ts`.
    */
   pinStyle?: "teardrop" | "glyph";
+  /**
+   * A tapped pin goes here instead of opening Leaflet's popup — the map's
+   * incident sheet. Absent, the popup is what it has always been.
+   */
+  onSelect?: (incident: MapIncident) => void;
+  /** The incident whose sheet is open, drawn with the glyph pin's halo. */
+  selectedId?: string | null;
 };
 
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -200,7 +211,10 @@ function pinIcon(severity: Severity, recent: boolean): L.DivIcon {
 const glyphCache = new Map<string, L.DivIcon>();
 
 /** The glyph disc, cached by everything that changes how it looks. */
-function glyphIcon(incident: MapIncident, now: number): L.DivIcon {
+function glyphIcon(
+  incident: MapIncident & { selected?: boolean },
+  now: number,
+): L.DivIcon {
   const pin = glyphPin(incident, now);
   const cached = glyphCache.get(pin.key);
   if (cached) return cached;
@@ -420,6 +434,8 @@ export function IncidentMap({
   label = "Map of reported incidents",
   onReady,
   pinStyle = "teardrop",
+  onSelect,
+  selectedId = null,
 }: IncidentMapProps) {
   // An empty array rather than a conditional around the loop below: the markers
   // are the same markers in every mode, and `heat` is simply a mode with none.
@@ -491,12 +507,27 @@ export function IncidentMap({
             position={[incident.lat, incident.lng]}
             icon={
               pinStyle === "glyph"
-                ? glyphIcon(incident, now)
+                ? glyphIcon(
+                    { ...incident, selected: incident.id === selectedId },
+                    now,
+                  )
                 : pinIcon(incident.severity, recent)
             }
-            zIndexOffset={pinStyle === "glyph" ? pinZIndex(incident) : 0}
-            eventHandlers={nameMarker(pinLabel(incident, occurred))}
+            zIndexOffset={
+              pinStyle === "glyph"
+                ? pinZIndex({ ...incident, selected: incident.id === selectedId })
+                : 0
+            }
+            eventHandlers={
+              onSelect
+                ? {
+                    ...nameMarker(pinLabel(incident, occurred)),
+                    click: () => onSelect(incident),
+                  }
+                : nameMarker(pinLabel(incident, occurred))
+            }
           >
+            {!onSelect && (
             <Popup eventHandlers={POPUP_FOCUS}>
               <div className="min-w-56 max-w-72">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -552,6 +583,7 @@ export function IncidentMap({
                 </Link>
               </div>
             </Popup>
+            )}
           </Marker>
         );
       })}

@@ -337,6 +337,8 @@ src/
                               list rows, the incident sheet
     modern/report-flow.tsx    The two-step report sheet over the map — describe,
                               AI draft, confirm + place the pin, send
+    modern/incident-sheet.tsx A tapped pin's sheet — badges, the report, the
+                              pattern and resolution panels, the full report
     village-service-banner.tsx  What a resident is told when their village is
                               not in service. Rendered by (app)/layout.tsx above
                               every authenticated page; absent when it is
@@ -534,6 +536,8 @@ src/
                               divIcon — heat fill, glyph, states. Client-safe
     map/glyphs.ts             Lucide icons as SVG strings, read from
                               lucide-react's own icon modules — see its header
+    map/pattern.ts            Which reports "Show" frames — the detector's
+                              radius and window over the map. Client-safe
     map/report-draft.ts       The report sheet's "when" chips and the exact
                               POST /api/incidents body. Client-safe
     map/filters.ts            The map's filters — one function behind
@@ -1004,6 +1008,9 @@ tests/                        Vitest, unit only — see The test suite
                               lucide's modules, the heat ramp, the dark glyph on
                               light fills, sizes, pulse, pending, pattern,
                               resolved, and a cache key per distinct look
+  incident-sheet.test.ts      The incident sheet's pattern rule matching the
+                              detector's constants, and its severity badge text
+                              clearing 4.5:1
   report-draft.test.ts        The report sheet's body, parsed by the route's own
                               incidentReportSchema — both description columns,
                               the defaults, the "when" chips, the title fallback
@@ -2242,7 +2249,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty-six files, 1,110 tests, covering the
+between the typecheck and the build. Sixty-seven files, 1,115 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -5169,6 +5176,26 @@ group here.
 - **The gates are the wizard page's.** `/map` reads the service state and the
   compliance gate and passes a `ReportGate`; a blocked village gets
   the same refusal and, for a coordinator, the same link to fix it.
+- **Phase E — the incident sheet.** Tapping a pin on the map opens
+  `IncidentSheet` instead of Leaflet's popup (`IncidentMap`'s `onSelect`; without it,
+  a map keeps the popup): the pin at 44px, type / severity / status
+  badges, the title, the description, when · where · reference, a "Part of a
+  pattern" panel with **Show**, a resolution panel with the coordinator's note,
+  and "View full report". Non-modal, so the next pin can be tapped straight
+  away; a tap on the map closes it. The tapped pin gets the glyph halo and the
+  map pans it into the part of the screen above the sheet.
+- **Everything on it is a public column.** `toMapIncident` now carries
+  `patternNote` and `resolutionNote`, both in `PUBLIC_INCIDENT_SELECT`;
+  `rawDescription` is not on a `MapIncident` and cannot reach the sheet (domain
+  rule 1). The full report is one tap away and unchanged.
+- **"Show" frames the pattern by the detector's own rule.** Nothing stores
+  which reports a pattern holds, so `patternMembers` applies `detect-patterns`'
+  200m / 30-day rule over what is on the map: the recurring reports of the same
+  category near the selected one. The two numbers are repeated in
+  `map/pattern.ts` because the detector's module reads the database; a test
+  asserts they agree.
+- **Severity badges in the sheets use `PIN_SOFT`** — a pale wash of the
+  pin's heat colour with a dark text of it; a test holds every pair to 4.5:1.
 - **Clustering is not built.** The handoff's decluttering system (clusters
   below zoom 17, donut rings of the severity mix) is outside the brief's six
   phases; at a village's volume the glyph discs are legible without it, and it
