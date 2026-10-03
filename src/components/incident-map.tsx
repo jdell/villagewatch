@@ -20,6 +20,7 @@ import type {
 } from "@/generated/prisma/enums";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { HeatmapLayer } from "@/components/map/heatmap-layer";
+import { glyphEventPin, glyphPin, pinZIndex } from "@/lib/map/glyph-pin";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
   EVENT_PIN_COLOR,
@@ -67,6 +68,12 @@ export type MapIncident = {
    * resolved reports" switch does.
    */
   status?: IncidentStatus;
+  /**
+   * The viewer's own report, still with the coordinator — added to the modern
+   * map for its reporter only, and drawn with a dashed outline. Never set for
+   * anybody else's (domain rule 6).
+   */
+  pending?: boolean;
 };
 
 /**
@@ -146,6 +153,12 @@ type IncidentMapProps = {
    * locate button recentres. Called again only if the map is recreated.
    */
   onReady?: (map: L.Map) => void;
+  /**
+   * `teardrop` is the pin coloured by the severity palette, which is what
+   * every map has drawn until the redesign. `glyph` is the map's disc —
+   * see `src/lib/map/glyph-pin.ts`.
+   */
+  pinStyle?: "teardrop" | "glyph";
 };
 
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -182,6 +195,41 @@ function pinIcon(severity: Severity, recent: boolean): L.DivIcon {
 
   iconCache.set(key, icon);
   return icon;
+}
+
+const glyphCache = new Map<string, L.DivIcon>();
+
+/** The modern disc, cached by everything that changes how it looks. */
+function glyphIcon(incident: MapIncident, now: number): L.DivIcon {
+  const pin = glyphPin(incident, now);
+  const cached = glyphCache.get(pin.key);
+  if (cached) return cached;
+
+  const icon = L.divIcon({
+    className: "",
+    html: pin.html,
+    iconSize: [pin.size, pin.size],
+    iconAnchor: [pin.size / 2, pin.size / 2],
+    popupAnchor: [0, -pin.size / 2],
+  });
+
+  glyphCache.set(pin.key, icon);
+  return icon;
+}
+
+let glyphEventIconInstance: L.DivIcon | null = null;
+
+function glyphEventIcon(): L.DivIcon {
+  if (glyphEventIconInstance) return glyphEventIconInstance;
+  const pin = glyphEventPin();
+  glyphEventIconInstance = L.divIcon({
+    className: "",
+    html: pin.html,
+    iconSize: [pin.size, pin.size],
+    iconAnchor: [pin.size / 2, pin.size / 2],
+    popupAnchor: [0, -pin.size / 2],
+  });
+  return glyphEventIconInstance;
 }
 
 let eventIconInstance: L.DivIcon | null = null;
@@ -330,7 +378,15 @@ const POPUP_FOCUS = {
  * pin cannot be confused by somebody who cannot see that one is blue.
  */
 function pinLabel(incident: MapIncident, occurred: Date): string {
-  return `${SEVERITY_LABELS[incident.severity]} severity, ${
+  // The two states the glyph pins draw rather than colour — a dashed outline
+  // and a grey tick — said in words, or they would only exist for the sighted.
+  const state = incident.pending
+    ? "Your report, waiting for review. "
+    : incident.status === "RESOLVED"
+      ? "Resolved. "
+      : "";
+
+  return `${state}${SEVERITY_LABELS[incident.severity]} severity, ${
     INCIDENT_TYPE_LABELS[incident.type]
   }: ${incident.title}, ${formatTimeAgo(occurred)}`;
 }
@@ -363,6 +419,7 @@ export function IncidentMap({
   className = "size-full",
   label = "Map of reported incidents",
   onReady,
+  pinStyle = "teardrop",
 }: IncidentMapProps) {
   // An empty array rather than a conditional around the loop below: the markers
   // are the same markers in every mode, and `heat` is simply a mode with none.
@@ -432,7 +489,12 @@ export function IncidentMap({
           <Marker
             key={incident.id}
             position={[incident.lat, incident.lng]}
-            icon={pinIcon(incident.severity, recent)}
+            icon={
+              pinStyle === "glyph"
+                ? glyphIcon(incident, now)
+                : pinIcon(incident.severity, recent)
+            }
+            zIndexOffset={pinStyle === "glyph" ? pinZIndex(incident) : 0}
             eventHandlers={nameMarker(pinLabel(incident, occurred))}
           >
             <Popup eventHandlers={POPUP_FOCUS}>
@@ -503,7 +565,7 @@ export function IncidentMap({
         <Marker
           key={`event-${event.id}`}
           position={[event.lat, event.lng]}
-          icon={eventIcon()}
+          icon={pinStyle === "glyph" ? glyphEventIcon() : eventIcon()}
           eventHandlers={nameMarker(eventPinLabel(event))}
           zIndexOffset={500}
         >

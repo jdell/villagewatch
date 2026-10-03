@@ -333,6 +333,8 @@ src/
     modern/bottom-sheet.tsx   The sheet every modern panel slides up in.
                               Portalled to <body> — see its header
     modern/map-key.tsx        "How to read the map", inside the filter sheet
+    modern/pin-preview.tsx    One map pin drawn outside the map — the key, the
+                              list rows, the incident sheet
     village-service-banner.tsx  What a resident is told when their village is
                               not in service. Rendered by (app)/layout.tsx above
                               every authenticated page; absent when it is
@@ -525,6 +527,10 @@ src/
                               pattern and nothing of a resident's
     moderation.ts             applyModeration, audited readRawDescription, and
                               the village's auto-approve setting (fails closed)
+    map/glyph-pin.ts          The map's glyph-disc pin, as HTML for a
+                              divIcon — heat fill, glyph, states. Client-safe
+    map/glyphs.ts             Lucide icons as SVG strings, read from
+                              lucide-react's own icon modules — see its header
     map/filters.ts            The map's filters — one function behind
                               the pill, the badge and the pins. Client-safe
     events.ts                 Community events — the village switch (degrades
@@ -989,6 +995,10 @@ tests/                        Vitest, unit only — see The test suite
                               domain rules it enforces, the 404 that is not a
                               403, the quota that is not spent on a report the
                               caller cannot see, and a response naming nobody
+  glyph-pins.test.ts          The glyph-disc pins — every glyph loading from
+                              lucide's modules, the heat ramp, the dark glyph on
+                              light fills, sizes, pulse, pending, pattern,
+                              resolved, and a cache key per distinct look
   map-filters.test.ts         The map's filters — the periods being real
                               presets, an empty list meaning everything, the
                               badge never counting the period
@@ -2224,7 +2234,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty-four files, 1,086 tests, covering the
+between the typecheck and the build. Sixty-five files, 1,100 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -5094,6 +5104,38 @@ group here.
   road colours do not compete with severity colours. Leaflet's bottom corners
   sit above the tab bar *and* the Report button's 18px rise, or the button
   covers the middle of the attribution.
+- **Phase C — the pins.** `IncidentMap`'s `pinStyle="glyph"` (the map
+  only) draws design option 1a, the glyph disc: round, no tail, the category's
+  lucide icon inside. Sizes are the old map's rule — 32px this week, 26px
+  older — and resolved is 24px. States: a pulse under 24 hours old (off under
+  reduced motion), a dashed ring and a repeat badge for a pattern, white with a
+  grey edge and a tick for resolved, white with a dashed `#0284c7` outline for
+  the viewer's own report in review, a sky halo when selected. Severity sorts
+  the stack. Events are 26px rounded squares.
+- **The fill is the brief's heat ramp, not the prototype's palette.** The
+  handoff filled discs green / amber / red / purple; the brief asked for yellow
+  `#eab308` → orange `#f97316` → red `#ef4444` → dark red `#991b1b`. The
+  map's severity dots and key use the ramp too, so the sheet and the
+  map agree; badges elsewhere keep `SEVERITY_META`.
+- **The glyph is near-black on LOW and MEDIUM.** White on `#eab308` is under
+  2:1 and on `#f97316` under 3:1 — WCAG 1.4.11 asks 3:1 of a graphical object.
+  The handoff drew white throughout; legibility won.
+- **A pattern's badge is a repeat glyph, not a count.** The map knows a report
+  is recurring, not how many reports its pattern holds; it says "repeat" rather
+  than inventing a number.
+- **The viewer's own pending reports are on the map**, dashed — "yours,
+  in review". `/map` queries them by `reporterId` from the session, so nobody
+  sees another resident's queue, coordinators included; it is the visibility the
+  incident page already gives a reporter. Domain rule 6 is unchanged.
+- **The glyphs come from lucide-react's own icon modules** (`map/glyphs.ts`),
+  a deep import into `dist/esm/icons/*.mjs` because a `divIcon` takes HTML and
+  the public API exposes only components. `waves.mjs` is an alias with no node
+  of its own — `Waves` is `waves-horizontal`. The test loads every glyph, so an
+  upgrade that moves the files fails there.
+- **Clustering is not built.** The handoff's decluttering system (clusters
+  below zoom 17, donut rings of the severity mix) is outside the brief's six
+  phases; at a village's volume the glyph discs are legible without it, and it
+  is the next thing to add if they stop being.
 
 ## Community events
 
@@ -6309,8 +6351,12 @@ the one list of them, and three screens read it: `/map`, `/incidents` and
   takes payment (see **No billing** below). The free tier is matched on the
   string `"Free"` because `PricingTier.price` is rendered text, not a number; if
   it is ever renamed the `Offer` is omitted, which is the right way to be wrong.
-- **The landing page's JSON-LD is the only `dangerouslySetInnerHTML` in the
-  app.** A `<script type="application/ld+json">` has to receive a raw string.
+- **The landing page's JSON-LD is one of two `dangerouslySetInnerHTML`s in
+  the app**, and the other is `PinPreview` (`components/modern/pin-preview.tsx`),
+  which draws a map pin outside the map. That one is safe structurally:
+  its input type carries enum values, a date and booleans, never free text, and
+  the glyphs are lucide's own path data — pass a title into it and it becomes
+  stored XSS. A `<script type="application/ld+json">` has to receive a raw string.
   Nothing user-supplied reaches it, and `serialiseJsonLd` escapes `<` anyway so
   a `</script>` inside a value could never break out of the block — cheaper to
   be right now than on the day somebody interpolates a village name into it.

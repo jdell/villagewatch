@@ -4,7 +4,7 @@ import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
 /**
- * The modern interface's bottom sheet — filters, the report flow, an incident,
+ * The bottom sheet — filters, the report flow, an incident,
  * the list and the trends all slide up over the map in one of these.
  *
  * The numbers are the design handoff's: `border-radius: 22px 22px 0 0`,

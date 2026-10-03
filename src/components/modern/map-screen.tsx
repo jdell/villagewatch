@@ -324,6 +324,7 @@ export function MapScreen({
         fitTo={filtered}
         events={shownEvents}
         onReady={onReady}
+        pinStyle="glyph"
         className="size-full"
       />
 

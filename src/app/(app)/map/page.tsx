@@ -99,9 +99,36 @@ export default async function MapPage() {
       Boolean(incident),
     );
 
+  /*
+    The map shows the viewer their *own* reports still waiting for a
+    coordinator, with a dashed outline — "yours, in review" — so a resident who
+    has just filed can see it landed. Their own and nobody else's: the query is
+    keyed on `reporterId` from the session, and a coordinator viewing the map
+    sees their own pending reports the same way, not the village's queue. That
+    is the visibility the incident page already gives a reporter (the reporter
+    can always open their own report while it waits), so domain rule 6 is
+    unchanged — nothing in the queue reaches anybody but its author.
+  */
+  const ownPending = (
+    await prisma.incident.findMany({
+      where: {
+        villageId,
+        reporterId: session.user.id,
+        status: "PENDING_REVIEW",
+        lat: { not: null },
+        lng: { not: null },
+      },
+      select: PUBLIC_INCIDENT_SELECT,
+      orderBy: { occurredAt: "desc" },
+      take: 20,
+    })
+  )
+    .map(toMapIncident)
+    .flatMap((incident) => (incident ? [{ ...incident, pending: true }] : []));
+
   return (
     <MapScreen
-      incidents={incidents}
+      incidents={[...ownPending, ...incidents]}
       center={{ lat: village.centerLat, lng: village.centerLng }}
       zoom={village.defaultZoom || MAP_DEFAULTS.zoom}
       villageName={village.name}
