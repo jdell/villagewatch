@@ -275,11 +275,14 @@ export default async function VillageSettingsPage() {
           joinCode={village.joinCode}
         />
 
-        <ResidentList
-          residents={residentRows}
-          total={residents.total}
-          currentUserId={session.user.id}
-        />
+        {/* The anchor "You" links to for a coordinator's Residents row. */}
+        <div id="residents" className="scroll-mt-20">
+          <ResidentList
+            residents={residentRows}
+            total={residents.total}
+            currentUserId={session.user.id}
+          />
+        </div>
       </section>
 
       {/* ---------------------------------------------------------------- */}

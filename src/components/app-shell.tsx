@@ -226,7 +226,11 @@ export function AppShell({
     `fullBleed`; unlike it the page still scrolls and keeps the tab bar's
     padding. The drawer is one tap away on the map.
   */
-  const ownTopBar = /^\/incidents\/[0-9a-f-]{36}$/i.test(pathname);
+  const ownTopBar =
+    /^\/incidents\/[0-9a-f-]{36}$/i.test(pathname) ||
+    // The sub-pages of "You" have a back bar of their own. "You" itself keeps
+    // the shell's, which is a phone's only way to the drawer from that tab.
+    /^\/settings\/(profile|notifications|account)$/.test(pathname);
 
   /*
     The drawer behaves as a modal dialog, because on a phone it is one: it
