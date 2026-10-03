@@ -164,9 +164,26 @@ body {
     bottom: calc(var(--vw-tab-bar) + 0.75rem);
   }
 
+  /* Plus the Report button's 18px rise above the bar, which would otherwise
+   * sit on the middle of the attribution. */
   .vw-full-bleed .leaflet-bottom {
-    bottom: var(--vw-tab-bar);
+    bottom: calc(var(--vw-tab-bar) + 20px);
   }
+}
+
+/*
+ * The modern map's basemap: OpenStreetMap, desaturated. The design's rule is
+ * that road colours must not compete with the severity colours of the pins, so
+ * the tiles lose most of their saturation and a little contrast. A filter on
+ * the tile pane only — pins, heat and controls are untouched — and the
+ * attribution is outside the pane, so it stays as legible as the licence asks.
+ */
+.vw-muted .leaflet-tile-pane {
+  filter: saturate(0.25) contrast(0.92) brightness(1.06);
+}
+
+.vw-muted .leaflet-container {
+  background: #f2f0ec;
 }
 
 /*
@@ -191,6 +208,20 @@ body {
   }
   to {
     transform: translateX(0);
+  }
+}
+
+/* A modern bottom sheet arriving: a short rise, so it reads as coming up over
+ * the map rather than appearing in place. `motion-reduce` turns it off at the
+ * call site. */
+@keyframes vw-sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
   }
 }
 

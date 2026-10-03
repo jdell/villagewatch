@@ -13,7 +13,11 @@ import {
   ZoomControl,
   useMap,
 } from "react-leaflet";
-import type { IncidentType, Severity } from "@/generated/prisma/enums";
+import type {
+  IncidentStatus,
+  IncidentType,
+  Severity,
+} from "@/generated/prisma/enums";
 import { IncidentTypeIcon } from "@/components/incident-type-icon";
 import { HeatmapLayer } from "@/components/map/heatmap-layer";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -57,6 +61,12 @@ export type MapIncident = {
   lat: number;
   lng: number;
   recurring: boolean;
+  /**
+   * Published or resolved — the only two a map is ever sent (domain rule 6).
+   * Optional because the dashboard thumbnail never reads it; the map's "Show
+   * resolved reports" switch does.
+   */
+  status?: IncidentStatus;
 };
 
 /**
@@ -131,6 +141,11 @@ type IncidentMapProps = {
    * `interactive={false}`, which is hidden from assistive technology instead.
    */
   label?: string;
+  /**
+   * Hands the Leaflet map to the caller once it exists — what the map's
+   * locate button recentres. Called again only if the map is recreated.
+   */
+  onReady?: (map: L.Map) => void;
 };
 
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -231,6 +246,17 @@ function FitBounds({
       maxZoom: MAP_DEFAULTS.zoom + 1,
     });
   }, [map, incidents, enabled]);
+
+  return null;
+}
+
+/** Passes the map instance up. See `onReady`. */
+function MapReady({ onReady }: { onReady: (map: L.Map) => void }) {
+  const map = useMap();
+
+  useEffect(() => {
+    onReady(map);
+  }, [map, onReady]);
 
   return null;
 }
@@ -336,6 +362,7 @@ export function IncidentMap({
   now,
   className = "size-full",
   label = "Map of reported incidents",
+  onReady,
 }: IncidentMapProps) {
   // An empty array rather than a conditional around the loop below: the markers
   // are the same markers in every mode, and `heat` is simply a mode with none.
@@ -387,6 +414,7 @@ export function IncidentMap({
 
       <FitBounds incidents={fitTo ?? incidents} enabled={fitToIncidents} />
       <MapAccessibility label={label} interactive={interactive} />
+      {onReady && <MapReady onReady={onReady} />}
 
       {/*
         Under the pins, always. Leaflet puts the heat canvas in the overlay pane

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { MapEvent } from "@/components/incident-map";
-import { MapView } from "@/components/map-view";
+import { MapScreen } from "@/components/modern/map-screen";
 import { NoVillage } from "@/components/no-village";
 import { requireSession } from "@/lib/auth";
 import { getVillageEventsEnabled, listMapEvents } from "@/lib/events";
@@ -18,7 +18,7 @@ export const metadata: Metadata = { title: "Map" };
  * The village map.
  *
  * A Server Component that does the querying and hands a flat array to
- * `MapView`, which owns the Leaflet import — `ssr: false` is only legal from a
+ * `MapScreen`, which owns the Leaflet import — `ssr: false` is only legal from a
  * Client Component, and Leaflet touches `window` the moment it is imported.
  *
  * Two constraints on the query, both load-bearing:
@@ -100,13 +100,12 @@ export default async function MapPage() {
     );
 
   return (
-    <MapView
+    <MapScreen
       incidents={incidents}
       center={{ lat: village.centerLat, lng: village.centerLng }}
       zoom={village.defaultZoom || MAP_DEFAULTS.zoom}
       villageName={village.name}
       events={events}
-      fullBleed
     />
   );
 }
