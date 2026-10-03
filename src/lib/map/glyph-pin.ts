@@ -54,6 +54,18 @@ export const PIN_HEAT = {
   CRITICAL: "#991b1b",
 } as const satisfies Record<Severity, string>;
 
+/**
+ * The badge behind a severity label in the sheets — a pale wash of the
+ * pin's own hue with a dark text of it, as the handoff's `SEV.bg` / `SEV.tx`
+ * pairs are for its palette. Every text colour clears 4.5:1 on its wash.
+ */
+export const PIN_SOFT = {
+  LOW: { bg: "#fefce8", text: "#854d0e" },
+  MEDIUM: { bg: "#fff7ed", text: "#9a3412" },
+  HIGH: { bg: "#fef2f2", text: "#991b1b" },
+  CRITICAL: { bg: "#fef2f2", text: "#7f1d1d" },
+} as const satisfies Record<Severity, { bg: string; text: string }>;
+
 /** The glyph on each fill — dark where white would be illegible. */
 export const PIN_GLYPH_COLOR = {
   LOW: "#422006",

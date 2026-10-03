@@ -62,6 +62,8 @@ type IncidentRow = {
   lng: number | null;
   recurring: boolean;
   status?: MapIncident["status"];
+  patternNote?: string | null;
+  resolutionNote?: string | null;
 };
 
 /**
@@ -88,5 +90,11 @@ export function toMapIncident(row: IncidentRow): MapIncident | null {
     lng: row.lng,
     recurring: row.recurring,
     ...(row.status ? { status: row.status } : {}),
+    // Both public columns, carried only where the row has them — the map page
+    // selects `PUBLIC_INCIDENT_SELECT`, which includes both.
+    ...(row.patternNote !== undefined ? { patternNote: row.patternNote } : {}),
+    ...(row.resolutionNote !== undefined
+      ? { resolutionNote: row.resolutionNote }
+      : {}),
   };
 }

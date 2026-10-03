@@ -21,9 +21,11 @@ import {
 } from "lucide-react";
 import type { MapEvent, MapIncident, MapMode } from "@/components/incident-map";
 import { FilterSheet } from "@/components/modern/filter-sheet";
+import { IncidentSheet } from "@/components/modern/incident-sheet";
 import { MapKey } from "@/components/modern/map-key";
 import { ReportFlow, type ReportGate } from "@/components/modern/report-flow";
 import type { PrivacyLevel } from "@/lib/constants";
+import { patternMembers } from "@/lib/map/pattern";
 import {
   DEFAULT_MAP_FILTERS,
   activeFilterCount,
@@ -161,9 +163,18 @@ export function MapScreen({
    */
   const [until, setUntil] = useState<number | null>(null);
 
+  /** The incident whose sheet is open — a tapped pin. */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   const mapRef = useRef<L.Map | null>(null);
   const onReady = useCallback((map: L.Map) => {
     mapRef.current = map;
+    // A tap on the map itself — not a pin, which Leaflet keeps to itself —
+    // closes the sheet and the layers popover, as in the handoff.
+    map.on("click", () => {
+      setSelectedId(null);
+      setLayersOpen(false);
+    });
   }, []);
 
   const filtered = useMemo(
@@ -180,6 +191,44 @@ export function MapScreen({
           ),
     [filtered, until],
   );
+
+  /*
+    The open sheet's incident, looked up in what is drawn rather than in
+    everything sent: a filter that hides the selected report closes its sheet
+    rather than leaving it describing a pin that is not there.
+  */
+  const selected = selectedId
+    ? (visible.find((incident) => incident.id === selectedId) ?? null)
+    : null;
+  const pattern = selected?.recurring
+    ? patternMembers(selected, visible)
+    : [];
+
+  /** Open a pin's sheet, and bring the pin into the part of the map above it. */
+  function select(incident: MapIncident) {
+    if (reporting) return;
+    setSelectedId(incident.id);
+    setLayersOpen(false);
+    const map = mapRef.current;
+    if (!map) return;
+    const at = map.latLngToContainerPoint([incident.lat, incident.lng]);
+    const size = map.getSize();
+    map.panBy([at.x - size.x / 2, at.y - size.y * 0.28], { animate: true });
+  }
+
+  /** Frame the pattern's reports above the sheet. */
+  function showPattern() {
+    const map = mapRef.current;
+    if (!map || pattern.length < 2) return;
+    map.fitBounds(
+      pattern.map((incident) => [incident.lat, incident.lng] as [number, number]),
+      {
+        paddingTopLeft: [50, 100],
+        paddingBottomRight: [50, Math.round(map.getSize().y * 0.55)],
+        maxZoom: 17,
+      },
+    );
+  }
 
   const filterCount = activeFilterCount(filters);
   const shownEvents = events && layers.events ? events : [];
@@ -379,6 +428,8 @@ export function MapScreen({
         events={shownEvents}
         onReady={onReady}
         pinStyle="glyph"
+        onSelect={select}
+        selectedId={selected?.id ?? null}
         className="size-full"
       />
 
@@ -398,6 +449,14 @@ export function MapScreen({
           </div>
         </div>
       )}
+
+      <IncidentSheet
+        incident={reporting ? null : selected}
+        now={now}
+        onClose={() => setSelectedId(null)}
+        onShowPattern={showPattern}
+        patternSize={pattern.length}
+      />
 
       <FilterSheet
         open={filtersOpen}
