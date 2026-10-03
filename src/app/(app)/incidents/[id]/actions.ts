@@ -7,6 +7,7 @@ import { auditContext } from "@/lib/audit-context";
 import { prisma } from "@/lib/prisma";
 import { applyModeration } from "@/lib/moderation";
 import { removeIncident } from "@/lib/erasure";
+import { markIncidentOver } from "@/lib/incident-ended";
 import { setIncidentPoliceReference } from "@/lib/police-reference";
 import { isCoordinatorRole } from "@/lib/constants";
 import {
@@ -41,6 +42,9 @@ import {
  *   published or resolved report — `setPoliceReferenceAction` below. The one
  *   column a published report can still have changed, because it is a pointer
  *   to the police's record rather than a statement about what happened.
+ * - **The reporter or a coordinator** may say a report is over —
+ *   `markOverAction` below — which stops it reading "Happening now" and does
+ *   nothing else. See `src/lib/incident-ended.ts`.
  */
 
 export type IncidentActionState = {
@@ -211,6 +215,35 @@ export async function setPoliceReferenceAction(
       : result.policeReference
         ? "Police reference saved"
         : "Police reference removed",
+  };
+}
+
+/**
+ * "It's over now". The rules are `markIncidentOver`'s; this parses the id and
+ * revalidates the two screens that draw the live state.
+ */
+export async function markOverAction(
+  _previous: IncidentActionState,
+  formData: FormData,
+): Promise<IncidentActionState> {
+  const session = await requireSession("/incidents");
+  const incidentId = formData.get("incidentId");
+
+  if (typeof incidentId !== "string" || !isUuid(incidentId)) {
+    return { ok: false, message: "That report could not be found." };
+  }
+
+  const result = await markIncidentOver({ session, incidentId });
+  if (!result.ok) return { ok: false, message: result.error };
+
+  revalidatePath(`/incidents/${incidentId}`);
+  revalidatePath("/map");
+
+  return {
+    ok: true,
+    message: result.changed
+      ? "Marked as over — thank you."
+      : "This report was already marked as over.",
   };
 }
 

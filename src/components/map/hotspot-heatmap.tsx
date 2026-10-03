@@ -35,7 +35,8 @@ import { timelineBounds, withinSelection } from "@/lib/timeline";
  * heat build up across the period — which is the question a density picture
  * this size can answer. A two-handled window would ask for a precision 200px
  * cannot give. The viewport frames the whole period and holds still while it
- * moves, for the reason `map-view.tsx` gives.
+ * moves, for the reason `MapScreen`'s `fitTo` gives — framing what the
+ * slider leaves would re-zoom the map under the reader's finger.
  *
  * This file exists to own the `next/dynamic` call, which is only legal from a
  * Client Component — Leaflet touches `window` on import, and `leaflet.heat`

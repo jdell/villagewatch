@@ -51,6 +51,11 @@ type IncidentActionsProps = {
    * nothing — Confirm is the same PUBLISH submit, re-checked by the action.
    */
   openApprove?: boolean;
+  /**
+   * Inside the report page's coordinator sheet, which is already a panel with
+   * its own heading — so no card border and no "Actions" title of its own.
+   */
+  bare?: boolean;
 };
 
 function ActionButton({
@@ -129,6 +134,7 @@ export function IncidentActions({
   canDelete,
   canModerate,
   openApprove = false,
+  bare = false,
 }: IncidentActionsProps) {
   const [moderation, moderate] = useActionState(moderateFromDetailAction, IDLE);
   const [removal, remove] = useActionState(deleteIncidentAction, IDLE);
@@ -169,8 +175,16 @@ export function IncidentActions({
   if (!reporterSection && !canModerate) return null;
 
   return (
-    <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-      <h2 className="text-sm font-semibold text-slate-900">Actions</h2>
+    <section
+      className={
+        bare
+          ? "mt-3"
+          : "mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
+      }
+    >
+      {!bare && (
+        <h2 className="text-sm font-semibold text-slate-900">Actions</h2>
+      )}
 
       {reporterSection && (
         <div className="mt-3">

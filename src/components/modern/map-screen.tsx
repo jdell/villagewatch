@@ -122,6 +122,14 @@ export type MapScreenProps = {
    * screen with its sheet up. Closing it goes to `/map`.
    */
   initialSheet?: "list" | "trends";
+  /**
+   * Arrived from a report's page — `/map?incident=<id>`, the map header, or
+   * `&pattern=1`, its "Show all on map". Opens that report's sheet, and with
+   * `focusPattern` frames the pattern's reports as Show would. Ignored when the
+   * id is not on the map, which is also what keeps a stale link harmless.
+   */
+  initialSelectedId?: string | null;
+  focusPattern?: boolean;
 };
 
 export function MapScreen({
@@ -135,6 +143,8 @@ export function MapScreen({
   canPostAlert,
   startReporting = false,
   initialSheet,
+  initialSelectedId = null,
+  focusPattern = false,
 }: MapScreenProps) {
   const router = useRouter();
   const [sheet, setSheet] = useState<"list" | "trends" | null>(
@@ -186,7 +196,26 @@ export function MapScreen({
   const until = untilForScrub(scrub, now);
 
   /** The incident whose sheet is open — a tapped pin. */
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialSelectedId,
+  );
+
+  /*
+    What to frame on an arrival from a report's page: the pattern's reports, or
+    the one report. Handed to the map's own `fitTo`, so it is the same framing
+    the map always does, just of fewer pins — and it holds while somebody
+    changes a filter, rather than the map jumping back to the whole village
+    under the sheet they arrived to read.
+  */
+  const arrival = useMemo(() => {
+    const target = initialSelectedId
+      ? incidents.find((incident) => incident.id === initialSelectedId)
+      : undefined;
+    if (!target) return null;
+    return focusPattern && target.recurring
+      ? patternMembers(target, incidents)
+      : [target];
+  }, [initialSelectedId, focusPattern, incidents]);
 
   const mapRef = useRef<L.Map | null>(null);
   const onReady = useCallback((map: L.Map) => {
@@ -449,7 +478,7 @@ export function MapScreen({
         mode={mode}
         label={`Map of reported incidents in ${villageName}`}
         fitToIncidents={filtered.length > 0}
-        fitTo={filtered}
+        fitTo={arrival ?? filtered}
         events={shownEvents}
         onReady={onReady}
         pinStyle="glyph"
@@ -461,7 +490,13 @@ export function MapScreen({
         // this changes, and closing the list to open a pin must not re-frame
         // the map out from under the pin it just panned to.
         fitClearBottom={
-          initialSheet === "list" ? 0.65 : initialSheet === "trends" ? 0.5 : 0
+          initialSheet === "list"
+            ? 0.65
+            : initialSheet === "trends"
+              ? 0.5
+              : arrival
+                ? 0.55
+                : 0
         }
         className="size-full"
       />

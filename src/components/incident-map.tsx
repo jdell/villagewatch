@@ -39,8 +39,9 @@ import {
  * The village map: every incident as a pin, coloured by severity.
  *
  * Leaflet reaches for `window` on import, so this module must only ever be
- * pulled in through `next/dynamic` with `ssr: false` — see `map-view.tsx` and
- * `incident-location-map.tsx`, which are the two Client Components that do it.
+ * pulled in through `next/dynamic` with `ssr: false` — see `modern/map-screen.tsx`,
+ * `report/report-map-header.tsx` and `event-location-map.tsx`, the Client
+ * Components that do it.
  *
  * Every pin here is already fuzzed. `Incident.lat`/`lng` were jittered by
  * `LOCATION_FUZZ_METERS` on the way into the database, so nothing on this map
@@ -475,7 +476,7 @@ export function IncidentMap({
       keyboard={interactive}
       /*
         Never Leaflet's own control. Its default corner is `topleft`, which on
-        this map is where `map-view.tsx` puts the village card — 10px of margin
+        this map is where the old map view put the village card — 10px of margin
         against a card that starts 12px in, so on a phone the + and - buttons
         landed on top of the village's name and its incident count. The control
         wins that overlap, because Leaflet numbers its controls at 1000 and the
@@ -498,8 +499,8 @@ export function IncidentMap({
         period controls are top right, and the legend runs along the bottom from
         the left. Leaflet inserts a bottom control *before* whatever is already
         in that corner, so the attribution stays flush against the edge with the
-        buttons stacked above it rather than under them — and `map-view.tsx`
-        keeps its bottom row clear of the column they occupy.
+        buttons stacked above it rather than under them. `MapScreen` lifts the
+        whole corner above the tab bar (`.vw-full-bleed` in globals.css).
 
         Only when the map is a map. `interactive={false}` is the dashboard's
         density thumbnail, which has no zoom to control.

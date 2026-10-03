@@ -202,10 +202,13 @@ src/
                               fourth tab. Also reachable from the sidebar
       map/                    Full-screen Leaflet map, severity pins, heatmap
       incidents/              List with type + severity filters (GET form)
-      incidents/[id]/         Detail — media, tags, map pin; params is a Promise
+      incidents/[id]/         One report — loads the row and decides what this
+                              viewer may do; `report/report-page.tsx` draws it.
+                              params is a Promise. See Phase G in The redesign
       incidents/[id]/edit/    Reporter's own edit, queue statuses only
-      incidents/[id]/actions.ts  Moderate / edit / withdraw server actions, and
-                              resolveIncidentAction — see Resolving a report
+      incidents/[id]/actions.ts  Moderate / edit / withdraw server actions,
+                              resolveIncidentAction — see Resolving a report —
+                              and markOverAction, "It's over now"
       incidents/new/          Report wizard host (village lookup, server-side)
       events/                 Community events — upcoming, past under a fold.
                               Every page answers "not on here" when the village
@@ -389,7 +392,18 @@ src/
                               clock toggle, remembered per device
     qr-invite.tsx             The invite QR — SVG on screen, canvas behind the
                               download, `[data-print-region]` for the sheet
-    incident-location-map.tsx Client wrapper for the detail page's single pin
+    report/report-page.tsx    A report's page, drawn from props — the order the
+                              design gives, cards and all. No data, no decisions
+    report/report-nav.tsx     Back to the map, the reference, Share — which sends
+                              the public preview for a coordinator and the
+                              signed-in page for a resident
+    report/report-map-header.tsx  The 200px picture of the pin, "Approximate
+                              location" on it, linking to the report on /map
+    report/report-status-banner.tsx  In review / Happening now / Published /
+                              Resolved / Not published / Archived — exactly one
+    report/reporter-actions.tsx  Edit, It's over now, Delete (confirmed inline)
+    report/coordinator-tools.tsx  "Moderate" and the sheet behind it — approve,
+                              resolve, the PCSO summary and the WhatsApp alert
     incident-card.tsx         One incident, used by preview, list and detail
     event-card.tsx            One community event. Not IncidentCard with a flag:
                               it names the poster, which a report card never does
@@ -402,8 +416,9 @@ src/
     vote-buttons.tsx          Up / down chevrons and two counts, on every
                               published report. Optimistic, and it puts the
                               count back when the request fails
-    incident-actions.tsx      Detail-page actions — reporter and coordinator.
-                              The Resolve panel is here, inline, note required
+    incident-actions.tsx      The moderation controls — approve, reject,
+                              resolve (inline, note required), archive. Rendered
+                              `bare` inside the report page's Moderate sheet
     police-reference-field.tsx  The police reference row in "Report details",
                               editable by the reporter and coordinators. See
                               The police reference
@@ -691,6 +706,13 @@ src/
     rate-limit.ts             Fixed windows counted in `rate_limit` — server only
     format.ts                 Time-ago, dates, sizes — en-GB
     incidents.ts              PUBLIC_INCIDENT_SELECT (no rawDescription), mappers
+    incident-live.ts          "Happening now" — derived, never stored — and
+                              which banner a report's page draws. Client-safe
+    incident-ended.ts         "It's over now": who may, what it writes
+                              (`endedAt` and an audit row), and the degrading
+                              read. Server only
+    related-incidents.ts      The pattern card's other reports — the map's Show
+                              rule, read from the database. Server only
     incident-csv.ts           The export's formatting — pure, so it is testable
                               without a session. Quoting *and* formula guarding
     ai/client.ts              Anthropic client + isAiConfigured — server only
@@ -1043,6 +1065,16 @@ tests/                        Vitest, unit only — see The test suite
                               audit row before any message; and the reporter
                               and the voters told, never the village. Also the
                               note in both documents that leave the village
+  incident-live.test.ts       "Happening now" — the window's edges, never in the
+                              queue, ended by `endedAt` — and one banner per
+                              status
+  incident-ended.test.ts      "It's over now" — reporter or coordinator only,
+                              every guard in the write's own where, audited
+                              once and only when it wrote, a missing column
+                              read as null
+  report-share.test.ts        The report page's Share: the public preview for a
+                              coordinator only, the signed-in page for a
+                              resident, nothing for a report in the queue
   police-reference.test.ts    The police reference — the reporter on their own
                               report and a coordinator on any, published and
                               resolved only, the guard in the write's `where`
@@ -2262,7 +2294,7 @@ decided that it should. Same reasoning as the `otp` and `resend` entries in
 ## The test suite
 
 `tests/`, run by `npm run test` (Vitest), and by `.github/workflows/ci.yml`
-between the typecheck and the build. Sixty-eight files, 1,124 tests, covering the
+between the typecheck and the build. Seventy-one files, 1,145 tests, covering the
 paths where being wrong is expensive: the rate limiter, the two auth guards, the
 join check, the AI pass's failure modes, the Zod schemas, the WhatsApp channel
 code, the alert format, the incident reference, the CSV export's escaping and
@@ -5233,6 +5265,69 @@ group here.
   and the report flow — cover it. The first framing keeps the pins clear of the
   route's sheet (`fitClearBottom`), keyed on the route rather than the live
   sheet so closing the list to open a pin does not re-frame the map under it.
+- **Phase G — the report page.** `/incidents/[id]` top to bottom: a bar
+  (← Map, the reference, Share), a 200px picture of the pin with "Approximate
+  location" on it (`interactive={false}`; the strip links to the report on
+  `/map`), one status banner, the report card (type and severity badges, a Live
+  badge while it is happening, the title, when · where · "Filed by you" or "Filed
+  by a resident", the words, tags, the AI note), the vote card ("More serious" /
+  "Less" with counts — `VoteButtons wide`), the pattern card with the other
+  reports and "Show all on map", a two-column media grid with each file's time,
+  a Details card of key-value rows (reference, filed, category, status,
+  location, people, why this severity, the police reference), the reporter's
+  rows (Edit, It's over now, Delete confirmed inline), the coordinator's
+  **Moderate** button, and "Seen something related?". Every size; from `lg` the
+  column is centred and the shell's sidebar is beside it. The page reads and
+  decides; `report/report-page.tsx` draws, from props alone, which is what lets
+  it be checked with fixture data.
+- **"Happening now" is derived, and "It's over now" is the one new column.**
+  A published report is live for `LIVE_WINDOW_HOURS` (3) after `occurredAt`
+  unless somebody has said it is over (`src/lib/incident-live.ts`). The design
+  has a live state and an "It's over now" button; asking the reporter in the
+  wizard would be a sixth question at the worst moment, and a button with
+  nothing to write would be a lie. So `Incident.endedAt`
+  (`20261003120000_incident_ended_at`, nullable, additive) is written by the
+  reporter or a coordinator and by nothing else — not a resolution, no note, no
+  message to anybody, no status change. Audited as `incident.ended`, neutral.
+  **It is read on its own** (`readIncidentEndedAt`), not added to
+  `PUBLIC_INCIDENT_SELECT`, because that select is behind every incident read in
+  the app and a column the database does not have yet there would take the map,
+  the list and the dashboard down together. `ended_at` is in the `incidents`
+  column grant — re-run `rls_policies.sql` after the migration, which
+  `database.yml` does.
+- **Never a reporter's name**, on any report, for anybody: "Filed by you" or
+  "Filed by a resident". No resident-facing screen has ever shown who filed —
+  see Filing anonymously — and a coordinator who needs to know reads it in the
+  queue, where it has always been.
+- **Share follows "The public share buttons".** A coordinator's sends the
+  public preview (`/incident/[id]`); a resident's sends this page
+  (`/incidents/[id]`), which opens for nobody but a signed-in resident of the
+  same village — a resident still has no button that puts a neighbour's report
+  outside the village. A report in the queue has no Share. `reportShareUrl` in
+  `format-alert.ts`, tested.
+- **The coordinator's tools moved into a sheet.** `IncidentActions`,
+  `ShareSummary` and `CopyAlert` are unchanged and render inside
+  `CoordinatorTools`' modal sheet behind one **Moderate** button, so a
+  coordinator reads the same page a resident does and "Reject" is not a thumb's
+  width from the vote buttons. The pending-report push's `?action=approve`
+  opens the sheet on arrival with the confirmation showing.
+- **The reporter's Edit, the old "Delete report" and its sentence about what is
+  erased are the same as before**, as rows. Delete's window is still
+  `canReporterErase` and wider than Edit's.
+- **"Show all on map" is `/map?incident=<id>&pattern=1`**; the map header is
+  the same without `pattern`. `MapScreen` opens that report's sheet and frames
+  the pattern (or the pin) through its own `fitTo`, so the framing is the map's
+  usual one and holds while filters change. An id that is not on the map —
+  older than the period, or not the viewer's to see — selects nothing.
+- **The related list is the Show rule from the database**
+  (`related-incidents.ts`): recurring, same category, `PATTERN_RADIUS_METERS`
+  and `PATTERN_WINDOW_DAYS`, published and resolved only — the list a resident
+  reads must not include a report in the queue, even when the page's own report
+  is theirs and still there.
+- **The shell's top bar is hidden on a report's page below `lg`** (`ownTopBar`
+  in `app-shell.tsx`) — the page has its own bar, and two stacked bars is the
+  thing the design removes. The tab bar stays; the drawer is a tap away on the
+  map. `IncidentLocationMap` had no caller left and is deleted.
 - **Clustering is not built.** The handoff's decluttering system (clusters
   below zoom 17, donut rings of the severity mix) is outside the brief's six
   phases; at a village's volume the glyph discs are legible without it, and it

@@ -541,6 +541,9 @@ GRANT SELECT (
   -- What the coordinator said happened when they resolved the report. Written
   -- for the village to read, so it is granted like `resolved_at` beside it.
   resolution_note,
+  -- When the reporter said it was over ("It's over now"). A timestamp and
+  -- nothing else, public like `resolved_at`.
+  ended_at,
   location_text, lat, lng, location_point, location_fuzz_meters,
   reported_to_police, police_reference,
   view_count, confirm_count,
